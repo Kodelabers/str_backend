@@ -22,8 +22,10 @@ public class Go1StatusDomacina implements ValidacijskaProvjera {
         String objektZupanija = kontekst.coreObjekt().getZupanija();
         String objektGrad = kontekst.coreObjekt().getGrad();
 
-        boolean istaJls = adresa != null
-                && (adresa.contains(objektZupanija) || adresa.contains(objektGrad));
+        String adresaLower = adresa != null ? adresa.toLowerCase() : null;
+        boolean istaJls = adresaLower != null
+                && (adresaLower.contains(objektZupanija.toLowerCase())
+                    || adresaLower.contains(objektGrad.toLowerCase()));
         kontekst.iznajmljivac().markDomacin(istaJls);
 
         return new ValidacijskiRezultat.Prosla(STEP,

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -32,7 +33,14 @@ class Go1StatusDomacinaTest {
         ValidacijskiKontekst ctx = kontekst("Split, Marmontova 5", "Zagreb", "Grad Zagreb");
         ValidacijskiRezultat r = step.provjeri(ctx);
         assertInstanceOf(ValidacijskiRezultat.Prosla.class, r);
-        assertTrue(!ctx.iznajmljivac().isDomacin());
+        assertFalse(ctx.iznajmljivac().isDomacin());
+    }
+
+    @Test
+    void matchIsCaseInsensitive() {
+        ValidacijskiKontekst ctx = kontekst("splitsko-dalmatinska, omiš 10", "Omiš", "Splitsko-dalmatinska");
+        step.provjeri(ctx);
+        assertTrue(ctx.iznajmljivac().isDomacin(), "JLS match must be case-insensitive");
     }
 
     @Test
