@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        core.objekt is owned by the core service.
+        This changeset defines its shape for local development only.
+        In production, this table is created by the core service — do NOT run this against prod core.
+    -->
+    <changeSet id="002-create-core-objekt" author="str-backend" context="local">
+        <createTable schemaName="core" tableName="objekt">
+            <column name="uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="zupanija" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="grad" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="adresa" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_kreveta" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_gostiju" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="legalan" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <rollback>
+            <dropTable schemaName="core" tableName="objekt"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

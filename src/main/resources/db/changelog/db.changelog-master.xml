@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <include file="db/changelog/changes/001-init-schemas.xml"/>
+    <include file="db/changelog/changes/002-core-objekt.xml"/>
+    <include file="db/changelog/changes/003-str-sso.xml"/>
+    <include file="db/changelog/changes/004-str-iznajmljivac.xml"/>
+    <include file="db/changelog/changes/005-str-audit-log.xml"/>
+
+</databaseChangeLog>
