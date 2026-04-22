@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="004-create-str-iznajmljivac" author="str-backend">
+        <createTable schemaName="str" tableName="iznajmljivac">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="uuid_sso" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_iznajmljivac_sso"
+                             references="str.sso(uuid_sso)"/>
+            </column>
+            <column name="oib" type="CHAR(11)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="naziv_prezime" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="adresa_prebivalista" type="VARCHAR(500)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="is_domacin" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.iznajmljivac
+                ADD CONSTRAINT chk_iznajmljivac_oib_format
+                    CHECK (oib ~ '^[0-9]{11}$')
+        </sql>
+
+        <createIndex schemaName="str" tableName="iznajmljivac" indexName="idx_iznajmljivac_uuid_sso">
+            <column name="uuid_sso"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="iznajmljivac"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

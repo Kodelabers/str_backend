@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="005-create-str-audit-log" author="str-backend">
+        <createTable schemaName="str" tableName="audit_log">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="uuid_sso" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="event_type" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="from_status" type="VARCHAR(32)"/>
+            <column name="to_status" type="VARCHAR(32)"/>
+            <column name="trigger_name" type="VARCHAR(64)"/>
+            <column name="outcome" type="VARCHAR(32)"/>
+            <column name="detail" type="VARCHAR(1024)"/>
+            <column name="occurred_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="str" tableName="audit_log" indexName="idx_audit_log_uuid_sso">
+            <column name="uuid_sso"/>
+            <column name="occurred_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="audit_log"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
