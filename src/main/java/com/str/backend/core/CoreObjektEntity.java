@@ -17,14 +17,11 @@ public class CoreObjektEntity {
     @Column(name = "uuid", nullable = false, updatable = false)
     private UUID uuid;
 
-    @Column(name = "zupanija", nullable = false)
-    private String zupanija;
+    @Column(name = "katastarska_opcina")
+    private String katastarskaOpcina;
 
-    @Column(name = "grad", nullable = false)
-    private String grad;
-
-    @Column(name = "adresa", nullable = false)
-    private String adresa;
+    @Column(name = "broj_katastarske_cestice")
+    private String brojKatastarskeCestice;
 
     @Column(name = "max_kreveta", nullable = false)
     private int maxKreveta;
@@ -39,9 +36,8 @@ public class CoreObjektEntity {
     }
 
     public UUID getUuid() { return uuid; }
-    public String getZupanija() { return zupanija; }
-    public String getGrad() { return grad; }
-    public String getAdresa() { return adresa; }
+    public String getKatastarskaOpcina() { return katastarskaOpcina; }
+    public String getBrojKatastarskeCestice() { return brojKatastarskeCestice; }
     public int getMaxKreveta() { return maxKreveta; }
     public int getMaxGostiju() { return maxGostiju; }
     public boolean isLegalan() { return legalan; }

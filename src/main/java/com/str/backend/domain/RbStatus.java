@@ -1,29 +1,21 @@
 package com.str.backend.domain;
 
-public enum Status {
-    INICIIRAN,
-    VALIDACIJA,
+public enum RbStatus {
     U_OBRADI,
     AKTIVAN,
     SUSPENDIRAN,
     POVUCEN;
 
-    public boolean canTransitionTo(Status target, TransitionTrigger trigger) {
+    public boolean canTransitionTo(RbStatus target, RbTrigger trigger) {
         return switch (this) {
-            case INICIIRAN -> target == VALIDACIJA && trigger == TransitionTrigger.USER_SUBMIT;
-            case VALIDACIJA -> switch (trigger) {
-                case VALIDATION_PASSED -> target == AKTIVAN;
-                case AWAITING_CALLBACK -> target == U_OBRADI;
-                default -> false;
-            };
-            case U_OBRADI -> target == AKTIVAN && trigger == TransitionTrigger.CALLBACK_CONFIRMED;
+            case U_OBRADI -> trigger == RbTrigger.ISSUE && target == AKTIVAN;
             case AKTIVAN -> switch (trigger) {
                 case CONSENT_EXPIRY, INSPECTION -> target == SUSPENDIRAN;
                 case WITHDRAWAL -> target == POVUCEN;
                 default -> false;
             };
             case SUSPENDIRAN -> switch (trigger) {
-                case REACTIVATION_CYCLE -> target == VALIDACIJA;
+                case REACTIVATE -> target == AKTIVAN;
                 case WITHDRAWAL -> target == POVUCEN;
                 default -> false;
             };

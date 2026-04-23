@@ -1,72 +1,77 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.core.CoreObjektEntity;
-import com.str.backend.domain.Ponuda;
 import com.str.backend.iznajmljivac.IznajmljivacEntity;
 import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.zahtjev.ZahtjevEntity;
 import org.junit.jupiter.api.Test;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class Go1StatusDomacinaTest {
 
     private final Go1StatusDomacina step = new Go1StatusDomacina();
 
     @Test
-    void marksAsDomacin_whenAdresaContainsGrad() {
-        ValidacijskiKontekst ctx = kontekst("Zagreb, Ilica 1", "Zagreb", "Grad Zagreb");
+    void marksDomacinTrue_whenZupanijaMatchesAndNotZgrada() {
+        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
+        // zgrada=false → qualifies for domacin
+        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
+        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
+        ValidacijskiKontekst ctx = new ValidacijskiKontekst(z, sso, iz, null);
+
         ValidacijskiRezultat r = step.provjeri(ctx);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, r);
-        assertTrue(ctx.iznajmljivac().isDomacin());
+
+        assertThat(r).isInstanceOf(ValidacijskiRezultat.Prosla.class);
+        assertThat(sso.getDomacin()).isTrue();
     }
 
     @Test
-    void marksAsNijeDomacin_whenAdresaInDifferentCity() {
-        ValidacijskiKontekst ctx = kontekst("Split, Marmontova 5", "Zagreb", "Grad Zagreb");
-        ValidacijskiRezultat r = step.provjeri(ctx);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, r);
-        assertFalse(ctx.iznajmljivac().isDomacin());
-    }
+    void marksDomacinFalse_whenZupanijaMatchesButObjectIsZgrada() {
+        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
+        // Zgrada=true → disqualifies even if zupanija matches (per ZAK-2.1 rule)
+        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
+        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
+        ValidacijskiKontekst ctx = new ValidacijskiKontekst(z, sso, iz, null);
 
-    @Test
-    void matchIsCaseInsensitive() {
-        ValidacijskiKontekst ctx = kontekst("splitsko-dalmatinska, omiš 10", "Omiš", "Splitsko-dalmatinska");
         step.provjeri(ctx);
-        assertTrue(ctx.iznajmljivac().isDomacin(), "JLS match must be case-insensitive");
+
+        assertThat(sso.getDomacin()).isFalse();
     }
 
     @Test
-    void marksAsDomacin_whenAdresaContainsZupanija() {
-        ValidacijskiKontekst ctx = kontekst("Splitsko-dalmatinska, Omiš 10", "Omiš", "Splitsko-dalmatinska");
-        ValidacijskiRezultat r = step.provjeri(ctx);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, r);
-        assertTrue(ctx.iznajmljivac().isDomacin());
+    void marksDomacinFalse_whenZupanijaDiffers() {
+        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
+        SsoEntity sso = GoTestFixtures.sso("Splitsko-dalmatinska", "Split", 2, 4, false, false, true);
+        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
+        ValidacijskiKontekst ctx = new ValidacijskiKontekst(z, sso, iz, null);
+
+        step.provjeri(ctx);
+
+        assertThat(sso.getDomacin()).isFalse();
     }
 
     @Test
-    void alwaysReturnsProslaNeverRejects() {
-        ValidacijskiKontekst ctx = kontekst(null, "Zagreb", "Grad Zagreb");
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, step.provjeri(ctx));
+    void matchIsCaseInsensitiveOnZupanijaOnly() {
+        // Per ZAK-2.1: only zupanija is compared, not mjesto/grad
+        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("splitsko-dalmatinska", "Omiš");
+        SsoEntity sso = GoTestFixtures.sso("Splitsko-Dalmatinska", "Split", 2, 4, false, false, true);
+        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
+        ValidacijskiKontekst ctx = new ValidacijskiKontekst(z, sso, iz, null);
+
+        step.provjeri(ctx);
+
+        assertThat(sso.getDomacin()).isTrue();
     }
 
-    private static ValidacijskiKontekst kontekst(String adresaPrebivalista, String grad, String zupanija) {
-        UUID uuid = UUID.randomUUID();
-        SsoEntity sso = SsoEntity.initiate(uuid, 2, 4, Ponuda.CJELINA, null, null);
+    @Test
+    void alwaysReturnsProsla_evenOnMismatch() {
+        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
+        SsoEntity sso = GoTestFixtures.sso("Istarska", "Pula", 2, 4, true, true, true);
+        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
+        ValidacijskiKontekst ctx = new ValidacijskiKontekst(z, sso, iz, null);
 
-        CoreObjektEntity core = mock(CoreObjektEntity.class);
-        when(core.getGrad()).thenReturn(grad);
-        when(core.getZupanija()).thenReturn(zupanija);
-
-        IznajmljivacEntity iznajmljivac = IznajmljivacEntity.snapshot(
-                uuid, "12345678901", "Marko Marić", adresaPrebivalista != null ? adresaPrebivalista : "");
-        return new ValidacijskiKontekst(sso, core, iznajmljivac);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
     }
 }

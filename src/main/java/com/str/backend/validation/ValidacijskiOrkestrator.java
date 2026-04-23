@@ -13,6 +13,7 @@ import java.util.List;
 public class ValidacijskiOrkestrator {
 
     private static final Logger log = LoggerFactory.getLogger(ValidacijskiOrkestrator.class);
+    private static final String ENTITY_TYPE = "SSO";
 
     private final List<ValidacijskaProvjera> provjere;
     private final AuditLogRepository auditLogRepository;
@@ -25,40 +26,32 @@ public class ValidacijskiOrkestrator {
     }
 
     public PipelineRezultat izvrsi(ValidacijskiKontekst kontekst) {
+        String ssoId = kontekst.sso().getIdSso().toString();
         for (ValidacijskaProvjera provjera : provjere) {
             ValidacijskiRezultat r = provjera.provjeri(kontekst);
-            PipelineRezultat pipelineRezultat = zabiljezi(kontekst, r);
+            PipelineRezultat pipelineRezultat = zabiljezi(ssoId, r);
             if (pipelineRezultat != null) {
                 return pipelineRezultat;
             }
         }
         auditLogRepository.save(AuditLogEntity.validation(
-                kontekst.sso().getUuidSso(), "PIPELINE", "PROSAO", null));
+                ENTITY_TYPE, ssoId, "PIPELINE", "PROSAO", null));
         return PipelineRezultat.prosao();
     }
 
-    private PipelineRezultat zabiljezi(ValidacijskiKontekst kontekst, ValidacijskiRezultat r) {
+    private PipelineRezultat zabiljezi(String ssoId, ValidacijskiRezultat r) {
         return switch (r) {
             case ValidacijskiRezultat.Prosla p -> {
                 auditLogRepository.save(AuditLogEntity.validation(
-                        kontekst.sso().getUuidSso(), p.step(), "PROSLA", p.detail()));
-                log.info("go_pass uuidSso={} step={} detail={}",
-                        kontekst.sso().getUuidSso(), p.step(), p.detail());
+                        ENTITY_TYPE, ssoId, p.step(), "PROSLA", p.detail()));
+                log.info("go_pass sso={} step={} detail={}", ssoId, p.step(), p.detail());
                 yield null;
             }
             case ValidacijskiRezultat.Odbijena o -> {
                 auditLogRepository.save(AuditLogEntity.validation(
-                        kontekst.sso().getUuidSso(), o.step(), "ODBIJENA", o.razlog()));
-                log.warn("go_reject uuidSso={} step={} razlog={}",
-                        kontekst.sso().getUuidSso(), o.step(), o.razlog());
+                        ENTITY_TYPE, ssoId, o.step(), "ODBIJENA", o.razlog()));
+                log.warn("go_reject sso={} step={} razlog={}", ssoId, o.step(), o.razlog());
                 yield PipelineRezultat.odbijen(o.step(), o.razlog());
-            }
-            case ValidacijskiRezultat.CekaCallback c -> {
-                auditLogRepository.save(AuditLogEntity.validation(
-                        kontekst.sso().getUuidSso(), c.step(), "CEKA_CALLBACK", c.razlog()));
-                log.info("go_pending uuidSso={} step={} razlog={}",
-                        kontekst.sso().getUuidSso(), c.step(), c.razlog());
-                yield PipelineRezultat.cekaCallback(c.step(), c.razlog());
             }
         };
     }

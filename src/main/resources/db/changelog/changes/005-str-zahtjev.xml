@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="005-create-str-zahtjev" author="str-backend">
+        <createTable schemaName="str" tableName="zahtjev">
+            <column name="id_zahtjeva" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="ur_zahtjeva" type="VARCHAR(64)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_zahtjev_ur"/>
+            </column>
+            <column name="link_dokumenta" type="VARCHAR(500)"/>
+            <column name="kanal" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="oznaka_vrste" type="VARCHAR(32)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_zahtjev_vrsta"
+                             references="str.vrsta_zahtjeva(oznaka_vrste)"/>
+            </column>
+            <column name="id_iznajmljivaca" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_zahtjev_iznajmljivac"
+                             references="str.iznajmljivac(id_iznajmljivaca)"/>
+            </column>
+            <column name="id_nadleznog_tijela" type="BIGINT">
+                <constraints foreignKeyName="fk_zahtjev_nt"
+                             references="str.nadlezno_tijelo(id_nadleznog_tijela)"/>
+            </column>
+            <column name="status" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.zahtjev
+                ADD CONSTRAINT chk_zahtjev_kanal
+                    CHECK (kanal IN ('NIAS', 'EIDAS', 'STRANAC')),
+                ADD CONSTRAINT chk_zahtjev_status
+                    CHECK (status IN ('INICIIRAN', 'U_VERIFIKACIJI', 'U_OBRADI', 'PRIHVACEN', 'ODBIJEN'))
+        </sql>
+
+        <createIndex schemaName="str" tableName="zahtjev" indexName="idx_zahtjev_iznajmljivac">
+            <column name="id_iznajmljivaca"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="zahtjev" indexName="idx_zahtjev_status">
+            <column name="status"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="zahtjev"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

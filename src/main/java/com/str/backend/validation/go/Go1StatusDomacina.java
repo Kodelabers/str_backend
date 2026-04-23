@@ -1,5 +1,7 @@
 package com.str.backend.validation.go;
 
+import com.str.backend.iznajmljivac.IznajmljivacEntity;
+import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskaProvjera;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
@@ -14,21 +16,23 @@ public class Go1StatusDomacina implements ValidacijskaProvjera {
     public String step() { return STEP; }
 
     @Override
-    public int order() { return 1; }
+    public int order() { return 2; }
 
     @Override
     public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
-        String adresa = kontekst.iznajmljivac().getAdresaPrebivalista();
-        String objektZupanija = kontekst.coreObjekt().getZupanija();
-        String objektGrad = kontekst.coreObjekt().getGrad();
+        IznajmljivacEntity iz = kontekst.iznajmljivac();
+        SsoEntity sso = kontekst.sso();
 
-        String adresaLower = adresa != null ? adresa.toLowerCase() : null;
-        boolean istaJls = adresaLower != null
-                && (adresaLower.contains(objektZupanija.toLowerCase())
-                    || adresaLower.contains(objektGrad.toLowerCase()));
-        kontekst.iznajmljivac().markDomacin(istaJls);
+        boolean zupanijaMatches = equalsIgnoreCaseNullSafe(iz.getZupanija(), sso.getZupanija());
+        boolean domacin = zupanijaMatches && !sso.isZgrada();
+
+        sso.markDomacin(domacin);
 
         return new ValidacijskiRezultat.Prosla(STEP,
-                "is_domacin=" + istaJls);
+                "domacin=" + domacin + " (zupanija=" + zupanijaMatches + ", zgrada=" + sso.isZgrada() + ")");
+    }
+
+    private static boolean equalsIgnoreCaseNullSafe(String a, String b) {
+        return a != null && b != null && a.equalsIgnoreCase(b);
     }
 }
