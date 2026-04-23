@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="003-create-nadlezno-tijelo" author="str-backend">
+        <createTable schemaName="str" tableName="nadlezno_tijelo">
+            <column name="id_nadleznog_tijela" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="naziv" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <rollback><dropTable schemaName="str" tableName="nadlezno_tijelo"/></rollback>
+    </changeSet>
+
+    <changeSet id="003-create-vrsta-zahtjeva" author="str-backend">
+        <createTable schemaName="str" tableName="vrsta_zahtjeva">
+            <column name="oznaka_vrste" type="VARCHAR(32)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="kodna_oznaka" type="VARCHAR(16)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_vrsta_zahtjeva_kodna"/>
+            </column>
+            <column name="naziv" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="datum_od" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="datum_do" type="DATE"/>
+            <column name="status" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <sql>
+            ALTER TABLE str.vrsta_zahtjeva
+                ADD CONSTRAINT chk_vrsta_zahtjeva_status
+                    CHECK (status IN ('AKTIVAN', 'NEAKTIVAN'))
+        </sql>
+        <rollback><dropTable schemaName="str" tableName="vrsta_zahtjeva"/></rollback>
+    </changeSet>
+
+    <changeSet id="003-create-vrsta-sso" author="str-backend">
+        <createTable schemaName="str" tableName="vrsta_sso">
+            <column name="id_vrste_sso" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="naziv" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <rollback><dropTable schemaName="str" tableName="vrsta_sso"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

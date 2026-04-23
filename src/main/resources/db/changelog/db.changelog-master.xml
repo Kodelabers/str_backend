@@ -7,8 +7,12 @@
 
     <include file="db/changelog/changes/001-init-schemas.xml"/>
     <include file="db/changelog/changes/002-core-objekt.xml"/>
-    <include file="db/changelog/changes/003-str-sso.xml"/>
+    <include file="db/changelog/changes/003-str-lookups.xml"/>
     <include file="db/changelog/changes/004-str-iznajmljivac.xml"/>
-    <include file="db/changelog/changes/005-str-audit-log.xml"/>
+    <include file="db/changelog/changes/005-str-zahtjev.xml"/>
+    <include file="db/changelog/changes/006-str-sso.xml"/>
+    <include file="db/changelog/changes/007-str-rb.xml"/>
+    <include file="db/changelog/changes/008-str-audit-log.xml"/>
+    <include file="db/changelog/changes/009-seed-lookups.xml"/>
 
 </databaseChangeLog>

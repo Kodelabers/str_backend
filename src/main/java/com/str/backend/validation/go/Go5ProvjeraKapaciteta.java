@@ -1,5 +1,7 @@
 package com.str.backend.validation.go;
 
+import com.str.backend.core.CoreObjektEntity;
+import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskaProvjera;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
@@ -18,20 +20,22 @@ public class Go5ProvjeraKapaciteta implements ValidacijskaProvjera {
 
     @Override
     public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
-        int uneseniKreveti = kontekst.sso().getKapacitetKreveta();
-        int uneseniGosti = kontekst.sso().getKapacitetGostiju();
-        int maxKreveta = kontekst.coreObjekt().getMaxKreveta();
-        int maxGostiju = kontekst.coreObjekt().getMaxGostiju();
-
-        if (uneseniKreveti > maxKreveta) {
-            return new ValidacijskiRezultat.Odbijena(STEP,
-                    "kapacitet_kreveta=" + uneseniKreveti + " prelazi max=" + maxKreveta);
+        SsoEntity sso = kontekst.sso();
+        CoreObjektEntity core = kontekst.coreObjekt();
+        if (core == null) {
+            return new ValidacijskiRezultat.Prosla(STEP,
+                    "nema core rjesenja - prihvacamo prijavljeni kapacitet");
         }
-        if (uneseniGosti > maxGostiju) {
+        if (sso.getMaxKreveta() > core.getMaxKreveta()) {
             return new ValidacijskiRezultat.Odbijena(STEP,
-                    "kapacitet_gostiju=" + uneseniGosti + " prelazi max=" + maxGostiju);
+                    "max_kreveta=" + sso.getMaxKreveta() + " prelazi rjesenje=" + core.getMaxKreveta());
+        }
+        if (sso.getMaxGostiju() > core.getMaxGostiju()) {
+            return new ValidacijskiRezultat.Odbijena(STEP,
+                    "max_gostiju=" + sso.getMaxGostiju() + " prelazi rjesenje=" + core.getMaxGostiju());
         }
         return new ValidacijskiRezultat.Prosla(STEP,
-                "kreveta=" + uneseniKreveti + "/" + maxKreveta + ", gostiju=" + uneseniGosti + "/" + maxGostiju);
+                "kreveti=" + sso.getMaxKreveta() + "/" + core.getMaxKreveta()
+                        + ", gosti=" + sso.getMaxGostiju() + "/" + core.getMaxGostiju());
     }
 }

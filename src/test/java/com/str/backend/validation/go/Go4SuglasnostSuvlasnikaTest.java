@@ -1,67 +1,80 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.core.CoreObjektEntity;
-import com.str.backend.domain.Ponuda;
 import com.str.backend.iznajmljivac.IznajmljivacEntity;
-import com.str.backend.registries.DguClient;
 import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.zahtjev.ZahtjevEntity;
 import org.junit.jupiter.api.Test;
 
-import java.util.UUID;
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class Go4SuglasnostSuvlasnikaTest {
 
-    private final DguClient dguClient = mock(DguClient.class);
-    private final Go4SuglasnostSuvlasnika step = new Go4SuglasnostSuvlasnika(dguClient);
+    private static final LocalDate TODAY = LocalDate.of(2026, 4, 23);
+    private final Clock clock = Clock.fixed(TODAY.atStartOfDay(ZoneOffset.UTC).toInstant(), ZoneOffset.UTC);
+    private final Go4SuglasnostSuvlasnika step = new Go4SuglasnostSuvlasnika(clock);
 
     @Test
     void skips_whenGo2DidNotFlag() {
-        ValidacijskiKontekst ctx = kontekst(false);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, step.provjeri(ctx));
-        verifyNoInteractions(dguClient);
+        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(null, null, null);
+        ValidacijskiKontekst ctx = ctx(sso, false);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
     }
 
     @Test
-    void passes_whenSuglasnostExists_andGo2Flagged() {
-        UUID uuid = UUID.randomUUID();
-        ValidacijskiKontekst ctx = kontekstFlagged(uuid);
-        when(dguClient.postojiValjanaSuglasnost(uuid)).thenReturn(true);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, step.provjeri(ctx));
+    void passes_whenFlaggedAndSuglasnostValjana() {
+        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(10), TODAY.plusDays(30));
+        ValidacijskiKontekst ctx = ctx(sso, true);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
     }
 
     @Test
-    void cekaCallback_whenSuglasnostMissing_andGo2Flagged() {
-        UUID uuid = UUID.randomUUID();
-        ValidacijskiKontekst ctx = kontekstFlagged(uuid);
-        when(dguClient.postojiValjanaSuglasnost(uuid)).thenReturn(false);
-        assertInstanceOf(ValidacijskiRezultat.CekaCallback.class, step.provjeri(ctx));
+    void passes_whenFlaggedAndSuglasnostWithoutExpiry() {
+        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(10), null);
+        ValidacijskiKontekst ctx = ctx(sso, true);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
     }
 
-    private static ValidacijskiKontekst kontekst(boolean flagged) {
-        UUID uuid = UUID.randomUUID();
-        return buildCtx(uuid, flagged);
+    @Test
+    void rejects_whenFlaggedAndSuglasnostMissing() {
+        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(null, null, null);
+        ValidacijskiKontekst ctx = ctx(sso, true);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
     }
 
-    private static ValidacijskiKontekst kontekstFlagged(UUID uuid) {
-        return buildCtx(uuid, true);
+    @Test
+    void rejects_whenFlaggedAndSuglasnostFalse() {
+        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(false, TODAY.minusDays(10), null);
+        ValidacijskiKontekst ctx = ctx(sso, true);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
     }
 
-    private static ValidacijskiKontekst buildCtx(UUID uuid, boolean flagged) {
-        SsoEntity sso = SsoEntity.initiate(uuid, 2, 4, Ponuda.CJELINA, null, null);
-        CoreObjektEntity core = mock(CoreObjektEntity.class);
-        IznajmljivacEntity iznajmljivac = IznajmljivacEntity.snapshot(
-                uuid, "12345678901", "Iva Ivić", "Zagreb");
-        ValidacijskiKontekst ctx = new ValidacijskiKontekst(sso, core, iznajmljivac);
+    @Test
+    void rejects_whenDatumPovlacenjaIsToday() {
+        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(30), TODAY);
+        ValidacijskiKontekst ctx = ctx(sso, true);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
+    }
+
+    @Test
+    void rejects_whenDatumPovlacenjaInPast() {
+        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(30), TODAY.minusDays(1));
+        ValidacijskiKontekst ctx = ctx(sso, true);
+        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
+    }
+
+    private ValidacijskiKontekst ctx(SsoEntity sso, boolean flagged) {
+        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
+        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
+        ValidacijskiKontekst k = new ValidacijskiKontekst(z, sso, iz, null);
         if (flagged) {
-            ctx.markiraj();
+            k.markiraj();
         }
-        return ctx;
+        return k;
     }
 }

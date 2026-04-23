@@ -1,20 +1,18 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.core.CoreObjektEntity;
-import com.str.backend.domain.Ponuda;
 import com.str.backend.iznajmljivac.IznajmljivacEntity;
 import com.str.backend.registries.MpgiClient;
 import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.zahtjev.ZahtjevEntity;
 import org.junit.jupiter.api.Test;
 
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class Go2TipGradevineTest {
@@ -23,44 +21,53 @@ class Go2TipGradevineTest {
     private final Go2TipGradevine step = new Go2TipGradevine(mpgiClient);
 
     @Test
-    void markirajFlagsContext_whenJedinicaExceedThreshold() {
-        when(mpgiClient.brojStambenihJedinica("Ilica 10")).thenReturn(10);
-        ValidacijskiKontekst ctx = kontekst("Ilica 10");
+    void flagsContext_whenJedinicaExceedThreshold() {
+        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
+        ValidacijskiKontekst ctx = ctx(sso);
+        when(mpgiClient.brojStambenihJedinica("Ulica 1, Zagreb")).thenReturn(10);
+
         ValidacijskiRezultat r = step.provjeri(ctx);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, r);
-        assertTrue(ctx.zahtjevaSuglasnost(), "GO-4 must be required when units > 3");
+
+        assertThat(r).isInstanceOf(ValidacijskiRezultat.Prosla.class);
+        assertThat(ctx.zahtjevaSuglasnost()).isTrue();
     }
 
     @Test
-    void doesNotFlagContext_whenJedinicaAtOrBelowThreshold() {
-        when(mpgiClient.brojStambenihJedinica("Kuca 1")).thenReturn(2);
-        ValidacijskiKontekst ctx = kontekst("Kuca 1");
-        ValidacijskiRezultat r = step.provjeri(ctx);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, r);
-        assertFalse(ctx.zahtjevaSuglasnost(), "GO-4 must not be required when units <= 3");
-    }
+    void doesNotFlag_whenJedinicaAtOrBelowThreshold() {
+        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
+        ValidacijskiKontekst ctx = ctx(sso);
+        when(mpgiClient.brojStambenihJedinica(anyString())).thenReturn(3);
 
-    @Test
-    void exactlyAtThreshold_doesNotFlag() {
-        when(mpgiClient.brojStambenihJedinica("Adresa")).thenReturn(3);
-        ValidacijskiKontekst ctx = kontekst("Adresa");
         step.provjeri(ctx);
-        assertFalse(ctx.zahtjevaSuglasnost());
+
+        assertThat(ctx.zahtjevaSuglasnost()).isFalse();
     }
 
     @Test
-    void alwaysReturnsProslaNeverRejects() {
-        when(mpgiClient.brojStambenihJedinica("X")).thenReturn(100);
-        assertInstanceOf(ValidacijskiRezultat.Prosla.class, step.provjeri(kontekst("X")));
+    void skipsMpgi_whenNotZgrada() {
+        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
+        ValidacijskiKontekst ctx = ctx(sso);
+
+        ValidacijskiRezultat r = step.provjeri(ctx);
+
+        assertThat(r).isInstanceOf(ValidacijskiRezultat.Prosla.class);
+        assertThat(ctx.zahtjevaSuglasnost()).isFalse();
+        verify(mpgiClient, never()).brojStambenihJedinica(anyString());
     }
 
-    private static ValidacijskiKontekst kontekst(String adresa) {
-        UUID uuid = UUID.randomUUID();
-        SsoEntity sso = SsoEntity.initiate(uuid, 2, 4, Ponuda.CJELINA, null, null);
-        CoreObjektEntity core = mock(CoreObjektEntity.class);
-        when(core.getAdresa()).thenReturn(adresa);
-        IznajmljivacEntity iznajmljivac = IznajmljivacEntity.snapshot(
-                uuid, "12345678901", "Ana Anić", "Zagreb");
-        return new ValidacijskiKontekst(sso, core, iznajmljivac);
+    @Test
+    void skipsMpgi_whenZgradaButNotStanovi() {
+        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, false, true);
+        ValidacijskiKontekst ctx = ctx(sso);
+
+        step.provjeri(ctx);
+
+        verify(mpgiClient, never()).brojStambenihJedinica(anyString());
+    }
+
+    private ValidacijskiKontekst ctx(SsoEntity sso) {
+        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
+        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
+        return new ValidacijskiKontekst(z, sso, iz, null);
     }
 }

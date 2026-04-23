@@ -7,7 +7,7 @@
 
     <changeSet id="001-create-schema-core" author="str-backend">
         <sql>CREATE SCHEMA IF NOT EXISTS core</sql>
-        <rollback>DROP SCHEMA IF EXISTS core</rollback>
+        <rollback>DROP SCHEMA IF EXISTS core CASCADE</rollback>
     </changeSet>
 
     <changeSet id="001-create-schema-str" author="str-backend">

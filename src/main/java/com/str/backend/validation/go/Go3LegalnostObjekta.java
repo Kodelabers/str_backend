@@ -1,5 +1,7 @@
 package com.str.backend.validation.go;
 
+import com.str.backend.core.CoreObjektEntity;
+import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskaProvjera;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
@@ -18,10 +20,15 @@ public class Go3LegalnostObjekta implements ValidacijskaProvjera {
 
     @Override
     public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
-        if (!kontekst.coreObjekt().isLegalan()) {
-            return new ValidacijskiRezultat.Odbijena(STEP,
-                    "Objekt nije legalan prema core rjesenju");
+        SsoEntity sso = kontekst.sso();
+        if (!sso.isLegalizirano()) {
+            return new ValidacijskiRezultat.Odbijena(STEP, "SSO nije legalizirano");
         }
-        return new ValidacijskiRezultat.Prosla(STEP, "legalan");
+        CoreObjektEntity core = kontekst.coreObjekt();
+        if (core != null && !core.isLegalan()) {
+            return new ValidacijskiRezultat.Odbijena(STEP,
+                    "core rjesenje pokazuje da objekt nije legalan");
+        }
+        return new ValidacijskiRezultat.Prosla(STEP, "legalizirano");
     }
 }
