@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      STR §10 (SDEP): monthly ingestion of activity data from internet platforms.
+      STR-3.1 uvoz, STR-3.2 pregled (filter by platform + rb + adresa + date range),
+      STR-3.3 auto-purge 18 months after receipt.
+    -->
+    <changeSet id="017-create-sso-aktivnosti" author="str-backend">
+        <createTable schemaName="str" tableName="sso_aktivnosti">
+            <column name="id_aktivnosti" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="id_platforme" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_aktivnosti_platforma"
+                             references="str.internetske_platforme(id_platforme)"/>
+            </column>
+            <column name="rb" type="VARCHAR(18)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="id_sso" type="UUID">
+                <constraints foreignKeyName="fk_aktivnosti_sso"
+                             references="str.sso(id_sso)"/>
+            </column>
+            <column name="razdoblje_od" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="razdoblje_do" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="broj_nocenja" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="broj_gostiju" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="drzava_gostiju" type="VARCHAR(64)"/>
+            <column name="received_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="purge_after" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.sso_aktivnosti
+                ADD CONSTRAINT chk_aktivnosti_rb_format
+                    CHECK (rb ~ '^HR[0-9]{8}$'),
+                ADD CONSTRAINT chk_aktivnosti_razdoblje
+                    CHECK (razdoblje_do &gt;= razdoblje_od),
+                ADD CONSTRAINT chk_aktivnosti_nocenja_nn
+                    CHECK (broj_nocenja &gt;= 0),
+                ADD CONSTRAINT chk_aktivnosti_gostiju_nn
+                    CHECK (broj_gostiju &gt;= 0)
+        </sql>
+
+        <createIndex schemaName="str" tableName="sso_aktivnosti" indexName="idx_aktivnosti_rb">
+            <column name="rb"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="sso_aktivnosti" indexName="idx_aktivnosti_platforma">
+            <column name="id_platforme"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="sso_aktivnosti" indexName="idx_aktivnosti_razdoblje">
+            <column name="razdoblje_od"/>
+            <column name="razdoblje_do"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="sso_aktivnosti" indexName="idx_aktivnosti_purge">
+            <column name="purge_after"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="sso_aktivnosti"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Read(//mnt/c/Projects/STR/**)",
+      "Bash(gradle test *)",
+      "mcp__ide__getDiagnostics",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(cmd *)",
+      "Bash(netstat -ano)",
+      "WebSearch",
+      "Bash(where pdftotext *)",
+      "Bash(where pandoc *)",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/Document 2.pdf\" \"C:/Users/valen/Downloads/doc2.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/Document 3.pdf\" \"C:/Users/valen/Downloads/doc3.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/Document 5.pdf\" \"C:/Users/valen/Downloads/doc5.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/Document 6.pdf\" \"C:/Users/valen/Downloads/doc6.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/Document 7.pdf\" \"C:/Users/valen/Downloads/doc7.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/STR-ERA SHEMA V2.pdf\" \"C:/Users/valen/Downloads/era.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/funlcionalna_specifikacija_ZAK.pdf\" \"C:/Users/valen/Downloads/zak.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/Document 1.pdf\" \"C:/Users/valen/Downloads/doc1.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/funkcionalna-specifikacija-str.pdf\" \"C:/Users/valen/Downloads/str_spec.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/STR-ER SHEMA-NOVO-V1.pdf\" \"C:/Users/valen/Downloads/era_new.txt\")",
+      "Bash(pdftotext -layout \"C:/Users/valen/Downloads/STR - ekrani za registraciju korisnika i upis smještajnog objekta 2.pdf\" \"C:/Users/valen/Downloads/ui_screens.txt\")",
+      "Bash(gradle --no-daemon test)"
+    ]
+  }
+}

@@ -19,13 +19,18 @@ public class VrstaSsoEntity {
     @Column(name = "naziv", nullable = false)
     private String naziv;
 
+    @Column(name = "rb_dozvoljen", nullable = false)
+    private boolean rbDozvoljen;
+
     protected VrstaSsoEntity() {
     }
 
-    public VrstaSsoEntity(String naziv) {
+    public VrstaSsoEntity(String naziv, boolean rbDozvoljen) {
         this.naziv = naziv;
+        this.rbDozvoljen = rbDozvoljen;
     }
 
     public Long getId() { return id; }
     public String getNaziv() { return naziv; }
+    public boolean isRbDozvoljen() { return rbDozvoljen; }
 }

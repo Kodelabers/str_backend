@@ -7,6 +7,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -14,13 +16,15 @@ import java.util.UUID;
 
 @Entity
 @Table(schema = "str", name = "rb")
+@Getter
+@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class RbEntity {
 
     @Id
     @Column(name = "rb", length = 18, nullable = false, updatable = false)
     private String rb;
 
-    @Column(name = "id_zahtjeva", nullable = false, updatable = false)
+    @Column(name = "id_zahtjeva", updatable = false)
     private UUID idZahtjeva;
 
     @Column(name = "id_sso", nullable = false, updatable = false)
@@ -45,9 +49,6 @@ public class RbEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    protected RbEntity() {
-    }
-
     public static RbEntity issue(String rb, UUID idZahtjeva, UUID idSso, LocalDate danas) {
         RbEntity e = new RbEntity();
         e.rb = rb;
@@ -68,15 +69,8 @@ public class RbEntity {
         if (next == RbStatus.POVUCEN && this.datumDo == null) {
             this.datumDo = LocalDate.now();
         }
+        if (next == RbStatus.AKTIVAN && this.datumDo != null) {
+            this.datumDo = null;
+        }
     }
-
-    public String getRb() { return rb; }
-    public UUID getIdZahtjeva() { return idZahtjeva; }
-    public UUID getIdSso() { return idSso; }
-    public RbStatus getStatus() { return status; }
-    public LocalDate getDatumIzd() { return datumIzd; }
-    public LocalDate getDatumOd() { return datumOd; }
-    public LocalDate getDatumDo() { return datumDo; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
 }

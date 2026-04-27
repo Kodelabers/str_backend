@@ -28,6 +28,6 @@ class RegistracijskiBrojTest {
     @Test
     void generateProducesValidFormat() {
         RegistracijskiBroj rb = RegistracijskiBroj.generate();
-        assertTrue(rb.value().matches("HR\\d{8}"), "generated value must match HR + 8 digits");
+        assertTrue(rb.getValue().matches("HR\\d{8}"), "generated value must match HR + 8 digits");
     }
 }

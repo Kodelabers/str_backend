@@ -11,15 +11,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/verify")
+@RequestMapping("/api/verify")
 public class VerifyController {
 
     private final RbRepository rbRepository;
     private final SsoRepository ssoRepository;
+    private final VerifyMapper mapper;
 
-    public VerifyController(RbRepository rbRepository, SsoRepository ssoRepository) {
+    public VerifyController(RbRepository rbRepository, SsoRepository ssoRepository, VerifyMapper mapper) {
         this.rbRepository = rbRepository;
         this.ssoRepository = ssoRepository;
+        this.mapper = mapper;
     }
 
     @GetMapping("/{rb}")
@@ -29,6 +31,6 @@ public class VerifyController {
                 .orElseThrow(() -> new ResourceNotFoundException("rb not found: " + rb));
         SsoEntity sso = ssoRepository.findById(entity.getIdSso())
                 .orElseThrow(() -> new ResourceNotFoundException("sso not found: " + entity.getIdSso()));
-        return new VerifyResponse(entity.getRb(), entity.getStatus(), sso.getMaxGostiju(), sso.getPonuda());
+        return mapper.toResponse(entity, sso);
     }
 }

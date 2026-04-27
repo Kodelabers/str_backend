@@ -1,29 +1,21 @@
 package com.str.backend.rb.dto;
 
 import com.str.backend.domain.RbStatus;
-import com.str.backend.rb.RbEntity;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
 import java.time.LocalDate;
 import java.util.UUID;
 
-public record RbResponse(
-        String rb,
-        UUID idZahtjeva,
-        UUID idSso,
-        RbStatus status,
-        LocalDate datumIzd,
-        LocalDate datumOd,
-        LocalDate datumDo
-) {
-    public static RbResponse from(RbEntity e) {
-        return new RbResponse(
-                e.getRb(),
-                e.getIdZahtjeva(),
-                e.getIdSso(),
-                e.getStatus(),
-                e.getDatumIzd(),
-                e.getDatumOd(),
-                e.getDatumDo()
-        );
-    }
+@Getter
+@AllArgsConstructor
+public class RbResponse {
+
+    private String rb;
+    private UUID idZahtjeva;
+    private UUID idSso;
+    private RbStatus status;
+    private LocalDate datumIzd;
+    private LocalDate datumOd;
+    private LocalDate datumDo;
 }

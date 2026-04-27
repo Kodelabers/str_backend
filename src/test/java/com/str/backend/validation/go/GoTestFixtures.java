@@ -1,11 +1,9 @@
 package com.str.backend.validation.go;
 
 import com.str.backend.core.CoreObjektEntity;
-import com.str.backend.domain.Kanal;
 import com.str.backend.domain.Ponuda;
 import com.str.backend.iznajmljivac.IznajmljivacEntity;
 import com.str.backend.sso.SsoEntity;
-import com.str.backend.zahtjev.ZahtjevEntity;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -36,10 +34,6 @@ final class GoTestFixtures {
         SsoEntity sso = sso("Zagreb", "Zagreb", 2, 4, true, true, true);
         sso.setSuglasnost(suglasnost, datumSuglasnosti, datumPovlacenja);
         return sso;
-    }
-
-    static ZahtjevEntity zahtjev(UUID idIznajmljivaca) {
-        return ZahtjevEntity.initiate("UR-2026-000001", Kanal.NIAS, "NOVA", idIznajmljivaca, null);
     }
 
     static CoreObjektEntity coreObjekt(int maxKreveta, int maxGostiju, boolean legalan) {

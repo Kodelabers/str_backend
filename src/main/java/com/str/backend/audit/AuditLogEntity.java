@@ -6,11 +6,15 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 
 @Entity
 @Table(schema = "str", name = "audit_log")
+@Getter
+@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class AuditLogEntity {
 
     @Id
@@ -47,9 +51,6 @@ public class AuditLogEntity {
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
 
-    protected AuditLogEntity() {
-    }
-
     public static AuditLogEntity transition(String entityType, String entityId, String from, String to, String trigger) {
         AuditLogEntity e = new AuditLogEntity();
         e.entityType = entityType;
@@ -74,16 +75,4 @@ public class AuditLogEntity {
         e.occurredAt = Instant.now();
         return e;
     }
-
-    public Long getId() { return id; }
-    public String getEntityType() { return entityType; }
-    public String getEntityId() { return entityId; }
-    public String getEventType() { return eventType; }
-    public String getFromStatus() { return fromStatus; }
-    public String getToStatus() { return toStatus; }
-    public String getStep() { return step; }
-    public String getOutcome() { return outcome; }
-    public String getTriggerName() { return triggerName; }
-    public String getDetail() { return detail; }
-    public Instant getOccurredAt() { return occurredAt; }
 }

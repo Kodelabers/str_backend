@@ -1,8 +1,21 @@
 package com.str.backend.validation;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
 public sealed interface ValidacijskiRezultat {
 
-    record Prosla(String step, String detail) implements ValidacijskiRezultat {}
+    @Getter
+    @AllArgsConstructor
+    final class Prosla implements ValidacijskiRezultat {
+        private String step;
+        private String detail;
+    }
 
-    record Odbijena(String step, String razlog) implements ValidacijskiRezultat {}
+    @Getter
+    @AllArgsConstructor
+    final class Odbijena implements ValidacijskiRezultat {
+        private String step;
+        private String razlog;
+    }
 }

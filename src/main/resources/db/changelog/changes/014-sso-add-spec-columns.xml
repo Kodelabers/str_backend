@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Funkcionalna specifikacija STR §6.2 / §11: fields required by the registration form. -->
+    <changeSet id="014-sso-add-spec-columns" author="str-backend">
+        <addColumn schemaName="str" tableName="sso">
+            <column name="naziv" type="VARCHAR(255)"/>
+            <column name="skupina" type="VARCHAR(128)"/>
+            <column name="trazena_kategorija" type="VARCHAR(32)"/>
+            <column name="kategorija" type="VARCHAR(32)"/>
+            <column name="opis" type="VARCHAR(1024)"/>
+            <column name="brko" type="VARCHAR(64)"/>
+            <column name="napomena" type="VARCHAR(1024)"/>
+            <column name="broj_pomocnih_kreveta" type="INTEGER"/>
+            <column name="prebivaliste_iznajmljivaca" type="BOOLEAN"/>
+        </addColumn>
+        <rollback>
+            <dropColumn schemaName="str" tableName="sso" columnName="naziv"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="skupina"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="trazena_kategorija"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="kategorija"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="opis"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="brko"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="napomena"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="broj_pomocnih_kreveta"/>
+            <dropColumn schemaName="str" tableName="sso" columnName="prebivaliste_iznajmljivaca"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

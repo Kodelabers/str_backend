@@ -5,7 +5,6 @@ import com.str.backend.iznajmljivac.IznajmljivacEntity;
 import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
-import com.str.backend.zahtjev.ZahtjevEntity;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,8 +35,7 @@ class Go5ProvjeraKapacitetaTest {
     void passes_whenCoreNull() {
         SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 100, 200, true, true, true);
         IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
-        ValidacijskiKontekst k = new ValidacijskiKontekst(z, sso, iz, null);
+        ValidacijskiKontekst k = new ValidacijskiKontekst(sso, iz, null);
         assertThat(step.provjeri(k)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
     }
 
@@ -45,7 +43,6 @@ class Go5ProvjeraKapacitetaTest {
         SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", kreveti, gosti, true, true, true);
         CoreObjektEntity core = GoTestFixtures.coreObjekt(maxKreveta, maxGostiju, true);
         IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
-        return new ValidacijskiKontekst(z, sso, iz, core);
+        return new ValidacijskiKontekst(sso, iz, core);
     }
 }

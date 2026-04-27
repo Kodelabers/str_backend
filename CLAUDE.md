@@ -72,10 +72,10 @@ Format `HR` + 8 random digits, validated by `RegistracijskiBroj` record. Assigne
 ## Key Constraints
 
 - `ddl-auto=none` always. Schema changes go in a new numbered Liquibase changeset under `db/changelog/changes/`.
-- DTOs must be Java records. No field injection — constructor injection only.
+- No field injection — constructor injection only.
 - Read-only repository/service methods must carry `@Transactional(readOnly = true)`.
 - All `@Table` annotations must declare `schema =` explicitly.
-- No Lombok — the README is outdated on this point. The build does not include it.
+- Lombok is used (`@Getter`, `@NoArgsConstructor` on entities). No `@Data` or `@Builder` — entities use static factory methods for controlled construction.
 
 ## Skills
 

@@ -19,7 +19,7 @@ public enum RbStatus {
                 case WITHDRAWAL -> target == POVUCEN;
                 default -> false;
             };
-            case POVUCEN -> false;
+            case POVUCEN -> trigger == RbTrigger.REACTIVATE && target == AKTIVAN;
         };
     }
 
