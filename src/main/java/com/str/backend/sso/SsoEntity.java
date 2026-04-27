@@ -7,6 +7,9 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -14,23 +17,25 @@ import java.util.UUID;
 
 @Entity
 @Table(schema = "str", name = "sso")
+@Getter
+@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class SsoEntity {
 
     @Id
     @Column(name = "id_sso", nullable = false, updatable = false)
     private UUID idSso;
 
-    @Column(name = "id_zahtjeva", nullable = false, updatable = false)
+    @Column(name = "id_zahtjeva", updatable = false)
     private UUID idZahtjeva;
 
     @Column(name = "id_vrste_sso")
-    private Long idVrsteSso;
+    @Setter private Long idVrsteSso;
 
     @Column(name = "id_core_objekt")
-    private UUID idCoreObjekt;
+    @Setter private UUID idCoreObjekt;
 
     @Column(name = "oznaka_sso", length = 64)
-    private String oznakaSso;
+    @Setter private String oznakaSso;
 
     @Column(name = "zupanija", length = 128, nullable = false)
     private String zupanija;
@@ -39,7 +44,7 @@ public class SsoEntity {
     private String grad;
 
     @Column(name = "naselje", length = 128)
-    private String naselje;
+    @Setter private String naselje;
 
     @Column(name = "ulica", length = 128, nullable = false)
     private String ulica;
@@ -48,10 +53,10 @@ public class SsoEntity {
     private String kucniBroj;
 
     @Column(name = "katastarska_opcina", length = 128)
-    private String katastarskaOpcina;
+    @Setter private String katastarskaOpcina;
 
     @Column(name = "broj_katastarske_cestice", length = 64)
-    private String brojKatastarskeCestice;
+    @Setter private String brojKatastarskeCestice;
 
     @Column(name = "max_kreveta", nullable = false)
     private int maxKreveta;
@@ -64,13 +69,40 @@ public class SsoEntity {
     private Ponuda ponuda;
 
     @Column(name = "boraviste_iznajmljivaca")
-    private Boolean boravisteIznajmljivaca;
+    @Setter private Boolean boravisteIznajmljivaca;
+
+    @Column(name = "prebivaliste_iznajmljivaca")
+    @Setter private Boolean prebivalisteIznajmljivaca;
+
+    @Column(name = "naziv", length = 255)
+    @Setter private String naziv;
+
+    @Column(name = "skupina", length = 128)
+    @Setter private String skupina;
+
+    @Column(name = "trazena_kategorija", length = 32)
+    @Setter private String trazenaKategorija;
+
+    @Column(name = "kategorija", length = 32)
+    @Setter private String kategorija;
+
+    @Column(name = "opis", length = 1024)
+    @Setter private String opis;
+
+    @Column(name = "brko", length = 64)
+    @Setter private String brko;
+
+    @Column(name = "napomena", length = 1024)
+    @Setter private String napomena;
+
+    @Column(name = "broj_pomocnih_kreveta")
+    @Setter private Integer brojPomocnihKreveta;
 
     @Column(name = "zgrada", nullable = false)
     private boolean zgrada;
 
     @Column(name = "kat", length = 8)
-    private String kat;
+    @Setter private String kat;
 
     @Column(name = "stanovi", nullable = false)
     private boolean stanovi;
@@ -79,13 +111,13 @@ public class SsoEntity {
     private boolean legalizirano;
 
     @Column(name = "suglasnost_suvlasnika")
-    private Boolean suglasnostSuvlasnika;
+    @Setter private Boolean suglasnostSuvlasnika;
 
     @Column(name = "datum_suglasnosti")
-    private LocalDate datumSuglasnosti;
+    @Setter private LocalDate datumSuglasnosti;
 
     @Column(name = "datum_povlacenja_suglasnosti")
-    private LocalDate datumPovlacenjaSuglasnosti;
+    @Setter private LocalDate datumPovlacenjaSuglasnosti;
 
     @Column(name = "domacin")
     private Boolean domacin;
@@ -101,9 +133,6 @@ public class SsoEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
-    protected SsoEntity() {
-    }
 
     public static SsoEntity create(UUID idZahtjeva, String zupanija, String grad, String ulica,
                                    String kucniBroj, int maxKreveta, int maxGostiju, Ponuda ponuda,
@@ -161,32 +190,18 @@ public class SsoEntity {
         this.updatedAt = now;
     }
 
-    public UUID getIdSso() { return idSso; }
-    public UUID getIdZahtjeva() { return idZahtjeva; }
-    public Long getIdVrsteSso() { return idVrsteSso; }
-    public UUID getIdCoreObjekt() { return idCoreObjekt; }
-    public String getOznakaSso() { return oznakaSso; }
-    public String getZupanija() { return zupanija; }
-    public String getGrad() { return grad; }
-    public String getNaselje() { return naselje; }
-    public String getUlica() { return ulica; }
-    public String getKucniBroj() { return kucniBroj; }
-    public String getKatastarskaOpcina() { return katastarskaOpcina; }
-    public String getBrojKatastarskeCestice() { return brojKatastarskeCestice; }
-    public int getMaxKreveta() { return maxKreveta; }
-    public int getMaxGostiju() { return maxGostiju; }
-    public Ponuda getPonuda() { return ponuda; }
-    public Boolean getBoravisteIznajmljivaca() { return boravisteIznajmljivaca; }
-    public boolean isZgrada() { return zgrada; }
-    public String getKat() { return kat; }
-    public boolean isStanovi() { return stanovi; }
-    public boolean isLegalizirano() { return legalizirano; }
-    public Boolean getSuglasnostSuvlasnika() { return suglasnostSuvlasnika; }
-    public LocalDate getDatumSuglasnosti() { return datumSuglasnosti; }
-    public LocalDate getDatumPovlacenjaSuglasnosti() { return datumPovlacenjaSuglasnosti; }
-    public Boolean getDomacin() { return domacin; }
-    public Instant getDatumDomacina() { return datumDomacina; }
-    public Instant getDatumPovlacenjaDom() { return datumPovlacenjaDom; }
-    public Instant getCreatedAt() { return createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
+    public void setSpecDetails(String naziv, String skupina, String trazenaKategorija, String kategorija,
+                               String opis, String brko, String napomena, Integer brojPomocnihKreveta,
+                               Boolean prebivalisteIznajmljivaca) {
+        this.naziv = naziv;
+        this.skupina = skupina;
+        this.trazenaKategorija = trazenaKategorija;
+        this.kategorija = kategorija;
+        this.opis = opis;
+        this.brko = brko;
+        this.napomena = napomena;
+        this.brojPomocnihKreveta = brojPomocnihKreveta;
+        this.prebivalisteIznajmljivaca = prebivalisteIznajmljivaca;
+        this.updatedAt = Instant.now();
+    }
 }

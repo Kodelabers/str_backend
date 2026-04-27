@@ -5,7 +5,6 @@ import com.str.backend.registries.MpgiClient;
 import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
-import com.str.backend.zahtjev.ZahtjevEntity;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -67,7 +66,6 @@ class Go2TipGradevineTest {
 
     private ValidacijskiKontekst ctx(SsoEntity sso) {
         IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
-        return new ValidacijskiKontekst(z, sso, iz, null);
+        return new ValidacijskiKontekst(sso, iz, null);
     }
 }

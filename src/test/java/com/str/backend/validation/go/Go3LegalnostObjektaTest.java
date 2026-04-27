@@ -5,7 +5,6 @@ import com.str.backend.iznajmljivac.IznajmljivacEntity;
 import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
-import com.str.backend.zahtjev.ZahtjevEntity;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,7 +41,6 @@ class Go3LegalnostObjektaTest {
 
     private ValidacijskiKontekst ctx(SsoEntity sso, CoreObjektEntity core) {
         IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
-        return new ValidacijskiKontekst(z, sso, iz, core);
+        return new ValidacijskiKontekst(sso, iz, core);
     }
 }

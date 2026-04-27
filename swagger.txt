@@ -1,0 +1,814 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "STR Backend API",
+    "description": "Sustav za evidenciju kratkoročnog najma smještaja (STR).\n\nGrupe endpointa:\n- /api/verify – javna provjera registracijskog broja (SDEP, OTA platforme)\n- /api/rb – upravljanje registracijskim brojevima (nadležno tijelo)\n- /api/registracija – registracija smještajnih objekata (SSO) i dodjela RB\n- /api/aktivnosti – SDEP ingestija i pretraživanje aktivnosti",
+    "version": "3.0"
+  },
+  "tags": [
+    {
+      "name": "verify",
+      "description": "Javna provjera valjanosti registracijskog broja"
+    },
+    {
+      "name": "rb",
+      "description": "Upravljanje registracijskim brojevima"
+    },
+    {
+      "name": "registracija",
+      "description": "Registracija smještajnih objekata i dodjela RB"
+    },
+    {
+      "name": "aktivnosti",
+      "description": "SDEP ingestija aktivnosti i pretraživanje (STR-3.x)"
+    }
+  ],
+  "paths": {
+    "/api/verify/{rb}": {
+      "get": {
+        "tags": ["verify"],
+        "summary": "Provjera valjanosti registracijskog broja",
+        "description": "Javni endpoint – koriste ga SDEP i OTA platforme za provjeru je li RB ispravan i koliki je kapacitet objekta. Vraća 404 ako RB ne postoji.",
+        "operationId": "verifyRb",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/rb"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RB pronađen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/rb/nevazeci": {
+      "get": {
+        "tags": ["rb"],
+        "summary": "Lista nevažećih registracijskih brojeva (STR-1.5)",
+        "description": "Vraća sve RB u statusu SUSPENDIRAN ili POVUCEN, sortirano po datumu zadnje izmjene silazno. Namijenjeno nadležnom tijelu.",
+        "operationId": "listNevazeci",
+        "responses": {
+          "200": {
+            "description": "Lista nevažećih RB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RbResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rb/{rb}": {
+      "get": {
+        "tags": ["rb"],
+        "summary": "Dohvat jednog registracijskog broja",
+        "operationId": "getRb",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/rb"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RB pronađen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/rb/{rb}/suspend": {
+      "post": {
+        "tags": ["rb"],
+        "summary": "Suspenzija registracijskog broja",
+        "description": "Dopušteni triggeri: CONSENT_EXPIRY (istekla suglasnost suvlasnika), INSPECTION (inspekcijski nalaz).",
+        "operationId": "suspendRb",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/rb"
+          },
+          {
+            "name": "razlog",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/RbTrigger"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RB suspendiran",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/rb/{rb}/reactivate": {
+      "post": {
+        "tags": ["rb"],
+        "summary": "Reaktivacija suspendiranog registracijskog broja",
+        "operationId": "reactivateRb",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/rb"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RB reaktiviran",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/rb/{rb}/withdraw": {
+      "post": {
+        "tags": ["rb"],
+        "summary": "Povlačenje registracijskog broja (terminalni status)",
+        "operationId": "withdrawRb",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/rb"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RB povučen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/registracija": {
+      "post": {
+        "tags": ["registracija"],
+        "summary": "Registracija smještajnog objekta i dodjela RB",
+        "description": "Jedinstveni endpoint za sva tri scenarija:\n\n- S1_POSTOJECI_OBJEKT: objekt već postoji u core registru; idCoreObjekt obavezan za svaki SSO\n- S2_NOVI_OBJEKT_VANJSKI: novi objekt, zahtjev pristiže s vanjskog (javnog) portala\n- S3_NOVI_OBJEKT_INTERNI: novi objekt, zahtjev unosi referent s internog portala\n\nRB se dodjeljuje tek nakon što sve GO provjere (GO-1 – GO-5) prođu. GO provjere se izvode paralelno, uz uvjet da GO-4 čeka GO-2. Ako ijedna provjera vrati odbijanje, vraća se 422.",
+        "operationId": "registriraj",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistracijaRequest"
+              },
+              "examples": {
+                "s1_postojeci": {
+                  "summary": "S1 – postojeći objekt",
+                  "value": {
+                    "scenarij": "S1_POSTOJECI_OBJEKT",
+                    "idIznajmljivaca": "550e8400-e29b-41d4-a716-446655440000",
+                    "sso": [
+                      {
+                        "idCoreObjekt": "660e8400-e29b-41d4-a716-446655440001"
+                      }
+                    ]
+                  }
+                },
+                "s2_novi": {
+                  "summary": "S2 – novi objekt, vanjski portal",
+                  "value": {
+                    "scenarij": "S2_NOVI_OBJEKT_VANJSKI",
+                    "idIznajmljivaca": "550e8400-e29b-41d4-a716-446655440000",
+                    "idNadleznogTijela": 1,
+                    "sso": [
+                      {
+                        "zupanija": "Grad Zagreb",
+                        "grad": "Zagreb",
+                        "ulica": "Ilica",
+                        "kucniBroj": "1",
+                        "maxKreveta": 4,
+                        "maxGostiju": 8,
+                        "ponuda": "CJELINA",
+                        "zgrada": false,
+                        "stanovi": false,
+                        "legalizirano": true
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registracija uspješna – RB dodijeljen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistracijaResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "description": "GO provjera odbijena",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "step": "GO-1",
+                  "detail": "iznajmljivac nije domacin u zupaiji objekta"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Vanjski registar nedostupan (MPGI ili DGU)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/aktivnosti/ingest": {
+      "post": {
+        "tags": ["aktivnosti"],
+        "summary": "SDEP ingestija aktivnosti (STR-3.1)",
+        "description": "Preuzima mjesečno izvješće od SDEP-a (internet platforme). Pokreće se automatski schedulerima ili ručno od strane Administratora sustava. Vraća broj unesenih stavki.",
+        "operationId": "ingestAktivnosti",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SdepIngestRequest"
+              },
+              "example": {
+                "idPlatforme": 42,
+                "stavke": [
+                  {
+                    "rb": "HR12345678",
+                    "idSso": "550e8400-e29b-41d4-a716-446655440000",
+                    "razdobljeOd": "2026-03-01",
+                    "razdobljeDo": "2026-03-31",
+                    "brojNocenja": 12,
+                    "brojGostiju": 3,
+                    "drzavaGostiju": "DE"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Broj unesenih stavki",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "example": 42
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/api/aktivnosti": {
+      "get": {
+        "tags": ["aktivnosti"],
+        "summary": "Pretraživanje aktivnosti (STR-3.2)",
+        "description": "Nadležno tijelo / Voditelj postupka pretražuje aktivnosti. Svi parametri su opcionalni i međusobno se kombiniraju (AND).",
+        "operationId": "pretraziAktivnosti",
+        "parameters": [
+          {
+            "name": "idPlatforme",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "rb",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "HR12345678"
+            }
+          },
+          {
+            "name": "od",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-01-01"
+            }
+          },
+          {
+            "name": "doDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-03-31"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista aktivnosti",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AktivnostResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/aktivnosti/purge": {
+      "delete": {
+        "tags": ["aktivnosti"],
+        "summary": "Ručno pokretanje retencijskog purga (STR-3.3)",
+        "description": "Briše aktivnosti starije od 18 mjeseci. Inače se pokreće automatski schedulerima. Vraća broj obrisanih zapisa.",
+        "operationId": "purgeAktivnosti",
+        "responses": {
+          "200": {
+            "description": "Broj obrisanih zapisa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "example": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "rb": {
+        "name": "rb",
+        "in": "path",
+        "required": true,
+        "description": "Registracijski broj formata HR + 8 znamenki (npr. HR12345678)",
+        "schema": {
+          "type": "string",
+          "pattern": "^HR\\d{8}$",
+          "example": "HR12345678"
+        }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "Resurs nije pronađen",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Neispravni ulazni podaci",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Scenarij": {
+        "type": "string",
+        "enum": ["S1_POSTOJECI_OBJEKT", "S2_NOVI_OBJEKT_VANJSKI", "S3_NOVI_OBJEKT_INTERNI"],
+        "description": "S1_POSTOJECI_OBJEKT – objekt već postoji u core registru; S2_NOVI_OBJEKT_VANJSKI – novi objekt, vanjski portal; S3_NOVI_OBJEKT_INTERNI – novi objekt, interni portal"
+      },
+      "Ponuda": {
+        "type": "string",
+        "enum": ["DIO", "CJELINA"],
+        "description": "Vrsta iznajmljivanja (dio objekta ili cijeli objekt)"
+      },
+      "RbStatus": {
+        "type": "string",
+        "enum": ["U_OBRADI", "AKTIVAN", "SUSPENDIRAN", "POVUCEN"]
+      },
+      "RbTrigger": {
+        "type": "string",
+        "enum": ["ISSUE", "CONSENT_EXPIRY", "INSPECTION", "WITHDRAWAL", "REACTIVATE"],
+        "description": "CONSENT_EXPIRY – istekla suglasnost suvlasnika; INSPECTION – inspekcijski nalaz; WITHDRAWAL – povlačenje; REACTIVATE – reaktivacija"
+      },
+      "VerifyResponse": {
+        "type": "object",
+        "required": ["registracijskiBroj", "status", "kapacitet", "tipPonude"],
+        "properties": {
+          "registracijskiBroj": {
+            "type": "string",
+            "example": "HR12345678"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RbStatus"
+          },
+          "kapacitet": {
+            "type": "integer",
+            "description": "Maksimalni broj gostiju",
+            "example": 8
+          },
+          "tipPonude": {
+            "$ref": "#/components/schemas/Ponuda"
+          }
+        }
+      },
+      "RbResponse": {
+        "type": "object",
+        "required": ["rb", "idSso", "status", "datumIzd", "datumOd"],
+        "properties": {
+          "rb": {
+            "type": "string",
+            "example": "HR12345678"
+          },
+          "idZahtjeva": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "idSso": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RbStatus"
+          },
+          "datumIzd": {
+            "type": "string",
+            "format": "date"
+          },
+          "datumOd": {
+            "type": "string",
+            "format": "date"
+          },
+          "datumDo": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        }
+      },
+      "RegistracijaRequest": {
+        "type": "object",
+        "required": ["scenarij", "idIznajmljivaca", "sso"],
+        "properties": {
+          "scenarij": {
+            "$ref": "#/components/schemas/Scenarij"
+          },
+          "idIznajmljivaca": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idNadleznogTijela": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "sso": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/SsoRequest"
+            }
+          }
+        }
+      },
+      "SsoRequest": {
+        "type": "object",
+        "required": ["zupanija", "grad", "ulica", "kucniBroj", "maxKreveta", "maxGostiju", "ponuda", "zgrada", "stanovi", "legalizirano"],
+        "properties": {
+          "zupanija": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "grad": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "naselje": {
+            "type": "string",
+            "maxLength": 128,
+            "nullable": true
+          },
+          "ulica": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "kucniBroj": {
+            "type": "string",
+            "maxLength": 16
+          },
+          "katastarskaOpcina": {
+            "type": "string",
+            "maxLength": 128,
+            "nullable": true
+          },
+          "brojKatastarskeCestice": {
+            "type": "string",
+            "maxLength": 64,
+            "nullable": true
+          },
+          "maxKreveta": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxGostiju": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ponuda": {
+            "$ref": "#/components/schemas/Ponuda"
+          },
+          "boravisteIznajmljivaca": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "zgrada": {
+            "type": "boolean"
+          },
+          "kat": {
+            "type": "string",
+            "maxLength": 8,
+            "nullable": true
+          },
+          "stanovi": {
+            "type": "boolean"
+          },
+          "legalizirano": {
+            "type": "boolean"
+          },
+          "suglasnostSuvlasnika": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "datumSuglasnosti": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "datumPovlacenjaSuglasnosti": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "oznakaSso": {
+            "type": "string",
+            "maxLength": 64,
+            "nullable": true
+          },
+          "idVrsteSso": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "idCoreObjekt": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Obavezan za scenarij S1_POSTOJECI_OBJEKT"
+          }
+        }
+      },
+      "RegistracijaResponse": {
+        "type": "object",
+        "required": ["scenarij", "idIznajmljivaca", "dodijeljeniRb"],
+        "properties": {
+          "scenarij": {
+            "$ref": "#/components/schemas/Scenarij"
+          },
+          "idIznajmljivaca": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dodijeljeniRb": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DodijeljeniRb"
+            }
+          }
+        }
+      },
+      "DodijeljeniRb": {
+        "type": "object",
+        "required": ["idSso", "rb"],
+        "properties": {
+          "idSso": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rb": {
+            "type": "string",
+            "example": "HR12345678"
+          }
+        }
+      },
+      "SdepIngestRequest": {
+        "type": "object",
+        "required": ["idPlatforme", "stavke"],
+        "properties": {
+          "idPlatforme": {
+            "type": "integer",
+            "format": "int64",
+            "description": "ID internet platforme (SDEP šifrarnik)"
+          },
+          "stavke": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/SdepStavka"
+            }
+          }
+        }
+      },
+      "SdepStavka": {
+        "type": "object",
+        "required": ["rb", "razdobljeOd", "razdobljeDo"],
+        "properties": {
+          "rb": {
+            "type": "string",
+            "description": "Registracijski broj",
+            "example": "HR12345678"
+          },
+          "idSso": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "razdobljeOd": {
+            "type": "string",
+            "format": "date"
+          },
+          "razdobljeDo": {
+            "type": "string",
+            "format": "date"
+          },
+          "brojNocenja": {
+            "type": "integer",
+            "default": 0
+          },
+          "brojGostiju": {
+            "type": "integer",
+            "default": 0
+          },
+          "drzavaGostiju": {
+            "type": "string",
+            "maxLength": 2,
+            "description": "ISO 3166-1 alpha-2 kod države gostiju",
+            "example": "DE",
+            "nullable": true
+          }
+        }
+      },
+      "AktivnostResponse": {
+        "type": "object",
+        "required": ["idAktivnosti", "idPlatforme", "rb", "razdobljeOd", "razdobljeDo", "brojNocenja", "brojGostiju", "receivedAt"],
+        "properties": {
+          "idAktivnosti": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idPlatforme": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rb": {
+            "type": "string",
+            "example": "HR12345678"
+          },
+          "idSso": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "razdobljeOd": {
+            "type": "string",
+            "format": "date"
+          },
+          "razdobljeDo": {
+            "type": "string",
+            "format": "date"
+          },
+          "brojNocenja": {
+            "type": "integer"
+          },
+          "brojGostiju": {
+            "type": "integer"
+          },
+          "drzavaGostiju": {
+            "type": "string",
+            "nullable": true
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string",
+            "description": "GO korak koji je uzrokovao grešku (samo za 422)",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "description": "Opis greške"
+          }
+        }
+      }
+    }
+  }
+}

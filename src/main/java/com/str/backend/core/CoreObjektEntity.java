@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Immutable;
 
 import java.util.UUID;
@@ -11,6 +13,8 @@ import java.util.UUID;
 @Entity
 @Immutable
 @Table(schema = "core", name = "objekt")
+@Getter
+@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class CoreObjektEntity {
 
     @Id
@@ -31,14 +35,4 @@ public class CoreObjektEntity {
 
     @Column(name = "legalan", nullable = false)
     private boolean legalan;
-
-    protected CoreObjektEntity() {
-    }
-
-    public UUID getUuid() { return uuid; }
-    public String getKatastarskaOpcina() { return katastarskaOpcina; }
-    public String getBrojKatastarskeCestice() { return brojKatastarskeCestice; }
-    public int getMaxKreveta() { return maxKreveta; }
-    public int getMaxGostiju() { return maxGostiju; }
-    public boolean isLegalan() { return legalan; }
 }

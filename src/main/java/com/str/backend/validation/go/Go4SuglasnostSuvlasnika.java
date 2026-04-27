@@ -27,6 +27,9 @@ public class Go4SuglasnostSuvlasnika implements ValidacijskaProvjera {
     public int order() { return 4; }
 
     @Override
+    public java.util.Set<String> dependsOn() { return java.util.Set.of("GO-2"); }
+
+    @Override
     public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
         if (!kontekst.zahtjevaSuglasnost()) {
             return new ValidacijskiRezultat.Prosla(STEP, "not required (GO-2 did not flag)");

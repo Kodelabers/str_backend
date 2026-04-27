@@ -4,7 +4,6 @@ import com.str.backend.iznajmljivac.IznajmljivacEntity;
 import com.str.backend.sso.SsoEntity;
 import com.str.backend.validation.ValidacijskiKontekst;
 import com.str.backend.validation.ValidacijskiRezultat;
-import com.str.backend.zahtjev.ZahtjevEntity;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -70,8 +69,7 @@ class Go4SuglasnostSuvlasnikaTest {
 
     private ValidacijskiKontekst ctx(SsoEntity sso, boolean flagged) {
         IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        ZahtjevEntity z = GoTestFixtures.zahtjev(iz.getIdIznajmljivaca());
-        ValidacijskiKontekst k = new ValidacijskiKontekst(z, sso, iz, null);
+        ValidacijskiKontekst k = new ValidacijskiKontekst(sso, iz, null);
         if (flagged) {
             k.markiraj();
         }

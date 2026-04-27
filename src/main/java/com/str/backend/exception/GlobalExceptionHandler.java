@@ -1,5 +1,7 @@
 package com.str.backend.exception;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -71,5 +73,12 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(status.value(), message, details, Instant.now()));
     }
 
-    public record ErrorResponse(int status, String message, Object details, Instant timestamp) {}
+    @Getter
+    @AllArgsConstructor
+    public static class ErrorResponse {
+        private int status;
+        private String message;
+        private Object details;
+        private Instant timestamp;
+    }
 }

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      STR funkcionalna specifikacija §6.2 G "Prilozi zahtjevu": uploads accompanying
+      a Zahtjev. Types per spec: drzavljanstvo EU, uporabljivost gradjevine, vlasnistvo,
+      oslobodjenje od pristojbe, suglasnost vlasnika/suvlasnika, pravo koristenja
+      poslovnog prostora (pravna osoba), osobna karta (novi korisnik), dodatni.
+    -->
+    <changeSet id="018-create-prilozi" author="str-backend">
+        <createTable schemaName="str" tableName="prilog_zahtjeva">
+            <column name="id_priloga" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="id_zahtjeva" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_prilog_zahtjev"
+                             references="str.zahtjev(id_zahtjeva)"/>
+            </column>
+            <column name="vrsta_priloga" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="naziv_datoteke" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="mime_tip" type="VARCHAR(128)"/>
+            <column name="velicina_bajtova" type="BIGINT"/>
+            <column name="uri" type="VARCHAR(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sha256" type="CHAR(64)"/>
+            <column name="uploaded_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.prilog_zahtjeva
+                ADD CONSTRAINT chk_prilog_vrsta
+                    CHECK (vrsta_priloga IN (
+                        'EU_DRZAVLJANSTVO',
+                        'UPORABLJIVOST',
+                        'VLASNISTVO',
+                        'OSLOBODJENJE_PRISTOJBE',
+                        'SUGLASNOST_VLASNIKA',
+                        'PRAVO_KORISTENJA_PROSTORA',
+                        'OSOBNA_KARTA_PREDNJA',
+                        'OSOBNA_KARTA_ZADNJA',
+                        'DODATNI'
+                    ))
+        </sql>
+
+        <createIndex schemaName="str" tableName="prilog_zahtjeva" indexName="idx_prilog_zahtjev">
+            <column name="id_zahtjeva"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="prilog_zahtjeva"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

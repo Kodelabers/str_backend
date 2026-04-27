@@ -16,4 +16,6 @@ public interface RbRepository extends JpaRepository<RbEntity, String> {
     List<RbEntity> findByIdZahtjeva(UUID idZahtjeva);
 
     Optional<RbEntity> findTopByIdSsoAndStatusOrderByCreatedAtDesc(UUID idSso, RbStatus status);
+
+    List<RbEntity> findByStatusInOrderByUpdatedAtDesc(List<RbStatus> statuses);
 }
