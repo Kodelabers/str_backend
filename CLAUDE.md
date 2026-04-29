@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-No Gradle wrapper script exists — use the system Gradle or run via IntelliJ. The `gradle/wrapper/` directory is present but `gradlew`/`gradlew.bat` are absent.
+Build tool is Maven. Run via IntelliJ ili terminalski:
 
 ```bash
-gradle bootRun                          # run the app (local profile active by default)
-gradle test                             # run all tests
-gradle test --tests "*.Go5*"           # run a single test class
-gradle compileJava                      # compile only
-gradle bootJar                          # build fat JAR
+mvn spring-boot:run                     # pokretanje (local profil aktivan po defaultu)
+mvn test                                # svi testovi
+mvn test -Dtest="Go5*"                 # jedan test razred
+mvn compile                             # samo kompajlacija
+mvn package                             # build fat JAR
 ```
 
 ## Environments & Profiles

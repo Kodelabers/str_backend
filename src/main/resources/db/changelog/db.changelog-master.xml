@@ -26,5 +26,9 @@
     <include file="db/changelog/changes/019-str-zastupnici-pravne-osobe.xml"/>
     <include file="db/changelog/changes/020-decouple-zahtjev.xml"/>
     <include file="db/changelog/changes/021-drop-iznajmljivac-credentials.xml"/>
+    <include file="db/changelog/changes/022-core-mock-registries.xml"/>
+    <include file="db/changelog/changes/023-seed-core-mock-registries.xml"/>
+    <include file="db/changelog/changes/024-zahtjev-add-datum-urudzbe.xml"/>
+    <include file="db/changelog/changes/025-zahtjev-add-pdf-sadrzaj.xml"/>
 
 </databaseChangeLog>

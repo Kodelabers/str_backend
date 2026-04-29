@@ -1,4 +1,9 @@
 {
+  "env": {
+    "JAVA_HOME": "C:\\Program Files\\Java\\jdk-21",
+    "MAVEN_HOME": "C:\\DevTool\\apache-maven-3.9.15",
+    "PATH": "C:\\Program Files\\Java\\jdk-21\\bin;C:\\DevTool\\apache-maven-3.9.15\\bin;$PATH"
+  },
   "permissions": {
     "allow": [
       "Bash(git push *)",
@@ -23,7 +28,29 @@
       "Bash(pdftotext -layout \"C:/Users/valen/Downloads/funkcionalna-specifikacija-str.pdf\" \"C:/Users/valen/Downloads/str_spec.txt\")",
       "Bash(pdftotext -layout \"C:/Users/valen/Downloads/STR-ER SHEMA-NOVO-V1.pdf\" \"C:/Users/valen/Downloads/era_new.txt\")",
       "Bash(pdftotext -layout \"C:/Users/valen/Downloads/STR - ekrani za registraciju korisnika i upis smještajnog objekta 2.pdf\" \"C:/Users/valen/Downloads/ui_screens.txt\")",
-      "Bash(gradle --no-daemon test)"
+      "Bash(gradle --no-daemon test)",
+      "Bash(where mvn *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(mvn *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(& \"C:\\\\DevTool\\\\apache-maven-3.9.15\\\\bin\\\\mvn.cmd\" -version 2>&1)",
+      "PowerShell([System.Environment]::GetEnvironmentVariable\\(\"MAVEN_HOME\",\"Machine\"\\))",
+      "Skill(update-config)",
+      "Bash(export PATH=\"C:/DevTool/apache-maven-3.9.15/bin:$PATH\")",
+      "Bash(mvn -version)",
+      "PowerShell([System.Environment]::GetEnvironmentVariable\\(\"JAVA_HOME\", \"Machine\"\\))",
+      "PowerShell(java *)",
+      "Read(//c/Program Files/Java//**)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files/Microsoft//**)",
+      "Bash(java -version)",
+      "Bash(mvn compile *)",
+      "Bash(mvn test *)",
+      "Bash(mvn -q -DfailIfNoTests=false -Dtest=RegistracijaControllerTest test)",
+      "Bash(mvn -DfailIfNoTests=false -Dtest=RegistracijaControllerTest test)",
+      "Bash(mvn -DfailIfNoTests=false -Dtest=RegistracijaIntegrationTest test)",
+      "Bash(unzip -l ~/.m2/repository/org/hibernate/orm/hibernate-core/6.5.2.Final/hibernate-core-6.5.2.Final.jar)"
     ]
   }
 }
