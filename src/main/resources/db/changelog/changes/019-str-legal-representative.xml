@@ -5,42 +5,47 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!--
-      STR funkcionalna specifikacija §6.1.3 "Imena svih pravnih zastupnika pravne
-      osobe" and §6.1.4 "Adrese svih pravnih zastupnika". Per spec a pravna osoba
-      can have multiple legal representatives pulled from the Sudski registar (GO-5),
-      not just the single zastupnik already modeled on lessor.
-    -->
     <changeSet id="019-create-zastupnici-pravne-osobe" author="str-backend">
-        <createTable schemaName="str_rn" tableName="legal_representative">
-            <column name="representative_id" type="UUID">
+        <createTable schemaName="str_rn" tableName="legal_representative"
+                     remarks="Zakonski zastupnik pravne osobe iznajmljivača — podaci se dohvaćaju iz sudskog registra (GO validacija)">
+            <column name="representative_id" type="UUID"
+                    remarks="UUID zastupnika (PK, generira se pri kreaciji)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="lessor_id" type="UUID">
+            <column name="lessor_id" type="UUID"
+                    remarks="Iznajmljivač (pravna osoba) čiji je ovo zastupnik (FK na lessor)">
                 <constraints nullable="false"
                              foreignKeyName="fk_representative_lessor"
-                             references="str.lessor(lessor_id)"/>
+                             references="str_rn.lessor(lessor_id)"/>
             </column>
-            <column name="oib" type="CHAR(11)"/>
-            <column name="first_name" type="VARCHAR(128)">
+            <column name="oib" type="CHAR(11)"
+                    remarks="OIB zakonskog zastupnika (11 znamenki; null ako nije dostupan iz registra)"/>
+            <column name="first_name" type="VARCHAR(128)"
+                    remarks="Ime zakonskog zastupnika">
                 <constraints nullable="false"/>
             </column>
-            <column name="last_name" type="VARCHAR(128)">
+            <column name="last_name" type="VARCHAR(128)"
+                    remarks="Prezime zakonskog zastupnika">
                 <constraints nullable="false"/>
             </column>
-            <column name="address" type="VARCHAR(255)"/>
-            <column name="email" type="VARCHAR(255)"/>
-            <column name="phone" type="VARCHAR(32)"/>
-            <column name="source" type="VARCHAR(32)" defaultValue="COURT_REGISTRY">
+            <column name="address" type="VARCHAR(255)"
+                    remarks="Adresa zakonskog zastupnika"/>
+            <column name="email" type="VARCHAR(255)"
+                    remarks="E-mail adresa zakonskog zastupnika"/>
+            <column name="phone" type="VARCHAR(32)"
+                    remarks="Telefon zakonskog zastupnika"/>
+            <column name="source" type="VARCHAR(32)" defaultValue="COURT_REGISTRY"
+                    remarks="Izvor podataka: COURT_REGISTRY = sudski registar, MANUAL = ručni unos">
                 <constraints nullable="false"/>
             </column>
-            <column name="fetched_at" type="TIMESTAMPTZ">
+            <column name="fetched_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme dohvata podataka iz sudskog registra">
                 <constraints nullable="false"/>
             </column>
         </createTable>
 
         <sql>
-            ALTER TABLE str.legal_representative
+            ALTER TABLE str_rn.legal_representative
                 ADD CONSTRAINT chk_representative_oib_format
                     CHECK (oib IS NULL OR oib ~ '^[0-9]{11}$'),
                 ADD CONSTRAINT chk_representative_source

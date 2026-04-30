@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/registracija")
+@RequestMapping("/api/generateRegistrationNumber")
 @Validated
 public class RegistrationController {
 
@@ -35,8 +35,8 @@ public class RegistrationController {
     }
 
     @PostMapping
-    public ResponseEntity<RegistrationResponse> register(@Valid @RequestBody RegistrationRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.register(req));
+    public ResponseEntity<RegistrationResponse> generateRegistrationNumber(@Valid @RequestBody RegistrationRequest req) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(req));
     }
 
     @GetMapping(value = "/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)

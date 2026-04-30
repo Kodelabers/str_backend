@@ -32,7 +32,7 @@ import java.util.concurrent.Executors;
 public class ParallelValidationOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(ParallelValidationOrchestrator.class);
-    private static final String ENTITY_TYPE = "SSO";
+    private static final String ENTITY_TYPE = "accommodation";
 
     private final List<ValidationCheck> checks;
     private final AuditLogRepository auditLogRepository;

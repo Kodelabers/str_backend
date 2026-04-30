@@ -5,41 +5,45 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!--
-      STR funkcionalna specifikacija §6.2 G "Prilozi zahtjevu": uploads accompanying
-      a Zahtjev. Types per spec: drzavljanstvo EU, uporabljivost gradjevine, vlasnistvo,
-      oslobodjenje od pristojbe, suglasnost vlasnika/suvlasnika, pravo koristenja
-      poslovnog prostora (pravna osoba), osobna karta (novi korisnik), dodatni.
-    -->
     <changeSet id="018-create-prilozi" author="str-backend">
-        <createTable schemaName="str_rn" tableName="submission_attachment">
-            <column name="attachment_id" type="UUID">
+        <createTable schemaName="str_rn" tableName="submission_attachment"
+                     remarks="Prilog zahtjevu — dokumenti koje iznajmljivač prilaže uz zahtjev za registraciju (vlasništvo, suglasnosti, osobna karta...)">
+            <column name="attachment_id" type="UUID"
+                    remarks="UUID privitka (PK, generira se pri učitavanju)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="submission_id" type="UUID">
+            <column name="submission_id" type="UUID"
+                    remarks="Zahtjev uz koji je prilog priložen (FK na submission)">
                 <constraints nullable="false"
                              foreignKeyName="fk_attachment_submission"
-                             references="str.submission(submission_id)"/>
+                             references="str_rn.submission(submission_id)"/>
             </column>
-            <column name="attachment_type" type="VARCHAR(64)">
+            <column name="attachment_type" type="VARCHAR(64)"
+                    remarks="Vrsta privitka prema zakonskim zahtjevima (EU_DRZAVLJANSTVO, VLASNISTVO, SUGLASNOST_VLASNIKA...)">
                 <constraints nullable="false"/>
             </column>
-            <column name="file_name" type="VARCHAR(255)">
+            <column name="file_name" type="VARCHAR(255)"
+                    remarks="Originalni naziv datoteke kako ju je korisnik učitao">
                 <constraints nullable="false"/>
             </column>
-            <column name="mime_type" type="VARCHAR(128)"/>
-            <column name="size_bytes" type="BIGINT"/>
-            <column name="uri" type="VARCHAR(1024)">
+            <column name="mime_type" type="VARCHAR(128)"
+                    remarks="MIME tip datoteke (npr. application/pdf, image/jpeg)"/>
+            <column name="size_bytes" type="BIGINT"
+                    remarks="Veličina datoteke u bajtovima"/>
+            <column name="uri" type="VARCHAR(1024)"
+                    remarks="URI lokacije datoteke u sustavu za pohranu dokumenata">
                 <constraints nullable="false"/>
             </column>
-            <column name="sha256" type="CHAR(64)"/>
-            <column name="uploaded_at" type="TIMESTAMPTZ">
+            <column name="sha256" type="CHAR(64)"
+                    remarks="SHA-256 hash sadržaja datoteke za provjeru integriteta"/>
+            <column name="uploaded_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme učitavanja privitka">
                 <constraints nullable="false"/>
             </column>
         </createTable>
 
         <sql>
-            ALTER TABLE str.submission_attachment
+            ALTER TABLE str_rn.submission_attachment
                 ADD CONSTRAINT chk_attachment_type
                     CHECK (attachment_type IN (
                         'EU_DRZAVLJANSTVO',

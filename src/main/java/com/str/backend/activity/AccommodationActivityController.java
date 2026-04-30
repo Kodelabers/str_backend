@@ -19,7 +19,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/aktivnosti")
+@RequestMapping("/api/activity")
 @Validated
 public class AccommodationActivityController {
 

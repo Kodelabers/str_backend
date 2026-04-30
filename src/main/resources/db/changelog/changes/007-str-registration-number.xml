@@ -5,41 +5,50 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Registracijski broj (RB) / Registration number -->
     <changeSet id="007-create-str-rb" author="str-backend">
-        <createTable schemaName="str_rn" tableName="registration_number">
-            <column name="rn" type="VARCHAR(18)">
+        <createTable schemaName="str_rn" tableName="registration_number"
+                     remarks="Registracijski broj (RN) — izdaje se za svaki smještajni sadržaj nakon uspješne GO validacije; format HRxxxxxxxx">
+            <column name="rn" type="VARCHAR(18)"
+                    remarks="Registracijski broj (PK, format HR + 8 znamenki, npr. HR12345678)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="submission_id" type="UUID">
+            <column name="submission_id" type="UUID"
+                    remarks="Zahtjev kojim je RN izdan (FK na submission; može biti null ako je izdan bez zahtjeva)">
                 <constraints foreignKeyName="fk_rn_submission"
-                             references="str.submission(submission_id)"/>
+                             references="str_rn.submission(submission_id)"/>
             </column>
-            <column name="accommodation_id" type="UUID">
+            <column name="accommodation_id" type="UUID"
+                    remarks="Smještajni sadržaj za koji je RN izdan (FK na accommodation)">
                 <constraints nullable="false"
                              foreignKeyName="fk_rn_accommodation"
-                             references="str.accommodation(accommodation_id)"/>
+                             references="str_rn.accommodation(accommodation_id)"/>
             </column>
-            <column name="status" type="VARCHAR(16)">
+            <column name="status" type="VARCHAR(16)"
+                    remarks="Status RN-a: IN_PROCESSING / ACTIVE / SUSPENDED / WITHDRAWN">
                 <constraints nullable="false"/>
             </column>
-            <column name="issue_date" type="DATE">
+            <column name="issue_date" type="DATE"
+                    remarks="Datum izdavanja registracijskog broja">
                 <constraints nullable="false"/>
             </column>
-            <column name="valid_from" type="DATE">
+            <column name="valid_from" type="DATE"
+                    remarks="Datum od kojeg RN vrijedi">
                 <constraints nullable="false"/>
             </column>
-            <column name="valid_to" type="DATE"/>
-            <column name="created_at" type="TIMESTAMPTZ">
+            <column name="valid_to" type="DATE"
+                    remarks="Datum do kojeg RN vrijedi (null = aktivan bez ograničenja)"/>
+            <column name="created_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme kreiranja zapisa">
                 <constraints nullable="false"/>
             </column>
-            <column name="updated_at" type="TIMESTAMPTZ">
+            <column name="updated_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme zadnje izmjene zapisa">
                 <constraints nullable="false"/>
             </column>
         </createTable>
 
         <sql>
-            ALTER TABLE str.registration_number
+            ALTER TABLE str_rn.registration_number
                 ADD CONSTRAINT chk_rn_format
                     CHECK (rn ~ '^HR[0-9]{8}$'),
                 ADD CONSTRAINT chk_rn_status

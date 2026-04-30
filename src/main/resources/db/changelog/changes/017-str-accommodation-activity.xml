@@ -6,58 +6,69 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <!--
-      STR §10 (SDEP): monthly ingestion of activity data from internet platforms.
-      STR-3.1 uvoz, STR-3.2 pregled (filter by platform + rb + adresa + date range),
-      STR-3.3 auto-purge 18 months after receipt.
+        STR §10 (SDEP): mjesečni uvoz podataka o aktivnostima od internetskih platformi.
+        Podaci se automatski brišu 18 mjeseci nakon primitka (purge_after).
     -->
-    <changeSet id="017-create-sso-aktivnosti" author="str-backend">
-        <createTable schemaName="str_rn" tableName="accommodation_activity">
-            <column name="activity_id" type="UUID">
+    <changeSet id="017-create-accommodation-activity" author="str-backend">
+        <createTable schemaName="str_rn" tableName="accommodation_activity"
+                     remarks="Aktivnost smještaja — SDEP podaci o noćenjima koje dostavljaju internetske platforme">
+            <column name="activity_id" type="UUID"
+                    remarks="UUID zapisa aktivnosti (PK, generira se pri uvozu)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="platform_id" type="BIGINT">
+            <column name="platform_id" type="BIGINT"
+                    remarks="Internetska platforma koja je dostavila podatke (FK na online_platform)">
                 <constraints nullable="false"
                              foreignKeyName="fk_activity_platform"
-                             references="str.online_platform(platform_id)"/>
+                             references="str_rn.online_platform(platform_id)"/>
             </column>
-            <column name="rn" type="VARCHAR(18)">
+            <column name="rn" type="VARCHAR(18)"
+                    remarks="Registracijski broj smještaja na koji se aktivnost odnosi (format HR + 8 znamenki)">
                 <constraints nullable="false"/>
             </column>
-            <column name="accommodation_id" type="UUID">
+            <column name="accommodation_id" type="UUID"
+                    remarks="Smještajni sadržaj (FK na accommodation; može biti null ako RN nije povezan)">
                 <constraints foreignKeyName="fk_activity_accommodation"
-                             references="str.accommodation(accommodation_id)"/>
+                             references="str_rn.accommodation(accommodation_id)"/>
             </column>
-            <column name="period_from" type="DATE">
+            <column name="period_from" type="DATE"
+                    remarks="Početak izvještajnog razdoblja (prvi dan mjeseca)">
                 <constraints nullable="false"/>
             </column>
-            <column name="period_to" type="DATE">
+            <column name="period_to" type="DATE"
+                    remarks="Kraj izvještajnog razdoblja (zadnji dan mjeseca)">
                 <constraints nullable="false"/>
             </column>
-            <column name="overnight_stays" type="INTEGER">
+            <column name="overnight_stays" type="INTEGER"
+                    remarks="Broj noćenja ostvarenih u izvještajnom razdoblju">
                 <constraints nullable="false"/>
             </column>
-            <column name="guest_count" type="INTEGER">
+            <column name="guest_count" type="INTEGER"
+                    remarks="Broj gostiju u izvještajnom razdoblju">
                 <constraints nullable="false"/>
             </column>
-            <column name="guest_country" type="VARCHAR(64)"/>
-            <column name="received_at" type="TIMESTAMPTZ">
+            <column name="guest_country" type="VARCHAR(64)"
+                    remarks="Zemlja porijekla gostiju (ISO 3166-1 alpha-2 kod, npr. HR, DE, AT)"/>
+            <column name="received_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme primitka podataka od platforme">
                 <constraints nullable="false"/>
             </column>
-            <column name="purge_after" type="TIMESTAMPTZ">
+            <column name="purge_after" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme automatskog brisanja zapisa (18 mj. nakon received_at)">
                 <constraints nullable="false"/>
             </column>
         </createTable>
 
         <sql>
-            ALTER TABLE str.accommodation_activity
+            ALTER TABLE str_rn.accommodation_activity
                 ADD CONSTRAINT chk_activity_rn_format
                     CHECK (rn ~ '^HR[0-9]{8}$'),
                 ADD CONSTRAINT chk_activity_period
-                    CHECK (period_to &gt;= period_from),
+                    CHECK (period_to >= period_from),
                 ADD CONSTRAINT chk_activity_overnight_stays_nn
-                    CHECK (overnight_stays &gt;= 0),
+                    CHECK (overnight_stays >= 0),
                 ADD CONSTRAINT chk_activity_guest_count_nn
-                    CHECK (guest_count &gt;= 0)
+                    CHECK (guest_count >= 0)
         </sql>
 
         <createIndex schemaName="str_rn" tableName="accommodation_activity" indexName="idx_activity_rn">
