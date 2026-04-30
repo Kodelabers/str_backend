@@ -6,7 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <changeSet id="008-create-str-audit-log" author="str-backend">
-        <createTable schemaName="str" tableName="audit_log">
+        <createTable schemaName="str_rn" tableName="audit_log">
             <column name="id" type="BIGINT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -30,14 +30,14 @@
             </column>
         </createTable>
 
-        <createIndex schemaName="str" tableName="audit_log" indexName="idx_audit_entity">
+        <createIndex schemaName="str_rn" tableName="audit_log" indexName="idx_audit_entity">
             <column name="entity_type"/>
             <column name="entity_id"/>
             <column name="occurred_at"/>
         </createIndex>
 
         <rollback>
-            <dropTable schemaName="str" tableName="audit_log"/>
+            <dropTable schemaName="str_rn" tableName="audit_log"/>
         </rollback>
     </changeSet>
 

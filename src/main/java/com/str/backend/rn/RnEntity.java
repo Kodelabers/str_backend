@@ -15,7 +15,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "str", name = "registration_number")
+@Table(schema = "str_rn", name = "registration_number")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class RnEntity {

@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "str", name = "legal_representative")
+@Table(schema = "str_rn", name = "legal_representative")
 public class LegalRepresentativeEntity {
 
     public static final String SOURCE_COURT_REGISTRY = "COURT_REGISTRY";

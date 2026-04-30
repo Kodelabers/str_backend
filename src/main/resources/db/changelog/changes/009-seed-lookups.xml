@@ -7,29 +7,29 @@
 
     <!-- Nadležno tijelo / competent_authority — tourist inspection bodies per ZAK -->
     <changeSet id="009-seed-nadlezno-tijelo" author="str-backend">
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija Zagreb"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija Split"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija Rijeka"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija Osijek"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija Zadar"/>
         </insert>
         <rollback>
-            <delete schemaName="str" tableName="competent_authority"/>
+            <delete schemaName="str_rn" tableName="competent_authority"/>
         </rollback>
     </changeSet>
 
     <!-- Vrsta zahtjeva / submission_type — STR registration request types per ZAK -->
     <changeSet id="009-seed-vrsta-zahtjeva" author="str-backend">
-        <insert schemaName="str" tableName="submission_type">
+        <insert schemaName="str_rn" tableName="submission_type">
             <column name="type_code" value="NOVA_REGISTRACIJA"/>
             <column name="code" value="NR"/>
             <column name="name" value="Nova registracija smještajne jedinice"/>
@@ -37,7 +37,7 @@
             <column name="valid_to"/>
             <column name="status" value="ACTIVE"/>
         </insert>
-        <insert schemaName="str" tableName="submission_type">
+        <insert schemaName="str_rn" tableName="submission_type">
             <column name="type_code" value="PROMJENA_PODATAKA"/>
             <column name="code" value="PP"/>
             <column name="name" value="Promjena podataka o smještajnoj jedinici"/>
@@ -45,7 +45,7 @@
             <column name="valid_to"/>
             <column name="status" value="ACTIVE"/>
         </insert>
-        <insert schemaName="str" tableName="submission_type">
+        <insert schemaName="str_rn" tableName="submission_type">
             <column name="type_code" value="OBNOVA"/>
             <column name="code" value="OB"/>
             <column name="name" value="Obnova rješenja o kategorizaciji"/>
@@ -54,29 +54,29 @@
             <column name="status" value="ACTIVE"/>
         </insert>
         <rollback>
-            <delete schemaName="str" tableName="submission_type"/>
+            <delete schemaName="str_rn" tableName="submission_type"/>
         </rollback>
     </changeSet>
 
     <!-- Vrsta SSO / accommodation_type — accommodation unit types per ZAK -->
     <changeSet id="009-seed-vrsta-sso" author="str-backend">
-        <insert schemaName="str" tableName="accommodation_type">
+        <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Soba"/>
         </insert>
-        <insert schemaName="str" tableName="accommodation_type">
+        <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Apartman"/>
         </insert>
-        <insert schemaName="str" tableName="accommodation_type">
+        <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Studio apartman"/>
         </insert>
-        <insert schemaName="str" tableName="accommodation_type">
+        <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Kuca za odmor"/>
         </insert>
-        <insert schemaName="str" tableName="accommodation_type">
+        <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Vila"/>
         </insert>
         <rollback>
-            <delete schemaName="str" tableName="accommodation_type"/>
+            <delete schemaName="str_rn" tableName="accommodation_type"/>
         </rollback>
     </changeSet>
 

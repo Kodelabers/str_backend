@@ -7,13 +7,13 @@
 
     <!-- STR funkcionalna specifikacija §6.2 A: "Napomena kontakta" as part of kontakt podaci. -->
     <changeSet id="015-iznajmljivac-add-napomena-kontakta" author="str-backend">
-        <addColumn schemaName="str" tableName="lessor">
+        <addColumn schemaName="str_rn" tableName="lessor">
             <column name="contact_note" type="VARCHAR(1024)"/>
             <column name="representative_address" type="VARCHAR(255)"/>
         </addColumn>
         <rollback>
-            <dropColumn schemaName="str" tableName="lessor" columnName="contact_note"/>
-            <dropColumn schemaName="str" tableName="lessor" columnName="representative_address"/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="contact_note"/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="representative_address"/>
         </rollback>
     </changeSet>
 

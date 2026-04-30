@@ -11,11 +11,11 @@
         document_link i dalje zadržava logičnu eGOP referencu.
     -->
     <changeSet id="025-zahtjev-add-pdf-sadrzaj" author="str-backend">
-        <addColumn schemaName="str" tableName="submission">
+        <addColumn schemaName="str_rn" tableName="submission">
             <column name="pdf_content" type="BLOB"/>
         </addColumn>
         <rollback>
-            <dropColumn schemaName="str" tableName="submission" columnName="pdf_content"/>
+            <dropColumn schemaName="str_rn" tableName="submission" columnName="pdf_content"/>
         </rollback>
     </changeSet>
 

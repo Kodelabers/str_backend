@@ -7,7 +7,7 @@
 
     <!-- Internetske platforme / Online platform -->
     <changeSet id="010-create-internetske-platforme" author="str-backend">
-        <createTable schemaName="str" tableName="online_platform">
+        <createTable schemaName="str_rn" tableName="online_platform">
             <column name="platform_id" type="BIGINT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -21,7 +21,7 @@
                 <constraints nullable="false"/>
             </column>
         </createTable>
-        <rollback><dropTable schemaName="str" tableName="online_platform"/></rollback>
+        <rollback><dropTable schemaName="str_rn" tableName="online_platform"/></rollback>
     </changeSet>
 
 </databaseChangeLog>

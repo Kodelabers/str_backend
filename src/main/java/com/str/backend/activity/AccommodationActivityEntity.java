@@ -13,7 +13,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "str", name = "accommodation_activity")
+@Table(schema = "str_rn", name = "accommodation_activity")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class AccommodationActivityEntity {

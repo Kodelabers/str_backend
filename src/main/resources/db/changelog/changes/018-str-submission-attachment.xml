@@ -12,7 +12,7 @@
       poslovnog prostora (pravna osoba), osobna karta (novi korisnik), dodatni.
     -->
     <changeSet id="018-create-prilozi" author="str-backend">
-        <createTable schemaName="str" tableName="submission_attachment">
+        <createTable schemaName="str_rn" tableName="submission_attachment">
             <column name="attachment_id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -54,12 +54,12 @@
                     ))
         </sql>
 
-        <createIndex schemaName="str" tableName="submission_attachment" indexName="idx_attachment_submission">
+        <createIndex schemaName="str_rn" tableName="submission_attachment" indexName="idx_attachment_submission">
             <column name="submission_id"/>
         </createIndex>
 
         <rollback>
-            <dropTable schemaName="str" tableName="submission_attachment"/>
+            <dropTable schemaName="str_rn" tableName="submission_attachment"/>
         </rollback>
     </changeSet>
 

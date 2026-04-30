@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "str", name = "submission")
+@Table(schema = "str_rn", name = "submission")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class SubmissionEntity {

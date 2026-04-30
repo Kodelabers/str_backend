@@ -11,11 +11,11 @@
         je službena oznaka pisarnice (eGOP).
     -->
     <changeSet id="024-zahtjev-add-datum-urudzbe" author="str-backend">
-        <addColumn schemaName="str" tableName="submission">
+        <addColumn schemaName="str_rn" tableName="submission">
             <column name="filing_date" type="TIMESTAMPTZ"/>
         </addColumn>
         <rollback>
-            <dropColumn schemaName="str" tableName="submission" columnName="filing_date"/>
+            <dropColumn schemaName="str_rn" tableName="submission" columnName="filing_date"/>
         </rollback>
     </changeSet>
 

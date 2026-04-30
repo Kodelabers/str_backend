@@ -7,7 +7,7 @@
 
     <!-- Nadležno tijelo / Competent authority (turistička inspekcija) -->
     <changeSet id="003-create-nadlezno-tijelo" author="str-backend">
-        <createTable schemaName="str" tableName="competent_authority">
+        <createTable schemaName="str_rn" tableName="competent_authority">
             <column name="authority_id" type="BIGINT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -15,12 +15,12 @@
                 <constraints nullable="false"/>
             </column>
         </createTable>
-        <rollback><dropTable schemaName="str" tableName="competent_authority"/></rollback>
+        <rollback><dropTable schemaName="str_rn" tableName="competent_authority"/></rollback>
     </changeSet>
 
     <!-- Vrsta zahtjeva / Submission type -->
     <changeSet id="003-create-vrsta-zahtjeva" author="str-backend">
-        <createTable schemaName="str" tableName="submission_type">
+        <createTable schemaName="str_rn" tableName="submission_type">
             <column name="type_code" type="VARCHAR(32)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -43,12 +43,12 @@
                 ADD CONSTRAINT chk_submission_type_status
                     CHECK (status IN ('ACTIVE', 'INACTIVE'))
         </sql>
-        <rollback><dropTable schemaName="str" tableName="submission_type"/></rollback>
+        <rollback><dropTable schemaName="str_rn" tableName="submission_type"/></rollback>
     </changeSet>
 
     <!-- Vrsta SSO / Accommodation type -->
     <changeSet id="003-create-vrsta-sso" author="str-backend">
-        <createTable schemaName="str" tableName="accommodation_type">
+        <createTable schemaName="str_rn" tableName="accommodation_type">
             <column name="type_id" type="BIGINT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -56,7 +56,7 @@
                 <constraints nullable="false"/>
             </column>
         </createTable>
-        <rollback><dropTable schemaName="str" tableName="accommodation_type"/></rollback>
+        <rollback><dropTable schemaName="str_rn" tableName="accommodation_type"/></rollback>
     </changeSet>
 
 </databaseChangeLog>

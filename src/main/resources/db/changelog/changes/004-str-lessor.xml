@@ -7,7 +7,7 @@
 
     <!-- Iznajmljivač / Lessor -->
     <changeSet id="004-create-str-iznajmljivac" author="str-backend">
-        <createTable schemaName="str" tableName="lessor">
+        <createTable schemaName="str_rn" tableName="lessor">
             <column name="lessor_id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -63,7 +63,7 @@
         </sql>
 
         <rollback>
-            <dropTable schemaName="str" tableName="lessor"/>
+            <dropTable schemaName="str_rn" tableName="lessor"/>
         </rollback>
     </changeSet>
 

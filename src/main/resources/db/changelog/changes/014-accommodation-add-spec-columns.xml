@@ -7,7 +7,7 @@
 
     <!-- Funkcionalna specifikacija STR §6.2 / §11: fields required by the registration form. -->
     <changeSet id="014-sso-add-spec-columns" author="str-backend">
-        <addColumn schemaName="str" tableName="accommodation">
+        <addColumn schemaName="str_rn" tableName="accommodation">
             <column name="name" type="VARCHAR(255)"/>
             <column name="group_name" type="VARCHAR(128)"/>
             <column name="requested_category" type="VARCHAR(32)"/>
@@ -19,15 +19,15 @@
             <column name="lessor_domicile" type="BOOLEAN"/>
         </addColumn>
         <rollback>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="name"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="group_name"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="requested_category"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="category"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="description"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="brko"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="note"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="auxiliary_beds"/>
-            <dropColumn schemaName="str" tableName="accommodation" columnName="lessor_domicile"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="name"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="group_name"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="requested_category"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="category"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="description"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="brko"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="note"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="auxiliary_beds"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="lessor_domicile"/>
         </rollback>
     </changeSet>
 

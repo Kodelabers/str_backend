@@ -12,7 +12,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "str", name = "lessor")
+@Table(schema = "str_rn", name = "lessor")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class LessorEntity {

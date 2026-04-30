@@ -5,14 +5,16 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="001-create-schema-core" author="str-backend">
-        <sql>CREATE SCHEMA IF NOT EXISTS core</sql>
-        <rollback>DROP SCHEMA IF EXISTS core CASCADE</rollback>
+    <!-- str_rn is the schema owned by this service in all environments -->
+    <changeSet id="001-create-schema-str-rn" author="str-backend">
+        <sql>CREATE SCHEMA IF NOT EXISTS str_rn</sql>
+        <rollback>DROP SCHEMA IF EXISTS str_rn CASCADE</rollback>
     </changeSet>
 
-    <changeSet id="001-create-schema-str" author="str-backend">
-        <sql>CREATE SCHEMA IF NOT EXISTS str</sql>
-        <rollback>DROP SCHEMA IF EXISTS str CASCADE</rollback>
+    <!-- core schema is a local-only mock; in production it is owned by the core service -->
+    <changeSet id="001-create-schema-core" author="str-backend" context="local">
+        <sql>CREATE SCHEMA IF NOT EXISTS core</sql>
+        <rollback>DROP SCHEMA IF EXISTS core CASCADE</rollback>
     </changeSet>
 
 </databaseChangeLog>

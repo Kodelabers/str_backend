@@ -8,7 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(schema = "str", name = "competent_authority")
+@Table(schema = "str_rn", name = "competent_authority")
 public class CompetentAuthorityEntity {
 
     @Id
