@@ -54,7 +54,7 @@
         <rollback><dropTable schemaName="str_rn" tableName="submission_type"/></rollback>
     </changeSet>
 
-    <changeSet id="003-create-vrsta-sso" author="str-backend">
+    <changeSet id="003-create-accommodation-type" author="str-backend">
         <createTable schemaName="str_rn" tableName="accommodation_type"
                      remarks="Vrsta smještajnog sadržaja (Apartman, Soba, Kamp, Studio apartman...)">
             <column name="type_id" type="BIGINT" autoIncrement="true"

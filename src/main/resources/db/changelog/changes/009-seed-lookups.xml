@@ -58,8 +58,8 @@
         </rollback>
     </changeSet>
 
-    <!-- Vrsta SSO / accommodation_type — accommodation unit types per ZAK -->
-    <changeSet id="009-seed-vrsta-sso" author="str-backend">
+    <!-- accommodation_type — accommodation unit types per ZAK -->
+    <changeSet id="009-seed-accommodation-type" author="str-backend">
         <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Soba"/>
         </insert>

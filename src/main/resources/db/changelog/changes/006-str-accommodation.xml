@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="006-create-str-sso" author="str-backend">
+    <changeSet id="006-create-str-accommodation" author="str-backend">
         <createTable schemaName="str_rn" tableName="accommodation"
                      remarks="STR smještajni objekt (accommodation) — fizički objekt koji iznajmljivač registrira za kratkoročni najam">
             <column name="accommodation_id" type="UUID"
