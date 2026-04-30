@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/registracija")
+@RequestMapping("/api/registration")
 @Validated
 public class RegistrationController {
 
