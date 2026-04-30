@@ -1,7 +1,5 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.accommodation.AccommodationEntity;
-import com.str.backend.core.CoreObjektEntity;
 import com.str.backend.validation.ValidationCheck;
 import com.str.backend.validation.ValidationContext;
 import com.str.backend.validation.ValidationResult;
@@ -20,14 +18,8 @@ public class Go3LegalnostObjekta implements ValidationCheck {
 
     @Override
     public ValidationResult check(ValidationContext context) {
-        AccommodationEntity accommodation = context.accommodation();
-        if (!accommodation.isLegalized()) {
+        if (!context.accommodation().isLegalized()) {
             return new ValidationResult.Rejected(STEP, "SSO nije legalizirano");
-        }
-        CoreObjektEntity core = context.coreObject();
-        if (core != null && !core.isLegalan()) {
-            return new ValidationResult.Rejected(STEP,
-                    "core rjesenje pokazuje da objekt nije legalan");
         }
         return new ValidationResult.Passed(STEP, "legalizirano");
     }

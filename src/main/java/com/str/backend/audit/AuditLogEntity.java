@@ -12,7 +12,7 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(schema = "str", name = "audit_log")
+@Table(schema = "str_rn", name = "audit_log")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class AuditLogEntity {

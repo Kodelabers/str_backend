@@ -12,16 +12,16 @@
       mogao raditi mimo submission tablice.
     -->
     <changeSet id="020-rb-id-zahtjeva-nullable" author="str-backend">
-        <dropNotNullConstraint schemaName="str" tableName="registration_number" columnName="submission_id"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="registration_number" columnName="submission_id"/>
         <rollback>
-            <addNotNullConstraint schemaName="str" tableName="registration_number" columnName="submission_id"/>
+            <addNotNullConstraint schemaName="str_rn" tableName="registration_number" columnName="submission_id"/>
         </rollback>
     </changeSet>
 
     <changeSet id="020-sso-id-zahtjeva-nullable" author="str-backend">
-        <dropNotNullConstraint schemaName="str" tableName="accommodation" columnName="submission_id"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="accommodation" columnName="submission_id"/>
         <rollback>
-            <addNotNullConstraint schemaName="str" tableName="accommodation" columnName="submission_id"/>
+            <addNotNullConstraint schemaName="str_rn" tableName="accommodation" columnName="submission_id"/>
         </rollback>
     </changeSet>
 

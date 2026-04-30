@@ -9,7 +9,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "str", name = "submission_attachment")
+@Table(schema = "str_rn", name = "submission_attachment")
 public class SubmissionAttachmentEntity {
 
     @Id

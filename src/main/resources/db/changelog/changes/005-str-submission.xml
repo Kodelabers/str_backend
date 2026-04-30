@@ -7,7 +7,7 @@
 
     <!-- Zahtjev / Submission -->
     <changeSet id="005-create-str-zahtjev" author="str-backend">
-        <createTable schemaName="str" tableName="submission">
+        <createTable schemaName="str_rn" tableName="submission">
             <column name="submission_id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -51,15 +51,15 @@
                     CHECK (status IN ('INITIATED', 'IN_VERIFICATION', 'IN_PROCESSING', 'ACCEPTED', 'REJECTED'))
         </sql>
 
-        <createIndex schemaName="str" tableName="submission" indexName="idx_submission_lessor">
+        <createIndex schemaName="str_rn" tableName="submission" indexName="idx_submission_lessor">
             <column name="lessor_id"/>
         </createIndex>
-        <createIndex schemaName="str" tableName="submission" indexName="idx_submission_status">
+        <createIndex schemaName="str_rn" tableName="submission" indexName="idx_submission_status">
             <column name="status"/>
         </createIndex>
 
         <rollback>
-            <dropTable schemaName="str" tableName="submission"/>
+            <dropTable schemaName="str_rn" tableName="submission"/>
         </rollback>
     </changeSet>
 

@@ -15,7 +15,7 @@
         Legal basis: Zakon o turističkoj inspekciji (NN 19/14)
     -->
     <changeSet id="012-replace-nadlezno-tijelo-placeholders" author="str-backend">
-        <delete schemaName="str" tableName="competent_authority">
+        <delete schemaName="str_rn" tableName="competent_authority">
             <where>name IN (
                 'Turistička inspekcija Zagreb',
                 'Turistička inspekcija Split',
@@ -26,37 +26,37 @@
         </delete>
 
         <!-- Central sector -->
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Ministarstvo turizma i sporta - Sektor turističke inspekcije"/>
         </insert>
 
         <!-- Regional offices (Područne jedinice) -->
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija - Područna jedinica Zagreb"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija - Područna jedinica Rijeka"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija - Područna jedinica Pula"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija - Područna jedinica Split"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija - Područna jedinica Osijek"/>
         </insert>
 
         <!-- Branch offices (Ispostave) -->
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija - Ispostava Zadar"/>
         </insert>
-        <insert schemaName="str" tableName="competent_authority">
+        <insert schemaName="str_rn" tableName="competent_authority">
             <column name="name" value="Turistička inspekcija - Ispostava Poreč"/>
         </insert>
 
         <rollback>
-            <delete schemaName="str" tableName="competent_authority">
+            <delete schemaName="str_rn" tableName="competent_authority">
                 <where>name IN (
                     'Ministarstvo turizma i sporta - Sektor turističke inspekcije',
                     'Turistička inspekcija - Područna jedinica Zagreb',
@@ -68,19 +68,19 @@
                     'Turistička inspekcija - Ispostava Poreč'
                 )</where>
             </delete>
-            <insert schemaName="str" tableName="competent_authority">
+            <insert schemaName="str_rn" tableName="competent_authority">
                 <column name="name" value="Turistička inspekcija Zagreb"/>
             </insert>
-            <insert schemaName="str" tableName="competent_authority">
+            <insert schemaName="str_rn" tableName="competent_authority">
                 <column name="name" value="Turistička inspekcija Split"/>
             </insert>
-            <insert schemaName="str" tableName="competent_authority">
+            <insert schemaName="str_rn" tableName="competent_authority">
                 <column name="name" value="Turistička inspekcija Rijeka"/>
             </insert>
-            <insert schemaName="str" tableName="competent_authority">
+            <insert schemaName="str_rn" tableName="competent_authority">
                 <column name="name" value="Turistička inspekcija Osijek"/>
             </insert>
-            <insert schemaName="str" tableName="competent_authority">
+            <insert schemaName="str_rn" tableName="competent_authority">
                 <column name="name" value="Turistička inspekcija Zadar"/>
             </insert>
         </rollback>

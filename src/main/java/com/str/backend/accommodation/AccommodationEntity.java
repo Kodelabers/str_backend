@@ -16,7 +16,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "str", name = "accommodation")
+@Table(schema = "str_rn", name = "accommodation")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class AccommodationEntity {

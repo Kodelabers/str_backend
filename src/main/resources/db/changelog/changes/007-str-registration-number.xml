@@ -7,7 +7,7 @@
 
     <!-- Registracijski broj (RB) / Registration number -->
     <changeSet id="007-create-str-rb" author="str-backend">
-        <createTable schemaName="str" tableName="registration_number">
+        <createTable schemaName="str_rn" tableName="registration_number">
             <column name="rn" type="VARCHAR(18)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -46,15 +46,15 @@
                     CHECK (status IN ('IN_PROCESSING', 'ACTIVE', 'SUSPENDED', 'WITHDRAWN'))
         </sql>
 
-        <createIndex schemaName="str" tableName="registration_number" indexName="idx_rn_accommodation">
+        <createIndex schemaName="str_rn" tableName="registration_number" indexName="idx_rn_accommodation">
             <column name="accommodation_id"/>
         </createIndex>
-        <createIndex schemaName="str" tableName="registration_number" indexName="idx_rn_status">
+        <createIndex schemaName="str_rn" tableName="registration_number" indexName="idx_rn_status">
             <column name="status"/>
         </createIndex>
 
         <rollback>
-            <dropTable schemaName="str" tableName="registration_number"/>
+            <dropTable schemaName="str_rn" tableName="registration_number"/>
         </rollback>
     </changeSet>
 

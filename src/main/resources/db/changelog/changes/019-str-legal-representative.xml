@@ -12,7 +12,7 @@
       not just the single zastupnik already modeled on lessor.
     -->
     <changeSet id="019-create-zastupnici-pravne-osobe" author="str-backend">
-        <createTable schemaName="str" tableName="legal_representative">
+        <createTable schemaName="str_rn" tableName="legal_representative">
             <column name="representative_id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -47,12 +47,12 @@
                     CHECK (source IN ('COURT_REGISTRY', 'MANUAL'))
         </sql>
 
-        <createIndex schemaName="str" tableName="legal_representative" indexName="idx_representative_lessor">
+        <createIndex schemaName="str_rn" tableName="legal_representative" indexName="idx_representative_lessor">
             <column name="lessor_id"/>
         </createIndex>
 
         <rollback>
-            <dropTable schemaName="str" tableName="legal_representative"/>
+            <dropTable schemaName="str_rn" tableName="legal_representative"/>
         </rollback>
     </changeSet>
 

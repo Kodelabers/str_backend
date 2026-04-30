@@ -7,27 +7,27 @@
 
     <!-- STR spec §2.1: Hotel and Kamp must not receive RB. Flag on accommodation_type gates RB issuance. -->
     <changeSet id="013-add-vrsta-sso-rb-dozvoljen" author="str-backend">
-        <addColumn schemaName="str" tableName="accommodation_type">
+        <addColumn schemaName="str_rn" tableName="accommodation_type">
             <column name="registration_number_allowed" type="BOOLEAN" defaultValueBoolean="true">
                 <constraints nullable="false"/>
             </column>
         </addColumn>
         <rollback>
-            <dropColumn schemaName="str" tableName="accommodation_type" columnName="registration_number_allowed"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation_type" columnName="registration_number_allowed"/>
         </rollback>
     </changeSet>
 
     <changeSet id="013-seed-vrsta-sso-hotel-kamp" author="str-backend">
-        <insert schemaName="str" tableName="accommodation_type">
+        <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Hotel"/>
             <column name="registration_number_allowed" valueBoolean="false"/>
         </insert>
-        <insert schemaName="str" tableName="accommodation_type">
+        <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Kamp"/>
             <column name="registration_number_allowed" valueBoolean="false"/>
         </insert>
         <rollback>
-            <delete schemaName="str" tableName="accommodation_type">
+            <delete schemaName="str_rn" tableName="accommodation_type">
                 <where>name IN ('Hotel', 'Kamp')</where>
             </delete>
         </rollback>

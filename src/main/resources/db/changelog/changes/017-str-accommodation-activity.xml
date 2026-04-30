@@ -11,7 +11,7 @@
       STR-3.3 auto-purge 18 months after receipt.
     -->
     <changeSet id="017-create-sso-aktivnosti" author="str-backend">
-        <createTable schemaName="str" tableName="accommodation_activity">
+        <createTable schemaName="str_rn" tableName="accommodation_activity">
             <column name="activity_id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -60,22 +60,22 @@
                     CHECK (guest_count &gt;= 0)
         </sql>
 
-        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_rn">
+        <createIndex schemaName="str_rn" tableName="accommodation_activity" indexName="idx_activity_rn">
             <column name="rn"/>
         </createIndex>
-        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_platform">
+        <createIndex schemaName="str_rn" tableName="accommodation_activity" indexName="idx_activity_platform">
             <column name="platform_id"/>
         </createIndex>
-        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_period">
+        <createIndex schemaName="str_rn" tableName="accommodation_activity" indexName="idx_activity_period">
             <column name="period_from"/>
             <column name="period_to"/>
         </createIndex>
-        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_purge">
+        <createIndex schemaName="str_rn" tableName="accommodation_activity" indexName="idx_activity_purge">
             <column name="purge_after"/>
         </createIndex>
 
         <rollback>
-            <dropTable schemaName="str" tableName="accommodation_activity"/>
+            <dropTable schemaName="str_rn" tableName="accommodation_activity"/>
         </rollback>
     </changeSet>
 

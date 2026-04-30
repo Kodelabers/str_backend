@@ -8,7 +8,7 @@ import jakarta.persistence.Table;
 import java.time.LocalDate;
 
 @Entity
-@Table(schema = "str", name = "submission_type")
+@Table(schema = "str_rn", name = "submission_type")
 public class SubmissionTypeEntity {
 
     @Id

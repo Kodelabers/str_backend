@@ -11,7 +11,7 @@
       for Soba/Apartman/Studio Apartman types (not at accommodation level).
     -->
     <changeSet id="016-create-smjestajni-sadrzaj" author="str-backend">
-        <createTable schemaName="str" tableName="accommodation_unit">
+        <createTable schemaName="str_rn" tableName="accommodation_unit">
             <column name="unit_id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
@@ -58,15 +58,15 @@
                     CHECK (unit_count &gt; 0)
         </sql>
 
-        <createIndex schemaName="str" tableName="accommodation_unit" indexName="idx_unit_accommodation">
+        <createIndex schemaName="str_rn" tableName="accommodation_unit" indexName="idx_unit_accommodation">
             <column name="accommodation_id"/>
         </createIndex>
-        <createIndex schemaName="str" tableName="accommodation_unit" indexName="idx_unit_rn">
+        <createIndex schemaName="str_rn" tableName="accommodation_unit" indexName="idx_unit_rn">
             <column name="rn"/>
         </createIndex>
 
         <rollback>
-            <dropTable schemaName="str" tableName="accommodation_unit"/>
+            <dropTable schemaName="str_rn" tableName="accommodation_unit"/>
         </rollback>
     </changeSet>
 
