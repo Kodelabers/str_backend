@@ -19,7 +19,7 @@ public class Go3LegalnostObjekta implements ValidationCheck {
     @Override
     public ValidationResult check(ValidationContext context) {
         if (!context.accommodation().isLegalized()) {
-            return new ValidationResult.Rejected(STEP, "SSO nije legalizirano");
+            return new ValidationResult.Rejected(STEP, "accommodation not legalized");
         }
         return new ValidationResult.Passed(STEP, "legalizirano");
     }

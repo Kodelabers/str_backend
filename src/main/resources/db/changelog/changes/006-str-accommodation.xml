@@ -7,7 +7,7 @@
 
     <changeSet id="006-create-str-sso" author="str-backend">
         <createTable schemaName="str_rn" tableName="accommodation"
-                     remarks="Smještajni sadržaj objekt (SSO) — fizički objekt koji iznajmljivač registrira za kratkoročni najam">
+                     remarks="STR smještajni objekt (accommodation) — fizički objekt koji iznajmljivač registrira za kratkoročni najam">
             <column name="accommodation_id" type="UUID"
                     remarks="UUID smještajnog sadržaja (PK, generira se pri kreaciji)">
                 <constraints primaryKey="true" nullable="false"/>
