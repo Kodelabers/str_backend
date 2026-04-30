@@ -72,7 +72,7 @@ public class RegistrationService {
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
-    public RegistrationResponse register(RegistrationRequest req) {
+    public RegistrationResponse generateRegistrationNumber(RegistrationRequest req) {
         enrich(req);
 
         LessorEntity lessor = buildLessor(req.getLessor());
