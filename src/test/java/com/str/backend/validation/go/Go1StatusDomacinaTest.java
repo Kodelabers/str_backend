@@ -1,9 +1,9 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.iznajmljivac.IznajmljivacEntity;
-import com.str.backend.sso.SsoEntity;
-import com.str.backend.validation.ValidacijskiKontekst;
-import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.lessor.LessorEntity;
+import com.str.backend.validation.ValidationContext;
+import com.str.backend.validation.ValidationResult;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -13,59 +13,59 @@ class Go1StatusDomacinaTest {
     private final Go1StatusDomacina step = new Go1StatusDomacina();
 
     @Test
-    void marksDomacinTrue_whenZupanijaMatchesAndNotZgrada() {
-        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        // zgrada=false → qualifies for domacin
-        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
-        ValidacijskiKontekst ctx = new ValidacijskiKontekst(sso, iz, null);
+    void marksHostTrue_whenCountyMatchesAndNotBuilding() {
+        LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
+        // building=false → qualifies for host
+        AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
+        ValidationContext ctx = new ValidationContext(acc, lessor, null);
 
-        ValidacijskiRezultat r = step.provjeri(ctx);
+        ValidationResult r = step.check(ctx);
 
-        assertThat(r).isInstanceOf(ValidacijskiRezultat.Prosla.class);
-        assertThat(sso.getDomacin()).isTrue();
+        assertThat(r).isInstanceOf(ValidationResult.Passed.class);
+        assertThat(acc.getHost()).isTrue();
     }
 
     @Test
-    void marksDomacinFalse_whenZupanijaMatchesButObjectIsZgrada() {
-        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        // Zgrada=true → disqualifies even if zupanija matches (per ZAK-2.1 rule)
-        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
-        ValidacijskiKontekst ctx = new ValidacijskiKontekst(sso, iz, null);
+    void marksHostFalse_whenCountyMatchesButObjectIsBuilding() {
+        LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
+        // building=true → disqualifies even if county matches (per ZAK-2.1 rule)
+        AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
+        ValidationContext ctx = new ValidationContext(acc, lessor, null);
 
-        step.provjeri(ctx);
+        step.check(ctx);
 
-        assertThat(sso.getDomacin()).isFalse();
+        assertThat(acc.getHost()).isFalse();
     }
 
     @Test
-    void marksDomacinFalse_whenZupanijaDiffers() {
-        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        SsoEntity sso = GoTestFixtures.sso("Splitsko-dalmatinska", "Split", 2, 4, false, false, true);
-        ValidacijskiKontekst ctx = new ValidacijskiKontekst(sso, iz, null);
+    void marksHostFalse_whenCountyDiffers() {
+        LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
+        AccommodationEntity acc = GoTestFixtures.accommodation("Splitsko-dalmatinska", "Split", 2, 4, false, false, true);
+        ValidationContext ctx = new ValidationContext(acc, lessor, null);
 
-        step.provjeri(ctx);
+        step.check(ctx);
 
-        assertThat(sso.getDomacin()).isFalse();
+        assertThat(acc.getHost()).isFalse();
     }
 
     @Test
-    void matchIsCaseInsensitiveOnZupanijaOnly() {
-        // Per ZAK-2.1: only zupanija is compared, not mjesto/grad
-        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("splitsko-dalmatinska", "Omiš");
-        SsoEntity sso = GoTestFixtures.sso("Splitsko-Dalmatinska", "Split", 2, 4, false, false, true);
-        ValidacijskiKontekst ctx = new ValidacijskiKontekst(sso, iz, null);
+    void matchIsCaseInsensitiveOnCountyOnly() {
+        // Per ZAK-2.1: only county is compared, not place/city
+        LessorEntity lessor = GoTestFixtures.lessor("splitsko-dalmatinska", "Omiš");
+        AccommodationEntity acc = GoTestFixtures.accommodation("Splitsko-Dalmatinska", "Split", 2, 4, false, false, true);
+        ValidationContext ctx = new ValidationContext(acc, lessor, null);
 
-        step.provjeri(ctx);
+        step.check(ctx);
 
-        assertThat(sso.getDomacin()).isTrue();
+        assertThat(acc.getHost()).isTrue();
     }
 
     @Test
-    void alwaysReturnsProsla_evenOnMismatch() {
-        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        SsoEntity sso = GoTestFixtures.sso("Istarska", "Pula", 2, 4, true, true, true);
-        ValidacijskiKontekst ctx = new ValidacijskiKontekst(sso, iz, null);
+    void alwaysReturnsPassed_evenOnMismatch() {
+        LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
+        AccommodationEntity acc = GoTestFixtures.accommodation("Istarska", "Pula", 2, 4, true, true, true);
+        ValidationContext ctx = new ValidationContext(acc, lessor, null);
 
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Passed.class);
     }
 }

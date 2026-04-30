@@ -5,55 +5,58 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
+    <!-- Nadležno tijelo / Competent authority (turistička inspekcija) -->
     <changeSet id="003-create-nadlezno-tijelo" author="str-backend">
-        <createTable schemaName="str" tableName="nadlezno_tijelo">
-            <column name="id_nadleznog_tijela" type="BIGINT" autoIncrement="true">
+        <createTable schemaName="str" tableName="competent_authority">
+            <column name="authority_id" type="BIGINT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="naziv" type="VARCHAR(255)">
+            <column name="name" type="VARCHAR(255)">
                 <constraints nullable="false"/>
             </column>
         </createTable>
-        <rollback><dropTable schemaName="str" tableName="nadlezno_tijelo"/></rollback>
+        <rollback><dropTable schemaName="str" tableName="competent_authority"/></rollback>
     </changeSet>
 
+    <!-- Vrsta zahtjeva / Submission type -->
     <changeSet id="003-create-vrsta-zahtjeva" author="str-backend">
-        <createTable schemaName="str" tableName="vrsta_zahtjeva">
-            <column name="oznaka_vrste" type="VARCHAR(32)">
+        <createTable schemaName="str" tableName="submission_type">
+            <column name="type_code" type="VARCHAR(32)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="kodna_oznaka" type="VARCHAR(16)">
-                <constraints nullable="false" unique="true" uniqueConstraintName="uq_vrsta_zahtjeva_kodna"/>
+            <column name="code" type="VARCHAR(16)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_submission_type_code"/>
             </column>
-            <column name="naziv" type="VARCHAR(255)">
+            <column name="name" type="VARCHAR(255)">
                 <constraints nullable="false"/>
             </column>
-            <column name="datum_od" type="DATE">
+            <column name="valid_from" type="DATE">
                 <constraints nullable="false"/>
             </column>
-            <column name="datum_do" type="DATE"/>
+            <column name="valid_to" type="DATE"/>
             <column name="status" type="VARCHAR(16)">
                 <constraints nullable="false"/>
             </column>
         </createTable>
         <sql>
-            ALTER TABLE str.vrsta_zahtjeva
-                ADD CONSTRAINT chk_vrsta_zahtjeva_status
-                    CHECK (status IN ('AKTIVAN', 'NEAKTIVAN'))
+            ALTER TABLE str.submission_type
+                ADD CONSTRAINT chk_submission_type_status
+                    CHECK (status IN ('ACTIVE', 'INACTIVE'))
         </sql>
-        <rollback><dropTable schemaName="str" tableName="vrsta_zahtjeva"/></rollback>
+        <rollback><dropTable schemaName="str" tableName="submission_type"/></rollback>
     </changeSet>
 
+    <!-- Vrsta SSO / Accommodation type -->
     <changeSet id="003-create-vrsta-sso" author="str-backend">
-        <createTable schemaName="str" tableName="vrsta_sso">
-            <column name="id_vrste_sso" type="BIGINT" autoIncrement="true">
+        <createTable schemaName="str" tableName="accommodation_type">
+            <column name="type_id" type="BIGINT" autoIncrement="true">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="naziv" type="VARCHAR(255)">
+            <column name="name" type="VARCHAR(255)">
                 <constraints nullable="false"/>
             </column>
         </createTable>
-        <rollback><dropTable schemaName="str" tableName="vrsta_sso"/></rollback>
+        <rollback><dropTable schemaName="str" tableName="accommodation_type"/></rollback>
     </changeSet>
 
 </databaseChangeLog>

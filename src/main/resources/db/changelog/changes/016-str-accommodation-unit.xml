@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      STR funkcionalna specifikacija §6.2 C "Smjestajni sadrzaji objekta":
+      individual rooms/apartments inside an accommodation. RB is assigned per accommodation_unit
+      for Soba/Apartman/Studio Apartman types (not at accommodation level).
+    -->
+    <changeSet id="016-create-smjestajni-sadrzaj" author="str-backend">
+        <createTable schemaName="str" tableName="accommodation_unit">
+            <column name="unit_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="accommodation_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_unit_accommodation"
+                             references="str.accommodation(accommodation_id)"/>
+            </column>
+            <column name="unit_type" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="code" type="VARCHAR(64)"/>
+            <column name="bed_count" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="unit_count" type="INTEGER" defaultValueNumeric="1">
+                <constraints nullable="false"/>
+            </column>
+            <column name="floor" type="VARCHAR(8)"/>
+            <column name="category" type="VARCHAR(32)"/>
+            <column name="offer_type" type="VARCHAR(16)"/>
+            <column name="lessor_residence" type="BOOLEAN"/>
+            <column name="co_owner_consent" type="BOOLEAN"/>
+            <column name="consent_date" type="DATE"/>
+            <column name="consent_withdrawal_date" type="DATE"/>
+            <column name="rn" type="VARCHAR(18)"/>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.accommodation_unit
+                ADD CONSTRAINT chk_unit_offer_type
+                    CHECK (offer_type IS NULL OR offer_type IN ('PARTIAL', 'FULL')),
+                ADD CONSTRAINT chk_unit_rn_format
+                    CHECK (rn IS NULL OR rn ~ '^HR[0-9]{8}$'),
+                ADD CONSTRAINT chk_unit_bed_count_pos
+                    CHECK (bed_count &gt; 0),
+                ADD CONSTRAINT chk_unit_unit_count_pos
+                    CHECK (unit_count &gt; 0)
+        </sql>
+
+        <createIndex schemaName="str" tableName="accommodation_unit" indexName="idx_unit_accommodation">
+            <column name="accommodation_id"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="accommodation_unit" indexName="idx_unit_rn">
+            <column name="rn"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="accommodation_unit"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

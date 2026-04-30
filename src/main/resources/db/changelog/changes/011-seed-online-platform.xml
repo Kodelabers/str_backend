@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="011-seed-internetske-platforme" author="str-backend">
+        <!-- Global major platforms -->
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Airbnb"/>
+            <column name="url" value="https://www.airbnb.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Booking.com"/>
+            <column name="url" value="https://www.booking.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Vrbo"/>
+            <column name="url" value="https://www.vrbo.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Expedia"/>
+            <column name="url" value="https://www.expedia.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="TripAdvisor (FlipKey)"/>
+            <column name="url" value="https://www.tripadvisor.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Google Vacation Rentals"/>
+            <column name="url" value="https://www.google.com/travel"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Agoda"/>
+            <column name="url" value="https://www.agoda.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="HomeToGo"/>
+            <column name="url" value="https://www.hometogo.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Holidu"/>
+            <column name="url" value="https://www.holidu.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <!-- European platforms -->
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Flatio"/>
+            <column name="url" value="https://www.flatio.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="HolidayLettings"/>
+            <column name="url" value="https://www.holidaylettings.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <!-- Croatia-specific platforms -->
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Adriatic.hr"/>
+            <column name="url" value="https://www.adriatic.hr"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="BookAdriatic"/>
+            <column name="url" value="https://www.bookadriatic.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="str" tableName="online_platform">
+            <column name="name" value="Direct-Croatia.com"/>
+            <column name="url" value="https://www.direct-croatia.com"/>
+            <column name="active" valueBoolean="true"/>
+        </insert>
+        <rollback>
+            <delete schemaName="str" tableName="online_platform"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

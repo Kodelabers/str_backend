@@ -1,16 +1,16 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.sso.SsoEntity;
-import com.str.backend.validation.ValidacijskaProvjera;
-import com.str.backend.validation.ValidacijskiKontekst;
-import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.validation.ValidationCheck;
+import com.str.backend.validation.ValidationContext;
+import com.str.backend.validation.ValidationResult;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.LocalDate;
 
 @Component
-public class Go4SuglasnostSuvlasnika implements ValidacijskaProvjera {
+public class Go4SuglasnostSuvlasnika implements ValidationCheck {
 
     private static final String STEP = "GO-4";
 
@@ -30,21 +30,21 @@ public class Go4SuglasnostSuvlasnika implements ValidacijskaProvjera {
     public java.util.Set<String> dependsOn() { return java.util.Set.of("GO-2"); }
 
     @Override
-    public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
-        if (!kontekst.zahtjevaSuglasnost()) {
-            return new ValidacijskiRezultat.Prosla(STEP, "not required (GO-2 did not flag)");
+    public ValidationResult check(ValidationContext context) {
+        if (!context.requiresCoOwnerConsent()) {
+            return new ValidationResult.Passed(STEP, "not required (GO-2 did not flag)");
         }
-        SsoEntity sso = kontekst.sso();
-        Boolean suglasnost = sso.getSuglasnostSuvlasnika();
-        if (suglasnost == null || !suglasnost) {
-            return new ValidacijskiRezultat.Odbijena(STEP, "nedostaje suglasnost suvlasnika");
+        AccommodationEntity accommodation = context.accommodation();
+        Boolean consent = accommodation.getCoOwnerConsent();
+        if (consent == null || !consent) {
+            return new ValidationResult.Rejected(STEP, "nedostaje suglasnost suvlasnika");
         }
-        LocalDate danas = LocalDate.now(clock);
-        LocalDate datumPovlacenja = sso.getDatumPovlacenjaSuglasnosti();
-        if (datumPovlacenja != null && !datumPovlacenja.isAfter(danas)) {
-            return new ValidacijskiRezultat.Odbijena(STEP,
-                    "suglasnost povucena dana " + datumPovlacenja);
+        LocalDate today = LocalDate.now(clock);
+        LocalDate withdrawalDate = accommodation.getConsentWithdrawalDate();
+        if (withdrawalDate != null && !withdrawalDate.isAfter(today)) {
+            return new ValidationResult.Rejected(STEP,
+                    "suglasnost povucena dana " + withdrawalDate);
         }
-        return new ValidacijskiRezultat.Prosla(STEP, "suglasnost valjana");
+        return new ValidationResult.Passed(STEP, "suglasnost valjana");
     }
 }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Pohranjujemo finalni urudžbirani PDF (s utisnutim KLASA/URBROJ) uz zahtjev,
+        kako bismo ga mogli kasnije ponovno preuzeti bez ponovnog poziva eGOP-a.
+        document_link i dalje zadržava logičnu eGOP referencu.
+    -->
+    <changeSet id="025-zahtjev-add-pdf-sadrzaj" author="str-backend">
+        <addColumn schemaName="str" tableName="submission">
+            <column name="pdf_content" type="BLOB"/>
+        </addColumn>
+        <rollback>
+            <dropColumn schemaName="str" tableName="submission" columnName="pdf_content"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      STR funkcionalna specifikacija §6.1.3 "Imena svih pravnih zastupnika pravne
+      osobe" and §6.1.4 "Adrese svih pravnih zastupnika". Per spec a pravna osoba
+      can have multiple legal representatives pulled from the Sudski registar (GO-5),
+      not just the single zastupnik already modeled on lessor.
+    -->
+    <changeSet id="019-create-zastupnici-pravne-osobe" author="str-backend">
+        <createTable schemaName="str" tableName="legal_representative">
+            <column name="representative_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="lessor_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_representative_lessor"
+                             references="str.lessor(lessor_id)"/>
+            </column>
+            <column name="oib" type="CHAR(11)"/>
+            <column name="first_name" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_name" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="address" type="VARCHAR(255)"/>
+            <column name="email" type="VARCHAR(255)"/>
+            <column name="phone" type="VARCHAR(32)"/>
+            <column name="source" type="VARCHAR(32)" defaultValue="COURT_REGISTRY">
+                <constraints nullable="false"/>
+            </column>
+            <column name="fetched_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.legal_representative
+                ADD CONSTRAINT chk_representative_oib_format
+                    CHECK (oib IS NULL OR oib ~ '^[0-9]{11}$'),
+                ADD CONSTRAINT chk_representative_source
+                    CHECK (source IN ('COURT_REGISTRY', 'MANUAL'))
+        </sql>
+
+        <createIndex schemaName="str" tableName="legal_representative" indexName="idx_representative_lessor">
+            <column name="lessor_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="legal_representative"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

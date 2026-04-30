@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      STR funkcionalna specifikacija §6.2 G "Prilozi zahtjevu": uploads accompanying
+      a Zahtjev. Types per spec: drzavljanstvo EU, uporabljivost gradjevine, vlasnistvo,
+      oslobodjenje od pristojbe, suglasnost vlasnika/suvlasnika, pravo koristenja
+      poslovnog prostora (pravna osoba), osobna karta (novi korisnik), dodatni.
+    -->
+    <changeSet id="018-create-prilozi" author="str-backend">
+        <createTable schemaName="str" tableName="submission_attachment">
+            <column name="attachment_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="submission_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_attachment_submission"
+                             references="str.submission(submission_id)"/>
+            </column>
+            <column name="attachment_type" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="mime_type" type="VARCHAR(128)"/>
+            <column name="size_bytes" type="BIGINT"/>
+            <column name="uri" type="VARCHAR(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sha256" type="CHAR(64)"/>
+            <column name="uploaded_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.submission_attachment
+                ADD CONSTRAINT chk_attachment_type
+                    CHECK (attachment_type IN (
+                        'EU_DRZAVLJANSTVO',
+                        'UPORABLJIVOST',
+                        'VLASNISTVO',
+                        'OSLOBODJENJE_PRISTOJBE',
+                        'SUGLASNOST_VLASNIKA',
+                        'PRAVO_KORISTENJA_PROSTORA',
+                        'OSOBNA_KARTA_PREDNJA',
+                        'OSOBNA_KARTA_ZADNJA',
+                        'DODATNI'
+                    ))
+        </sql>
+
+        <createIndex schemaName="str" tableName="submission_attachment" indexName="idx_attachment_submission">
+            <column name="submission_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="submission_attachment"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

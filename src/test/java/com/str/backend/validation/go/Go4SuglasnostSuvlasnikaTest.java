@@ -1,9 +1,9 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.iznajmljivac.IznajmljivacEntity;
-import com.str.backend.sso.SsoEntity;
-import com.str.backend.validation.ValidacijskiKontekst;
-import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.lessor.LessorEntity;
+import com.str.backend.validation.ValidationContext;
+import com.str.backend.validation.ValidationResult;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -20,58 +20,58 @@ class Go4SuglasnostSuvlasnikaTest {
 
     @Test
     void skips_whenGo2DidNotFlag() {
-        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(null, null, null);
-        ValidacijskiKontekst ctx = ctx(sso, false);
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
+        AccommodationEntity acc = GoTestFixtures.accommodationWithConsent(null, null, null);
+        ValidationContext ctx = ctx(acc, false);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Passed.class);
     }
 
     @Test
-    void passes_whenFlaggedAndSuglasnostValjana() {
-        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(10), TODAY.plusDays(30));
-        ValidacijskiKontekst ctx = ctx(sso, true);
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
+    void passes_whenFlaggedAndConsentValid() {
+        AccommodationEntity acc = GoTestFixtures.accommodationWithConsent(true, TODAY.minusDays(10), TODAY.plusDays(30));
+        ValidationContext ctx = ctx(acc, true);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Passed.class);
     }
 
     @Test
-    void passes_whenFlaggedAndSuglasnostWithoutExpiry() {
-        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(10), null);
-        ValidacijskiKontekst ctx = ctx(sso, true);
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Prosla.class);
+    void passes_whenFlaggedAndConsentWithoutExpiry() {
+        AccommodationEntity acc = GoTestFixtures.accommodationWithConsent(true, TODAY.minusDays(10), null);
+        ValidationContext ctx = ctx(acc, true);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Passed.class);
     }
 
     @Test
-    void rejects_whenFlaggedAndSuglasnostMissing() {
-        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(null, null, null);
-        ValidacijskiKontekst ctx = ctx(sso, true);
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
+    void rejects_whenFlaggedAndConsentMissing() {
+        AccommodationEntity acc = GoTestFixtures.accommodationWithConsent(null, null, null);
+        ValidationContext ctx = ctx(acc, true);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Rejected.class);
     }
 
     @Test
-    void rejects_whenFlaggedAndSuglasnostFalse() {
-        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(false, TODAY.minusDays(10), null);
-        ValidacijskiKontekst ctx = ctx(sso, true);
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
+    void rejects_whenFlaggedAndConsentFalse() {
+        AccommodationEntity acc = GoTestFixtures.accommodationWithConsent(false, TODAY.minusDays(10), null);
+        ValidationContext ctx = ctx(acc, true);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Rejected.class);
     }
 
     @Test
-    void rejects_whenDatumPovlacenjaIsToday() {
-        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(30), TODAY);
-        ValidacijskiKontekst ctx = ctx(sso, true);
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
+    void rejects_whenWithdrawalDateIsToday() {
+        AccommodationEntity acc = GoTestFixtures.accommodationWithConsent(true, TODAY.minusDays(30), TODAY);
+        ValidationContext ctx = ctx(acc, true);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Rejected.class);
     }
 
     @Test
-    void rejects_whenDatumPovlacenjaInPast() {
-        SsoEntity sso = GoTestFixtures.ssoWithSuglasnost(true, TODAY.minusDays(30), TODAY.minusDays(1));
-        ValidacijskiKontekst ctx = ctx(sso, true);
-        assertThat(step.provjeri(ctx)).isInstanceOf(ValidacijskiRezultat.Odbijena.class);
+    void rejects_whenWithdrawalDateInPast() {
+        AccommodationEntity acc = GoTestFixtures.accommodationWithConsent(true, TODAY.minusDays(30), TODAY.minusDays(1));
+        ValidationContext ctx = ctx(acc, true);
+        assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Rejected.class);
     }
 
-    private ValidacijskiKontekst ctx(SsoEntity sso, boolean flagged) {
-        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        ValidacijskiKontekst k = new ValidacijskiKontekst(sso, iz, null);
+    private ValidationContext ctx(AccommodationEntity acc, boolean flagged) {
+        LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
+        ValidationContext k = new ValidationContext(acc, lessor, null);
         if (flagged) {
-            k.markiraj();
+            k.markCoOwnerConsentRequired();
         }
         return k;
     }

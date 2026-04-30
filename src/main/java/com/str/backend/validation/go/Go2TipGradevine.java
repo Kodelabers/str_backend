@@ -1,17 +1,17 @@
 package com.str.backend.validation.go;
 
+import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.registries.MpgiClient;
-import com.str.backend.sso.SsoEntity;
-import com.str.backend.validation.ValidacijskaProvjera;
-import com.str.backend.validation.ValidacijskiKontekst;
-import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.validation.ValidationCheck;
+import com.str.backend.validation.ValidationContext;
+import com.str.backend.validation.ValidationResult;
 import org.springframework.stereotype.Component;
 
 @Component
-public class Go2TipGradevine implements ValidacijskaProvjera {
+public class Go2TipGradevine implements ValidationCheck {
 
     private static final String STEP = "GO-2";
-    private static final int PRAG_JEDINICA = 3;
+    private static final int UNIT_THRESHOLD = 3;
 
     private final MpgiClient mpgiClient;
 
@@ -26,18 +26,18 @@ public class Go2TipGradevine implements ValidacijskaProvjera {
     public int order() { return 1; }
 
     @Override
-    public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
-        SsoEntity sso = kontekst.sso();
-        if (!sso.isZgrada() || !sso.isStanovi()) {
-            return new ValidacijskiRezultat.Prosla(STEP, "nije zgrada/stanovi - GO-4 nije obvezan");
+    public ValidationResult check(ValidationContext context) {
+        AccommodationEntity accommodation = context.accommodation();
+        if (!accommodation.isBuilding() || !accommodation.isApartments()) {
+            return new ValidationResult.Passed(STEP, "nije zgrada/stanovi - GO-4 nije obvezan");
         }
-        String adresa = sso.getUlica() + " " + sso.getKucniBroj() + ", " + sso.getGrad();
-        int jedinice = mpgiClient.brojStambenihJedinica(adresa);
-        if (jedinice > PRAG_JEDINICA) {
-            kontekst.markiraj();
-            return new ValidacijskiRezultat.Prosla(STEP,
-                    "zgrada s " + jedinice + " jedinica - GO-4 obvezan");
+        String address = accommodation.getStreet() + " " + accommodation.getStreetNumber() + ", " + accommodation.getCity();
+        int units = mpgiClient.brojStambenihJedinica(address);
+        if (units > UNIT_THRESHOLD) {
+            context.markCoOwnerConsentRequired();
+            return new ValidationResult.Passed(STEP,
+                    "zgrada s " + units + " jedinica - GO-4 obvezan");
         }
-        return new ValidacijskiRezultat.Prosla(STEP, jedinice + " jedinica - GO-4 nije obvezan");
+        return new ValidationResult.Passed(STEP, units + " jedinica - GO-4 nije obvezan");
     }
 }

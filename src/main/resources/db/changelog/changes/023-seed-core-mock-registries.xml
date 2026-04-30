@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="023-seed-gis-parcela" author="str-backend" context="local">
+        <insert schemaName="core" tableName="gis_parcela">
+            <column name="katastarska_opcina" value="Donji grad"/>
+            <column name="broj_cestice" value="123/4"/>
+            <column name="povrsina_m2" valueNumeric="450"/>
+            <column name="namjena" value="Stambena"/>
+            <column name="legalan_objekt" valueBoolean="true"/>
+        </insert>
+        <insert schemaName="core" tableName="gis_parcela">
+            <column name="katastarska_opcina" value="Split-grad"/>
+            <column name="broj_cestice" value="789/1"/>
+            <column name="povrsina_m2" valueNumeric="120"/>
+            <column name="namjena" value="Stambena"/>
+            <column name="legalan_objekt" valueBoolean="true"/>
+        </insert>
+        <rollback><delete schemaName="core" tableName="gis_parcela"/></rollback>
+    </changeSet>
+
+    <changeSet id="023-seed-rpj-adresa" author="str-backend" context="local">
+        <insert schemaName="core" tableName="rpj_adresa">
+            <column name="zupanija" value="Grad Zagreb"/>
+            <column name="grad" value="Zagreb"/>
+            <column name="naselje" value="Donji grad"/>
+            <column name="ulica" value="Ilica"/>
+            <column name="kucni_broj" value="1"/>
+            <column name="postanski_broj" value="10000"/>
+        </insert>
+        <insert schemaName="core" tableName="rpj_adresa">
+            <column name="zupanija" value="Splitsko-dalmatinska"/>
+            <column name="grad" value="Split"/>
+            <column name="naselje" value="Split"/>
+            <column name="ulica" value="Riva"/>
+            <column name="kucni_broj" value="5"/>
+            <column name="postanski_broj" value="21000"/>
+        </insert>
+        <rollback><delete schemaName="core" tableName="rpj_adresa"/></rollback>
+    </changeSet>
+
+    <changeSet id="023-seed-sr-pravna-osoba" author="str-backend" context="local">
+        <insert schemaName="core" tableName="sr_pravna_osoba">
+            <column name="oib" value="12345678901"/>
+            <column name="naziv" value="Apartmani Horvat d.o.o."/>
+            <column name="sjediste" value="Ilica 1, Zagreb"/>
+            <column name="zastupnici" value="Ivan Horvat;Ana Kovac"/>
+        </insert>
+        <insert schemaName="core" tableName="sr_pravna_osoba">
+            <column name="oib" value="98765432109"/>
+            <column name="naziv" value="Vile Dalmacija j.d.o.o."/>
+            <column name="sjediste" value="Riva 5, Split"/>
+            <column name="zastupnici" value="Marko Marić"/>
+        </insert>
+        <rollback><delete schemaName="core" tableName="sr_pravna_osoba"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

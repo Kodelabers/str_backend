@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Iznajmljivač / Lessor -->
+    <changeSet id="004-create-str-iznajmljivac" author="str-backend">
+        <createTable schemaName="str" tableName="lessor">
+            <column name="lessor_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="representative_oib" type="CHAR(11)"/>
+            <column name="first_name" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_name" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="legal_entity_name" type="VARCHAR(255)"/>
+            <column name="street" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="street_number" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="place" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="county" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="contact_name" type="VARCHAR(255)"/>
+            <column name="phone_number" type="VARCHAR(32)"/>
+            <column name="mobile_number" type="VARCHAR(32)"/>
+            <column name="email" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="legal_representative_name" type="VARCHAR(255)"/>
+            <column name="representative_email" type="VARCHAR(255)"/>
+            <column name="representative_phone" type="VARCHAR(32)"/>
+            <column name="korisnicko_ime" type="VARCHAR(128)">
+                <constraints unique="true" uniqueConstraintName="uq_lessor_username"/>
+            </column>
+            <column name="lozinka_hash" type="VARCHAR(255)"/>
+            <column name="official_person_id" type="VARCHAR(64)"/>
+            <column name="status_prijave" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.lessor
+                ADD CONSTRAINT chk_lessor_oib_format
+                    CHECK (representative_oib IS NULL OR representative_oib ~ '^[0-9]{11}$')
+        </sql>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="lessor"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

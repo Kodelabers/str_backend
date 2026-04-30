@@ -2,24 +2,24 @@ openapi: "3.0.3"
 info:
   title: STR Backend API
   description: |
-    Sustav za evidenciju kratkoročnog najma smještaja (STR).
+    Short-Term Rental (STR) accommodation registration and management system.
 
-    Grupe endpointa:
-    - **/api/verify** – javna provjera registracijskog broja (SDEP, OTA platforme)
-    - **/api/rb** – upravljanje registracijskim brojevima (nadležno tijelo)
-    - **/api/registracija** – registracija smještajnih objekata (SSO) i dodjela RB
-    - **/api/aktivnosti** – SDEP ingestija i pretraživanje aktivnosti
-  version: "3.0"
+    Endpoint groups:
+    - **/api/verify** – public registration number lookup (SDEP, OTA platforms)
+    - **/api/rn** – registration number lifecycle management (competent authority)
+    - **/api/registracija** – accommodation registration and RN assignment
+    - **/api/aktivnosti** – SDEP activity ingestion and search
+  version: "4.0"
 
 tags:
   - name: verify
-    description: Javna provjera valjanosti registracijskog broja
-  - name: rb
-    description: Upravljanje registracijskim brojevima
-  - name: registracija
-    description: Registracija smještajnih objekata i dodjela RB
-  - name: aktivnosti
-    description: SDEP ingestija aktivnosti i pretraživanje (STR-3.x)
+    description: Public registration number validity check
+  - name: rn
+    description: Registration number lifecycle management
+  - name: registration
+    description: Accommodation registration and RN assignment
+  - name: activities
+    description: SDEP activity ingestion and search (STR-3.x)
 
 paths:
 
@@ -27,19 +27,19 @@ paths:
   # Verify (public)
   # ─────────────────────────────────────────────────────────────
 
-  /api/verify/{rb}:
+  /api/verify/{rn}:
     get:
       tags: [verify]
-      summary: Provjera valjanosti registracijskog broja
+      summary: Verify registration number validity
       description: |
-        Javni endpoint – koriste ga SDEP i OTA platforme za provjeru je li RB ispravan
-        i koliki je kapacitet objekta.  Vraća 404 ako RB ne postoji.
-      operationId: verifyRb
+        Public endpoint used by SDEP and OTA platforms to check whether a registration
+        number is valid and retrieve the accommodation capacity. Returns 404 if not found.
+      operationId: verifyRn
       parameters:
-        - $ref: '#/components/parameters/rb'
+        - $ref: '#/components/parameters/rn'
       responses:
         "200":
-          description: RB pronađen
+          description: Registration number found
           content:
             application/json:
               schema:
@@ -48,199 +48,248 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ─────────────────────────────────────────────────────────────
-  # Registracijski brojevi
+  # Registration numbers
   # ─────────────────────────────────────────────────────────────
 
-  /api/rb/nevazeci:
+  /api/rn/inactive:
     get:
-      tags: [rb]
-      summary: Lista nevažećih registracijskih brojeva (STR-1.5)
+      tags: [rn]
+      summary: List inactive registration numbers (STR-1.5)
       description: |
-        Vraća sve RB u statusu SUSPENDIRAN ili POVUCEN, sortirano po datumu
-        zadnje izmjene silazno.  Namijenjeno nadležnom tijelu.
-      operationId: listNevazeci
+        Returns all RNs in status SUSPENDED or WITHDRAWN, sorted by last-updated descending.
+        Intended for the competent authority.
+      operationId: listInactive
       responses:
         "200":
-          description: Lista nevažećih RB
+          description: List of inactive RNs
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/RbResponse'
+                  $ref: '#/components/schemas/RnResponse'
 
-  /api/rb/{rb}:
+  /api/rn/{rn}:
     get:
-      tags: [rb]
-      summary: Dohvat jednog registracijskog broja
-      operationId: getRb
+      tags: [rn]
+      summary: Get a single registration number
+      operationId: getRn
       parameters:
-        - $ref: '#/components/parameters/rb'
+        - $ref: '#/components/parameters/rn'
       responses:
         "200":
-          description: RB pronađen
+          description: Registration number found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RbResponse'
+                $ref: '#/components/schemas/RnResponse'
         "404":
           $ref: '#/components/responses/NotFound'
 
-  /api/rb/{rb}/suspend:
+  /api/rn/{rn}/suspend:
     post:
-      tags: [rb]
-      summary: Suspenzija registracijskog broja
+      tags: [rn]
+      summary: Suspend a registration number
       description: |
-        Dopušteni triggeri: `CONSENT_EXPIRY` (istekla suglasnost suvlasnika),
-        `INSPECTION` (inspekcijski nalaz).
-      operationId: suspendRb
+        Allowed triggers: `CONSENT_EXPIRY` (co-owner consent expired),
+        `INSPECTION` (inspection finding).
+      operationId: suspendRn
       parameters:
-        - $ref: '#/components/parameters/rb'
-        - name: razlog
+        - $ref: '#/components/parameters/rn'
+        - name: reason
           in: query
           required: true
           schema:
-            $ref: '#/components/schemas/RbTrigger'
+            $ref: '#/components/schemas/RnTrigger'
       responses:
         "200":
-          description: RB suspendiran
+          description: Registration number suspended
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RbResponse'
+                $ref: '#/components/schemas/RnResponse'
         "400":
           $ref: '#/components/responses/BadRequest'
         "404":
           $ref: '#/components/responses/NotFound'
 
-  /api/rb/{rb}/reactivate:
+  /api/rn/{rn}/reactivate:
     post:
-      tags: [rb]
-      summary: Reaktivacija suspendiranog registracijskog broja
-      operationId: reactivateRb
+      tags: [rn]
+      summary: Reactivate a suspended registration number
+      operationId: reactivateRn
       parameters:
-        - $ref: '#/components/parameters/rb'
+        - $ref: '#/components/parameters/rn'
       responses:
         "200":
-          description: RB reaktiviran
+          description: Registration number reactivated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RbResponse'
+                $ref: '#/components/schemas/RnResponse'
         "400":
           $ref: '#/components/responses/BadRequest'
         "404":
           $ref: '#/components/responses/NotFound'
 
-  /api/rb/{rb}/withdraw:
+  /api/rn/{rn}/withdraw:
     post:
-      tags: [rb]
-      summary: Povlačenje registracijskog broja (terminalni status)
-      operationId: withdrawRb
+      tags: [rn]
+      summary: Withdraw a registration number (terminal status)
+      operationId: withdrawRn
       parameters:
-        - $ref: '#/components/parameters/rb'
+        - $ref: '#/components/parameters/rn'
       responses:
         "200":
-          description: RB povučen
+          description: Registration number withdrawn
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RbResponse'
+                $ref: '#/components/schemas/RnResponse'
         "400":
           $ref: '#/components/responses/BadRequest'
         "404":
           $ref: '#/components/responses/NotFound'
 
   # ─────────────────────────────────────────────────────────────
-  # Registracija SSO
+  # Accommodation registration
   # ─────────────────────────────────────────────────────────────
 
   /api/registracija:
     post:
-      tags: [registracija]
-      summary: Registracija smještajnog objekta i dodjela RB
+      tags: [registration]
+      summary: Register an accommodation and assign a registration number
       description: |
-        Jedinstveni endpoint za sva tri scenarija:
+        Single endpoint for all three scenarios:
 
-        | Scenarij | Opis |
+        | Scenario | Description |
         |---|---|
-        | `S1_POSTOJECI_OBJEKT` | Objekt već postoji u core registru; `idCoreObjekt` obavezan za svaki SSO |
-        | `S2_NOVI_OBJEKT_VANJSKI` | Novi objekt, zahtjev pristiže s vanjskog (javnog) portala |
-        | `S3_NOVI_OBJEKT_INTERNI` | Novi objekt, zahtjev unosi referent s internog portala |
+        | `S1_EXISTING_UNIT` | Accommodation already exists in the core registry; `coreObjectId` required per accommodation |
+        | `S2_NEW_UNIT_EXTERNAL` | New accommodation submitted via the external (public) portal |
+        | `S3_NEW_UNIT_INTERNAL` | New accommodation entered by a referent via the internal portal |
 
-        RB se dodjeljuje tek nakon što sve GO provjere (GO-1 – GO-5) prođu.
-        GO provjere se izvode paralelno, uz uvjet da GO-4 čeka GO-2.
-        Ako ijedna provjera vrati odbijanje, vraća se 422.
-      operationId: registriraj
+        The RN is assigned only after all GO validation checks (GO-1 – GO-5) pass.
+        If any check returns a rejection, 422 is returned.
+        If an external registry (MPGI or DGU) is unavailable, 503 is returned.
+      operationId: register
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RegistracijaRequest'
+              $ref: '#/components/schemas/RegistrationRequest'
             examples:
-              s1_postojeci:
-                summary: S1 – postojeći objekt
+              s1_existing:
+                summary: S1 – existing accommodation
                 value:
-                  scenarij: S1_POSTOJECI_OBJEKT
-                  idIznajmljivaca: "550e8400-e29b-41d4-a716-446655440000"
-                  sso:
-                    - idCoreObjekt: "660e8400-e29b-41d4-a716-446655440001"
-              s2_novi:
-                summary: S2 – novi objekt, vanjski portal
+                  scenario: S1_EXISTING_UNIT
+                  lessor:
+                    firstName: "Marko"
+                    lastName: "Marić"
+                    email: "marko@example.com"
+                    street: "Ilica"
+                    streetNumber: "1"
+                    place: "Zagreb"
+                    county: "Grad Zagreb"
+                  accommodations:
+                    - coreObjectId: "660e8400-e29b-41d4-a716-446655440001"
+                      county: "Grad Zagreb"
+                      city: "Zagreb"
+                      street: "Ilica"
+                      streetNumber: "1"
+                      maxBeds: 2
+                      maxGuests: 4
+                      offerType: FULL
+                      building: false
+                      apartments: false
+                      legalized: true
+              s2_new_external:
+                summary: S2 – new accommodation, external portal
                 value:
-                  scenarij: S2_NOVI_OBJEKT_VANJSKI
-                  idIznajmljivaca: "550e8400-e29b-41d4-a716-446655440000"
-                  idNadleznogTijela: 1
-                  sso:
-                    - zupanija: "Grad Zagreb"
-                      grad: "Zagreb"
-                      ulica: "Ilica"
-                      kucniBroj: "1"
-                      maxKreveta: 4
-                      maxGostiju: 8
-                      ponuda: CJELINA
-                      zgrada: false
-                      stanovi: false
-                      legalizirano: true
+                  scenario: S2_NEW_UNIT_EXTERNAL
+                  competentAuthorityId: 1
+                  lessor:
+                    firstName: "Marko"
+                    lastName: "Marić"
+                    email: "marko@example.com"
+                    street: "Ilica"
+                    streetNumber: "1"
+                    place: "Zagreb"
+                    county: "Grad Zagreb"
+                  accommodations:
+                    - county: "Grad Zagreb"
+                      city: "Zagreb"
+                      street: "Ilica"
+                      streetNumber: "1"
+                      maxBeds: 2
+                      maxGuests: 4
+                      offerType: FULL
+                      building: false
+                      apartments: false
+                      legalized: true
       responses:
         "201":
-          description: Registracija uspješna – RB dodijeljen
+          description: Registration successful – RN assigned
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RegistracijaResponse'
+                $ref: '#/components/schemas/RegistrationResponse'
         "400":
           $ref: '#/components/responses/BadRequest'
         "422":
-          description: GO provjera odbijena
+          description: GO validation rejected
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                step: "GO-1"
-                detail: "iznajmljivac nije domacin u zupaiji objekta"
+                details:
+                  step: "GO-3"
+                  detail: "accommodation is not legalized"
         "503":
-          description: Vanjski registar nedostupan (MPGI ili DGU)
+          description: External registry unavailable (MPGI or DGU)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/registracija/{submissionId}/pdf:
+    get:
+      tags: [registration]
+      summary: Download the submission PDF
+      description: Returns the PDF generated and filed with eGOP for the given submission.
+      operationId: downloadPdf
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: '#/components/responses/NotFound'
+
   # ─────────────────────────────────────────────────────────────
-  # Aktivnosti (SDEP)
+  # Activities (SDEP)
   # ─────────────────────────────────────────────────────────────
 
   /api/aktivnosti/ingest:
     post:
-      tags: [aktivnosti]
-      summary: SDEP ingestija aktivnosti (STR-3.1)
+      tags: [activities]
+      summary: Ingest SDEP activity report (STR-3.1)
       description: |
-        Preuzima mjesečno izvješće od SDEP-a (internet platforme).
-        Pokreće se automatski schedulerima ili ručno od strane Administratora sustava.
-        Vraća broj unesenih stavki.
-      operationId: ingestAktivnosti
+        Accepts monthly activity reports from SDEP (online platforms).
+        Triggered automatically by scheduler or manually by a system administrator.
+        Returns the number of ingested entries.
+      operationId: ingestActivities
       requestBody:
         required: true
         content:
@@ -248,18 +297,18 @@ paths:
             schema:
               $ref: '#/components/schemas/SdepIngestRequest'
             example:
-              idPlatforme: 42
-              stavke:
-                - rb: "HR12345678"
-                  idSso: "550e8400-e29b-41d4-a716-446655440000"
-                  razdobljeOd: "2026-03-01"
-                  razdobljeDo: "2026-03-31"
-                  brojNocenja: 12
-                  brojGostiju: 3
-                  drzavaGostiju: "DE"
+              platformId: 42
+              entries:
+                - rn: "HR12345678"
+                  accommodationId: "550e8400-e29b-41d4-a716-446655440000"
+                  periodFrom: "2026-03-01"
+                  periodTo: "2026-03-31"
+                  numberOfNights: 12
+                  numberOfGuests: 3
+                  guestCountries: "DE"
       responses:
         "201":
-          description: Broj unesenih stavki
+          description: Number of ingested entries
           content:
             application/json:
               schema:
@@ -270,60 +319,63 @@ paths:
 
   /api/aktivnosti:
     get:
-      tags: [aktivnosti]
-      summary: Pretraživanje aktivnosti (STR-3.2)
+      tags: [activities]
+      summary: Search activities (STR-3.2)
       description: |
-        Nadležno tijelo / Voditelj postupka pretražuje aktivnosti.
-        Svi parametri su opcionalni i međusobno se kombiniraju (AND).
-      operationId: pretraziAktivnosti
+        Competent authority / process manager searches activity records.
+        All parameters are optional and combined with AND.
+      operationId: searchActivities
       parameters:
-        - name: idPlatforme
+        - name: platformId
           in: query
           required: false
           schema:
             type: integer
             format: int64
-        - name: rb
+        - name: rn
           in: query
           required: false
+          description: Registration number filter
           schema:
             type: string
             example: "HR12345678"
         - name: od
           in: query
           required: false
+          description: Period start (inclusive)
           schema:
             type: string
             format: date
             example: "2026-01-01"
-        - name: doDate
+        - name: toDate
           in: query
           required: false
+          description: Period end (inclusive)
           schema:
             type: string
             format: date
             example: "2026-03-31"
       responses:
         "200":
-          description: Lista aktivnosti
+          description: List of activity records
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/AktivnostResponse'
+                  $ref: '#/components/schemas/ActivityResponse'
 
   /api/aktivnosti/purge:
     delete:
-      tags: [aktivnosti]
-      summary: Ručno pokretanje retencijskog purga (STR-3.3)
+      tags: [activities]
+      summary: Manually trigger retention purge (STR-3.3)
       description: |
-        Briše aktivnosti starije od 18 mjeseci.  Inače se pokreće automatski schedulerima.
-        Vraća broj obrisanih zapisa.
-      operationId: purgeAktivnosti
+        Deletes activity records older than 18 months. Normally triggered automatically
+        by scheduler. Returns the number of deleted records.
+      operationId: purgeActivities
       responses:
         "200":
-          description: Broj obrisanih zapisa
+          description: Number of deleted records
           content:
             application/json:
               schema:
@@ -331,17 +383,17 @@ paths:
                 example: 0
 
 # ─────────────────────────────────────────────────────────────
-# Komponente
+# Components
 # ─────────────────────────────────────────────────────────────
 
 components:
 
   parameters:
-    rb:
-      name: rb
+    rn:
+      name: rn
       in: path
       required: true
-      description: Registracijski broj formata HR + 8 znamenki (npr. HR12345678)
+      description: Registration number in format HR + 8 digits (e.g. HR12345678)
       schema:
         type: string
         pattern: '^HR\d{8}$'
@@ -349,13 +401,13 @@ components:
 
   responses:
     NotFound:
-      description: Resurs nije pronađen
+      description: Resource not found
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     BadRequest:
-      description: Neispravni ulazni podaci
+      description: Invalid input data
       content:
         application/json:
           schema:
@@ -365,289 +417,361 @@ components:
 
     # ── Enums ──────────────────────────────────────────────────
 
-    Scenarij:
+    Scenario:
       type: string
-      enum: [S1_POSTOJECI_OBJEKT, S2_NOVI_OBJEKT_VANJSKI, S3_NOVI_OBJEKT_INTERNI]
+      enum: [S1_EXISTING_UNIT, S2_NEW_UNIT_EXTERNAL, S3_NEW_UNIT_INTERNAL]
       description: |
-        - `S1_POSTOJECI_OBJEKT` – objekt već postoji u core registru
-        - `S2_NOVI_OBJEKT_VANJSKI` – novi objekt, vanjski portal
-        - `S3_NOVI_OBJEKT_INTERNI` – novi objekt, interni portal
+        - `S1_EXISTING_UNIT` – accommodation already exists in the core registry
+        - `S2_NEW_UNIT_EXTERNAL` – new accommodation via external (public) portal
+        - `S3_NEW_UNIT_INTERNAL` – new accommodation via internal portal
 
-    Ponuda:
+    OfferType:
       type: string
-      enum: [DIO, CJELINA]
-      description: Vrsta iznajmljivanja (dio objekta ili cijeli objekt)
+      enum: [PARTIAL, FULL]
+      description: Whether the lessor rents part of the property or the entire unit
 
-    RbStatus:
+    RnStatus:
       type: string
-      enum: [U_OBRADI, AKTIVAN, SUSPENDIRAN, POVUCEN]
+      enum: [IN_PROCESSING, ACTIVE, SUSPENDED, WITHDRAWN]
 
-    RbTrigger:
+    RnTrigger:
       type: string
       enum: [ISSUE, CONSENT_EXPIRY, INSPECTION, WITHDRAWAL, REACTIVATE]
       description: |
-        - `CONSENT_EXPIRY` – istekla suglasnost suvlasnika (dozvoljeno za suspend)
-        - `INSPECTION` – inspekcijski nalaz (dozvoljeno za suspend)
-        - `WITHDRAWAL` – povlačenje (dozvoljeno za withdraw)
-        - `REACTIVATE` – reaktivacija (dozvoljeno za reactivate)
+        - `CONSENT_EXPIRY` – co-owner consent expired (allowed for suspend)
+        - `INSPECTION` – inspection finding (allowed for suspend)
+        - `WITHDRAWAL` – voluntary withdrawal (allowed for withdraw)
+        - `REACTIVATE` – reactivation (allowed for reactivate)
 
     # ── Verify ─────────────────────────────────────────────────
 
     VerifyResponse:
       type: object
-      required: [registracijskiBroj, status, kapacitet, tipPonude]
+      required: [registrationNumber, status, capacity, offerType]
       properties:
-        registracijskiBroj:
+        registrationNumber:
           type: string
           example: "HR12345678"
         status:
-          $ref: '#/components/schemas/RbStatus'
-        kapacitet:
+          $ref: '#/components/schemas/RnStatus'
+        capacity:
           type: integer
-          description: Maksimalni broj gostiju
+          description: Maximum number of guests
           example: 8
-        tipPonude:
-          $ref: '#/components/schemas/Ponuda'
+        offerType:
+          $ref: '#/components/schemas/OfferType'
 
-    # ── RB ─────────────────────────────────────────────────────
+    # ── Registration number ─────────────────────────────────────
 
-    RbResponse:
+    RnResponse:
       type: object
-      required: [rb, idSso, status, datumIzd, datumOd]
+      required: [rn, accommodationId, status, issueDate, validFrom]
       properties:
-        rb:
+        rn:
           type: string
           example: "HR12345678"
-        idZahtjeva:
+        submissionId:
           type: string
           format: uuid
           nullable: true
-        idSso:
+        accommodationId:
           type: string
           format: uuid
         status:
-          $ref: '#/components/schemas/RbStatus'
-        datumIzd:
+          $ref: '#/components/schemas/RnStatus'
+        issueDate:
           type: string
           format: date
-        datumOd:
+        validFrom:
           type: string
           format: date
-        datumDo:
+        validTo:
           type: string
           format: date
           nullable: true
 
-    # ── Registracija ───────────────────────────────────────────
+    # ── Registration ───────────────────────────────────────────
 
-    RegistracijaRequest:
+    RegistrationRequest:
       type: object
-      required: [scenarij, idIznajmljivaca, sso]
+      required: [scenario, lessor, accommodations]
       properties:
-        scenarij:
-          $ref: '#/components/schemas/Scenarij'
-        idIznajmljivaca:
-          type: string
-          format: uuid
-        idNadleznogTijela:
+        scenario:
+          $ref: '#/components/schemas/Scenario'
+        lessor:
+          $ref: '#/components/schemas/LessorRequest'
+        competentAuthorityId:
           type: integer
           format: int64
           nullable: true
-        sso:
+        accommodations:
           type: array
           minItems: 1
           items:
-            $ref: '#/components/schemas/SsoRequest'
+            $ref: '#/components/schemas/AccommodationRequest'
 
-    SsoRequest:
+    LessorRequest:
       type: object
-      required: [zupanija, grad, ulica, kucniBroj, maxKreveta, maxGostiju, ponuda, zgrada, stanovi, legalizirano]
+      required: [firstName, lastName, email, street, streetNumber, place, county]
       properties:
-        zupanija:
+        firstName:
           type: string
           maxLength: 128
-        grad:
+        lastName:
           type: string
           maxLength: 128
-        naselje:
+        email:
+          type: string
+          format: email
+        street:
           type: string
           maxLength: 128
-          nullable: true
-        ulica:
-          type: string
-          maxLength: 128
-        kucniBroj:
+        streetNumber:
           type: string
           maxLength: 16
-        katastarskaOpcina:
+        place:
+          type: string
+          maxLength: 128
+        county:
+          type: string
+          maxLength: 128
+        contactName:
+          type: string
+          nullable: true
+        phoneNumber:
+          type: string
+          maxLength: 32
+          nullable: true
+        mobileNumber:
+          type: string
+          maxLength: 32
+          nullable: true
+        contactNote:
+          type: string
+          maxLength: 1024
+          nullable: true
+        representativeOib:
+          type: string
+          maxLength: 11
+          description: OIB of the legal representative (triggers legal entity enrichment from SR)
+          nullable: true
+        legalEntityName:
+          type: string
+          maxLength: 255
+          nullable: true
+        legalRepresentativeName:
+          type: string
+          nullable: true
+        representativeEmail:
+          type: string
+          format: email
+          nullable: true
+        representativePhone:
+          type: string
+          maxLength: 32
+          nullable: true
+        representativeAddress:
+          type: string
+          maxLength: 255
+          nullable: true
+        officialPersonId:
+          type: string
+          maxLength: 64
+          description: Internal referent ID (internal portal only)
+          nullable: true
+
+    AccommodationRequest:
+      type: object
+      required: [county, city, street, streetNumber, maxBeds, maxGuests, offerType, building, apartments, legalized]
+      properties:
+        county:
+          type: string
+          maxLength: 128
+        city:
+          type: string
+          maxLength: 128
+        settlement:
           type: string
           maxLength: 128
           nullable: true
-        brojKatastarskeCestice:
+        street:
+          type: string
+          maxLength: 128
+        streetNumber:
+          type: string
+          maxLength: 16
+        cadastralMunicipality:
+          type: string
+          maxLength: 128
+          nullable: true
+        cadastralParcelNumber:
           type: string
           maxLength: 64
           nullable: true
-        maxKreveta:
+        maxBeds:
           type: integer
           minimum: 1
-        maxGostiju:
+        maxGuests:
           type: integer
           minimum: 1
-        ponuda:
-          $ref: '#/components/schemas/Ponuda'
-        boravisteIznajmljivaca:
+        offerType:
+          $ref: '#/components/schemas/OfferType'
+        lessorResidence:
           type: boolean
           nullable: true
-        zgrada:
+        building:
           type: boolean
-        kat:
+        floor:
           type: string
           maxLength: 8
           nullable: true
-        stanovi:
+        apartments:
           type: boolean
-        legalizirano:
+        legalized:
           type: boolean
-        suglasnostSuvlasnika:
+        coOwnerConsent:
           type: boolean
           nullable: true
-        datumSuglasnosti:
+        consentDate:
           type: string
           format: date
           nullable: true
-        datumPovlacenjaSuglasnosti:
+        consentWithdrawalDate:
           type: string
           format: date
           nullable: true
-        oznakaSso:
+        accommodationCode:
           type: string
           maxLength: 64
           nullable: true
-        idVrsteSso:
+        accommodationTypeId:
           type: integer
           format: int64
           nullable: true
-        idCoreObjekt:
+        coreObjectId:
           type: string
           format: uuid
           nullable: true
-          description: Obavezan za scenarij S1_POSTOJECI_OBJEKT
+          description: Required for scenario S1_EXISTING_UNIT
 
-    RegistracijaResponse:
+    RegistrationResponse:
       type: object
-      required: [scenarij, idIznajmljivaca, dodijeljeniRb]
+      required: [scenario, lessorId, assignedRbs]
       properties:
-        scenarij:
-          $ref: '#/components/schemas/Scenarij'
-        idIznajmljivaca:
+        scenario:
+          $ref: '#/components/schemas/Scenario'
+        lessorId:
           type: string
           format: uuid
-        dodijeljeniRb:
+        assignedRbs:
           type: array
           items:
-            $ref: '#/components/schemas/DodijeljeniRb'
+            $ref: '#/components/schemas/AssignedRn'
 
-    DodijeljeniRb:
+    AssignedRn:
       type: object
-      required: [idSso, rb]
+      required: [accommodationId, rn]
       properties:
-        idSso:
+        accommodationId:
           type: string
           format: uuid
-        rb:
+        rn:
           type: string
           example: "HR12345678"
 
-    # ── Aktivnosti ─────────────────────────────────────────────
+    # ── Activities ─────────────────────────────────────────────
 
     SdepIngestRequest:
       type: object
-      required: [idPlatforme, stavke]
+      required: [platformId, entries]
       properties:
-        idPlatforme:
+        platformId:
           type: integer
           format: int64
-          description: ID internet platforme (SDEP šifrarnik)
-        stavke:
+          description: Online platform ID (SDEP registry)
+        entries:
           type: array
           minItems: 1
           items:
-            $ref: '#/components/schemas/SdepStavka'
+            $ref: '#/components/schemas/SdepEntry'
 
-    SdepStavka:
+    SdepEntry:
       type: object
-      required: [rb, razdobljeOd, razdobljeDo]
+      required: [rn, periodFrom, periodTo]
       properties:
-        rb:
+        rn:
           type: string
-          description: Registracijski broj
+          description: Registration number
           example: "HR12345678"
-        idSso:
+        accommodationId:
           type: string
           format: uuid
           nullable: true
-        razdobljeOd:
+        periodFrom:
           type: string
           format: date
-        razdobljeDo:
+        periodTo:
           type: string
           format: date
-        brojNocenja:
+        numberOfNights:
           type: integer
           default: 0
-        brojGostiju:
+        numberOfGuests:
           type: integer
           default: 0
-        drzavaGostiju:
+        guestCountries:
           type: string
           maxLength: 2
-          description: ISO 3166-1 alpha-2 kod države gostiju
+          description: ISO 3166-1 alpha-2 guest country code
           example: "DE"
           nullable: true
 
-    AktivnostResponse:
+    ActivityResponse:
       type: object
-      required: [idAktivnosti, idPlatforme, rb, razdobljeOd, razdobljeDo, brojNocenja, brojGostiju, receivedAt]
+      required: [activityId, platformId, rn, periodFrom, periodTo, numberOfNights, numberOfGuests, receivedAt]
       properties:
-        idAktivnosti:
+        activityId:
           type: string
           format: uuid
-        idPlatforme:
+        platformId:
           type: integer
           format: int64
-        rb:
+        rn:
           type: string
           example: "HR12345678"
-        idSso:
+        accommodationId:
           type: string
           format: uuid
           nullable: true
-        razdobljeOd:
+        periodFrom:
           type: string
           format: date
-        razdobljeDo:
+        periodTo:
           type: string
           format: date
-        brojNocenja:
+        numberOfNights:
           type: integer
-        brojGostiju:
+        numberOfGuests:
           type: integer
-        drzavaGostiju:
+        guestCountries:
           type: string
           nullable: true
         receivedAt:
           type: string
           format: date-time
 
-    # ── Greške ─────────────────────────────────────────────────
+    # ── Errors ─────────────────────────────────────────────────
 
     ErrorResponse:
       type: object
       properties:
-        step:
-          type: string
-          description: GO korak koji je uzrokovao grešku (samo za 422)
+        details:
+          type: object
           nullable: true
-        detail:
-          type: string
-          description: Opis greške
+          properties:
+            step:
+              type: string
+              description: GO step that caused the rejection (422 only)
+            detail:
+              type: string
+              description: Error description

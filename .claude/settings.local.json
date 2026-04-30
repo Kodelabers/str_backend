@@ -50,7 +50,27 @@
       "Bash(mvn -q -DfailIfNoTests=false -Dtest=RegistracijaControllerTest test)",
       "Bash(mvn -DfailIfNoTests=false -Dtest=RegistracijaControllerTest test)",
       "Bash(mvn -DfailIfNoTests=false -Dtest=RegistracijaIntegrationTest test)",
-      "Bash(unzip -l ~/.m2/repository/org/hibernate/orm/hibernate-core/6.5.2.Final/hibernate-core-6.5.2.Final.jar)"
+      "Bash(unzip -l ~/.m2/repository/org/hibernate/orm/hibernate-core/6.5.2.Final/hibernate-core-6.5.2.Final.jar)",
+      "Bash(xargs grep *)",
+      "Bash(PGPASSWORD=kodelab213 psql *)",
+      "PowerShell(psql *)",
+      "PowerShell($env:PGPASSWORD = \"kodelab213\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -p 5432 -c \"DROP DATABASE IF EXISTS str_db;\" 2>&1)",
+      "PowerShell($env:PGPASSWORD = \"kodelab213\"; & \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -h localhost -p 5432 -c \"CREATE DATABASE str_db;\" 2>&1)",
+      "Bash(mvn spring-boot:run -Dspring-boot.run.profiles=local)",
+      "Bash(mv \"002-core-objekt.xml\"                  \"002-core-object.xml\")",
+      "Bash(mv \"004-str-iznajmljivac.xml\"             \"004-str-lessor.xml\")",
+      "Bash(mv \"005-str-zahtjev.xml\"                  \"005-str-submission.xml\")",
+      "Bash(mv \"006-str-sso.xml\"                      \"006-str-accommodation.xml\")",
+      "Bash(mv \"007-str-rb.xml\"                       \"007-str-registration-number.xml\")",
+      "Bash(xxd \"C:/Projects/STR/str_backend/src/main/resources/db/changelog/changes/005-str-submission.xml\")",
+      "Bash(\"C:/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -c \"DROP DATABASE str_db;\")",
+      "Bash(\"C:/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -c \"SELECT pg_terminate_backend\\(pid\\) FROM pg_stat_activity WHERE datname = 'str_db' AND pid <> pg_backend_pid\\(\\);\")",
+      "Bash(\"C:/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -c \"DROP DATABASE IF EXISTS str_db;\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -c \"SELECT pg_terminate_backend\\(pid\\) FROM pg_stat_activity WHERE datname = 'str_db' AND pid <> pg_backend_pid\\(\\);\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -c \"DROP DATABASE IF EXISTS str_db;\")",
+      "Bash(rm -rf \"C:/Projects/STR/str_backend/build\")",
+      "Bash(rm -rf \"C:/Projects/STR/str_backend/.claude/worktrees/agent-a5cdb628\")",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -c \"SELECT pg_terminate_backend\\(pid\\) FROM pg_stat_activity WHERE datname = 'str_db' AND pid <> pg_backend_pid\\(\\); DROP DATABASE IF EXISTS str_db;\")"
     ]
   }
 }
