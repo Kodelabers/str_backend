@@ -7,6 +7,8 @@ import com.str.backend.validation.ValidationContext;
 import com.str.backend.validation.ValidationResult;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 @Component
 public class Go2TipGradevine implements ValidationCheck {
 
@@ -23,7 +25,10 @@ public class Go2TipGradevine implements ValidationCheck {
     public String step() { return STEP; }
 
     @Override
-    public int order() { return 1; }
+    public int order() { return 2; }
+
+    @Override
+    public Set<String> dependsOn() { return Set.of("GO-1"); }
 
     @Override
     public ValidationResult check(ValidationContext context) {

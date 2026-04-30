@@ -37,19 +37,19 @@ public class AccommodationEntity {
     @Column(name = "accommodation_code", length = 64)
     @Setter private String accommodationCode;
 
-    @Column(name = "county", length = 128, nullable = false)
+    @Column(name = "county", length = 128, nullable = false, updatable = false)
     private String county;
 
-    @Column(name = "city", length = 128, nullable = false)
+    @Column(name = "city", length = 128, nullable = false, updatable = false)
     private String city;
 
     @Column(name = "settlement", length = 128)
     @Setter private String settlement;
 
-    @Column(name = "street", length = 128, nullable = false)
+    @Column(name = "street", length = 128, nullable = false, updatable = false)
     private String street;
 
-    @Column(name = "street_number", length = 16, nullable = false)
+    @Column(name = "street_number", length = 16, nullable = false, updatable = false)
     private String streetNumber;
 
     @Column(name = "cadastral_municipality", length = 128)
@@ -58,21 +58,21 @@ public class AccommodationEntity {
     @Column(name = "cadastral_parcel_number", length = 64)
     @Setter private String cadastralParcelNumber;
 
-    @Column(name = "max_beds", nullable = false)
+    @Column(name = "max_beds", nullable = false, updatable = false)
     private int maxBeds;
 
-    @Column(name = "max_guests", nullable = false)
+    @Column(name = "max_guests", nullable = false, updatable = false)
     private int maxGuests;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "offer_type", length = 16, nullable = false)
+    @Column(name = "offer_type", length = 16, nullable = false, updatable = false)
     private OfferType offerType;
 
     @Column(name = "lessor_residence")
     @Setter private Boolean lessorResidence;
 
     @Column(name = "lessor_domicile")
-    @Setter private Boolean lessorDomicile;
+    private Boolean lessorDomicile;
 
     @Column(name = "name", length = 255)
     @Setter private String name;
@@ -98,16 +98,16 @@ public class AccommodationEntity {
     @Column(name = "auxiliary_beds")
     @Setter private Integer auxiliaryBeds;
 
-    @Column(name = "building", nullable = false)
+    @Column(name = "building", nullable = false, updatable = false)
     private boolean building;
 
     @Column(name = "floor", length = 8)
     @Setter private String floor;
 
-    @Column(name = "apartments", nullable = false)
+    @Column(name = "apartments", nullable = false, updatable = false)
     private boolean apartments;
 
-    @Column(name = "legalized", nullable = false)
+    @Column(name = "legalized", nullable = false, updatable = false)
     private boolean legalized;
 
     @Column(name = "co_owner_consent")

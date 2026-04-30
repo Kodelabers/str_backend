@@ -63,7 +63,7 @@ public class RnEntity {
         return e;
     }
 
-    public void applyStatus(RnStatus next) {
+    void applyStatus(RnStatus next) {
         this.status = next;
         this.updatedAt = Instant.now();
         if (next == RnStatus.WITHDRAWN && this.validTo == null) {

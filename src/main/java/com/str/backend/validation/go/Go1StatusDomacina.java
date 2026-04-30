@@ -16,7 +16,7 @@ public class Go1StatusDomacina implements ValidationCheck {
     public String step() { return STEP; }
 
     @Override
-    public int order() { return 2; }
+    public int order() { return 1; }
 
     @Override
     public ValidationResult check(ValidationContext context) {
