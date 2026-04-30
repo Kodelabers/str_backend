@@ -5,19 +5,23 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Internetske platforme / Online platform -->
     <changeSet id="010-create-internetske-platforme" author="str-backend">
-        <createTable schemaName="str_rn" tableName="online_platform">
-            <column name="platform_id" type="BIGINT" autoIncrement="true">
+        <createTable schemaName="str_rn" tableName="online_platform"
+                     remarks="Internetska platforma za kratkoročni najam (Airbnb, Booking.com, Vrbo...) — izvor SDEP podataka o aktivnostima">
+            <column name="platform_id" type="BIGINT" autoIncrement="true"
+                    remarks="Interni ID platforme (PK)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="name" type="VARCHAR(255)">
+            <column name="name" type="VARCHAR(255)"
+                    remarks="Naziv platforme (npr. Airbnb, Booking.com)">
                 <constraints nullable="false"/>
             </column>
-            <column name="url" type="VARCHAR(500)">
+            <column name="url" type="VARCHAR(500)"
+                    remarks="Osnovna URL adresa platforme">
                 <constraints nullable="false"/>
             </column>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true">
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"
+                    remarks="Je li platforma aktivna u sustavu (neaktivne se ne prikazuju u sučelju)">
                 <constraints nullable="false"/>
             </column>
         </createTable>

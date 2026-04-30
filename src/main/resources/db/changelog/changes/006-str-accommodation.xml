@@ -5,77 +5,119 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Smještajni sadržaj objekt (SSO) / Accommodation -->
     <changeSet id="006-create-str-sso" author="str-backend">
-        <createTable schemaName="str_rn" tableName="accommodation">
-            <column name="accommodation_id" type="UUID">
+        <createTable schemaName="str_rn" tableName="accommodation"
+                     remarks="Smještajni sadržaj objekt (SSO) — fizički objekt koji iznajmljivač registrira za kratkoročni najam">
+            <column name="accommodation_id" type="UUID"
+                    remarks="UUID smještajnog sadržaja (PK, generira se pri kreaciji)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="submission_id" type="UUID">
-                <constraints nullable="false"
-                             foreignKeyName="fk_accommodation_submission"
-                             references="str.submission(submission_id)"/>
+            <column name="submission_id" type="UUID"
+                    remarks="Zahtjev kojim je smještaj prijavljen (FK na submission)">
+                <constraints foreignKeyName="fk_accommodation_submission"
+                             references="str_rn.submission(submission_id)"/>
             </column>
-            <column name="accommodation_type_id" type="BIGINT">
+            <column name="accommodation_type_id" type="BIGINT"
+                    remarks="Vrsta smještaja (FK na accommodation_type; null = nije određeno)">
                 <constraints foreignKeyName="fk_accommodation_type"
-                             references="str.accommodation_type(type_id)"/>
+                             references="str_rn.accommodation_type(type_id)"/>
             </column>
-            <column name="core_object_id" type="UUID">
-                <constraints foreignKeyName="fk_accommodation_core"
-                             references="core.objekt(uuid)"/>
-            </column>
-            <column name="accommodation_code" type="VARCHAR(64)"/>
-            <column name="county" type="VARCHAR(128)">
+            <column name="core_object_id" type="UUID"
+                    remarks="UUID objekta u core STR sustavu (vanjska referenca, bez FK constraint)"/>
+            <column name="accommodation_code" type="VARCHAR(64)"
+                    remarks="Šifra objekta u nadležnom tijelu"/>
+            <column name="county" type="VARCHAR(128)"
+                    remarks="Županija u kojoj se objekt nalazi">
                 <constraints nullable="false"/>
             </column>
-            <column name="city" type="VARCHAR(128)">
+            <column name="city" type="VARCHAR(128)"
+                    remarks="Grad ili općina u kojoj se objekt nalazi">
                 <constraints nullable="false"/>
             </column>
-            <column name="settlement" type="VARCHAR(128)"/>
-            <column name="street" type="VARCHAR(128)">
+            <column name="settlement" type="VARCHAR(128)"
+                    remarks="Naselje unutar grada/općine (ako se razlikuje od grada)"/>
+            <column name="street" type="VARCHAR(128)"
+                    remarks="Ulica lokacije objekta">
                 <constraints nullable="false"/>
             </column>
-            <column name="street_number" type="VARCHAR(16)">
+            <column name="street_number" type="VARCHAR(16)"
+                    remarks="Kućni broj lokacije objekta">
                 <constraints nullable="false"/>
             </column>
-            <column name="cadastral_municipality" type="VARCHAR(128)"/>
-            <column name="cadastral_parcel_number" type="VARCHAR(64)"/>
-            <column name="max_beds" type="INTEGER">
+            <column name="cadastral_municipality" type="VARCHAR(128)"
+                    remarks="Katastarska općina (za GO-4 provjeru suglasnosti suvlasnika)"/>
+            <column name="cadastral_parcel_number" type="VARCHAR(64)"
+                    remarks="Broj katastarske čestice"/>
+            <column name="max_beds" type="INTEGER"
+                    remarks="Maksimalni broj kreveta prema rješenju o kategorizaciji">
                 <constraints nullable="false"/>
             </column>
-            <column name="max_guests" type="INTEGER">
+            <column name="max_guests" type="INTEGER"
+                    remarks="Maksimalni broj gostiju istovremeno">
                 <constraints nullable="false"/>
             </column>
-            <column name="offer_type" type="VARCHAR(16)">
+            <column name="offer_type" type="VARCHAR(16)"
+                    remarks="Vrsta ponude: PARTIAL = dio objekta, FULL = cijeli objekt">
                 <constraints nullable="false"/>
             </column>
-            <column name="lessor_residence" type="BOOLEAN"/>
-            <column name="building" type="BOOLEAN">
+            <column name="lessor_residence" type="BOOLEAN"
+                    remarks="Iznajmljivač ima prijavljeno prebivalište u objektu (utječe na GO-1 domaćin status)"/>
+            <column name="lessor_domicile" type="BOOLEAN"
+                    remarks="Iznajmljivač ima domicil u istoj županiji kao objekt"/>
+            <column name="name" type="VARCHAR(255)"
+                    remarks="Marketinški naziv objekta (neobavezno)"/>
+            <column name="group_name" type="VARCHAR(128)"
+                    remarks="Naziv grupe objektata (za grupnu registraciju)"/>
+            <column name="requested_category" type="VARCHAR(32)"
+                    remarks="Zatražena kategorija (broj zvjezdica koje iznajmljivač traži)"/>
+            <column name="category" type="VARCHAR(32)"
+                    remarks="Dodijeljena kategorija od nadležnog tijela"/>
+            <column name="description" type="VARCHAR(1024)"
+                    remarks="Opis objekta"/>
+            <column name="brko" type="VARCHAR(64)"
+                    remarks="BRKO broj (Baza registriranih kulturnih objekata), ako primjenjivo"/>
+            <column name="note" type="VARCHAR(1024)"
+                    remarks="Interna napomena nadležnog tijela"/>
+            <column name="auxiliary_beds" type="INTEGER"
+                    remarks="Broj pomoćnih/extra kreveta (kauč, dječji krevetić...)"/>
+            <column name="building" type="BOOLEAN"
+                    remarks="Radi se o zgradi s više stanova (true = zgrada, GO-2 aktivira provjeru suglasnosti suvlasnika ako &gt; 3 jedinice)">
                 <constraints nullable="false"/>
             </column>
-            <column name="floor" type="VARCHAR(8)"/>
-            <column name="apartments" type="BOOLEAN">
+            <column name="floor" type="VARCHAR(8)"
+                    remarks="Kat na kojemu se stan/apartman nalazi (za objekte u zgradi)"/>
+            <column name="apartments" type="BOOLEAN"
+                    remarks="Objekt ima zasebne apartmanske jedinice koje se zasebno registriraju">
                 <constraints nullable="false"/>
             </column>
-            <column name="legalized" type="BOOLEAN">
+            <column name="legalized" type="BOOLEAN"
+                    remarks="Objekt ima valjano rješenje o legalizaciji (provjera GO-3)">
                 <constraints nullable="false"/>
             </column>
-            <column name="co_owner_consent" type="BOOLEAN"/>
-            <column name="consent_date" type="DATE"/>
-            <column name="consent_withdrawal_date" type="DATE"/>
-            <column name="host" type="BOOLEAN"/>
-            <column name="host_date" type="TIMESTAMPTZ"/>
-            <column name="host_withdrawal_date" type="TIMESTAMPTZ"/>
-            <column name="created_at" type="TIMESTAMPTZ">
+            <column name="co_owner_consent" type="BOOLEAN"
+                    remarks="Suglasnost suvlasnika ishođena (provjera GO-4, potrebna samo kod zgrada)"/>
+            <column name="consent_date" type="DATE"
+                    remarks="Datum ishođene suglasnosti suvlasnika"/>
+            <column name="consent_withdrawal_date" type="DATE"
+                    remarks="Datum povlačenja suglasnosti suvlasnika"/>
+            <column name="host" type="BOOLEAN"
+                    remarks="Iznajmljivač je označen kao STR domaćin (GO-1 domaćin status)"/>
+            <column name="host_date" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme dodjele statusa domaćina"/>
+            <column name="host_withdrawal_date" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme povlačenja statusa domaćina"/>
+            <column name="created_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme kreiranja zapisa">
                 <constraints nullable="false"/>
             </column>
-            <column name="updated_at" type="TIMESTAMPTZ">
+            <column name="updated_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme zadnje izmjene zapisa">
                 <constraints nullable="false"/>
             </column>
         </createTable>
 
         <sql>
-            ALTER TABLE str.accommodation
+            ALTER TABLE str_rn.accommodation
                 ADD CONSTRAINT chk_accommodation_offer_type
                     CHECK (offer_type IN ('PARTIAL', 'FULL'))
         </sql>

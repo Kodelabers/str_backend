@@ -5,48 +5,52 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Zahtjev / Submission -->
     <changeSet id="005-create-str-zahtjev" author="str-backend">
-        <createTable schemaName="str_rn" tableName="submission">
-            <column name="submission_id" type="UUID">
+        <createTable schemaName="str_rn" tableName="submission"
+                     remarks="Zahtjev za STR registraciju — nastaje pri podnošenju i veže se uz eGOP urudžbeni broj">
+            <column name="submission_id" type="UUID"
+                    remarks="UUID zahtjeva (PK, generira se pri kreaciji)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            <column name="filing_number" type="VARCHAR(64)">
+            <column name="filing_number" type="VARCHAR(64)"
+                    remarks="Urudžbeni broj dodijeljen od eGOP sustava (jedinstveni)">
                 <constraints nullable="false" unique="true" uniqueConstraintName="uq_submission_filing_number"/>
             </column>
-            <column name="document_link" type="VARCHAR(500)"/>
-            <column name="kanal" type="VARCHAR(16)">
-                <constraints nullable="false"/>
-            </column>
-            <column name="type_code" type="VARCHAR(32)">
+            <column name="document_link" type="VARCHAR(500)"
+                    remarks="URI dokumenta zahtjeva pohranjenoga u eGOP sustavu"/>
+            <column name="type_code" type="VARCHAR(32)"
+                    remarks="Vrsta zahtjeva (FK na submission_type)">
                 <constraints nullable="false"
                              foreignKeyName="fk_submission_type"
-                             references="str.submission_type(type_code)"/>
+                             references="str_rn.submission_type(type_code)"/>
             </column>
-            <column name="lessor_id" type="UUID">
+            <column name="lessor_id" type="UUID"
+                    remarks="Iznajmljivač koji je podnio zahtjev (FK na lessor)">
                 <constraints nullable="false"
                              foreignKeyName="fk_submission_lessor"
-                             references="str.lessor(lessor_id)"/>
+                             references="str_rn.lessor(lessor_id)"/>
             </column>
-            <column name="authority_id" type="BIGINT">
+            <column name="authority_id" type="BIGINT"
+                    remarks="Nadležno tijelo za obradu zahtjeva (FK na competent_authority)">
                 <constraints foreignKeyName="fk_submission_authority"
-                             references="str.competent_authority(authority_id)"/>
+                             references="str_rn.competent_authority(authority_id)"/>
             </column>
-            <column name="status" type="VARCHAR(32)">
+            <column name="status" type="VARCHAR(32)"
+                    remarks="Status zahtjeva (INITIATED / IN_VERIFICATION / IN_PROCESSING / ACCEPTED / REJECTED)">
                 <constraints nullable="false"/>
             </column>
-            <column name="created_at" type="TIMESTAMPTZ">
+            <column name="created_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme kreiranja zapisa">
                 <constraints nullable="false"/>
             </column>
-            <column name="updated_at" type="TIMESTAMPTZ">
+            <column name="updated_at" type="TIMESTAMPTZ"
+                    remarks="Datum i vrijeme zadnje izmjene zapisa">
                 <constraints nullable="false"/>
             </column>
         </createTable>
 
         <sql>
-            ALTER TABLE str.submission
-                ADD CONSTRAINT chk_submission_kanal
-                    CHECK (kanal IN ('NIAS', 'EIDAS', 'STRANAC')),
+            ALTER TABLE str_rn.submission
                 ADD CONSTRAINT chk_submission_status
                     CHECK (status IN ('INITIATED', 'IN_VERIFICATION', 'IN_PROCESSING', 'ACCEPTED', 'REJECTED'))
         </sql>
