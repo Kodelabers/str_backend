@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        eGOP urudžbiranje vraća službeni datum urudžbe odvojeno od created_at retka.
+        Razdvajamo ih jer created_at je tehnički timestamp ulaska u STR, a filing_date
+        je službena oznaka pisarnice (eGOP).
+    -->
+    <changeSet id="024-zahtjev-add-datum-urudzbe" author="str-backend">
+        <addColumn schemaName="str" tableName="submission">
+            <column name="filing_date" type="TIMESTAMPTZ"/>
+        </addColumn>
+        <rollback>
+            <dropColumn schemaName="str" tableName="submission" columnName="filing_date"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

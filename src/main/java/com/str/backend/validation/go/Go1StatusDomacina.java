@@ -1,14 +1,14 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.iznajmljivac.IznajmljivacEntity;
-import com.str.backend.sso.SsoEntity;
-import com.str.backend.validation.ValidacijskaProvjera;
-import com.str.backend.validation.ValidacijskiKontekst;
-import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.lessor.LessorEntity;
+import com.str.backend.validation.ValidationCheck;
+import com.str.backend.validation.ValidationContext;
+import com.str.backend.validation.ValidationResult;
 import org.springframework.stereotype.Component;
 
 @Component
-public class Go1StatusDomacina implements ValidacijskaProvjera {
+public class Go1StatusDomacina implements ValidationCheck {
 
     private static final String STEP = "GO-1";
 
@@ -16,20 +16,20 @@ public class Go1StatusDomacina implements ValidacijskaProvjera {
     public String step() { return STEP; }
 
     @Override
-    public int order() { return 2; }
+    public int order() { return 1; }
 
     @Override
-    public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
-        IznajmljivacEntity iz = kontekst.iznajmljivac();
-        SsoEntity sso = kontekst.sso();
+    public ValidationResult check(ValidationContext context) {
+        LessorEntity lessor = context.lessor();
+        AccommodationEntity accommodation = context.accommodation();
 
-        boolean zupanijaMatches = equalsIgnoreCaseNullSafe(iz.getZupanija(), sso.getZupanija());
-        boolean domacin = zupanijaMatches && !sso.isZgrada();
+        boolean countyMatches = equalsIgnoreCaseNullSafe(lessor.getCounty(), accommodation.getCounty());
+        boolean isHost = countyMatches && !accommodation.isBuilding();
 
-        sso.markDomacin(domacin);
+        accommodation.markHost(isHost);
 
-        return new ValidacijskiRezultat.Prosla(STEP,
-                "domacin=" + domacin + " (zupanija=" + zupanijaMatches + ", zgrada=" + sso.isZgrada() + ")");
+        return new ValidationResult.Passed(STEP,
+                "host=" + isHost + " (county=" + countyMatches + ", building=" + accommodation.isBuilding() + ")");
     }
 
     private static boolean equalsIgnoreCaseNullSafe(String a, String b) {

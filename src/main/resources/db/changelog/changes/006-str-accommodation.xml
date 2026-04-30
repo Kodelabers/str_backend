@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Smještajni sadržaj objekt (SSO) / Accommodation -->
+    <changeSet id="006-create-str-sso" author="str-backend">
+        <createTable schemaName="str" tableName="accommodation">
+            <column name="accommodation_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="submission_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_accommodation_submission"
+                             references="str.submission(submission_id)"/>
+            </column>
+            <column name="accommodation_type_id" type="BIGINT">
+                <constraints foreignKeyName="fk_accommodation_type"
+                             references="str.accommodation_type(type_id)"/>
+            </column>
+            <column name="core_object_id" type="UUID">
+                <constraints foreignKeyName="fk_accommodation_core"
+                             references="core.objekt(uuid)"/>
+            </column>
+            <column name="accommodation_code" type="VARCHAR(64)"/>
+            <column name="county" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="city" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="settlement" type="VARCHAR(128)"/>
+            <column name="street" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="street_number" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cadastral_municipality" type="VARCHAR(128)"/>
+            <column name="cadastral_parcel_number" type="VARCHAR(64)"/>
+            <column name="max_beds" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_guests" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="offer_type" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="lessor_residence" type="BOOLEAN"/>
+            <column name="building" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="floor" type="VARCHAR(8)"/>
+            <column name="apartments" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="legalized" type="BOOLEAN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="co_owner_consent" type="BOOLEAN"/>
+            <column name="consent_date" type="DATE"/>
+            <column name="consent_withdrawal_date" type="DATE"/>
+            <column name="host" type="BOOLEAN"/>
+            <column name="host_date" type="TIMESTAMPTZ"/>
+            <column name="host_withdrawal_date" type="TIMESTAMPTZ"/>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.accommodation
+                ADD CONSTRAINT chk_accommodation_offer_type
+                    CHECK (offer_type IN ('PARTIAL', 'FULL'))
+        </sql>
+
+        <createIndex schemaName="str" tableName="accommodation" indexName="idx_accommodation_submission">
+            <column name="submission_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="accommodation"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,10 +1,10 @@
 package com.str.backend.validation.go;
 
-import com.str.backend.iznajmljivac.IznajmljivacEntity;
+import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.lessor.LessorEntity;
 import com.str.backend.registries.MpgiClient;
-import com.str.backend.sso.SsoEntity;
-import com.str.backend.validation.ValidacijskiKontekst;
-import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.validation.ValidationContext;
+import com.str.backend.validation.ValidationResult;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,52 +20,52 @@ class Go2TipGradevineTest {
     private final Go2TipGradevine step = new Go2TipGradevine(mpgiClient);
 
     @Test
-    void flagsContext_whenJedinicaExceedThreshold() {
-        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
-        ValidacijskiKontekst ctx = ctx(sso);
+    void flagsContext_whenUnitsExceedThreshold() {
+        AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
+        ValidationContext ctx = ctx(acc);
         when(mpgiClient.brojStambenihJedinica("Ulica 1, Zagreb")).thenReturn(10);
 
-        ValidacijskiRezultat r = step.provjeri(ctx);
+        ValidationResult r = step.check(ctx);
 
-        assertThat(r).isInstanceOf(ValidacijskiRezultat.Prosla.class);
-        assertThat(ctx.zahtjevaSuglasnost()).isTrue();
+        assertThat(r).isInstanceOf(ValidationResult.Passed.class);
+        assertThat(ctx.requiresCoOwnerConsent()).isTrue();
     }
 
     @Test
-    void doesNotFlag_whenJedinicaAtOrBelowThreshold() {
-        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
-        ValidacijskiKontekst ctx = ctx(sso);
+    void doesNotFlag_whenUnitsAtOrBelowThreshold() {
+        AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
+        ValidationContext ctx = ctx(acc);
         when(mpgiClient.brojStambenihJedinica(anyString())).thenReturn(3);
 
-        step.provjeri(ctx);
+        step.check(ctx);
 
-        assertThat(ctx.zahtjevaSuglasnost()).isFalse();
+        assertThat(ctx.requiresCoOwnerConsent()).isFalse();
     }
 
     @Test
-    void skipsMpgi_whenNotZgrada() {
-        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
-        ValidacijskiKontekst ctx = ctx(sso);
+    void skipsMpgi_whenNotBuilding() {
+        AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
+        ValidationContext ctx = ctx(acc);
 
-        ValidacijskiRezultat r = step.provjeri(ctx);
+        ValidationResult r = step.check(ctx);
 
-        assertThat(r).isInstanceOf(ValidacijskiRezultat.Prosla.class);
-        assertThat(ctx.zahtjevaSuglasnost()).isFalse();
+        assertThat(r).isInstanceOf(ValidationResult.Passed.class);
+        assertThat(ctx.requiresCoOwnerConsent()).isFalse();
         verify(mpgiClient, never()).brojStambenihJedinica(anyString());
     }
 
     @Test
-    void skipsMpgi_whenZgradaButNotStanovi() {
-        SsoEntity sso = GoTestFixtures.sso("Grad Zagreb", "Zagreb", 2, 4, true, false, true);
-        ValidacijskiKontekst ctx = ctx(sso);
+    void skipsMpgi_whenBuildingButNotApartments() {
+        AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, true, false, true);
+        ValidationContext ctx = ctx(acc);
 
-        step.provjeri(ctx);
+        step.check(ctx);
 
         verify(mpgiClient, never()).brojStambenihJedinica(anyString());
     }
 
-    private ValidacijskiKontekst ctx(SsoEntity sso) {
-        IznajmljivacEntity iz = GoTestFixtures.iznajmljivac("Grad Zagreb", "Zagreb");
-        return new ValidacijskiKontekst(sso, iz, null);
+    private ValidationContext ctx(AccommodationEntity acc) {
+        LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
+        return new ValidationContext(acc, lessor, null);
     }
 }

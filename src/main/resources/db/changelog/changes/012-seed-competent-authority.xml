@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Replaces the 5 placeholder records from 009-seed-lookups with the real
+        regional offices (Područne jedinice) and branch offices (Ispostave) of
+        the Tourism Inspection Sector (Sektor turističke inspekcije) within the
+        Ministry of Tourism and Sports (Ministarstvo turizma i sporta).
+
+        Source: https://mint.gov.hr (Turistička inspekcija - Područni uredi)
+        Legal basis: Zakon o turističkoj inspekciji (NN 19/14)
+    -->
+    <changeSet id="012-replace-nadlezno-tijelo-placeholders" author="str-backend">
+        <delete schemaName="str" tableName="competent_authority">
+            <where>name IN (
+                'Turistička inspekcija Zagreb',
+                'Turistička inspekcija Split',
+                'Turistička inspekcija Rijeka',
+                'Turistička inspekcija Osijek',
+                'Turistička inspekcija Zadar'
+            )</where>
+        </delete>
+
+        <!-- Central sector -->
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Ministarstvo turizma i sporta - Sektor turističke inspekcije"/>
+        </insert>
+
+        <!-- Regional offices (Područne jedinice) -->
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Turistička inspekcija - Područna jedinica Zagreb"/>
+        </insert>
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Turistička inspekcija - Područna jedinica Rijeka"/>
+        </insert>
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Turistička inspekcija - Područna jedinica Pula"/>
+        </insert>
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Turistička inspekcija - Područna jedinica Split"/>
+        </insert>
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Turistička inspekcija - Područna jedinica Osijek"/>
+        </insert>
+
+        <!-- Branch offices (Ispostave) -->
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Turistička inspekcija - Ispostava Zadar"/>
+        </insert>
+        <insert schemaName="str" tableName="competent_authority">
+            <column name="name" value="Turistička inspekcija - Ispostava Poreč"/>
+        </insert>
+
+        <rollback>
+            <delete schemaName="str" tableName="competent_authority">
+                <where>name IN (
+                    'Ministarstvo turizma i sporta - Sektor turističke inspekcije',
+                    'Turistička inspekcija - Područna jedinica Zagreb',
+                    'Turistička inspekcija - Područna jedinica Rijeka',
+                    'Turistička inspekcija - Područna jedinica Pula',
+                    'Turistička inspekcija - Područna jedinica Split',
+                    'Turistička inspekcija - Područna jedinica Osijek',
+                    'Turistička inspekcija - Ispostava Zadar',
+                    'Turistička inspekcija - Ispostava Poreč'
+                )</where>
+            </delete>
+            <insert schemaName="str" tableName="competent_authority">
+                <column name="name" value="Turistička inspekcija Zagreb"/>
+            </insert>
+            <insert schemaName="str" tableName="competent_authority">
+                <column name="name" value="Turistička inspekcija Split"/>
+            </insert>
+            <insert schemaName="str" tableName="competent_authority">
+                <column name="name" value="Turistička inspekcija Rijeka"/>
+            </insert>
+            <insert schemaName="str" tableName="competent_authority">
+                <column name="name" value="Turistička inspekcija Osijek"/>
+            </insert>
+            <insert schemaName="str" tableName="competent_authority">
+                <column name="name" value="Turistička inspekcija Zadar"/>
+            </insert>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

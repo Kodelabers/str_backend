@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      STR §10 (SDEP): monthly ingestion of activity data from internet platforms.
+      STR-3.1 uvoz, STR-3.2 pregled (filter by platform + rb + adresa + date range),
+      STR-3.3 auto-purge 18 months after receipt.
+    -->
+    <changeSet id="017-create-sso-aktivnosti" author="str-backend">
+        <createTable schemaName="str" tableName="accommodation_activity">
+            <column name="activity_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="platform_id" type="BIGINT">
+                <constraints nullable="false"
+                             foreignKeyName="fk_activity_platform"
+                             references="str.online_platform(platform_id)"/>
+            </column>
+            <column name="rn" type="VARCHAR(18)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="accommodation_id" type="UUID">
+                <constraints foreignKeyName="fk_activity_accommodation"
+                             references="str.accommodation(accommodation_id)"/>
+            </column>
+            <column name="period_from" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="period_to" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="overnight_stays" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="guest_count" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="guest_country" type="VARCHAR(64)"/>
+            <column name="received_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="purge_after" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.accommodation_activity
+                ADD CONSTRAINT chk_activity_rn_format
+                    CHECK (rn ~ '^HR[0-9]{8}$'),
+                ADD CONSTRAINT chk_activity_period
+                    CHECK (period_to &gt;= period_from),
+                ADD CONSTRAINT chk_activity_overnight_stays_nn
+                    CHECK (overnight_stays &gt;= 0),
+                ADD CONSTRAINT chk_activity_guest_count_nn
+                    CHECK (guest_count &gt;= 0)
+        </sql>
+
+        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_rn">
+            <column name="rn"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_platform">
+            <column name="platform_id"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_period">
+            <column name="period_from"/>
+            <column name="period_to"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="accommodation_activity" indexName="idx_activity_purge">
+            <column name="purge_after"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="accommodation_activity"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

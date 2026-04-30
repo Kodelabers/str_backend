@@ -1,14 +1,14 @@
 package com.str.backend.validation.go;
 
+import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.core.CoreObjektEntity;
-import com.str.backend.sso.SsoEntity;
-import com.str.backend.validation.ValidacijskaProvjera;
-import com.str.backend.validation.ValidacijskiKontekst;
-import com.str.backend.validation.ValidacijskiRezultat;
+import com.str.backend.validation.ValidationCheck;
+import com.str.backend.validation.ValidationContext;
+import com.str.backend.validation.ValidationResult;
 import org.springframework.stereotype.Component;
 
 @Component
-public class Go3LegalnostObjekta implements ValidacijskaProvjera {
+public class Go3LegalnostObjekta implements ValidationCheck {
 
     private static final String STEP = "GO-3";
 
@@ -19,16 +19,16 @@ public class Go3LegalnostObjekta implements ValidacijskaProvjera {
     public int order() { return 3; }
 
     @Override
-    public ValidacijskiRezultat provjeri(ValidacijskiKontekst kontekst) {
-        SsoEntity sso = kontekst.sso();
-        if (!sso.isLegalizirano()) {
-            return new ValidacijskiRezultat.Odbijena(STEP, "SSO nije legalizirano");
+    public ValidationResult check(ValidationContext context) {
+        AccommodationEntity accommodation = context.accommodation();
+        if (!accommodation.isLegalized()) {
+            return new ValidationResult.Rejected(STEP, "SSO nije legalizirano");
         }
-        CoreObjektEntity core = kontekst.coreObjekt();
+        CoreObjektEntity core = context.coreObject();
         if (core != null && !core.isLegalan()) {
-            return new ValidacijskiRezultat.Odbijena(STEP,
+            return new ValidationResult.Rejected(STEP,
                     "core rjesenje pokazuje da objekt nije legalan");
         }
-        return new ValidacijskiRezultat.Prosla(STEP, "legalizirano");
+        return new ValidationResult.Passed(STEP, "legalizirano");
     }
 }

@@ -1,47 +1,66 @@
 package com.str.backend.validation.go;
 
+import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.core.CoreObjektEntity;
-import com.str.backend.domain.Ponuda;
-import com.str.backend.iznajmljivac.IznajmljivacEntity;
-import com.str.backend.sso.SsoEntity;
+import com.str.backend.domain.OfferType;
+import com.str.backend.lessor.LessorEntity;
 
 import java.time.LocalDate;
 import java.util.UUID;
 
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 final class GoTestFixtures {
 
     private GoTestFixtures() {}
 
-    static IznajmljivacEntity iznajmljivac(String zupanija, String mjesto) {
-        return IznajmljivacEntity.create(
-                "Marko", "Maric", "Ilica", "1", mjesto, zupanija, "marko@example.com");
+    static LessorEntity lessor(String county, String place) {
+        return LessorEntity.create(
+                "Marko", "Maric", "Ilica", "1", place, county, "marko@example.com");
     }
 
-    static SsoEntity sso(String zupanija, String grad, int maxKreveta, int maxGostiju,
-                         boolean zgrada, boolean stanovi, boolean legalizirano) {
-        return SsoEntity.create(
-                UUID.randomUUID(), zupanija, grad, "Ulica", "1",
-                maxKreveta, maxGostiju, Ponuda.CJELINA,
-                zgrada, stanovi, legalizirano);
+    static AccommodationEntity accommodation(String county, String city, int maxBeds, int maxGuests,
+                                             boolean building, boolean apartments, boolean legalized) {
+        return AccommodationEntity.create(
+                UUID.randomUUID(), county, city, "Ulica", "1",
+                maxBeds, maxGuests, OfferType.FULL,
+                building, apartments, legalized);
     }
 
-    static SsoEntity ssoWithSuglasnost(Boolean suglasnost, LocalDate datumSuglasnosti,
-                                       LocalDate datumPovlacenja) {
-        SsoEntity sso = sso("Zagreb", "Zagreb", 2, 4, true, true, true);
-        sso.setSuglasnost(suglasnost, datumSuglasnosti, datumPovlacenja);
-        return sso;
+    static AccommodationEntity accommodationWithConsent(Boolean consent, LocalDate consentDate,
+                                                        LocalDate withdrawalDate) {
+        AccommodationEntity acc = accommodation("Zagreb", "Zagreb", 2, 4, true, true, true);
+        acc.setConsent(consent, consentDate, withdrawalDate);
+        return acc;
     }
 
-    static CoreObjektEntity coreObjekt(int maxKreveta, int maxGostiju, boolean legalan) {
+    static CoreObjektEntity coreObject(int maxBeds, int maxGuests, boolean legalan) {
         CoreObjektEntity core = mock(CoreObjektEntity.class);
         lenient().when(core.getUuid()).thenReturn(UUID.randomUUID());
-        lenient().when(core.getMaxKreveta()).thenReturn(maxKreveta);
-        lenient().when(core.getMaxGostiju()).thenReturn(maxGostiju);
+        lenient().when(core.getMaxKreveta()).thenReturn(maxBeds);
+        lenient().when(core.getMaxGostiju()).thenReturn(maxGuests);
         lenient().when(core.isLegalan()).thenReturn(legalan);
         return core;
+    }
+
+    // --- Legacy aliases used by existing tests (kept for backward compatibility) ---
+
+    static LessorEntity iznajmljivac(String county, String place) {
+        return lessor(county, place);
+    }
+
+    static AccommodationEntity sso(String county, String city, int maxBeds, int maxGuests,
+                                   boolean building, boolean apartments, boolean legalized) {
+        return accommodation(county, city, maxBeds, maxGuests, building, apartments, legalized);
+    }
+
+    static AccommodationEntity ssoWithSuglasnost(Boolean consent, LocalDate consentDate,
+                                                  LocalDate withdrawalDate) {
+        return accommodationWithConsent(consent, consentDate, withdrawalDate);
+    }
+
+    static CoreObjektEntity coreObjekt(int maxBeds, int maxGuests, boolean legalan) {
+        return coreObject(maxBeds, maxGuests, legalan);
     }
 }

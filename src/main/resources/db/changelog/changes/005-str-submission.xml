@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Zahtjev / Submission -->
+    <changeSet id="005-create-str-zahtjev" author="str-backend">
+        <createTable schemaName="str" tableName="submission">
+            <column name="submission_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="filing_number" type="VARCHAR(64)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_submission_filing_number"/>
+            </column>
+            <column name="document_link" type="VARCHAR(500)"/>
+            <column name="kanal" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type_code" type="VARCHAR(32)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_submission_type"
+                             references="str.submission_type(type_code)"/>
+            </column>
+            <column name="lessor_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_submission_lessor"
+                             references="str.lessor(lessor_id)"/>
+            </column>
+            <column name="authority_id" type="BIGINT">
+                <constraints foreignKeyName="fk_submission_authority"
+                             references="str.competent_authority(authority_id)"/>
+            </column>
+            <column name="status" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str.submission
+                ADD CONSTRAINT chk_submission_kanal
+                    CHECK (kanal IN ('NIAS', 'EIDAS', 'STRANAC')),
+                ADD CONSTRAINT chk_submission_status
+                    CHECK (status IN ('INITIATED', 'IN_VERIFICATION', 'IN_PROCESSING', 'ACCEPTED', 'REJECTED'))
+        </sql>
+
+        <createIndex schemaName="str" tableName="submission" indexName="idx_submission_lessor">
+            <column name="lessor_id"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="submission" indexName="idx_submission_status">
+            <column name="status"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str" tableName="submission"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

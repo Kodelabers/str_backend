@@ -1,14 +1,27 @@
 package com.str.backend.registries;
 
-import java.util.List;
+import java.time.Instant;
 
 /**
- * STR funkcionalna specifikacija §6.1.3 / §6.1.4 + GO-5: Sudski registar via eGOP.
- * Returns the legal representatives of a pravna osoba identified by OIB.
+ * STR funkcionalna specifikacija §3 (osnovni flow): eGOP — sustav urudžbiranja
+ * pisarnice. Dva poziva tijekom registracije:
+ *   1. {@link #rezervirajUrudzbeniBroj()} — vraća službeni urudžbeni broj koji se
+ *      utiskuje u PDF zahtjeva.
+ *   2. {@link #posaljiZahtjev(String, byte[])} — predaje finalni PDF (s utisnutim
+ *      brojem) eGOP-u i potvrđuje uredan unos u urudžbenu evidenciju.
  */
 public interface EgopClient {
 
-    record Zastupnik(String oib, String ime, String prezime, String adresa) {}
+    record UrudzbeniBroj(String klasa, String urbroj, Instant datumUrudzbe) {
 
-    List<Zastupnik> dohvatiZastupnike(String oibPravneOsobe);
+        public String formatiran() {
+            return "KLASA: " + klasa + ", URBROJ: " + urbroj;
+        }
+    }
+
+    record PotvrdaUrudzbiranja(String urudzbeniBroj, Instant datumPotvrde) {}
+
+    UrudzbeniBroj rezervirajUrudzbeniBroj();
+
+    PotvrdaUrudzbiranja posaljiZahtjev(String urudzbeniBroj, byte[] pdf);
 }
