@@ -11,10 +11,5 @@
         <rollback>DROP SCHEMA IF EXISTS str_rn CASCADE</rollback>
     </changeSet>
 
-    <!-- core schema is a local-only mock; in production it is owned by the core service -->
-    <changeSet id="001-create-schema-core" author="str-backend" context="local">
-        <sql>CREATE SCHEMA IF NOT EXISTS core</sql>
-        <rollback>DROP SCHEMA IF EXISTS core CASCADE</rollback>
-    </changeSet>
 
 </databaseChangeLog>

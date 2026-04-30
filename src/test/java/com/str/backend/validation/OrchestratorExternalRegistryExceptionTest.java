@@ -31,7 +31,7 @@ class OrchestratorExternalRegistryExceptionTest {
 
         ParallelValidationOrchestrator orchestrator =
                 new ParallelValidationOrchestrator(List.of(failingCheck), auditLogRepository);
-        ValidationContext context = new ValidationContext(accommodation(), lessor(), null);
+        ValidationContext context = new ValidationContext(accommodation(), lessor());
 
         assertThatThrownBy(() -> orchestrator.execute(context))
                 .isInstanceOf(ExternalRegistryException.class)
@@ -59,7 +59,7 @@ class OrchestratorExternalRegistryExceptionTest {
 
         ParallelValidationOrchestrator orchestrator =
                 new ParallelValidationOrchestrator(List.of(passing, failing), auditLogRepository);
-        ValidationContext context = new ValidationContext(accommodation(), lessor(), null);
+        ValidationContext context = new ValidationContext(accommodation(), lessor());
 
         assertThatThrownBy(() -> orchestrator.execute(context))
                 .isInstanceOf(ExternalRegistryException.class)

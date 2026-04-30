@@ -2,8 +2,6 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
-import com.str.backend.core.CoreObjektEntity;
-import com.str.backend.core.CoreObjektRepository;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
@@ -34,20 +32,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * STR §3 core registration flow:
- *   1. form → enrich (GIS/RPJ/SR) — populate canonical data from core registries
- *   2. PdfGenerator → initial PDF (without filing number)
- *   3. eGOP {@code rezervirajUrudzbeniBroj()} → official number
- *   4. PdfGenerator → final PDF with stamped number
- *   5. eGOP {@code posaljiZahtjev(...)} → filing confirmation
- *   6. save submission metadata (str.zahtjev) — filing number, date, type, link
- *   7. save lessor and accommodations (only after successful filing)
- *   8. validation orchestrator (GO-1..GO-5)
- *   9. issue RB per accommodation
- *
- * If any step before RB generation fails, the transaction rolls back leaving no orphan entities.
- */
 @Service
 public class RegistrationService {
 
@@ -57,7 +41,6 @@ public class RegistrationService {
     private final LessorRepository lessorRepository;
     private final AccommodationRepository accommodationRepository;
     private final SubmissionRepository submissionRepository;
-    private final CoreObjektRepository coreObjektRepository;
     private final ParallelValidationOrchestrator orchestrator;
     private final RnService rnService;
     private final GisClient gisClient;
@@ -69,7 +52,6 @@ public class RegistrationService {
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
                                SubmissionRepository submissionRepository,
-                               CoreObjektRepository coreObjektRepository,
                                ParallelValidationOrchestrator orchestrator,
                                RnService rnService,
                                GisClient gisClient,
@@ -80,7 +62,6 @@ public class RegistrationService {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
-        this.coreObjektRepository = coreObjektRepository;
         this.orchestrator = orchestrator;
         this.rnService = rnService;
         this.gisClient = gisClient;
@@ -92,10 +73,8 @@ public class RegistrationService {
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse register(RegistrationRequest req) {
-        // 1. Enrich data from core registries
         enrich(req);
 
-        // 2-5. Build entities in memory + PDF + eGOP filing
         LessorEntity lessor = buildLessor(req.getLessor());
 
         byte[] draftPdf = pdfGenerator.generate(req, lessor, null);
@@ -107,7 +86,6 @@ public class RegistrationService {
         log.info("egop_filing_ok filingNumber={} draft_size={} final_size={}",
                 confirmation.urudzbeniBroj(), draftPdf.length, finalPdf.length);
 
-        // 6. Save lessor and submission metadata (str.zahtjev)
         lessorRepository.save(lessor);
         SubmissionEntity submission = SubmissionEntity.create(
                 confirmation.urudzbeniBroj(),
@@ -119,16 +97,11 @@ public class RegistrationService {
                 finalPdf);
         submissionRepository.save(submission);
 
-        // 7. Save accommodations linked to submission
         List<AccommodationEntity> accommodationList = materialize(req, submission.getSubmissionId());
 
-        // 8-9. Validation + RN per accommodation
         List<RegistrationResponse.AssignedRb> assigned = new ArrayList<>(accommodationList.size());
         for (AccommodationEntity accommodation : accommodationList) {
-            CoreObjektEntity core = accommodation.getCoreObjectId() != null
-                    ? coreObjektRepository.findById(accommodation.getCoreObjectId()).orElse(null)
-                    : null;
-            ValidationContext context = new ValidationContext(accommodation, lessor, core);
+            ValidationContext context = new ValidationContext(accommodation, lessor);
             PipelineResult result = orchestrator.execute(context);
             if (result.getOutcome() == PipelineResult.Outcome.REJECTED) {
                 throw new ValidationRejectedException(result.getStep(), result.getDetail());
@@ -143,10 +116,6 @@ public class RegistrationService {
         return new RegistrationResponse(req.getScenario(), lessor.getLessorId(), assigned);
     }
 
-    /**
-     * GIS/RPJ/SR enrichment — fills missing fields in request DTO before persisting.
-     * Does not override existing values already entered by the user.
-     */
     private void enrich(RegistrationRequest req) {
         LessorRequest lr = req.getLessor();
         if (lr.getRepresentativeOib() != null && lr.getLegalEntityName() == null) {
@@ -166,10 +135,8 @@ public class RegistrationService {
                         if (s.getSettlement() == null) s.setSettlement(a.naselje());
                     });
             gisClient.dohvatiParcelu(s.getCadastralMunicipality(), s.getCadastralParcelNumber())
-                    .ifPresent(p -> {
-                        log.debug("gis_lookup_ok ko={} brc={} legalan={}",
-                                p.katastarskaOpcina(), p.brojCestice(), p.legalanObjekt());
-                    });
+                    .ifPresent(p -> log.debug("gis_lookup_ok ko={} brc={} legalan={}",
+                            p.katastarskaOpcina(), p.brojCestice(), p.legalanObjekt()));
         }
     }
 

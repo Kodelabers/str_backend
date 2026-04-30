@@ -70,7 +70,16 @@
       "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -c \"DROP DATABASE IF EXISTS str_db;\")",
       "Bash(rm -rf \"C:/Projects/STR/str_backend/build\")",
       "Bash(rm -rf \"C:/Projects/STR/str_backend/.claude/worktrees/agent-a5cdb628\")",
-      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -c \"SELECT pg_terminate_backend\\(pid\\) FROM pg_stat_activity WHERE datname = 'str_db' AND pid <> pg_backend_pid\\(\\); DROP DATABASE IF EXISTS str_db;\")"
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\" -U postgres -c \"SELECT pg_terminate_backend\\(pid\\) FROM pg_stat_activity WHERE datname = 'str_db' AND pid <> pg_backend_pid\\(\\); DROP DATABASE IF EXISTS str_db;\")",
+      "Bash(git rm *)",
+      "Bash(PGPASSWORD=\"change_me\" /c/Program Files/PostgreSQL/18/bin/psql.exe *)",
+      "Bash('/c/Program Files/PostgreSQL/18/bin/psql.exe' -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c '\\\\d str.subject')",
+      "Bash('/c/Program Files/PostgreSQL/18/bin/psql.exe' -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c '\\\\d str.subject_version')",
+      "Bash('/c/Program Files/PostgreSQL/18/bin/psql.exe' -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c '\\\\d str.business_case')",
+      "Bash('/c/Program Files/PostgreSQL/18/bin/psql.exe' -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c '\\\\d str.address')",
+      "Bash('/c/Program Files/PostgreSQL/18/bin/psql.exe' -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c '\\\\d str.business_space')",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(grep -l \"CoreObjektEntity\\\\|CoreObjekt\" src/main/java/com/str/backend/core/CoreObjektEntity.java find src/main/java/com/str/backend/core -type f)"
     ]
   }
 }

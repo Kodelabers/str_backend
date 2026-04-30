@@ -6,7 +6,6 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <include file="db/changelog/changes/001-init-schemas.xml"/>
-    <include file="db/changelog/changes/002-core-object.xml"/>
     <include file="db/changelog/changes/003-str-lookups.xml"/>
     <include file="db/changelog/changes/004-str-lessor.xml"/>
     <include file="db/changelog/changes/005-str-submission.xml"/>
@@ -26,8 +25,6 @@
     <include file="db/changelog/changes/019-str-legal-representative.xml"/>
     <include file="db/changelog/changes/020-decouple-submission.xml"/>
     <include file="db/changelog/changes/021-drop-lessor-credentials.xml"/>
-    <include file="db/changelog/changes/022-core-mock-registries.xml"/>
-    <include file="db/changelog/changes/023-seed-core-mock-registries.xml"/>
     <include file="db/changelog/changes/024-submission-add-filing-date.xml"/>
     <include file="db/changelog/changes/025-submission-add-pdf-content.xml"/>
 
