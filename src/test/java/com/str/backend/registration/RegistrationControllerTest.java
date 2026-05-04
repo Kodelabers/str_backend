@@ -2,10 +2,7 @@ package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.domain.OfferType;
-import com.str.backend.domain.Scenario;
 import com.str.backend.exception.ValidationRejectedException;
-import com.str.backend.registration.dto.AccommodationRequest;
-import com.str.backend.registration.dto.LessorRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
 import com.str.backend.request.SubmissionEntity;
@@ -46,15 +43,14 @@ class RegistrationControllerTest {
         UUID lessorId = UUID.randomUUID();
         UUID accommodationId = UUID.randomUUID();
         RegistrationResponse resp = new RegistrationResponse(
-                Scenario.S2_NEW_UNIT_EXTERNAL, lessorId,
+                lessorId,
                 List.of(new RegistrationResponse.AssignedRb(accommodationId, "HR12345678")));
-        when(service.register(any())).thenReturn(resp);
+        when(service.generateRegistrationNumber(any())).thenReturn(resp);
 
-        mvc.perform(post("/api/registracija")
+        mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(om.writeValueAsBytes(validRequest())))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.scenario").value("S2_NEW_UNIT_EXTERNAL"))
                 .andExpect(jsonPath("$.lessorId").value(lessorId.toString()))
                 .andExpect(jsonPath("$.assignedRbs[0].rn").value("HR12345678"));
     }
@@ -62,9 +58,9 @@ class RegistrationControllerTest {
     @Test
     void post_returns_400_when_payload_invalid() throws Exception {
         RegistrationRequest invalid = validRequest();
-        invalid.getLessor().setEmail("not-an-email");
+        invalid.setMaxBeds(0); // violates @Min(1)
 
-        mvc.perform(post("/api/registracija")
+        mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(om.writeValueAsBytes(invalid)))
                 .andExpect(status().isBadRequest());
@@ -72,10 +68,10 @@ class RegistrationControllerTest {
 
     @Test
     void post_returns_422_when_validation_rejected() throws Exception {
-        when(service.register(any()))
+        when(service.generateRegistrationNumber(any()))
                 .thenThrow(new ValidationRejectedException("GO-3", "objekt nije legaliziran"));
 
-        mvc.perform(post("/api/registracija")
+        mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(om.writeValueAsBytes(validRequest())))
                 .andExpect(status().isUnprocessableEntity())
@@ -89,7 +85,7 @@ class RegistrationControllerTest {
         SubmissionEntity s = submissionWithPdf(id, "334-01/26-01/1001 / 529-06/26-1", pdf);
         when(submissionRepository.findById(id)).thenReturn(Optional.of(s));
 
-        mvc.perform(get("/api/registracija/{id}/pdf", id))
+        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_PDF))
                 .andExpect(header().string("Content-Disposition",
@@ -102,7 +98,7 @@ class RegistrationControllerTest {
         UUID id = UUID.randomUUID();
         when(submissionRepository.findById(id)).thenReturn(Optional.empty());
 
-        mvc.perform(get("/api/registracija/{id}/pdf", id))
+        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isNotFound());
     }
 
@@ -112,37 +108,21 @@ class RegistrationControllerTest {
         SubmissionEntity s = submissionWithPdf(id, "334-01/26-01/1001", null);
         when(submissionRepository.findById(id)).thenReturn(Optional.of(s));
 
-        mvc.perform(get("/api/registracija/{id}/pdf", id))
+        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isNotFound());
     }
 
     private RegistrationRequest validRequest() {
         RegistrationRequest req = new RegistrationRequest();
-        req.setScenario(Scenario.S2_NEW_UNIT_EXTERNAL);
-        req.setCompetentAuthorityId(1L);
-
-        LessorRequest lr = new LessorRequest();
-        lr.setFirstName("Marko");
-        lr.setLastName("Maric");
-        lr.setEmail("marko@example.com");
-        lr.setStreet("Ilica");
-        lr.setStreetNumber("1");
-        lr.setPlace("Zagreb");
-        lr.setCounty("Grad Zagreb");
-        req.setLessor(lr);
-
-        AccommodationRequest ar = new AccommodationRequest();
-        ar.setCounty("Grad Zagreb");
-        ar.setCity("Zagreb");
-        ar.setStreet("Ilica");
-        ar.setStreetNumber("1");
-        ar.setMaxBeds(2);
-        ar.setMaxGuests(4);
-        ar.setOfferType(OfferType.FULL);
-        ar.setBuilding(true);
-        ar.setApartments(true);
-        ar.setLegalized(true);
-        req.setAccommodations(List.of(ar));
+        req.setName("Apartman Sunce");
+        req.setCountyId("Splitsko-dalmatinska");
+        req.setCityId("Split");
+        req.setStreet("Ulica kralja Tomislava");
+        req.setStreetNumber("14a");
+        req.setMaxBeds(4);
+        req.setMaxGuests(6);
+        req.setOfferType(OfferType.FULL);
+        req.setLegalized(true);
         return req;
     }
 

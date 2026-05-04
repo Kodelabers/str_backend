@@ -66,6 +66,6 @@ class Go2TipGradevineTest {
 
     private ValidationContext ctx(AccommodationEntity acc) {
         LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
-        return new ValidationContext(acc, lessor, null);
+        return new ValidationContext(acc, lessor);
     }
 }

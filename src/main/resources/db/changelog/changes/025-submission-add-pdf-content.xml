@@ -10,7 +10,7 @@
         kako bismo ga mogli kasnije ponovno preuzeti bez ponovnog poziva eGOP-a.
         document_link i dalje zadržava logičnu eGOP referencu.
     -->
-    <changeSet id="025-zahtjev-add-pdf-sadrzaj" author="str-backend">
+    <changeSet id="025-submission-add-pdf-content" author="str-backend">
         <addColumn schemaName="str_rn" tableName="submission">
             <column name="pdf_content" type="BLOB"/>
         </addColumn>

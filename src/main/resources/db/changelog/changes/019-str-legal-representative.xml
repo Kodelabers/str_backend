@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="019-create-zastupnici-pravne-osobe" author="str-backend">
+    <changeSet id="019-create-legal-representative" author="str-backend">
         <createTable schemaName="str_rn" tableName="legal_representative"
                      remarks="Zakonski zastupnik pravne osobe iznajmljivača — podaci se dohvaćaju iz sudskog registra (GO validacija)">
             <column name="representative_id" type="UUID"

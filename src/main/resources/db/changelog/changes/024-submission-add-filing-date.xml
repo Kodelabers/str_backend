@@ -10,7 +10,7 @@
         Razdvajamo ih jer created_at je tehnički timestamp ulaska u STR, a filing_date
         je službena oznaka pisarnice (eGOP).
     -->
-    <changeSet id="024-zahtjev-add-datum-urudzbe" author="str-backend">
+    <changeSet id="024-submission-add-filing-date" author="str-backend">
         <addColumn schemaName="str_rn" tableName="submission">
             <column name="filing_date" type="TIMESTAMPTZ"/>
         </addColumn>

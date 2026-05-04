@@ -5,22 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="003-create-nadlezno-tijelo" author="str-backend">
-        <createTable schemaName="str_rn" tableName="competent_authority"
-                     remarks="Nadležno tijelo za turistički nadzor (turistička inspekcija po županijama)">
-            <column name="authority_id" type="BIGINT" autoIncrement="true"
-                    remarks="Interni ID nadležnog tijela (PK)">
-                <constraints primaryKey="true" nullable="false"/>
-            </column>
-            <column name="name" type="VARCHAR(255)"
-                    remarks="Naziv nadležnog tijela (npr. Turistička inspekcija Grad Zagreb)">
-                <constraints nullable="false"/>
-            </column>
-        </createTable>
-        <rollback><dropTable schemaName="str_rn" tableName="competent_authority"/></rollback>
-    </changeSet>
-
-    <changeSet id="003-create-vrsta-zahtjeva" author="str-backend">
+    <changeSet id="003-create-submission-type" author="str-backend">
         <createTable schemaName="str_rn" tableName="submission_type"
                      remarks="Vrsta zahtjeva za registraciju (nova registracija, obnova, promjena...)">
             <column name="type_code" type="VARCHAR(32)"

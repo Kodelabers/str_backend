@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="010-create-internetske-platforme" author="str-backend">
+    <changeSet id="010-create-online-platform" author="str-backend">
         <createTable schemaName="str_rn" tableName="online_platform"
                      remarks="Internetska platforma za kratkoročni najam (Airbnb, Booking.com, Vrbo...) — izvor SDEP podataka o aktivnostima">
             <column name="platform_id" type="BIGINT" autoIncrement="true"

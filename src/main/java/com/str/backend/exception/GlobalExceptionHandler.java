@@ -4,6 +4,8 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -20,24 +22,30 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private final MessageSource messageSource;
+
+    public GlobalExceptionHandler(MessageSource messageSource) {
+        this.messageSource = messageSource;
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
-        return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+        return build(HttpStatus.NOT_FOUND, resolve(ex.getMessage()), null);
     }
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusiness(BusinessException ex) {
-        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), null);
+        return build(HttpStatus.BAD_REQUEST, resolve(ex.getMessage()), null);
     }
 
     @ExceptionHandler(IllegalStatusTransitionException.class)
     public ResponseEntity<ErrorResponse> handleIllegalTransition(IllegalStatusTransitionException ex) {
-        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+        return build(HttpStatus.CONFLICT, resolve("error.status.transition.illegal"), null);
     }
 
     @ExceptionHandler(ValidationRejectedException.class)
     public ResponseEntity<ErrorResponse> handleValidationRejected(ValidationRejectedException ex) {
-        return build(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(),
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, resolve(ex.getMessage()),
                 Map.of("step", ex.getStep()));
     }
 
@@ -45,7 +53,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleRegistry(ExternalRegistryException ex) {
         log.error("external_registry_error registry={} message={}", ex.getRegistry(), ex.getMessage(), ex);
         return build(HttpStatus.SERVICE_UNAVAILABLE,
-                "External registry unavailable", Map.of("registry", ex.getRegistry()));
+                resolve("error.external.registry.unavailable"),
+                Map.of("registry", ex.getRegistry()));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -58,14 +67,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         ex.getBindingResult().getFieldErrors()
-                .forEach(err -> fieldErrors.put(err.getField(), err.getDefaultMessage()));
-        return build(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors);
+                .forEach(err -> fieldErrors.put(err.getField(), resolve(err.getDefaultMessage())));
+        return build(HttpStatus.BAD_REQUEST, resolve("error.validation.failed"), fieldErrors);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
         log.error("unhandled_exception", ex);
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", null);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, resolve("error.internal"), null);
+    }
+
+    private String resolve(String key) {
+        return messageSource.getMessage(key, null, key, LocaleContextHolder.getLocale());
     }
 
     private static ResponseEntity<ErrorResponse> build(HttpStatus status, String message, Object details) {

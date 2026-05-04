@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="005-create-str-zahtjev" author="str-backend">
+    <changeSet id="005-create-str-submission" author="str-backend">
         <createTable schemaName="str_rn" tableName="submission"
                      remarks="Zahtjev za STR registraciju — nastaje pri podnošenju i veže se uz eGOP urudžbeni broj">
             <column name="submission_id" type="UUID"

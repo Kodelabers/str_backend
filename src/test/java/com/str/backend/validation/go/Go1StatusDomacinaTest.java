@@ -17,7 +17,7 @@ class Go1StatusDomacinaTest {
         LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
         // building=false → qualifies for host
         AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
-        ValidationContext ctx = new ValidationContext(acc, lessor, null);
+        ValidationContext ctx = new ValidationContext(acc, lessor);
 
         ValidationResult r = step.check(ctx);
 
@@ -30,7 +30,7 @@ class Go1StatusDomacinaTest {
         LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
         // building=true → disqualifies even if county matches (per ZAK-2.1 rule)
         AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, true, true, true);
-        ValidationContext ctx = new ValidationContext(acc, lessor, null);
+        ValidationContext ctx = new ValidationContext(acc, lessor);
 
         step.check(ctx);
 
@@ -41,7 +41,7 @@ class Go1StatusDomacinaTest {
     void marksHostFalse_whenCountyDiffers() {
         LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
         AccommodationEntity acc = GoTestFixtures.accommodation("Splitsko-dalmatinska", "Split", 2, 4, false, false, true);
-        ValidationContext ctx = new ValidationContext(acc, lessor, null);
+        ValidationContext ctx = new ValidationContext(acc, lessor);
 
         step.check(ctx);
 
@@ -53,7 +53,7 @@ class Go1StatusDomacinaTest {
         // Per ZAK-2.1: only county is compared, not place/city
         LessorEntity lessor = GoTestFixtures.lessor("splitsko-dalmatinska", "Omiš");
         AccommodationEntity acc = GoTestFixtures.accommodation("Splitsko-Dalmatinska", "Split", 2, 4, false, false, true);
-        ValidationContext ctx = new ValidationContext(acc, lessor, null);
+        ValidationContext ctx = new ValidationContext(acc, lessor);
 
         step.check(ctx);
 
@@ -64,7 +64,7 @@ class Go1StatusDomacinaTest {
     void alwaysReturnsPassed_evenOnMismatch() {
         LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
         AccommodationEntity acc = GoTestFixtures.accommodation("Istarska", "Pula", 2, 4, true, true, true);
-        ValidationContext ctx = new ValidationContext(acc, lessor, null);
+        ValidationContext ctx = new ValidationContext(acc, lessor);
 
         assertThat(step.check(ctx)).isInstanceOf(ValidationResult.Passed.class);
     }

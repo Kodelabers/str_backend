@@ -1,26 +1,36 @@
 package com.str.backend.registration.dto;
 
-import com.str.backend.domain.Scenario;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
+import com.str.backend.domain.OfferType;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-import java.util.List;
+import java.time.LocalDate;
 
 @Data
 public class RegistrationRequest {
 
-    @NotNull
-    private Scenario scenario;
+    private String name;
+    private String typeId;
 
-    @NotNull
-    @Valid
-    private LessorRequest lessor;
+    @NotNull private String countyId;
+    @NotNull private String cityId;
+    private String settlementId;
 
-    private Long competentAuthorityId;
+    @NotNull private String street;
+    @NotNull private String streetNumber;
+    private String postalCode;
 
-    @NotEmpty
-    @Valid
-    private List<AccommodationRequest> accommodations;
+    private Integer floor;
+    @Min(1) private int maxBeds;
+    @Min(1) private int maxGuests;
+
+    @NotNull private OfferType offerType;
+    private boolean building;
+    private String buildingType;
+    private Integer apartmentCount;
+
+    private boolean legalized;
+    private Boolean coOwnerConsent;
+    private LocalDate consentDate;
 }

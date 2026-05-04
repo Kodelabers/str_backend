@@ -1,6 +1,5 @@
 package com.str.backend.registration.dto;
 
-import com.str.backend.domain.Scenario;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -11,7 +10,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class RegistrationResponse {
 
-    private Scenario scenario;
     private UUID lessorId;
     private List<AssignedRb> assignedRbs;
 
