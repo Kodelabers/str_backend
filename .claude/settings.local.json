@@ -79,7 +79,13 @@
       "Bash('/c/Program Files/PostgreSQL/18/bin/psql.exe' -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c '\\\\d str.address')",
       "Bash('/c/Program Files/PostgreSQL/18/bin/psql.exe' -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c '\\\\d str.business_space')",
       "Bash(echo \"Exit: $?\")",
-      "Bash(grep -l \"CoreObjektEntity\\\\|CoreObjekt\" src/main/java/com/str/backend/core/CoreObjektEntity.java find src/main/java/com/str/backend/core -type f)"
+      "Bash(grep -l \"CoreObjektEntity\\\\|CoreObjekt\" src/main/java/com/str/backend/core/CoreObjektEntity.java find src/main/java/com/str/backend/core -type f)",
+      "Bash(DB_PASSWORD=strrn26! mvn spring-boot:run *)",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql.exe\" -h s-str-02.infodom.hr -p 5431 -U shorttermrental -d str2 -c \"\\\\dt str.*\")",
+      "Bash(PGPASSWORD=strrn26! /c/Program Files/PostgreSQL/18/bin/psql.exe *)",
+      "Bash(git stash *)",
+      "Bash(mvn spring-boot:run)",
+      "Bash(psql -U postgres -c \"\\\\du\")"
     ]
   }
 }

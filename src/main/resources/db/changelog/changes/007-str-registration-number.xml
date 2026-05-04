@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="007-create-str-rb" author="str-backend">
+    <changeSet id="007-create-str-registration-number" author="str-backend">
         <createTable schemaName="str_rn" tableName="registration_number"
                      remarks="Registracijski broj (RN) — izdaje se za svaki smještajni sadržaj nakon uspješne GO validacije; format HRxxxxxxxx">
             <column name="rn" type="VARCHAR(18)"

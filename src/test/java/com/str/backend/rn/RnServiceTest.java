@@ -93,7 +93,7 @@ class RnServiceTest {
 
         assertThatThrownBy(() -> service.issue(UUID.randomUUID(), accommodationId))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("Hotel");
+                .hasMessageContaining("error.rn.type.not.allowed");
         verify(repository, never()).save(any());
     }
 
@@ -122,7 +122,7 @@ class RnServiceTest {
 
         assertThatThrownBy(() -> service.issue(UUID.randomUUID(), accommodationId))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("5 attempts");
+                .hasMessageContaining("error.rn.generation.failed");
         verify(repository, never()).save(any());
     }
 

@@ -12,9 +12,7 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.lessor.LessorEntity;
-import com.str.backend.registration.dto.LessorRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
-import com.str.backend.registration.dto.AccommodationRequest;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -41,18 +39,15 @@ public class SubmissionPdfGenerator {
 
             doc.add(new Paragraph("Zahtjev za registraciju smještajne jedinice (STR)", HEADER));
             doc.add(new Paragraph(filingNumber == null ? "Urudžbeni broj: (nedodijeljen)" : filingNumber, SMALL));
-            doc.add(new Paragraph("Scenario: " + req.getScenario(), SMALL));
             doc.add(blank());
 
             doc.add(new Paragraph("Iznajmljivač", LABEL));
-            doc.add(lessorTable(req.getLessor(), lessor));
+            doc.add(lessorTable(lessor));
             doc.add(blank());
 
-            for (int i = 0; i < req.getAccommodations().size(); i++) {
-                doc.add(new Paragraph("Smještajna jedinica #" + (i + 1), LABEL));
-                doc.add(accommodationTable(req.getAccommodations().get(i)));
-                doc.add(blank());
-            }
+            doc.add(new Paragraph("Smještajna jedinica", LABEL));
+            doc.add(accommodationTable(req));
+            doc.add(blank());
 
             doc.add(new Paragraph("Generirano: " + java.time.LocalDateTime.now().format(DT), SMALL));
             doc.close();
@@ -62,33 +57,25 @@ public class SubmissionPdfGenerator {
         }
     }
 
-    private PdfPTable lessorTable(LessorRequest r, LessorEntity persisted) {
+    private PdfPTable lessorTable(LessorEntity lessor) {
         PdfPTable t = baseTable();
-        addRow(t, "ID", persisted.getLessorId().toString());
-        addRow(t, "Ime i prezime", nullSafe(r.getFirstName()) + " " + nullSafe(r.getLastName()));
-        addRow(t, "Adresa", nullSafe(r.getStreet()) + " " + nullSafe(r.getStreetNumber()) + ", "
-                + nullSafe(r.getPlace()) + ", " + nullSafe(r.getCounty()));
-        addRow(t, "E-mail", nullSafe(r.getEmail()));
-        if (r.getLegalEntityName() != null) {
-            addRow(t, "Pravna osoba", r.getLegalEntityName() + " (OIB " + nullSafe(r.getRepresentativeOib()) + ")");
-            addRow(t, "Zastupnik", nullSafe(r.getLegalRepresentativeName()));
-        }
-        addRow(t, "Kontakt", nullSafe(r.getContactName()) + " | tel " + nullSafe(r.getPhoneNumber())
-                + " | mob " + nullSafe(r.getMobileNumber()));
+        addRow(t, "ID", lessor.getLessorId().toString());
+        addRow(t, "Address", nullSafe(lessor.getStreet()) + " " + nullSafe(lessor.getStreetNumber()) + ", "
+                + nullSafe(lessor.getPlace()) + ", " + nullSafe(lessor.getCounty()));
+        addRow(t, "E-mail", nullSafe(lessor.getEmail()));
         return t;
     }
 
-    private PdfPTable accommodationTable(AccommodationRequest s) {
+    private PdfPTable accommodationTable(RegistrationRequest req) {
         PdfPTable t = baseTable();
-        addRow(t, "Adresa", nullSafe(s.getStreet()) + " " + nullSafe(s.getStreetNumber()) + ", "
-                + nullSafe(s.getSettlement()) + ", " + nullSafe(s.getCity()) + ", " + nullSafe(s.getCounty()));
-        addRow(t, "Katastar", nullSafe(s.getCadastralMunicipality()) + " / " + nullSafe(s.getCadastralParcelNumber()));
-        addRow(t, "Kapacitet", "kreveta " + s.getMaxBeds() + ", gostiju " + s.getMaxGuests());
-        addRow(t, "Ponuda", String.valueOf(s.getOfferType()));
-        addRow(t, "Zgrada / stanovi / legalizirano",
-                s.getBuilding() + " / " + s.getApartments() + " / " + s.getLegalized());
-        if (Boolean.TRUE.equals(s.getCoOwnerConsent())) {
-            addRow(t, "Suglasnost suvlasnika", "DA, " + s.getConsentDate());
+        addRow(t, "Name", nullSafe(req.getName()));
+        addRow(t, "Address", nullSafe(req.getStreet()) + " " + nullSafe(req.getStreetNumber()) + ", "
+                + nullSafe(req.getCityId()) + ", " + nullSafe(req.getCountyId()));
+        addRow(t, "Capacity", "beds " + req.getMaxBeds() + ", guests " + req.getMaxGuests());
+        addRow(t, "Offer type", String.valueOf(req.getOfferType()));
+        addRow(t, "Building / legalized", req.isBuilding() + " / " + req.isLegalized());
+        if (Boolean.TRUE.equals(req.getCoOwnerConsent())) {
+            addRow(t, "Co-owner consent", "YES" + (req.getConsentDate() != null ? ", " + req.getConsentDate() : ""));
         }
         return t;
     }

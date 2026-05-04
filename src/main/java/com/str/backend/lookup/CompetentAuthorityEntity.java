@@ -2,30 +2,26 @@ package com.str.backend.lookup;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Immutable;
 
 @Entity
-@Table(schema = "str_rn", name = "competent_authority")
+@Immutable
+@Table(schema = "str", name = "internal_organization")
+@Getter
+@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class CompetentAuthorityEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "authority_id")
-    private Long authorityId;
+    @Column(name = "id", nullable = false, updatable = false)
+    private Long id;
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "name", nullable = false, updatable = false)
     private String name;
 
-    protected CompetentAuthorityEntity() {
-    }
-
-    public CompetentAuthorityEntity(String name) {
-        this.name = name;
-    }
-
-    public Long getAuthorityId() { return authorityId; }
-    public String getName() { return name; }
+    @Column(name = "active", nullable = false, updatable = false)
+    private boolean active;
 }

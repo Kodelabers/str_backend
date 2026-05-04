@@ -37,13 +37,12 @@ public class Go4SuglasnostSuvlasnika implements ValidationCheck {
         AccommodationEntity accommodation = context.accommodation();
         Boolean consent = accommodation.getCoOwnerConsent();
         if (consent == null || !consent) {
-            return new ValidationResult.Rejected(STEP, "nedostaje suglasnost suvlasnika");
+            return new ValidationResult.Rejected(STEP, "error.go4.consent.missing");
         }
         LocalDate today = LocalDate.now(clock);
         LocalDate withdrawalDate = accommodation.getConsentWithdrawalDate();
         if (withdrawalDate != null && !withdrawalDate.isAfter(today)) {
-            return new ValidationResult.Rejected(STEP,
-                    "suglasnost povucena dana " + withdrawalDate);
+            return new ValidationResult.Rejected(STEP, "error.go4.consent.withdrawn");
         }
         return new ValidationResult.Passed(STEP, "suglasnost valjana");
     }

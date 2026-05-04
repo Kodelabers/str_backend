@@ -48,7 +48,7 @@ public class RnService {
         if (accommodation.getAccommodationTypeId() != null) {
             accommodationTypeRepository.findById(accommodation.getAccommodationTypeId()).ifPresent(type -> {
                 if (!type.isRegistrationNumberAllowed()) {
-                    throw new BusinessException("rn cannot be issued for accommodation type=" + type.getName());
+                    throw new BusinessException("error.rn.type.not.allowed");
                 }
             });
         }
@@ -62,14 +62,13 @@ public class RnService {
                 return rn;
             }
         }
-        throw new BusinessException("cannot generate unique registration number after "
-                + MAX_RN_ATTEMPTS + " attempts");
+        throw new BusinessException("error.rn.generation.failed");
     }
 
     @Transactional
     public RnEntity suspend(String rn, RnTrigger trigger) {
         if (trigger != RnTrigger.CONSENT_EXPIRY && trigger != RnTrigger.INSPECTION) {
-            throw new BusinessException("suspend requires CONSENT_EXPIRY or INSPECTION trigger");
+            throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
         RnEntity e = load(rn);
         transitionService.transition(e, RnStatus.SUSPENDED, trigger);

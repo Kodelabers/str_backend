@@ -6,7 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <!-- STR funkcionalna specifikacija §6.2 A: "Napomena kontakta" as part of kontakt podaci. -->
-    <changeSet id="015-iznajmljivac-add-napomena-kontakta" author="str-backend">
+    <changeSet id="015-lessor-add-contact-note" author="str-backend">
         <addColumn schemaName="str_rn" tableName="lessor">
             <column name="contact_note" type="VARCHAR(1024)"/>
             <column name="representative_address" type="VARCHAR(255)"/>

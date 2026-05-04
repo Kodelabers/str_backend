@@ -5,30 +5,8 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Nadležno tijelo / competent_authority — tourist inspection bodies per ZAK -->
-    <changeSet id="009-seed-nadlezno-tijelo" author="str-backend">
-        <insert schemaName="str_rn" tableName="competent_authority">
-            <column name="name" value="Turistička inspekcija Zagreb"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="competent_authority">
-            <column name="name" value="Turistička inspekcija Split"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="competent_authority">
-            <column name="name" value="Turistička inspekcija Rijeka"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="competent_authority">
-            <column name="name" value="Turistička inspekcija Osijek"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="competent_authority">
-            <column name="name" value="Turistička inspekcija Zadar"/>
-        </insert>
-        <rollback>
-            <delete schemaName="str_rn" tableName="competent_authority"/>
-        </rollback>
-    </changeSet>
-
     <!-- Vrsta zahtjeva / submission_type — STR registration request types per ZAK -->
-    <changeSet id="009-seed-vrsta-zahtjeva" author="str-backend">
+    <changeSet id="009-seed-submission-type" author="str-backend">
         <insert schemaName="str_rn" tableName="submission_type">
             <column name="type_code" value="NOVA_REGISTRACIJA"/>
             <column name="code" value="NR"/>

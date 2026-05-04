@@ -178,6 +178,11 @@ public class AccommodationEntity {
         this.updatedAt = Instant.now();
     }
 
+    /** Called once, before first save, to bind a newly-built accommodation to its submission. */
+    public void linkToSubmission(UUID submissionId) {
+        this.submissionId = submissionId;
+    }
+
     public void markHost(boolean value) {
         this.host = value;
         Instant now = Instant.now();

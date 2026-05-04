@@ -69,7 +69,7 @@ class Go4SuglasnostSuvlasnikaTest {
 
     private ValidationContext ctx(AccommodationEntity acc, boolean flagged) {
         LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
-        ValidationContext k = new ValidationContext(acc, lessor, null);
+        ValidationContext k = new ValidationContext(acc, lessor);
         if (flagged) {
             k.markCoOwnerConsentRequired();
         }

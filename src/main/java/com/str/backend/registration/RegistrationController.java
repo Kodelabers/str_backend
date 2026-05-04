@@ -46,7 +46,7 @@ public class RegistrationController {
                 .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
         byte[] pdf = submission.getPdfContent();
         if (pdf == null || pdf.length == 0) {
-            throw new ResourceNotFoundException("pdf not stored for submission: " + submissionId);
+            throw new ResourceNotFoundException("error.pdf.not.stored");
         }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,

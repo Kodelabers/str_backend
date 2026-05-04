@@ -5,7 +5,6 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <include file="db/changelog/changes/001-init-schemas.xml"/>
     <include file="db/changelog/changes/003-str-lookups.xml"/>
     <include file="db/changelog/changes/004-str-lessor.xml"/>
     <include file="db/changelog/changes/005-str-submission.xml"/>
@@ -15,7 +14,6 @@
     <include file="db/changelog/changes/009-seed-lookups.xml"/>
     <include file="db/changelog/changes/010-str-online-platform.xml"/>
     <include file="db/changelog/changes/011-seed-online-platform.xml"/>
-    <include file="db/changelog/changes/012-seed-competent-authority.xml"/>
     <include file="db/changelog/changes/013-accommodation-type-rn-allowed.xml"/>
     <include file="db/changelog/changes/015-lessor-add-contact-note.xml"/>
     <include file="db/changelog/changes/016-str-accommodation-unit.xml"/>
@@ -24,5 +22,6 @@
     <include file="db/changelog/changes/019-str-legal-representative.xml"/>
     <include file="db/changelog/changes/024-submission-add-filing-date.xml"/>
     <include file="db/changelog/changes/025-submission-add-pdf-content.xml"/>
+    <include file="db/changelog/changes/026-drop-competent-authority.xml"/>
 
 </databaseChangeLog>
