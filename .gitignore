@@ -12,5 +12,7 @@ target/
 
 ### Environment ###
 *.env
+application-dev.properties
+application-prod.properties
 .claude/settings.local.json
 .claude/worktrees/
