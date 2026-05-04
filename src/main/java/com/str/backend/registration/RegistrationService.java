@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.domain.Scenario;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
@@ -77,6 +78,24 @@ public class RegistrationService {
 
         LessorEntity lessor = buildLessor(req.getLessor());
 
+        // Build accommodations in memory (not yet persisted) so GO checks can run
+        // before we touch eGOP. For S1 this loads existing entities from DB.
+        boolean isNewScenario = req.getScenario() != Scenario.S1_EXISTING_UNIT;
+        List<AccommodationEntity> accommodationList = isNewScenario
+                ? buildNewAccommodations(req)
+                : loadExisting(req);
+
+        // GO-1 through GO-5: validate before reserving the filing number.
+        // An eGOP call must never happen for a request that would be rejected.
+        for (AccommodationEntity accommodation : accommodationList) {
+            ValidationContext context = new ValidationContext(accommodation, lessor);
+            PipelineResult result = orchestrator.execute(context);
+            if (result.getOutcome() == PipelineResult.Outcome.REJECTED) {
+                throw new ValidationRejectedException(result.getStep(), result.getDetail());
+            }
+        }
+
+        // Validation passed — now call eGOP
         byte[] draftPdf = pdfGenerator.generate(req, lessor, null);
         EgopClient.UrudzbeniBroj filing = egopClient.rezervirajUrudzbeniBroj();
         byte[] finalPdf = pdfGenerator.generate(req, lessor, filing.formatiran());
@@ -97,15 +116,16 @@ public class RegistrationService {
                 finalPdf);
         submissionRepository.save(submission);
 
-        List<AccommodationEntity> accommodationList = materialize(req, submission.getSubmissionId());
+        // For new accommodations, link submission and persist now that we have the ID
+        if (isNewScenario) {
+            for (AccommodationEntity accommodation : accommodationList) {
+                accommodation.linkToSubmission(submission.getSubmissionId());
+                accommodationRepository.save(accommodation);
+            }
+        }
 
         List<RegistrationResponse.AssignedRb> assigned = new ArrayList<>(accommodationList.size());
         for (AccommodationEntity accommodation : accommodationList) {
-            ValidationContext context = new ValidationContext(accommodation, lessor);
-            PipelineResult result = orchestrator.execute(context);
-            if (result.getOutcome() == PipelineResult.Outcome.REJECTED) {
-                throw new ValidationRejectedException(result.getStep(), result.getDetail());
-            }
             RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
             assigned.add(new RegistrationResponse.AssignedRb(accommodation.getAccommodationId(), rn.getRn()));
         }
@@ -157,13 +177,6 @@ public class RegistrationService {
         return e;
     }
 
-    private List<AccommodationEntity> materialize(RegistrationRequest req, UUID submissionId) {
-        return switch (req.getScenario()) {
-            case S1_EXISTING_UNIT -> loadExisting(req);
-            case S2_NEW_UNIT_EXTERNAL, S3_NEW_UNIT_INTERNAL -> createNew(req, submissionId);
-        };
-    }
-
     private List<AccommodationEntity> loadExisting(RegistrationRequest req) {
         if (req.getAccommodations().stream().anyMatch(s -> s.getCoreObjectId() == null)) {
             throw new BusinessException("S1 requires coreObjectId for each accommodation");
@@ -178,11 +191,11 @@ public class RegistrationService {
         return result;
     }
 
-    private List<AccommodationEntity> createNew(RegistrationRequest req, UUID submissionId) {
+    private List<AccommodationEntity> buildNewAccommodations(RegistrationRequest req) {
         List<AccommodationEntity> result = new ArrayList<>(req.getAccommodations().size());
         for (AccommodationRequest ar : req.getAccommodations()) {
             AccommodationEntity accommodation = AccommodationEntity.create(
-                    submissionId, ar.getCounty(), ar.getCity(), ar.getStreet(),
+                    null, ar.getCounty(), ar.getCity(), ar.getStreet(),
                     ar.getStreetNumber(), ar.getMaxBeds(), ar.getMaxGuests(), ar.getOfferType(),
                     ar.getBuilding(), ar.getApartments(), ar.getLegalized());
             accommodation.setLocationDetails(ar.getSettlement(), ar.getFloor(),
@@ -194,7 +207,6 @@ public class RegistrationService {
                 accommodation.setConsent(ar.getCoOwnerConsent(), ar.getConsentDate(),
                         ar.getConsentWithdrawalDate());
             }
-            accommodationRepository.save(accommodation);
             result.add(accommodation);
         }
         return result;
