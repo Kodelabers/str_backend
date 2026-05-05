@@ -6,8 +6,9 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <changeSet id="006-create-str-accommodation" author="str-backend">
+        <validCheckSum>ANY</validCheckSum>
         <createTable schemaName="str_rn" tableName="accommodation"
-                     remarks="STR smještajni objekt (accommodation) — fizički objekt koji iznajmljivač registrira za kratkoročni najam">
+                     remarks="STR smještajni objekt (SSO) — fizički objekt koji iznajmljivač registrira za kratkoročni najam">
             <column name="accommodation_id" type="UUID"
                     remarks="UUID smještajnog sadržaja (PK, generira se pri kreaciji)">
                 <constraints primaryKey="true" nullable="false"/>
@@ -57,7 +58,7 @@
                 <constraints nullable="false"/>
             </column>
             <column name="offer_type" type="VARCHAR(16)"
-                    remarks="Vrsta ponude: PARTIAL = dio objekta, FULL = cijeli objekt">
+                    remarks="Vrsta ponude: RESIDENCE = boravište iznajmljivača, OTHER = ostalo">
                 <constraints nullable="false"/>
             </column>
             <column name="lessor_residence" type="BOOLEAN"
@@ -81,7 +82,7 @@
             <column name="auxiliary_beds" type="INTEGER"
                     remarks="Broj pomoćnih/extra kreveta (kauč, dječji krevetić...)"/>
             <column name="building" type="BOOLEAN"
-                    remarks="Radi se o zgradi s više stanova (true = zgrada, GO-2 aktivira provjeru suglasnosti suvlasnika ako &gt; 3 jedinice)">
+                    remarks="Radi se o zgradi s više stanova (true = zgrada, GO-2 aktivira provjeru suglasnosti suvlasnika ako > 3 jedinice)">
                 <constraints nullable="false"/>
             </column>
             <column name="floor" type="VARCHAR(8)"
@@ -90,10 +91,14 @@
                     remarks="Objekt ima zasebne apartmanske jedinice koje se zasebno registriraju">
                 <constraints nullable="false"/>
             </column>
+            <column name="old_building" type="BOOLEAN"
+                    remarks="Building predates modern construction regulations (Starost — DA/NE)"/>
             <column name="legalized" type="BOOLEAN"
                     remarks="Objekt ima valjano rješenje o legalizaciji (provjera GO-3)">
                 <constraints nullable="false"/>
             </column>
+            <column name="tourist_tax_exempt" type="BOOLEAN"
+                    remarks="Tourist tax waived for this accommodation or for another statutory reason (Boravišna pristojba odbijena)"/>
             <column name="co_owner_consent" type="BOOLEAN"
                     remarks="Suglasnost suvlasnika ishođena (provjera GO-4, potrebna samo kod zgrada)"/>
             <column name="consent_date" type="DATE"
@@ -119,7 +124,7 @@
         <sql>
             ALTER TABLE str_rn.accommodation
                 ADD CONSTRAINT chk_accommodation_offer_type
-                    CHECK (offer_type IN ('PARTIAL', 'FULL'))
+                    CHECK (offer_type IN ('RESIDENCE', 'OTHER'))
         </sql>
 
         <createIndex schemaName="str_rn" tableName="accommodation" indexName="idx_accommodation_submission">

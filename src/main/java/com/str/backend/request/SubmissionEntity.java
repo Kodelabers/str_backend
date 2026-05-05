@@ -32,10 +32,7 @@ public class SubmissionEntity {
     @Column(name = "document_link", length = 500)
     @Setter private String documentLink;
 
-    @Column(name = "type_code", length = 32, nullable = false, updatable = false)
-    private String typeCode;
-
-    @Column(name = "lessor_id", nullable = false, updatable = false)
+@Column(name = "lessor_id", nullable = false, updatable = false)
     private UUID lessorId;
 
     @Column(name = "authority_id")
@@ -58,13 +55,12 @@ public class SubmissionEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public static SubmissionEntity create(String filingNumber, String typeCode, UUID lessorId,
+    public static SubmissionEntity create(String filingNumber, UUID lessorId,
                                           Long competentAuthorityId, Instant filingDate,
                                           String documentLink, byte[] pdfContent) {
         SubmissionEntity z = new SubmissionEntity();
         z.submissionId = UUID.randomUUID();
         z.filingNumber = filingNumber;
-        z.typeCode = typeCode;
         z.lessorId = lessorId;
         z.competentAuthorityId = competentAuthorityId;
         z.filingDate = filingDate;

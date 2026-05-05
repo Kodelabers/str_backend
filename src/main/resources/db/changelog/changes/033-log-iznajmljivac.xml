@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- LOG IZNAJMLJIVAČ — audit trail of lessor status and data changes (ERA schema entity). -->
+    <changeSet id="033-create-lessor-log" author="str-backend">
+        <createTable schemaName="str_rn" tableName="lessor_log"
+                     remarks="Audit trail of changes to lessor records and application status (Log Iznajmljivač)">
+            <column name="log_id" type="BIGINT" autoIncrement="true"
+                    remarks="Internal ID of the log entry (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="lessor_id" type="UUID"
+                    remarks="Lessor whose record changed (FK on lessor)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_lessor_log_lessor"
+                             references="str_rn.lessor(lessor_id)"/>
+            </column>
+            <column name="from_status" type="VARCHAR(32)"
+                    remarks="Previous application status before the change"/>
+            <column name="to_status" type="VARCHAR(32)"
+                    remarks="New application status after the change"/>
+            <column name="reason" type="VARCHAR(1024)"
+                    remarks="Reason for the status change or data update"/>
+            <column name="changed_by" type="VARCHAR(128)"
+                    remarks="ID or username of the user who made the change"/>
+            <column name="occurred_at" type="TIMESTAMPTZ"
+                    remarks="Timestamp when the change occurred">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="lessor_log" indexName="idx_lessor_log_lessor">
+            <column name="lessor_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="lessor_log"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

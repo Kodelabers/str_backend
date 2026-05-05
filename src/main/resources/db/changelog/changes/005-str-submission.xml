@@ -6,6 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <changeSet id="005-create-str-submission" author="str-backend">
+        <validCheckSum>ANY</validCheckSum>
         <createTable schemaName="str_rn" tableName="submission"
                      remarks="Zahtjev za STR registraciju — nastaje pri podnošenju i veže se uz eGOP urudžbeni broj">
             <column name="submission_id" type="UUID"
@@ -18,23 +19,14 @@
             </column>
             <column name="document_link" type="VARCHAR(500)"
                     remarks="URI dokumenta zahtjeva pohranjenoga u eGOP sustavu"/>
-            <column name="type_code" type="VARCHAR(32)"
-                    remarks="Vrsta zahtjeva (FK na submission_type)">
-                <constraints nullable="false"
-                             foreignKeyName="fk_submission_type"
-                             references="str_rn.submission_type(type_code)"/>
-            </column>
-            <column name="lessor_id" type="UUID"
+<column name="lessor_id" type="UUID"
                     remarks="Iznajmljivač koji je podnio zahtjev (FK na lessor)">
                 <constraints nullable="false"
                              foreignKeyName="fk_submission_lessor"
                              references="str_rn.lessor(lessor_id)"/>
             </column>
             <column name="authority_id" type="BIGINT"
-                    remarks="Nadležno tijelo za obradu zahtjeva (FK na competent_authority)">
-                <constraints foreignKeyName="fk_submission_authority"
-                             references="str_rn.competent_authority(authority_id)"/>
-            </column>
+                    remarks="ID nadležnog tijela iz str.internal_organization (bez FK — cross-schema referenca)"/>
             <column name="status" type="VARCHAR(32)"
                     remarks="Status zahtjeva (INITIATED / IN_VERIFICATION / IN_PROCESSING / ACCEPTED / REJECTED)">
                 <constraints nullable="false"/>

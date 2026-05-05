@@ -6,6 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <changeSet id="010-create-online-platform" author="str-backend">
+        <validCheckSum>ANY</validCheckSum>
         <createTable schemaName="str_rn" tableName="online_platform"
                      remarks="Internetska platforma za kratkoročni najam (Airbnb, Booking.com, Vrbo...) — izvor SDEP podataka o aktivnostima">
             <column name="platform_id" type="BIGINT" autoIncrement="true"
@@ -20,12 +21,16 @@
                     remarks="Osnovna URL adresa platforme">
                 <constraints nullable="false"/>
             </column>
+            <column name="listing_url" type="VARCHAR(500)"
+                    remarks="URL format of an accommodation listing on this platform (URL ponude)"/>
             <column name="active" type="BOOLEAN" defaultValueBoolean="true"
                     remarks="Je li platforma aktivna u sustavu (neaktivne se ne prikazuju u sučelju)">
                 <constraints nullable="false"/>
             </column>
         </createTable>
-        <rollback><dropTable schemaName="str_rn" tableName="online_platform"/></rollback>
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="online_platform"/>
+        </rollback>
     </changeSet>
 
 </databaseChangeLog>

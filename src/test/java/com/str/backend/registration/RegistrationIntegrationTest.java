@@ -2,19 +2,28 @@ package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.str.backend.auth.AuthContext;
+import com.str.backend.domain.County;
 import com.str.backend.domain.OfferType;
+import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.str.StrLessorLookupService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.UUID;
@@ -40,6 +49,15 @@ class RegistrationIntegrationTest {
     @Autowired private SubmissionRepository submissionRepository;
     @Autowired private LessorRepository lessorRepository;
 
+    @MockBean private StrLessorLookupService strLessorLookupService;
+
+    @BeforeEach
+    void setupLessorLookup() {
+        when(strLessorLookupService.resolveLessor(any(AuthContext.AuthenticatedUser.class)))
+                .thenAnswer(inv -> LessorEntity.create("PERO", "PERIĆ",
+                        "Ilica", "1", "Zagreb", "GRAD_ZAGREB", "pero.peric@example.hr"));
+    }
+
     @Test
     void generates_rn_and_stores_submission_with_pdf() throws Exception {
         MvcResult result = mvc.perform(post("/api/generateRegistrationNumber")
@@ -54,7 +72,7 @@ class RegistrationIntegrationTest {
         String rn = body.get("assignedRbs").get(0).get("rn").asText();
         UUID lessorId = UUID.fromString(body.get("lessorId").asText());
 
-        assertThat(rn).matches("HR\\d{8}");
+        assertThat(rn).matches("HR[0-9A-Fa-f]{18}");
         assertThat(lessorRepository.findById(lessorId)).isPresent();
 
         List<SubmissionEntity> submissions = submissionRepository.findByLessorId(lessorId);
@@ -84,32 +102,19 @@ class RegistrationIntegrationTest {
                 .andExpect(content().bytes(submission.getPdfContent()));
     }
 
-    @Test
-    void returns_422_when_accommodation_not_legalized() throws Exception {
-        RegistrationRequest req = baseRequest();
-        req.setLegalized(false);
 
-        mvc.perform(post("/api/generateRegistrationNumber")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsBytes(req)))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.details.step").value("GO-3"));
-    }
 
     private RegistrationRequest baseRequest() {
         RegistrationRequest req = new RegistrationRequest();
         req.setName("Apartman Sunce");
-        req.setCountyId("Splitsko-dalmatinska");
+        req.setCounty(County.SPLITSKO_DALMATINSKA);
         req.setCityId("Split");
         req.setStreet("Ulica kralja Tomislava");
         req.setStreetNumber("14a");
-        req.setPostalCode("21000 Split");
-        req.setFloor(2);
+        req.setPostalCode("21000");
         req.setMaxBeds(4);
         req.setMaxGuests(6);
-        req.setOfferType(OfferType.FULL);
-        req.setBuilding(false);
-        req.setLegalized(true);
+        req.setOfferType(OfferType.RESIDENCE);
         return req;
     }
 }

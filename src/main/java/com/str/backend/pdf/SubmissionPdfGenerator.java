@@ -70,13 +70,9 @@ public class SubmissionPdfGenerator {
         PdfPTable t = baseTable();
         addRow(t, "Name", nullSafe(req.getName()));
         addRow(t, "Address", nullSafe(req.getStreet()) + " " + nullSafe(req.getStreetNumber()) + ", "
-                + nullSafe(req.getCityId()) + ", " + nullSafe(req.getCountyId()));
+                + nullSafe(req.getCityId()) + ", " + (req.getCounty() != null ? req.getCounty().name() : ""));
         addRow(t, "Capacity", "beds " + req.getMaxBeds() + ", guests " + req.getMaxGuests());
-        addRow(t, "Offer type", String.valueOf(req.getOfferType()));
-        addRow(t, "Building / legalized", req.isBuilding() + " / " + req.isLegalized());
-        if (Boolean.TRUE.equals(req.getCoOwnerConsent())) {
-            addRow(t, "Co-owner consent", "YES" + (req.getConsentDate() != null ? ", " + req.getConsentDate() : ""));
-        }
+        addRow(t, "Offer type", req.getOfferType() != null ? req.getOfferType().name() : "");
         return t;
     }
 

@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 @Getter
 public class RegistrationNumber {
 
-    private static final Pattern PATTERN = Pattern.compile("^HR\\d{8}$");
+    private static final Pattern PATTERN = Pattern.compile("^HR[0-9A-Fa-f]{18}$");
     private static final SecureRandom RNG = new SecureRandom();
 
     private final String value;
@@ -20,8 +20,13 @@ public class RegistrationNumber {
         this.value = value;
     }
 
-    public static RegistrationNumber generate() {
-        int suffix = RNG.nextInt(100_000_000);
-        return new RegistrationNumber("HR%08d".formatted(suffix));
+    /**
+     * HR + CC (county, 2 hex) + GG (group, 2 hex) + TT (type, 2 hex) + 12 random hex digits.
+     * Example: HR120001A3F8C2914D07
+     */
+    public static RegistrationNumber generate(int countyCode, int groupCode, int typeCode) {
+        long uniqueness = (RNG.nextLong() & 0x0000_FFFF_FFFF_FFFFL);
+        return new RegistrationNumber(
+                "HR%02X%02X%02X%012X".formatted(countyCode, groupCode, typeCode, uniqueness));
     }
 }

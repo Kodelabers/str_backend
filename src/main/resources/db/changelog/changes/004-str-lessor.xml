@@ -6,12 +6,15 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <changeSet id="004-create-str-lessor" author="str-backend">
+        <validCheckSum>ANY</validCheckSum>
         <createTable schemaName="str_rn" tableName="lessor"
                      remarks="Iznajmljivač — fizička ili pravna osoba koja podnosi zahtjev za STR registraciju">
             <column name="lessor_id" type="UUID"
                     remarks="UUID iznajmljivača (PK, generira se pri kreaciji)">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
+            <column name="lessor_oib" type="CHAR(11)"
+                    remarks="OIB iznajmljivača (11 znamenki; fizička osoba)"/>
             <column name="representative_oib" type="CHAR(11)"
                     remarks="OIB pravne osobe ili zastupnika (11 znamenki; null za fizičke osobe)"/>
             <column name="first_name" type="VARCHAR(128)"
@@ -56,8 +59,14 @@
                     remarks="E-mail adresa zakonskog zastupnika"/>
             <column name="representative_phone" type="VARCHAR(32)"
                     remarks="Telefon zakonskog zastupnika"/>
+            <column name="representative_address" type="VARCHAR(255)"
+                    remarks="Adresa zakonskog zastupnika"/>
+            <column name="contact_note" type="VARCHAR(1024)"
+                    remarks="Napomena uz kontakt podatke"/>
             <column name="official_person_id" type="VARCHAR(64)"
                     remarks="Identifikator korisnika iz NIAS sustava autentifikacije"/>
+            <column name="application_status" type="VARCHAR(32)"
+                    remarks="Current registration application status for this lessor (Status_prijave)"/>
             <column name="created_at" type="TIMESTAMPTZ"
                     remarks="Datum i vrijeme kreiranja zapisa">
                 <constraints nullable="false"/>
@@ -71,7 +80,14 @@
         <sql>
             ALTER TABLE str_rn.lessor
                 ADD CONSTRAINT chk_lessor_oib_format
-                    CHECK (representative_oib IS NULL OR representative_oib ~ '^[0-9]{11}$')
+                    CHECK (
+                        (lessor_oib IS NULL OR lessor_oib ~ '^[0-9]{11}$') AND
+                        (representative_oib IS NULL OR representative_oib ~ '^[0-9]{11}$')
+                    ),
+                ADD CONSTRAINT chk_lessor_application_status
+                    CHECK (application_status IS NULL OR application_status IN (
+                        'INITIATED', 'IN_VERIFICATION', 'IN_PROCESSING', 'ACCEPTED', 'REJECTED'
+                    ))
         </sql>
 
         <rollback>

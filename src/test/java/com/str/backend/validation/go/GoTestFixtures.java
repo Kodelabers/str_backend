@@ -20,7 +20,7 @@ final class GoTestFixtures {
                                              boolean building, boolean apartments, boolean legalized) {
         return AccommodationEntity.create(
                 UUID.randomUUID(), county, city, "Ulica", "1",
-                maxBeds, maxGuests, OfferType.FULL,
+                maxBeds, maxGuests, OfferType.RESIDENCE,
                 building, apartments, legalized);
     }
 

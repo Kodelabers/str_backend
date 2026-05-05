@@ -1,7 +1,10 @@
 package com.str.backend.lessor;
 
+import com.str.backend.domain.SubmissionStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
@@ -20,6 +23,9 @@ public class LessorEntity {
     @Id
     @Column(name = "lessor_id", nullable = false, updatable = false)
     private UUID lessorId;
+
+    @Column(name = "lessor_oib", length = 11)
+    @Setter private String lessorOib;
 
     @Column(name = "representative_oib", length = 11)
     @Setter private String representativeOib;
@@ -71,6 +77,10 @@ public class LessorEntity {
 
     @Column(name = "contact_note", length = 1024)
     @Setter private String contactNote;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "application_status", length = 32)
+    @Setter private SubmissionStatus applicationStatus;
 
     @Column(name = "official_person_id", length = 64)
     @Setter private String officialPersonId;

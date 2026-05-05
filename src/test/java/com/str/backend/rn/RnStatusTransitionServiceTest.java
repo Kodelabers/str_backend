@@ -130,7 +130,7 @@ class RnStatusTransitionServiceTest {
     // --- Helpers ---
 
     private RnEntity active() {
-        return RnEntity.issue("HR12345678", UUID.randomUUID(), UUID.randomUUID(), LocalDate.now());
+        return RnEntity.issue("HR120001000000000001", UUID.randomUUID(), UUID.randomUUID(), LocalDate.now());
     }
 
     private RnEntity suspended() {

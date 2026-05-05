@@ -1,42 +1,10 @@
-<?xml version="1.0" encoding="UTF-8"?>
+što znači seed-lookups<?xml version="1.0" encoding="UTF-8"?>
 <databaseChangeLog
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Vrsta zahtjeva / submission_type — STR registration request types per ZAK -->
-    <changeSet id="009-seed-submission-type" author="str-backend">
-        <insert schemaName="str_rn" tableName="submission_type">
-            <column name="type_code" value="NOVA_REGISTRACIJA"/>
-            <column name="code" value="NR"/>
-            <column name="name" value="Nova registracija smještajne jedinice"/>
-            <column name="valid_from" valueDate="2024-01-01"/>
-            <column name="valid_to"/>
-            <column name="status" value="ACTIVE"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="submission_type">
-            <column name="type_code" value="PROMJENA_PODATAKA"/>
-            <column name="code" value="PP"/>
-            <column name="name" value="Promjena podataka o smještajnoj jedinici"/>
-            <column name="valid_from" valueDate="2024-01-01"/>
-            <column name="valid_to"/>
-            <column name="status" value="ACTIVE"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="submission_type">
-            <column name="type_code" value="OBNOVA"/>
-            <column name="code" value="OB"/>
-            <column name="name" value="Obnova rješenja o kategorizaciji"/>
-            <column name="valid_from" valueDate="2024-01-01"/>
-            <column name="valid_to"/>
-            <column name="status" value="ACTIVE"/>
-        </insert>
-        <rollback>
-            <delete schemaName="str_rn" tableName="submission_type"/>
-        </rollback>
-    </changeSet>
-
-    <!-- accommodation_type — accommodation unit types per ZAK -->
     <changeSet id="009-seed-accommodation-type" author="str-backend">
         <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Soba"/>

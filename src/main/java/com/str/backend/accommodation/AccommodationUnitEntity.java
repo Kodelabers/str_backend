@@ -61,7 +61,7 @@ public class AccommodationUnitEntity {
     @Column(name = "consent_withdrawal_date")
     private LocalDate consentWithdrawalDate;
 
-    @Column(name = "rn", length = 18)
+    @Column(name = "rn", length = 20)
     private String rn;
 
     @Column(name = "created_at", nullable = false, updatable = false)

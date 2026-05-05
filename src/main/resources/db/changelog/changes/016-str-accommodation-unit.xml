@@ -46,8 +46,8 @@
                     remarks="Datum suglasnosti suvlasnika za ovu jedinicu"/>
             <column name="consent_withdrawal_date" type="DATE"
                     remarks="Datum povlačenja suglasnosti suvlasnika"/>
-            <column name="rn" type="VARCHAR(18)"
-                    remarks="Registracijski broj izdan za ovu jedinicu (format HR + 8 znamenki)"/>
+            <column name="rn" type="VARCHAR(20)"
+                    remarks="Registracijski broj izdan za ovu jedinicu (HR + 18 hex znamenki)"/>
             <column name="created_at" type="TIMESTAMPTZ"
                     remarks="Datum i vrijeme kreiranja zapisa">
                 <constraints nullable="false"/>
@@ -60,10 +60,8 @@
 
         <sql>
             ALTER TABLE str_rn.accommodation_unit
-                ADD CONSTRAINT chk_unit_offer_type
-                    CHECK (offer_type IS NULL OR offer_type IN ('PARTIAL', 'FULL')),
                 ADD CONSTRAINT chk_unit_rn_format
-                    CHECK (rn IS NULL OR rn ~ '^HR[0-9]{8}$'),
+                    CHECK (rn IS NULL OR rn ~ '^HR[0-9A-Fa-f]{18}$'),
                 ADD CONSTRAINT chk_unit_bed_count_pos
                     CHECK (bed_count > 0),
                 ADD CONSTRAINT chk_unit_unit_count_pos

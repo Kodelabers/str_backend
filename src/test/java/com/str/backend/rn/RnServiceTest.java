@@ -1,8 +1,7 @@
 package com.str.backend.rn;
-
 import com.str.backend.accommodation.AccommodationEntity;
-import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.domain.OfferType;
+import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -58,7 +57,7 @@ class RnServiceTest {
 
         RnEntity result = service.issue(submissionId, accommodationId);
 
-        assertThat(result.getRn()).matches("HR\\d{8}");
+        assertThat(result.getRn()).matches("HR[0-9A-Fa-f]{18}");
         assertThat(result.getStatus()).isEqualTo(RnStatus.ACTIVE);
         assertThat(result.getIssueDate()).isEqualTo(LocalDate.of(2026, 4, 30));
         assertThat(result.getSubmissionId()).isEqualTo(submissionId);
@@ -78,7 +77,7 @@ class RnServiceTest {
 
         RnEntity result = service.issue(UUID.randomUUID(), accommodationId);
 
-        assertThat(result.getRn()).matches("HR\\d{8}");
+        assertThat(result.getRn()).matches("HR[0-9A-Fa-f]{18}");
         verify(repository).save(result);
     }
 
@@ -108,7 +107,7 @@ class RnServiceTest {
 
         RnEntity result = service.issue(UUID.randomUUID(), accommodationId);
 
-        assertThat(result.getRn()).matches("HR\\d{8}");
+        assertThat(result.getRn()).matches("HR[0-9A-Fa-f]{18}");
         verify(repository, times(5)).existsByRn(anyString());
         verify(repository).save(result);
     }
@@ -138,7 +137,7 @@ class RnServiceTest {
     private AccommodationEntity accommodation(UUID id, Long typeId) {
         AccommodationEntity e = AccommodationEntity.create(
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", "Ilica", "1",
-                2, 4, OfferType.FULL, false, false, true);
+                2, 4, OfferType.RESIDENCE, false, false, true);
         e.setLocationDetails(null, null, null, null, null, null, typeId, null);
         // Override the generated accommodationId via reflection — entity uses UUID.randomUUID() internally
         try {

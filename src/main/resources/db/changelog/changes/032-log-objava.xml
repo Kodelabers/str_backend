@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- LOG OBJAVA — publication log per accommodation (ERA schema entity). -->
+    <changeSet id="032-create-publication-log" author="str-backend">
+        <createTable schemaName="str_rn" tableName="publication_log"
+                     remarks="Log of accommodation listing publications on online platforms (Log Objava)">
+            <column name="injection_id" type="UUID"
+                    remarks="UUID of the publication log entry (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="accommodation_id" type="UUID"
+                    remarks="Accommodation that was published (FK on accommodation)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_publication_log_accommodation"
+                             references="str_rn.accommodation(accommodation_id)"/>
+            </column>
+            <column name="published_at" type="DATE"
+                    remarks="Date the listing was published (Datum)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ"
+                    remarks="Timestamp when the log entry was created">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="publication_log" indexName="idx_publication_log_accommodation">
+            <column name="accommodation_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="publication_log"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
