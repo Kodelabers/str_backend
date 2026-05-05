@@ -9,7 +9,7 @@
         STR §10 (SDEP): mjesečni uvoz podataka o aktivnostima od internetskih platformi.
         Podaci se automatski brišu 18 mjeseci nakon primitka (purge_after).
     -->
-    <changeSet id="017-create-accommodation-activity" author="str-backend">
+    <changeSet id="012-create-accommodation-activity" author="str-backend">
         <validCheckSum>ANY</validCheckSum>
         <createTable schemaName="str_rn" tableName="accommodation_activity"
                      remarks="STR AKTIVNOSTI SSO — activity records and SDEP overnight stay data delivered by online platforms">

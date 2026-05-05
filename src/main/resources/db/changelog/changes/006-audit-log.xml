@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="008-create-str-audit-log" author="str-backend">
+    <changeSet id="006-create-audit-log" author="str-backend">
         <createTable schemaName="str_rn" tableName="audit_log"
                      remarks="Revizijski trag promjena statusa — svaka promjena statusa RN-a ili zahtjeva bilježi se ovdje">
             <column name="id" type="BIGINT" autoIncrement="true"

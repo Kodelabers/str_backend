@@ -5,8 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="004-create-str-lessor" author="str-backend">
-        <validCheckSum>ANY</validCheckSum>
+    <changeSet id="002-create-lessor" author="str-backend">
         <createTable schemaName="str_rn" tableName="lessor"
                      remarks="Iznajmljivač — fizička ili pravna osoba koja podnosi zahtjev za STR registraciju">
             <column name="lessor_id" type="UUID"

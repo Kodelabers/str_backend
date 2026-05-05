@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="018-create-submission-attachment" author="str-backend">
+    <changeSet id="013-create-submission-attachment" author="str-backend">
         <createTable schemaName="str_rn" tableName="submission_attachment"
                      remarks="Prilog zahtjevu — dokumenti koje iznajmljivač prilaže uz zahtjev za registraciju (vlasništvo, suglasnosti, osobna karta...)">
             <column name="attachment_id" type="UUID"

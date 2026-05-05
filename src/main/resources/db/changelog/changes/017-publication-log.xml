@@ -6,7 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <!-- LOG OBJAVA — publication log per accommodation (ERA schema entity). -->
-    <changeSet id="032-create-publication-log" author="str-backend">
+    <changeSet id="017-create-publication-log" author="str-backend">
         <createTable schemaName="str_rn" tableName="publication_log"
                      remarks="Log of accommodation listing publications on online platforms (Log Objava)">
             <column name="injection_id" type="UUID"
