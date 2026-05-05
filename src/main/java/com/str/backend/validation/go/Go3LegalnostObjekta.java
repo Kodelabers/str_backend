@@ -5,6 +5,8 @@ import com.str.backend.validation.ValidationContext;
 import com.str.backend.validation.ValidationResult;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 @Component
 public class Go3LegalnostObjekta implements ValidationCheck {
 
@@ -15,6 +17,9 @@ public class Go3LegalnostObjekta implements ValidationCheck {
 
     @Override
     public int order() { return 3; }
+
+    @Override
+    public Set<String> dependsOn() { return Set.of("GO-2"); }
 
     @Override
     public ValidationResult check(ValidationContext context) {

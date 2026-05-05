@@ -12,7 +12,7 @@
     -->
     <changeSet id="015-submission-add-pdf-content" author="str-backend">
         <addColumn schemaName="str_rn" tableName="submission">
-            <column name="pdf_content" type="BLOB"/>
+            <column name="pdf_content" type="BYTEA"/>
         </addColumn>
         <rollback>
             <dropColumn schemaName="str_rn" tableName="submission" columnName="pdf_content"/>

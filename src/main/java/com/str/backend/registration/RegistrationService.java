@@ -3,6 +3,7 @@ package com.str.backend.registration;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.auth.AuthContext;
+import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
@@ -20,10 +21,14 @@ import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class RegistrationService {
@@ -101,12 +106,33 @@ public class RegistrationService {
                 List.of(new RegistrationResponse.AssignedRb(accommodation.getAccommodationId(), rn.getRn())));
     }
 
+    @Transactional(readOnly = true)
+    public ResponseEntity<byte[]> getPdfContent(UUID submissionId) {
+        SubmissionEntity submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
+        byte[] pdf = submission.getPdfContent();
+        if (pdf == null || pdf.length == 0) {
+            throw new ResourceNotFoundException("error.pdf.not.stored");
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"submission-" + submission.getFilingNumber().replace('/', '_') + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
+
     private AccommodationEntity buildAccommodation(RegistrationRequest req) {
         AccommodationEntity entity = AccommodationEntity.create(
                 null, req.getCounty().name(), req.getCityId(), req.getStreet(), req.getStreetNumber(),
                 req.getMaxBeds(), req.getMaxGuests(), req.getOfferType(), false, false, true);
         entity.setName(req.getName());
         entity.setSettlement(req.getSettlementId());
+        if (req.getTypeId() != null) {
+            try {
+                entity.setAccommodationTypeId(Long.parseLong(req.getTypeId()));
+            } catch (NumberFormatException ignored) {
+            }
+        }
         return entity;
     }
 }

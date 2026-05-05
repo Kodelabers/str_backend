@@ -1,16 +1,11 @@
 package com.str.backend.registration;
 
-import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
-import com.str.backend.request.SubmissionEntity;
-import com.str.backend.request.SubmissionRepository;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,11 +22,9 @@ import java.util.UUID;
 public class RegistrationController {
 
     private final RegistrationService service;
-    private final SubmissionRepository submissionRepository;
 
-    public RegistrationController(RegistrationService service, SubmissionRepository submissionRepository) {
+    public RegistrationController(RegistrationService service) {
         this.service = service;
-        this.submissionRepository = submissionRepository;
     }
 
     @PostMapping
@@ -40,18 +33,7 @@ public class RegistrationController {
     }
 
     @GetMapping(value = "/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    @Transactional(readOnly = true)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID submissionId) {
-        SubmissionEntity submission = submissionRepository.findById(submissionId)
-                .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
-        byte[] pdf = submission.getPdfContent();
-        if (pdf == null || pdf.length == 0) {
-            throw new ResourceNotFoundException("error.pdf.not.stored");
-        }
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"submission-" + submission.getFilingNumber().replace('/', '_') + ".pdf\"")
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(pdf);
+        return service.getPdfContent(submissionId);
     }
 }
