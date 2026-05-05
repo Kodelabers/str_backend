@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="035-lessor-add-lessor-oib" author="str-backend">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists schemaName="str_rn" tableName="lessor" columnName="lessor_oib"/>
+            </not>
+        </preConditions>
+        <addColumn schemaName="str_rn" tableName="lessor">
+            <column name="lessor_oib" type="CHAR(11)"
+                    remarks="OIB iznajmljivača (11 znamenki; fizička osoba)"/>
+        </addColumn>
+        <sql>
+            ALTER TABLE str_rn.lessor
+                ADD CONSTRAINT chk_lessor_oib_lessor_format
+                    CHECK (lessor_oib IS NULL OR lessor_oib ~ '^[0-9]{11}$')
+        </sql>
+        <rollback>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="lessor_oib"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

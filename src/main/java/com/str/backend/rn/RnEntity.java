@@ -21,7 +21,7 @@ import java.util.UUID;
 public class RnEntity {
 
     @Id
-    @Column(name = "rn", length = 18, nullable = false, updatable = false)
+    @Column(name = "rn", length = 20, nullable = false, updatable = false)
     private String rn;
 
     @Column(name = "submission_id", updatable = false)

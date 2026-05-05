@@ -5,40 +5,6 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="003-create-submission-type" author="str-backend">
-        <createTable schemaName="str_rn" tableName="submission_type"
-                     remarks="Vrsta zahtjeva za registraciju (nova registracija, obnova, promjena...)">
-            <column name="type_code" type="VARCHAR(32)"
-                    remarks="Šifra vrste zahtjeva (PK, npr. NOVA_REGISTRACIJA)">
-                <constraints primaryKey="true" nullable="false"/>
-            </column>
-            <column name="code" type="VARCHAR(16)"
-                    remarks="Kratki kod za prikaz u sučelju">
-                <constraints nullable="false" unique="true" uniqueConstraintName="uq_submission_type_code"/>
-            </column>
-            <column name="name" type="VARCHAR(255)"
-                    remarks="Naziv vrste zahtjeva za prikaz korisniku">
-                <constraints nullable="false"/>
-            </column>
-            <column name="valid_from" type="DATE"
-                    remarks="Datum od kojeg je vrsta zahtjeva aktivna">
-                <constraints nullable="false"/>
-            </column>
-            <column name="valid_to" type="DATE"
-                    remarks="Datum do kojeg je vrsta zahtjeva aktivna (null = bez ograničenja)"/>
-            <column name="status" type="VARCHAR(16)"
-                    remarks="Status vrste zahtjeva (ACTIVE / INACTIVE)">
-                <constraints nullable="false"/>
-            </column>
-        </createTable>
-        <sql>
-            ALTER TABLE str_rn.submission_type
-                ADD CONSTRAINT chk_submission_type_status
-                    CHECK (status IN ('ACTIVE', 'INACTIVE'))
-        </sql>
-        <rollback><dropTable schemaName="str_rn" tableName="submission_type"/></rollback>
-    </changeSet>
-
     <changeSet id="003-create-accommodation-type" author="str-backend">
         <createTable schemaName="str_rn" tableName="accommodation_type"
                      remarks="Vrsta smještajnog sadržaja (Apartman, Soba, Kamp, Studio apartman...)">

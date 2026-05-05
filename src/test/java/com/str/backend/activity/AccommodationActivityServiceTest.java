@@ -29,7 +29,7 @@ class AccommodationActivityServiceTest {
 
     @Test
     void ingest_savesOneEntityPerEntry() {
-        SdepIngestRequest req = request("HR11111111", "HR22222222");
+        SdepIngestRequest req = request("HR120001000000000011", "HR120001000000000022");
 
         int count = service.ingest(req);
 
@@ -43,7 +43,7 @@ class AccommodationActivityServiceTest {
         SdepIngestRequest req = new SdepIngestRequest();
         req.setPlatformId(42L);
         SdepIngestRequest.Entry entry = new SdepIngestRequest.Entry();
-        entry.setRn("HR12345678");
+        entry.setRn("HR120001000000000001");
         entry.setAccommodationId(accommodationId);
         entry.setPeriodFrom(LocalDate.of(2026, 3, 1));
         entry.setPeriodTo(LocalDate.of(2026, 3, 31));
@@ -57,7 +57,7 @@ class AccommodationActivityServiceTest {
                 ArgumentCaptor.forClass(AccommodationActivityEntity.class);
         verify(repository).save(captor.capture());
         AccommodationActivityEntity saved = captor.getValue();
-        assertThat(saved.getRn()).isEqualTo("HR12345678");
+        assertThat(saved.getRn()).isEqualTo("HR120001000000000001");
         assertThat(saved.getAccommodationId()).isEqualTo(accommodationId);
         assertThat(saved.getPlatformId()).isEqualTo(42L);
         assertThat(saved.getNumberOfNights()).isEqualTo(10);
@@ -68,12 +68,12 @@ class AccommodationActivityServiceTest {
     void search_delegatesToRepository() {
         LocalDate from = LocalDate.of(2026, 1, 1);
         LocalDate to = LocalDate.of(2026, 3, 31);
-        when(repository.search(42L, "HR12345678", from, to)).thenReturn(List.of());
+        when(repository.search(42L, "HR120001000000000001", from, to)).thenReturn(List.of());
 
-        List<AccommodationActivityEntity> result = service.search(42L, "HR12345678", from, to);
+        List<AccommodationActivityEntity> result = service.search(42L, "HR120001000000000001", from, to);
 
         assertThat(result).isEmpty();
-        verify(repository).search(42L, "HR12345678", from, to);
+        verify(repository).search(42L, "HR120001000000000001", from, to);
     }
 
     @Test

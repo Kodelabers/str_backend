@@ -15,13 +15,16 @@
     <include file="db/changelog/changes/010-str-online-platform.xml"/>
     <include file="db/changelog/changes/011-seed-online-platform.xml"/>
     <include file="db/changelog/changes/013-accommodation-type-rn-allowed.xml"/>
-    <include file="db/changelog/changes/015-lessor-add-contact-note.xml"/>
-    <include file="db/changelog/changes/016-str-accommodation-unit.xml"/>
+<include file="db/changelog/changes/016-str-accommodation-unit.xml"/>
     <include file="db/changelog/changes/017-str-accommodation-activity.xml"/>
     <include file="db/changelog/changes/018-str-submission-attachment.xml"/>
-    <include file="db/changelog/changes/019-str-legal-representative.xml"/>
     <include file="db/changelog/changes/024-submission-add-filing-date.xml"/>
     <include file="db/changelog/changes/025-submission-add-pdf-content.xml"/>
     <include file="db/changelog/changes/026-drop-competent-authority.xml"/>
+    <include file="db/changelog/changes/031-str-guests.xml"/>
+    <include file="db/changelog/changes/032-log-objava.xml"/>
+    <include file="db/changelog/changes/033-log-iznajmljivac.xml"/>
+    <include file="db/changelog/changes/035-lessor-add-lessor-oib.xml"/>
+    <include file="db/changelog/changes/036-update-rn-format.xml"/>
 
 </databaseChangeLog>

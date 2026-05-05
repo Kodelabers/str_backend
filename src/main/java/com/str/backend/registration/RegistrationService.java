@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.auth.AuthContext;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
@@ -13,6 +14,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -27,8 +29,6 @@ import java.util.List;
 public class RegistrationService {
 
     private static final Logger log = LoggerFactory.getLogger(RegistrationService.class);
-    private static final String TYPE_NEW_REGISTRATION = "NOVA_REGISTRACIJA";
-
     private final LessorRepository lessorRepository;
     private final AccommodationRepository accommodationRepository;
     private final SubmissionRepository submissionRepository;
@@ -36,6 +36,8 @@ public class RegistrationService {
     private final RnService rnService;
     private final EgopClient egopClient;
     private final SubmissionPdfGenerator pdfGenerator;
+    private final AuthContext authContext;
+    private final StrLessorLookupService strLessorLookupService;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -43,7 +45,9 @@ public class RegistrationService {
                                ParallelValidationOrchestrator orchestrator,
                                RnService rnService,
                                EgopClient egopClient,
-                               SubmissionPdfGenerator pdfGenerator) {
+                               SubmissionPdfGenerator pdfGenerator,
+                               AuthContext authContext,
+                               StrLessorLookupService strLessorLookupService) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -51,13 +55,14 @@ public class RegistrationService {
         this.rnService = rnService;
         this.egopClient = egopClient;
         this.pdfGenerator = pdfGenerator;
+        this.authContext = authContext;
+        this.strLessorLookupService = strLessorLookupService;
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse generateRegistrationNumber(RegistrationRequest req) {
-        // Stub lessor — real implementation will resolve from authenticated user session
-        LessorEntity lessor = LessorEntity.create("N/A", "N/A", req.getStreet(), req.getStreetNumber(),
-                req.getCityId(), req.getCountyId(), "noreply@str.hr");
+        AuthContext.AuthenticatedUser user = authContext.currentUser();
+        LessorEntity lessor = strLessorLookupService.resolveLessor(user);
 
         AccommodationEntity accommodation = buildAccommodation(req);
 
@@ -79,7 +84,6 @@ public class RegistrationService {
         lessorRepository.save(lessor);
         SubmissionEntity submission = SubmissionEntity.create(
                 confirmation.urudzbeniBroj(),
-                TYPE_NEW_REGISTRATION,
                 lessor.getLessorId(),
                 null,
                 confirmation.datumPotvrde(),
@@ -98,17 +102,11 @@ public class RegistrationService {
     }
 
     private AccommodationEntity buildAccommodation(RegistrationRequest req) {
-        boolean apartments = req.isBuilding() && req.getApartmentCount() != null && req.getApartmentCount() > 1;
-
         AccommodationEntity entity = AccommodationEntity.create(
-                null, req.getCountyId(), req.getCityId(), req.getStreet(), req.getStreetNumber(),
-                req.getMaxBeds(), req.getMaxGuests(), req.getOfferType(), req.isBuilding(), apartments, req.isLegalized());
+                null, req.getCounty().name(), req.getCityId(), req.getStreet(), req.getStreetNumber(),
+                req.getMaxBeds(), req.getMaxGuests(), req.getOfferType(), false, false, true);
         entity.setName(req.getName());
         entity.setSettlement(req.getSettlementId());
-        entity.setFloor(req.getFloor() != null ? String.valueOf(req.getFloor()) : null);
-        if (Boolean.TRUE.equals(req.getCoOwnerConsent()) || req.getConsentDate() != null) {
-            entity.setConsent(req.getCoOwnerConsent(), req.getConsentDate(), null);
-        }
         return entity;
     }
 }

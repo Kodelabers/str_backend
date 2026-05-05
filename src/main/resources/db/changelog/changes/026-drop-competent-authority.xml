@@ -8,8 +8,15 @@
     <!--
         Nadležno tijelo se dohvaća iz str.internal_organization (core shema).
         Brišemo vlastitu kopiju i FK koji je na nju pokazivao.
+        preConditions s onFail="MARK_RAN" osiguravaju da changeset ne pukne
+        na čistoj instalaciji gdje FK / tablica nikad nisu ni stvoreni.
     -->
     <changeSet id="026-drop-fk-submission-authority" author="str-backend">
+        <preConditions onFail="MARK_RAN">
+            <foreignKeyConstraintExists schemaName="str_rn"
+                                        foreignKeyTableName="submission"
+                                        foreignKeyName="fk_submission_authority"/>
+        </preConditions>
         <dropForeignKeyConstraint baseTableSchemaName="str_rn"
                                   baseTableName="submission"
                                   constraintName="fk_submission_authority"/>
@@ -25,6 +32,9 @@
     </changeSet>
 
     <changeSet id="026-drop-table-competent-authority" author="str-backend">
+        <preConditions onFail="MARK_RAN">
+            <tableExists schemaName="str_rn" tableName="competent_authority"/>
+        </preConditions>
         <dropTable schemaName="str_rn" tableName="competent_authority"/>
         <rollback>
             <createTable schemaName="str_rn" tableName="competent_authority">

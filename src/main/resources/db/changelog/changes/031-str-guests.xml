@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- STR GOSTI — guest injection records imported from platforms (ERA schema entity). -->
+    <changeSet id="031-create-str-guests" author="str-backend">
+        <createTable schemaName="str_rn" tableName="guest_injection"
+                     remarks="Guest stay records injected from online platforms (STR Gosti)">
+            <column name="injection_id" type="UUID"
+                    remarks="UUID of the injection record (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="accommodation_id" type="UUID"
+                    remarks="Accommodation the guests stayed at (FK on accommodation)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_guest_injection_accommodation"
+                             references="str_rn.accommodation(accommodation_id)"/>
+            </column>
+            <column name="stay_date" type="DATE"
+                    remarks="Date of the guest stay (Datum)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="guest_count" type="INTEGER"
+                    remarks="Number of guests (Br.glave)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ"
+                    remarks="Timestamp when the record was imported">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str_rn.guest_injection
+                ADD CONSTRAINT chk_guest_injection_count_pos
+                    CHECK (guest_count > 0)
+        </sql>
+
+        <createIndex schemaName="str_rn" tableName="guest_injection" indexName="idx_guest_injection_accommodation">
+            <column name="accommodation_id"/>
+        </createIndex>
+        <createIndex schemaName="str_rn" tableName="guest_injection" indexName="idx_guest_injection_date">
+            <column name="stay_date"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="guest_injection"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

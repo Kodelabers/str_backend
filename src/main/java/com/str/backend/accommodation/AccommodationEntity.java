@@ -110,6 +110,12 @@ public class AccommodationEntity {
     @Column(name = "legalized", nullable = false, updatable = false)
     private boolean legalized;
 
+    @Column(name = "old_building")
+    @Setter private Boolean oldBuilding;
+
+    @Column(name = "tourist_tax_exempt")
+    @Setter private Boolean touristTaxExempt;
+
     @Column(name = "co_owner_consent")
     @Setter private Boolean coOwnerConsent;
 

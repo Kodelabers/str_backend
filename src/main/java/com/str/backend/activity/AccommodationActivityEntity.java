@@ -27,7 +27,7 @@ public class AccommodationActivityEntity {
     @Column(name = "platform_id", nullable = false)
     private Long platformId;
 
-    @Column(name = "rn", length = 18, nullable = false)
+    @Column(name = "rn", length = 20, nullable = false)
     private String rn;
 
     @Column(name = "accommodation_id")

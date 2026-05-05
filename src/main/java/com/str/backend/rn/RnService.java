@@ -2,6 +2,7 @@ package com.str.backend.rn;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.domain.County;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.domain.RegistrationNumber;
@@ -52,9 +53,13 @@ public class RnService {
                 }
             });
         }
+        int countyCode = countyCode(accommodation);
+        int typeCode = accommodation.getAccommodationTypeId() != null
+                ? accommodation.getAccommodationTypeId().intValue() : 0;
+
         LocalDate today = LocalDate.now(clock);
         for (int i = 0; i < MAX_RN_ATTEMPTS; i++) {
-            String candidate = RegistrationNumber.generate().getValue();
+            String candidate = RegistrationNumber.generate(countyCode, 0, typeCode).getValue();
             if (!repository.existsByRn(candidate)) {
                 RnEntity rn = RnEntity.issue(candidate, submissionId, accommodationId, today);
                 repository.save(rn);
@@ -103,6 +108,14 @@ public class RnService {
     @Transactional(readOnly = true)
     public List<RnEntity> inactive() {
         return repository.findByStatusInOrderByUpdatedAtDesc(List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
+    }
+
+    private static int countyCode(AccommodationEntity accommodation) {
+        try {
+            return (int) County.valueOf(accommodation.getCounty()).getOrganizationId();
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return 0;
+        }
     }
 
     private RnEntity load(String rn) {

@@ -1,6 +1,7 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.str.backend.domain.County;
 import com.str.backend.domain.OfferType;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.registration.dto.RegistrationRequest;
@@ -37,6 +38,7 @@ class RegistrationControllerTest {
 
     @MockBean private RegistrationService service;
     @MockBean private SubmissionRepository submissionRepository;
+    @MockBean private com.str.backend.str.StrLessorLookupService strLessorLookupService;
 
     @Test
     void post_returns_201_with_assigned_rb() throws Exception {
@@ -44,7 +46,7 @@ class RegistrationControllerTest {
         UUID accommodationId = UUID.randomUUID();
         RegistrationResponse resp = new RegistrationResponse(
                 lessorId,
-                List.of(new RegistrationResponse.AssignedRb(accommodationId, "HR12345678")));
+                List.of(new RegistrationResponse.AssignedRb(accommodationId, "HR120001000000000001")));
         when(service.generateRegistrationNumber(any())).thenReturn(resp);
 
         mvc.perform(post("/api/generateRegistrationNumber")
@@ -52,7 +54,7 @@ class RegistrationControllerTest {
                         .content(om.writeValueAsBytes(validRequest())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.lessorId").value(lessorId.toString()))
-                .andExpect(jsonPath("$.assignedRbs[0].rn").value("HR12345678"));
+                .andExpect(jsonPath("$.assignedRbs[0].rn").value("HR120001000000000001"));
     }
 
     @Test
@@ -115,14 +117,13 @@ class RegistrationControllerTest {
     private RegistrationRequest validRequest() {
         RegistrationRequest req = new RegistrationRequest();
         req.setName("Apartman Sunce");
-        req.setCountyId("Splitsko-dalmatinska");
+        req.setCounty(County.SPLITSKO_DALMATINSKA);
         req.setCityId("Split");
         req.setStreet("Ulica kralja Tomislava");
         req.setStreetNumber("14a");
         req.setMaxBeds(4);
         req.setMaxGuests(6);
-        req.setOfferType(OfferType.FULL);
-        req.setLegalized(true);
+        req.setOfferType(OfferType.RESIDENCE);
         return req;
     }
 

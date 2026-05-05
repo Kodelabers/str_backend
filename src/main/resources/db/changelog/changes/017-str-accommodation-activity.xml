@@ -10,8 +10,9 @@
         Podaci se automatski brišu 18 mjeseci nakon primitka (purge_after).
     -->
     <changeSet id="017-create-accommodation-activity" author="str-backend">
+        <validCheckSum>ANY</validCheckSum>
         <createTable schemaName="str_rn" tableName="accommodation_activity"
-                     remarks="Aktivnost smještaja — SDEP podaci o noćenjima koje dostavljaju internetske platforme">
+                     remarks="STR AKTIVNOSTI SSO — activity records and SDEP overnight stay data delivered by online platforms">
             <column name="activity_id" type="UUID"
                     remarks="UUID zapisa aktivnosti (PK, generira se pri uvozu)">
                 <constraints primaryKey="true" nullable="false"/>
@@ -22,7 +23,7 @@
                              foreignKeyName="fk_activity_platform"
                              references="str_rn.online_platform(platform_id)"/>
             </column>
-            <column name="rn" type="VARCHAR(18)"
+            <column name="rn" type="VARCHAR(20)"
                     remarks="Registracijski broj smještaja na koji se aktivnost odnosi (format HR + 8 znamenki)">
                 <constraints nullable="false"/>
             </column>
@@ -49,6 +50,12 @@
             </column>
             <column name="guest_country" type="VARCHAR(64)"
                     remarks="Zemlja porijekla gostiju (ISO 3166-1 alpha-2 kod, npr. HR, DE, AT)"/>
+            <column name="reason" type="VARCHAR(1024)"
+                    remarks="Reason for this activity entry (Razlog_Do)"/>
+            <column name="valid_to" type="DATE"
+                    remarks="Date until which this activity is valid (Datum_Do)"/>
+            <column name="gov_case_number" type="VARCHAR(128)"
+                    remarks="Government / demolition order case number (Broj gov.hr/rušenja)"/>
             <column name="received_at" type="TIMESTAMPTZ"
                     remarks="Datum i vrijeme primitka podataka od platforme">
                 <constraints nullable="false"/>
@@ -62,7 +69,7 @@
         <sql>
             ALTER TABLE str_rn.accommodation_activity
                 ADD CONSTRAINT chk_activity_rn_format
-                    CHECK (rn ~ '^HR[0-9]{8}$'),
+                    CHECK (rn ~ '^HR[0-9A-Fa-f]{18}$'),
                 ADD CONSTRAINT chk_activity_period
                     CHECK (period_to >= period_from),
                 ADD CONSTRAINT chk_activity_overnight_stays_nn
