@@ -6,7 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <!-- STR spec §2.1: Hotel and Kamp must not receive RB. Flag on accommodation_type gates RB issuance. -->
-    <changeSet id="013-add-accommodation-type-rn-allowed" author="str-backend">
+    <changeSet id="010-accommodation-type-add-rn-allowed" author="str-backend">
         <addColumn schemaName="str_rn" tableName="accommodation_type">
             <column name="registration_number_allowed" type="BOOLEAN" defaultValueBoolean="true">
                 <constraints nullable="false"/>
@@ -17,7 +17,7 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="013-seed-accommodation-type-hotel-camp" author="str-backend">
+    <changeSet id="010-seed-accommodation-type-hotel-camp" author="str-backend">
         <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Hotel"/>
             <column name="registration_number_allowed" valueBoolean="false"/>

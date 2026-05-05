@@ -6,7 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <!-- LOG IZNAJMLJIVAČ — audit trail of lessor status and data changes (ERA schema entity). -->
-    <changeSet id="033-create-lessor-log" author="str-backend">
+    <changeSet id="018-create-lessor-log" author="str-backend">
         <createTable schemaName="str_rn" tableName="lessor_log"
                      remarks="Audit trail of changes to lessor records and application status (Log Iznajmljivač)">
             <column name="log_id" type="BIGINT" autoIncrement="true"

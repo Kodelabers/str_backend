@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <changeSet id="016-create-accommodation-unit" author="str-backend">
+    <changeSet id="011-create-accommodation-unit" author="str-backend">
         <createTable schemaName="str_rn" tableName="accommodation_unit"
                      remarks="Smještajna jedinica unutar objekta (soba, apartman, studio...) — za vrste smještaja kod kojih se RN izdaje po jedinici, a ne po objektu">
             <column name="unit_id" type="UUID"

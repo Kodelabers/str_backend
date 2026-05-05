@@ -6,7 +6,7 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <!-- STR GOSTI — guest injection records imported from platforms (ERA schema entity). -->
-    <changeSet id="031-create-str-guests" author="str-backend">
+    <changeSet id="016-create-guest-injection" author="str-backend">
         <createTable schemaName="str_rn" tableName="guest_injection"
                      remarks="Guest stay records injected from online platforms (STR Gosti)">
             <column name="injection_id" type="UUID"
