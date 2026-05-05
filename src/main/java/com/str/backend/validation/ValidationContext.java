@@ -7,7 +7,7 @@ public final class ValidationContext {
 
     private final AccommodationEntity accommodation;
     private final LessorEntity lessor;
-    private boolean requiresCoOwnerConsent;
+    private volatile boolean requiresCoOwnerConsent;
 
     public ValidationContext(AccommodationEntity accommodation, LessorEntity lessor) {
         this.accommodation = accommodation;

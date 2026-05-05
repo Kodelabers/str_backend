@@ -73,7 +73,7 @@ public class SubmissionEntity {
         return z;
     }
 
-    public void applyStatus(SubmissionStatus next) {
+    void applyStatus(SubmissionStatus next) {
         this.status = next;
         this.updatedAt = Instant.now();
     }
