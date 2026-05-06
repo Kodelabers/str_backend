@@ -47,7 +47,7 @@ public class StrLessorLookupService {
                 nullSafe(address.getHouseNumber(), "N/A"),
                 nullSafe(address.getSettlement(), "N/A"),
                 nullSafe(address.getCounty(), "N/A"),
-                oib + "@noreply.local");
+                null);
         lessor.setLessorOib(version.getPin() != null ? version.getPin() : oib);
         if (version.getName() != null && !version.getName().isBlank()) {
             lessor.setLegalEntityName(version.getName());

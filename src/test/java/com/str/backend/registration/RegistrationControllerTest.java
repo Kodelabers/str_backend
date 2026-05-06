@@ -7,15 +7,16 @@ import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
+import com.str.backend.request.SubmissionEntity;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.lang.reflect.Field;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,6 +36,7 @@ class RegistrationControllerTest {
     @Autowired private ObjectMapper om;
 
     @MockBean private RegistrationService service;
+
     @Test
     void post_returns_201_with_assigned_rb() throws Exception {
         UUID lessorId = UUID.randomUUID();
@@ -64,6 +66,17 @@ class RegistrationControllerTest {
     }
 
     @Test
+    void post_returns_400_when_oib_invalid() throws Exception {
+        RegistrationRequest invalid = validRequest();
+        invalid.setOib("abc"); // violates @Pattern
+
+        mvc.perform(post("/api/generateRegistrationNumber")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(invalid)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void post_returns_422_when_validation_rejected() throws Exception {
         when(service.generateRegistrationNumber(any()))
                 .thenThrow(new ValidationRejectedException("GO-3", "objekt nije legaliziran"));
@@ -79,11 +92,8 @@ class RegistrationControllerTest {
     void get_pdf_streams_stored_bytes() throws Exception {
         UUID id = UUID.randomUUID();
         byte[] pdf = "%PDF-1.4 fake".getBytes();
-        when(service.getPdfContent(id)).thenReturn(
-                ResponseEntity.ok()
-                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"submission-334-01_26-01_1001.pdf\"")
-                        .contentType(MediaType.APPLICATION_PDF)
-                        .body(pdf));
+        SubmissionEntity s = submissionWithPdf(id, "334-01/26-01/1001", pdf);
+        when(service.getSubmissionForPdf(id)).thenReturn(s);
 
         mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isOk())
@@ -96,7 +106,7 @@ class RegistrationControllerTest {
     @Test
     void get_pdf_returns_404_when_submission_missing() throws Exception {
         UUID id = UUID.randomUUID();
-        when(service.getPdfContent(id)).thenThrow(new ResourceNotFoundException("submission not found"));
+        when(service.getSubmissionForPdf(id)).thenThrow(new ResourceNotFoundException("submission not found"));
 
         mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isNotFound());
@@ -105,7 +115,7 @@ class RegistrationControllerTest {
     @Test
     void get_pdf_returns_404_when_pdf_not_stored() throws Exception {
         UUID id = UUID.randomUUID();
-        when(service.getPdfContent(id)).thenThrow(new ResourceNotFoundException("error.pdf.not.stored"));
+        when(service.getSubmissionForPdf(id)).thenThrow(new ResourceNotFoundException("error.pdf.not.stored"));
 
         mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isNotFound());
@@ -123,5 +133,31 @@ class RegistrationControllerTest {
         req.setMaxGuests(6);
         req.setOfferType(OfferType.RESIDENCE);
         return req;
+    }
+
+    private SubmissionEntity submissionWithPdf(UUID id, String filingNumber, byte[] pdf) {
+        try {
+            var ctor = SubmissionEntity.class.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            SubmissionEntity s = ctor.newInstance();
+            setField(s, "submissionId", id);
+            setField(s, "filingNumber", filingNumber);
+            setField(s, "createdAt", Instant.now());
+            setField(s, "updatedAt", Instant.now());
+            if (pdf != null) s.setPdfContent(pdf);
+            return s;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void setField(Object target, String name, Object value) {
+        try {
+            Field f = target.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(target, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }

@@ -2,7 +2,9 @@ package com.str.backend.registration;
 
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
+import com.str.backend.request.SubmissionEntity;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +36,11 @@ public class RegistrationController {
 
     @GetMapping(value = "/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID submissionId) {
-        return service.getPdfContent(submissionId);
+        SubmissionEntity submission = service.getSubmissionForPdf(submissionId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"submission-" + submission.getFilingNumber().replace('/', '_') + ".pdf\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(submission.getPdfContent());
     }
 }

@@ -113,7 +113,19 @@
       "Bash(sed -i 's/id=\"005-create-str-submission\"/id=\"create-submission\"/' 003-submission.xml)",
       "Bash(sed -i 's/<validCheckSum>ANY<\\\\/validCheckSum>//' 003-submission.xml)",
       "Bash(where python *)",
-      "Bash(mvn org.liquibase:liquibase-maven-plugin:4.27.0:dropAll)"
+      "Bash(mvn org.liquibase:liquibase-maven-plugin:4.27.0:dropAll)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(pkill -f \"str-backend\")",
+      "Bash(echo \"Started PID $!\")",
+      "Bash(curl -s -X POST http://localhost:8080/api/generateRegistrationNumber -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(python -m json.tool)",
+      "Bash(curl *)",
+      "Bash(xargs cat *)",
+      "Bash(xargs kill *)",
+      "Bash(taskkill /F /IM java.exe)",
+      "Bash(xargs ls *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)"
     ]
   }
 }

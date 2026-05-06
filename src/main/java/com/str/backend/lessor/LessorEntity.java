@@ -60,7 +60,7 @@ public class LessorEntity {
     @Column(name = "mobile_number", length = 32)
     @Setter private String mobileNumber;
 
-    @Column(name = "email", nullable = false, updatable = false)
+    @Column(name = "email", updatable = false)
     private String email;
 
     @Column(name = "legal_representative_name")

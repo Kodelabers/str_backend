@@ -20,9 +20,6 @@ import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -102,18 +99,13 @@ public class RegistrationService {
     }
 
     @Transactional(readOnly = true)
-    public ResponseEntity<byte[]> getPdfContent(UUID submissionId) {
+    public SubmissionEntity getSubmissionForPdf(UUID submissionId) {
         SubmissionEntity submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
-        byte[] pdf = submission.getPdfContent();
-        if (pdf == null || pdf.length == 0) {
+        if (submission.getPdfContent() == null || submission.getPdfContent().length == 0) {
             throw new ResourceNotFoundException("error.pdf.not.stored");
         }
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"submission-" + submission.getFilingNumber().replace('/', '_') + ".pdf\"")
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(pdf);
+        return submission;
     }
 
     private AccommodationEntity buildAccommodation(RegistrationRequest req) {
@@ -125,7 +117,8 @@ public class RegistrationService {
         if (req.getTypeId() != null) {
             try {
                 entity.setAccommodationTypeId(Long.parseLong(req.getTypeId()));
-            } catch (NumberFormatException ignored) {
+            } catch (NumberFormatException e) {
+                log.warn("typeId '{}' nije numerički, polje se ignorira", req.getTypeId());
             }
         }
         return entity;

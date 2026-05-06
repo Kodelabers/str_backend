@@ -77,6 +77,10 @@ Format `HR` + 8 random digits, validated by `RegistracijskiBroj` record. Assigne
 - All `@Table` annotations must declare `schema =` explicitly.
 - Lombok is used (`@Getter`, `@NoArgsConstructor` on entities). No `@Data` or `@Builder` — entities use static factory methods for controlled construction.
 
+## Workflow
+
+Never run `git commit` or `git push` unless explicitly instructed. Always wait for confirmation before committing or pushing changes.
+
 ## Skills
 
 Domain-specific review guides live in `.claude/skills/`. Use them via the `code-reviewer` skill for pre-PR checks. Notable skills:

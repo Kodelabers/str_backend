@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- email is nullable until real NIAS auth provides it -->
+    <changeSet id="019-lessor-email-nullable" author="str-backend">
+        <dropNotNullConstraint schemaName="str_rn" tableName="lessor"
+                               columnName="email" columnDataType="VARCHAR(255)"/>
+        <rollback>
+            <addNotNullConstraint schemaName="str_rn" tableName="lessor"
+                                  columnName="email" columnDataType="VARCHAR(255)"
+                                  defaultNullValue=""/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
