@@ -14,7 +14,9 @@ public class StubEgopClient implements EgopClient {
 
     private static final Logger log = LoggerFactory.getLogger(StubEgopClient.class);
     private static final String STR_KLASA = "334-01";
-    private static final AtomicInteger SEQ = new AtomicInteger(1000);
+    private static final AtomicInteger SEQ = new AtomicInteger(
+            (int) (System.currentTimeMillis() / 1000) % 1_000_000
+    );
 
     @Override
     public UrudzbeniBroj rezervirajUrudzbeniBroj() {
