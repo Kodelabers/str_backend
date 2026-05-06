@@ -14,6 +14,7 @@ import lombok.Setter;
 @NoArgsConstructor
 public class RegistrationRequest {
 
+    @NotBlank private String oib;
     @NotBlank private String name;
     private String typeId;
 

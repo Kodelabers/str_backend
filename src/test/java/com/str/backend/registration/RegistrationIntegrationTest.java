@@ -2,7 +2,6 @@ package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.str.backend.auth.AuthContext;
 import com.str.backend.domain.County;
 import com.str.backend.domain.OfferType;
 import com.str.backend.lessor.LessorEntity;
@@ -22,7 +21,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -53,7 +52,7 @@ class RegistrationIntegrationTest {
 
     @BeforeEach
     void setupLessorLookup() {
-        when(strLessorLookupService.resolveLessor(any(AuthContext.AuthenticatedUser.class)))
+        when(strLessorLookupService.resolveLessor(anyString()))
                 .thenAnswer(inv -> LessorEntity.create("PERO", "PERIĆ",
                         "Ilica", "1", "Zagreb", "GRAD_ZAGREB", "pero.peric@example.hr"));
     }
@@ -106,6 +105,7 @@ class RegistrationIntegrationTest {
 
     private RegistrationRequest baseRequest() {
         RegistrationRequest req = new RegistrationRequest();
+        req.setOib("12312312316");
         req.setName("Apartman Sunce");
         req.setCounty(County.SPLITSKO_DALMATINSKA);
         req.setCityId("Split");

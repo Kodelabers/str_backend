@@ -1,6 +1,5 @@
 package com.str.backend.str;
 
-import com.str.backend.auth.AuthContext;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
 import org.springframework.stereotype.Service;
@@ -25,13 +24,8 @@ public class StrLessorLookupService {
         this.addressRepository = addressRepository;
     }
 
-    /**
-     * Resolves the iznajmljivač from str schema based on the authenticated user's OIB.
-     * Builds a LessorEntity populated with personal data (subject_version) and address (address).
-     * Auth-provided fields (email) are used as fallback when str schema doesn't carry them.
-     */
-    public LessorEntity resolveLessor(AuthContext.AuthenticatedUser user) {
-        StrSubjectEntity subject = subjectRepository.findFirstByJipsAndActiveTrue(user.oib())
+    public LessorEntity resolveLessor(String oib) {
+        StrSubjectEntity subject = subjectRepository.findFirstByJipsAndActiveTrue(oib)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Iznajmljivač nije registriran u sustavu (str.subject)"));
 
@@ -46,18 +40,15 @@ public class StrLessorLookupService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Adresa iznajmljivača nije pronađena"));
 
-        String firstName = nullSafe(version.getFirstName(), user.firstName());
-        String lastName = nullSafe(version.getLastName(), user.lastName());
-
         LessorEntity lessor = LessorEntity.create(
-                firstName,
-                lastName,
+                nullSafe(version.getFirstName(), "N/A"),
+                nullSafe(version.getLastName(), "N/A"),
                 nullSafe(address.getStreet(), "N/A"),
                 nullSafe(address.getHouseNumber(), "N/A"),
                 nullSafe(address.getSettlement(), "N/A"),
                 nullSafe(address.getCounty(), "N/A"),
-                user.email());
-        lessor.setLessorOib(version.getPin() != null ? version.getPin() : user.oib());
+                oib + "@noreply.local");
+        lessor.setLessorOib(version.getPin() != null ? version.getPin() : oib);
         if (version.getName() != null && !version.getName().isBlank()) {
             lessor.setLegalEntityName(version.getName());
         }

@@ -35,7 +35,6 @@ class RegistrationControllerTest {
     @Autowired private ObjectMapper om;
 
     @MockBean private RegistrationService service;
-
     @Test
     void post_returns_201_with_assigned_rb() throws Exception {
         UUID lessorId = UUID.randomUUID();
@@ -114,6 +113,7 @@ class RegistrationControllerTest {
 
     private RegistrationRequest validRequest() {
         RegistrationRequest req = new RegistrationRequest();
+        req.setOib("12312312316");
         req.setName("Apartman Sunce");
         req.setCounty(County.SPLITSKO_DALMATINSKA);
         req.setCityId("Split");
