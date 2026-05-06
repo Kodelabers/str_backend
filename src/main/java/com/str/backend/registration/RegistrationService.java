@@ -2,7 +2,6 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
-import com.str.backend.auth.AuthContext;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
@@ -21,9 +20,6 @@ import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,7 +37,6 @@ public class RegistrationService {
     private final RnService rnService;
     private final EgopClient egopClient;
     private final SubmissionPdfGenerator pdfGenerator;
-    private final AuthContext authContext;
     private final StrLessorLookupService strLessorLookupService;
 
     public RegistrationService(LessorRepository lessorRepository,
@@ -51,7 +46,6 @@ public class RegistrationService {
                                RnService rnService,
                                EgopClient egopClient,
                                SubmissionPdfGenerator pdfGenerator,
-                               AuthContext authContext,
                                StrLessorLookupService strLessorLookupService) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
@@ -60,14 +54,12 @@ public class RegistrationService {
         this.rnService = rnService;
         this.egopClient = egopClient;
         this.pdfGenerator = pdfGenerator;
-        this.authContext = authContext;
         this.strLessorLookupService = strLessorLookupService;
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse generateRegistrationNumber(RegistrationRequest req) {
-        AuthContext.AuthenticatedUser user = authContext.currentUser();
-        LessorEntity lessor = strLessorLookupService.resolveLessor(user);
+        LessorEntity lessor = strLessorLookupService.resolveLessor(req.getOib());
 
         AccommodationEntity accommodation = buildAccommodation(req);
 
@@ -107,18 +99,13 @@ public class RegistrationService {
     }
 
     @Transactional(readOnly = true)
-    public ResponseEntity<byte[]> getPdfContent(UUID submissionId) {
+    public SubmissionEntity getSubmissionForPdf(UUID submissionId) {
         SubmissionEntity submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
-        byte[] pdf = submission.getPdfContent();
-        if (pdf == null || pdf.length == 0) {
+        if (submission.getPdfContent() == null || submission.getPdfContent().length == 0) {
             throw new ResourceNotFoundException("error.pdf.not.stored");
         }
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"submission-" + submission.getFilingNumber().replace('/', '_') + ".pdf\"")
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(pdf);
+        return submission;
     }
 
     private AccommodationEntity buildAccommodation(RegistrationRequest req) {
@@ -130,7 +117,8 @@ public class RegistrationService {
         if (req.getTypeId() != null) {
             try {
                 entity.setAccommodationTypeId(Long.parseLong(req.getTypeId()));
-            } catch (NumberFormatException ignored) {
+            } catch (NumberFormatException e) {
+                log.warn("typeId '{}' nije numerički, polje se ignorira", req.getTypeId());
             }
         }
         return entity;

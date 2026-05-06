@@ -23,5 +23,6 @@
     <include file="db/changelog/changes/016-guest-injection.xml"/>
     <include file="db/changelog/changes/017-publication-log.xml"/>
     <include file="db/changelog/changes/018-lessor-log.xml"/>
+    <include file="db/changelog/changes/019-lessor-email-nullable.xml"/>
 
 </databaseChangeLog>
