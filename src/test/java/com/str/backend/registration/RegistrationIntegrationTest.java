@@ -2,7 +2,8 @@ package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.str.backend.domain.County;
+import com.str.backend.address.CountyEntity;
+import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
@@ -20,6 +21,9 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+
+import java.lang.reflect.Field;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -49,12 +53,16 @@ class RegistrationIntegrationTest {
     @Autowired private LessorRepository lessorRepository;
 
     @MockBean private StrLessorLookupService strLessorLookupService;
+    @MockBean private CountyRepository countyRepository;
 
     @BeforeEach
-    void setupLessorLookup() {
+    void setupMocks() {
         when(strLessorLookupService.resolveLessor(anyString()))
                 .thenAnswer(inv -> LessorEntity.create("PERO", "PERIĆ",
-                        "Ilica", "1", "Zagreb", "GRAD_ZAGREB", "pero.peric@example.hr"));
+                        "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr"));
+
+        CountyEntity county = buildCountyEntity(2L, "Splitsko-dalmatinska županija");
+        when(countyRepository.findById(2L)).thenReturn(Optional.of(county));
     }
 
     @Test
@@ -103,11 +111,35 @@ class RegistrationIntegrationTest {
 
 
 
+    private CountyEntity buildCountyEntity(Long id, String name) {
+        try {
+            var ctor = CountyEntity.class.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            CountyEntity c = ctor.newInstance();
+            setField(c, "id", id);
+            setField(c, "name", name);
+            setField(c, "active", true);
+            return c;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void setField(Object target, String name, Object value) {
+        try {
+            Field f = target.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(target, value);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private RegistrationRequest baseRequest() {
         RegistrationRequest req = new RegistrationRequest();
         req.setOib("12312312316");
         req.setName("Apartman Sunce");
-        req.setCounty(County.SPLITSKO_DALMATINSKA);
+        req.setCountyId(2L);
         req.setCityId("Split");
         req.setStreet("Ulica kralja Tomislava");
         req.setStreetNumber("14a");

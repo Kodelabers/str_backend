@@ -1,7 +1,6 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.str.backend.domain.County;
 import com.str.backend.domain.OfferType;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
@@ -125,7 +124,7 @@ class RegistrationControllerTest {
         RegistrationRequest req = new RegistrationRequest();
         req.setOib("12312312316");
         req.setName("Apartman Sunce");
-        req.setCounty(County.SPLITSKO_DALMATINSKA);
+        req.setCountyId(2L);
         req.setCityId("Split");
         req.setStreet("Ulica kralja Tomislava");
         req.setStreetNumber("14a");

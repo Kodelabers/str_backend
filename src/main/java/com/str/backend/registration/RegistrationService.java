@@ -2,6 +2,8 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.CountyEntity;
+import com.str.backend.address.CountyRepository;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
@@ -38,6 +40,7 @@ public class RegistrationService {
     private final EgopClient egopClient;
     private final SubmissionPdfGenerator pdfGenerator;
     private final StrLessorLookupService strLessorLookupService;
+    private final CountyRepository countyRepository;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -46,7 +49,8 @@ public class RegistrationService {
                                RnService rnService,
                                EgopClient egopClient,
                                SubmissionPdfGenerator pdfGenerator,
-                               StrLessorLookupService strLessorLookupService) {
+                               StrLessorLookupService strLessorLookupService,
+                               CountyRepository countyRepository) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -55,13 +59,17 @@ public class RegistrationService {
         this.egopClient = egopClient;
         this.pdfGenerator = pdfGenerator;
         this.strLessorLookupService = strLessorLookupService;
+        this.countyRepository = countyRepository;
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse generateRegistrationNumber(RegistrationRequest req) {
+        CountyEntity county = countyRepository.findById(req.getCountyId())
+                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.getCountyId()));
+
         LessorEntity lessor = strLessorLookupService.resolveLessor(req.getOib());
 
-        AccommodationEntity accommodation = buildAccommodation(req);
+        AccommodationEntity accommodation = buildAccommodation(req, county.getName());
 
         ValidationContext context = new ValidationContext(accommodation, lessor);
         PipelineResult result = orchestrator.execute(context);
@@ -69,9 +77,9 @@ public class RegistrationService {
             throw new ValidationRejectedException(result.getStep(), result.getDetail());
         }
 
-        byte[] draftPdf = pdfGenerator.generate(req, lessor, null);
+        byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null);
         EgopClient.UrudzbeniBroj filing = egopClient.rezervirajUrudzbeniBroj();
-        byte[] finalPdf = pdfGenerator.generate(req, lessor, filing.formatiran());
+        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatiran());
         EgopClient.PotvrdaUrudzbiranja confirmation =
                 egopClient.posaljiZahtjev(filing.formatiran(), finalPdf);
 
@@ -108,9 +116,9 @@ public class RegistrationService {
         return submission;
     }
 
-    private AccommodationEntity buildAccommodation(RegistrationRequest req) {
+    private AccommodationEntity buildAccommodation(RegistrationRequest req, String countyName) {
         AccommodationEntity entity = AccommodationEntity.create(
-                null, req.getCounty().name(), req.getCityId(), req.getStreet(), req.getStreetNumber(),
+                null, countyName, req.getCityId(), req.getStreet(), req.getStreetNumber(),
                 req.getMaxBeds(), req.getMaxGuests(), req.getOfferType(), false, false, true);
         entity.setName(req.getName());
         entity.setSettlement(req.getSettlementId());
