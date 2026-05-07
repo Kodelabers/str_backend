@@ -16,17 +16,19 @@ mvn package                             # build fat JAR
 
 ## Environments & Profiles
 
-Three Spring profiles — `local` (default), `test`, `prod`. The active profile is set via `SPRING_PROFILES_ACTIVE` env var; `application.properties` defaults to `local`.
+Five Spring profiles — `local` (default), `mock`, `dev`, `test`, `prod`. Override via `SPRING_PROFILES_ACTIVE` env var.
 
 | Profile | DB | Notes |
 |---|---|---|
-| `local` | `localhost:5432/str_db`, user `postgres` | `LocalDatabaseConfig` auto-creates the DB on startup if absent |
-| `test` | real PostgreSQL via `TEST_DB_URL/USERNAME/PASSWORD` env vars | Liquibase runs migrations only (skips `core.objekt` creation) |
+| `local` | `localhost:5432/str_db_local`, user `postgres` | `LocalDatabaseConfig` auto-creates the DB **and `str_rn` schema** before Liquibase runs; Liquibase runs `context=local` (mock `str` schema + 8 test lessors). Password via `LOCAL_DB_PASSWORD` env var (default `postgres`) |
+| `mock` | Railway PostgreSQL via `PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD` | DB provisioned by Railway; `LocalDatabaseConfig` only creates `str_rn` schema; Liquibase runs `context=local` (same mock `str` schema + seed). Set `SPRING_PROFILES_ACTIVE=mock` in Railway service env vars. |
+| `dev` | shared dev PostgreSQL `s-str-02.infodom.hr:5431/str2` | `str` schema is owned by another service — read-only; Liquibase only manages `str_rn` |
+| `test` | real PostgreSQL via `TEST_DB_URL/USERNAME/PASSWORD` env vars | Liquibase runs migrations only |
 | `prod` | real PostgreSQL via `PROD_DB_URL/USERNAME/PASSWORD` env vars | same as test |
 
 Unit tests (`@ActiveProfiles("test")`) use H2 from `src/test/resources/application-test.properties` — the test classpath file overrides the main one, so JUnit tests are unaffected by the real `test` env config.
 
-Liquibase context `local` is set only in `application-local.properties`. Changeset `002-core-objekt.xml` carries `context="local"` and must never run against test/prod (that table is owned by the `core` service).
+The `str` schema (subject, subject_version, subject_address, address, county, municipality, settlement, street, house_number) is owned externally. On `dev`/`prod` we read from the real registry. On `local` we mock those tables via Liquibase changesets `100-str-schema-local.xml` and `101-str-seed-local.xml`, both gated by `context="local"` and activated via `spring.liquibase.contexts=local` in `application-local.properties`.
 
 ## Architecture
 
