@@ -2,7 +2,6 @@ package com.str.backend.rn;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
-import com.str.backend.domain.County;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.domain.RegistrationNumber;
@@ -17,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -24,6 +24,31 @@ public class RnService {
 
     private static final Logger log = LoggerFactory.getLogger(RnService.class);
     private static final int MAX_RN_ATTEMPTS = 5;
+
+    // Maps str.county.name → EGOP organization ID used in RN generation
+    private static final Map<String, Integer> COUNTY_EGOP_ORG_IDS = Map.ofEntries(
+            Map.entry("Zagrebačka županija",                    2),
+            Map.entry("Krapinsko-zagorska županija",            3),
+            Map.entry("Sisačko-moslavačka županija",            4),
+            Map.entry("Karlovačka županija",                    5),
+            Map.entry("Varaždinska županija",                   6),
+            Map.entry("Koprivničko-križevačka županija",        7),
+            Map.entry("Bjelovarsko-bilogorska županija",        8),
+            Map.entry("Primorsko-goranska županija",            9),
+            Map.entry("Ličko-senjska županija",                10),
+            Map.entry("Virovitičko-podravska županija",        11),
+            Map.entry("Požeško-slavonska županija",            12),
+            Map.entry("Brodsko-posavska županija",             13),
+            Map.entry("Zadarska županija",                     14),
+            Map.entry("Osječko-baranjska županija",            15),
+            Map.entry("Šibensko-kninska županija",             16),
+            Map.entry("Vukovarsko-srijemska županija",         17),
+            Map.entry("Splitsko-dalmatinska županija",         18),
+            Map.entry("Istarska županija",                     19),
+            Map.entry("Dubrovačko-neretvanska županija",       20),
+            Map.entry("Međimurska županija",                   21),
+            Map.entry("Grad Zagreb",                           22)
+    );
 
     private final RnRepository repository;
     private final RnStatusTransitionService transitionService;
@@ -111,11 +136,7 @@ public class RnService {
     }
 
     private static int countyCode(AccommodationEntity accommodation) {
-        try {
-            return (int) County.valueOf(accommodation.getCounty()).getOrganizationId();
-        } catch (IllegalArgumentException | NullPointerException e) {
-            return 0;
-        }
+        return COUNTY_EGOP_ORG_IDS.getOrDefault(accommodation.getCounty(), 0);
     }
 
     private RnEntity load(String rn) {

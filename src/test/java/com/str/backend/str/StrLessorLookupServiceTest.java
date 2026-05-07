@@ -74,7 +74,7 @@ class StrLessorLookupServiceTest {
                 .thenReturn(Optional.of(version(10L, "Pero", "Perić", null, OIB)));
         when(addressRepo.findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(10L))
                 .thenReturn(Optional.of(subjectAddress(10L, 100L)));
-        when(strAddressRepo.findById(100L)).thenReturn(Optional.of(address("Ilica", "1", "Zagreb", "GRAD_ZAGREB")));
+        when(strAddressRepo.findById(100L)).thenReturn(Optional.of(address("Ilica", "1", "Zagreb", "Grad Zagreb")));
 
         LessorEntity lessor = service.resolveLessor(OIB);
 
@@ -92,7 +92,7 @@ class StrLessorLookupServiceTest {
                 .thenReturn(Optional.of(version(10L, null, null, "Adria d.o.o.", OIB)));
         when(addressRepo.findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(10L))
                 .thenReturn(Optional.of(subjectAddress(10L, 100L)));
-        when(strAddressRepo.findById(100L)).thenReturn(Optional.of(address("Vukovarska", "15", "Split", "SPLITSKO_DALMATINSKA")));
+        when(strAddressRepo.findById(100L)).thenReturn(Optional.of(address("Vukovarska", "15", "Split", "Splitsko-dalmatinska županija")));
 
         LessorEntity lessor = service.resolveLessor(OIB);
 

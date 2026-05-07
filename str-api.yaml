@@ -7,9 +7,10 @@ info:
     Endpoint groups:
     - **/api/verify** – public registration number lookup (SDEP, OTA platforms)
     - **/api/rn** – registration number lifecycle management (competent authority)
-    - **/api/registracija** – accommodation registration and RN assignment
+    - **/api/generateRegistrationNumber** – accommodation registration and RN assignment
+    - **/api/adrese** – cascading address lookup for autocomplete (county → municipality → settlement → street → house number)
     - **/api/aktivnosti** – SDEP activity ingestion and search
-  version: "4.0"
+  version: "5.0"
 
 tags:
   - name: verify
@@ -18,6 +19,8 @@ tags:
     description: Registration number lifecycle management
   - name: registration
     description: Accommodation registration and RN assignment
+  - name: address
+    description: Cascading address lookup for autocomplete dropdowns
   - name: activities
     description: SDEP activity ingestion and search (STR-3.x)
 
@@ -155,78 +158,35 @@ paths:
   # Accommodation registration
   # ─────────────────────────────────────────────────────────────
 
-  /api/registracija:
+  /api/generateRegistrationNumber:
     post:
       tags: [registration]
       summary: Register an accommodation and assign a registration number
       description: |
-        Single endpoint for all three scenarios:
+        Registers a single accommodation unit. The lessor is identified by OIB and looked
+        up from the `str.subject` registry. All GO validation checks (GO-1 – GO-5) must
+        pass before a registration number (RN) is assigned.
 
-        | Scenario | Description |
-        |---|---|
-        | `S1_EXISTING_UNIT` | Accommodation already exists in the core registry; `coreObjectId` required per accommodation |
-        | `S2_NEW_UNIT_EXTERNAL` | New accommodation submitted via the external (public) portal |
-        | `S3_NEW_UNIT_INTERNAL` | New accommodation entered by a referent via the internal portal |
-
-        The RN is assigned only after all GO validation checks (GO-1 – GO-5) pass.
-        If any check returns a rejection, 422 is returned.
+        If any GO check returns a rejection, 422 is returned.
         If an external registry (MPGI or DGU) is unavailable, 503 is returned.
-      operationId: register
+      operationId: generateRegistrationNumber
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/RegistrationRequest'
-            examples:
-              s1_existing:
-                summary: S1 – existing accommodation
-                value:
-                  scenario: S1_EXISTING_UNIT
-                  lessor:
-                    firstName: "Marko"
-                    lastName: "Marić"
-                    email: "marko@example.com"
-                    street: "Ilica"
-                    streetNumber: "1"
-                    place: "Zagreb"
-                    county: "Grad Zagreb"
-                  accommodations:
-                    - coreObjectId: "660e8400-e29b-41d4-a716-446655440001"
-                      county: "Grad Zagreb"
-                      city: "Zagreb"
-                      street: "Ilica"
-                      streetNumber: "1"
-                      maxBeds: 2
-                      maxGuests: 4
-                      offerType: FULL
-                      building: false
-                      apartments: false
-                      legalized: true
-              s2_new_external:
-                summary: S2 – new accommodation, external portal
-                value:
-                  scenario: S2_NEW_UNIT_EXTERNAL
-                  competentAuthorityId: 1
-                  lessor:
-                    firstName: "Marko"
-                    lastName: "Marić"
-                    email: "marko@example.com"
-                    street: "Ilica"
-                    streetNumber: "1"
-                    place: "Zagreb"
-                    county: "Grad Zagreb"
-                  accommodations:
-                    - county: "Grad Zagreb"
-                      city: "Zagreb"
-                      street: "Ilica"
-                      streetNumber: "1"
-                      maxBeds: 2
-                      maxGuests: 4
-                      offerType: FULL
-                      building: false
-                      apartments: false
-                      legalized: true
+            example:
+              oib: "12312312316"
+              name: "Apartman Sunce"
+              countyId: 2
+              cityId: "Split"
+              street: "Ulica kralja Tomislava"
+              streetNumber: "14a"
+              postalCode: "21000"
+              maxBeds: 4
+              maxGuests: 6
+              offerType: "RESIDENCE"
       responses:
         "201":
           description: Registration successful – RN assigned
@@ -234,8 +194,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RegistrationResponse'
+              example:
+                lessorId: "550e8400-e29b-41d4-a716-446655440000"
+                assignedRbs:
+                  - accommodationId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                    rn: "HR180000123456789001"
         "400":
           $ref: '#/components/responses/BadRequest'
+        "404":
+          description: Lessor not found in str.subject registry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         "422":
           description: GO validation rejected
           content:
@@ -253,7 +224,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/registracija/{submissionId}/pdf:
+  /api/generateRegistrationNumber/{submissionId}/pdf:
     get:
       tags: [registration]
       summary: Download the submission PDF
@@ -278,6 +249,163 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ─────────────────────────────────────────────────────────────
+  # Address lookup
+  # ─────────────────────────────────────────────────────────────
+
+  /api/adrese/zupanije:
+    get:
+      tags: [address]
+      summary: List counties
+      description: Returns all active counties. Optional `q` filters by name (case-insensitive substring).
+      operationId: getCounties
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Name filter (case-insensitive substring)
+          schema:
+            type: string
+            example: "split"
+      responses:
+        "200":
+          description: List of counties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CountyResponse'
+
+  /api/adrese/opcine:
+    get:
+      tags: [address]
+      summary: List municipalities by county
+      description: |
+        Returns all active municipalities in the given county.
+        Optional `q` filters by name (case-insensitive substring).
+      operationId: getMunicipalities
+      parameters:
+        - name: zupanijaId
+          in: query
+          required: true
+          description: County ID from `/api/adrese/zupanije`
+          schema:
+            type: integer
+            format: int64
+            example: 2
+        - name: q
+          in: query
+          required: false
+          description: Name filter (case-insensitive substring)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of municipalities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MunicipalityResponse'
+
+  /api/adrese/naselja:
+    get:
+      tags: [address]
+      summary: List settlements by municipality
+      description: |
+        Returns all active settlements in the given municipality.
+        Optional `q` filters by name (case-insensitive substring).
+      operationId: getSettlements
+      parameters:
+        - name: opcinaId
+          in: query
+          required: true
+          description: Municipality ID from `/api/adrese/opcine`
+          schema:
+            type: integer
+            format: int64
+        - name: q
+          in: query
+          required: false
+          description: Name filter (case-insensitive substring)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of settlements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SettlementResponse'
+
+  /api/adrese/ulice:
+    get:
+      tags: [address]
+      summary: List streets by settlement
+      description: |
+        Returns all active streets in the given settlement.
+        Optional `q` filters by name (case-insensitive substring).
+      operationId: getStreets
+      parameters:
+        - name: naseljeId
+          in: query
+          required: true
+          description: Settlement ID from `/api/adrese/naselja`
+          schema:
+            type: integer
+            format: int64
+        - name: q
+          in: query
+          required: false
+          description: Name filter (case-insensitive substring)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of streets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StreetResponse'
+
+  /api/adrese/kucni-brojevi:
+    get:
+      tags: [address]
+      summary: List house numbers by street
+      description: |
+        Returns all active house numbers on the given street.
+        Optional `q` filters by value (case-insensitive substring).
+      operationId: getHouseNumbers
+      parameters:
+        - name: ulicaId
+          in: query
+          required: true
+          description: Street ID from `/api/adrese/ulice`
+          schema:
+            type: integer
+            format: int64
+        - name: q
+          in: query
+          required: false
+          description: Value filter (case-insensitive substring)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of house numbers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HouseNumberResponse'
+
+  # ─────────────────────────────────────────────────────────────
   # Activities (SDEP)
   # ─────────────────────────────────────────────────────────────
 
@@ -299,7 +427,7 @@ paths:
             example:
               platformId: 42
               entries:
-                - rn: "HR12345678"
+                - rn: "HR180000123456789001"
                   accommodationId: "550e8400-e29b-41d4-a716-446655440000"
                   periodFrom: "2026-03-01"
                   periodTo: "2026-03-31"
@@ -338,7 +466,7 @@ paths:
           description: Registration number filter
           schema:
             type: string
-            example: "HR12345678"
+            example: "HR180000123456789001"
         - name: od
           in: query
           required: false
@@ -393,11 +521,11 @@ components:
       name: rn
       in: path
       required: true
-      description: Registration number in format HR + 8 digits (e.g. HR12345678)
+      description: Registration number (format HR + 18 hex characters)
       schema:
         type: string
-        pattern: '^HR\d{8}$'
-        example: "HR12345678"
+        pattern: '^HR[0-9A-Fa-f]{18}$'
+        example: "HR180000123456789001"
 
   responses:
     NotFound:
@@ -417,18 +545,12 @@ components:
 
     # ── Enums ──────────────────────────────────────────────────
 
-    Scenario:
-      type: string
-      enum: [S1_EXISTING_UNIT, S2_NEW_UNIT_EXTERNAL, S3_NEW_UNIT_INTERNAL]
-      description: |
-        - `S1_EXISTING_UNIT` – accommodation already exists in the core registry
-        - `S2_NEW_UNIT_EXTERNAL` – new accommodation via external (public) portal
-        - `S3_NEW_UNIT_INTERNAL` – new accommodation via internal portal
-
     OfferType:
       type: string
-      enum: [PARTIAL, FULL]
-      description: Whether the lessor rents part of the property or the entire unit
+      enum: [RESIDENCE, OTHER]
+      description: |
+        - `RESIDENCE` – lessor rents their primary/secondary residence
+        - `OTHER` – other type of short-term rental unit
 
     RnStatus:
       type: string
@@ -451,7 +573,7 @@ components:
       properties:
         registrationNumber:
           type: string
-          example: "HR12345678"
+          example: "HR180000123456789001"
         status:
           $ref: '#/components/schemas/RnStatus'
         capacity:
@@ -469,7 +591,7 @@ components:
       properties:
         rn:
           type: string
-          example: "HR12345678"
+          example: "HR180000123456789001"
         submissionId:
           type: string
           format: uuid
@@ -494,181 +616,71 @@ components:
 
     RegistrationRequest:
       type: object
-      required: [scenario, lessor, accommodations]
+      required: [oib, name, countyId, cityId, street, streetNumber, maxBeds, maxGuests, offerType]
       properties:
-        scenario:
-          $ref: '#/components/schemas/Scenario'
-        lessor:
-          $ref: '#/components/schemas/LessorRequest'
-        competentAuthorityId:
+        oib:
+          type: string
+          pattern: '^\d{11}$'
+          description: Lessor OIB — exactly 11 digits
+          example: "12312312316"
+        name:
+          type: string
+          description: Accommodation unit name
+          example: "Apartman Sunce"
+        typeId:
+          type: string
+          description: Accommodation type ID from the lookup table
+          nullable: true
+        countyId:
           type: integer
           format: int64
-          nullable: true
-        accommodations:
-          type: array
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/AccommodationRequest'
-
-    LessorRequest:
-      type: object
-      required: [firstName, lastName, email, street, streetNumber, place, county]
-      properties:
-        firstName:
+          minimum: 1
+          description: County ID from `/api/adrese/zupanije`
+          example: 2
+        cityId:
           type: string
-          maxLength: 128
-        lastName:
+          description: Municipality/city name from `/api/adrese/opcine` → `name` field
+          example: "Split"
+        settlementId:
           type: string
-          maxLength: 128
-        email:
-          type: string
-          format: email
-        street:
-          type: string
-          maxLength: 128
-        streetNumber:
-          type: string
-          maxLength: 16
-        place:
-          type: string
-          maxLength: 128
-        county:
-          type: string
-          maxLength: 128
-        contactName:
-          type: string
-          nullable: true
-        phoneNumber:
-          type: string
-          maxLength: 32
-          nullable: true
-        mobileNumber:
-          type: string
-          maxLength: 32
-          nullable: true
-        contactNote:
-          type: string
-          maxLength: 1024
-          nullable: true
-        representativeOib:
-          type: string
-          maxLength: 11
-          description: OIB of the legal representative (triggers legal entity enrichment from SR)
-          nullable: true
-        legalEntityName:
-          type: string
-          maxLength: 255
-          nullable: true
-        legalRepresentativeName:
-          type: string
-          nullable: true
-        representativeEmail:
-          type: string
-          format: email
-          nullable: true
-        representativePhone:
-          type: string
-          maxLength: 32
-          nullable: true
-        representativeAddress:
-          type: string
-          maxLength: 255
-          nullable: true
-        officialPersonId:
-          type: string
-          maxLength: 64
-          description: Internal referent ID (internal portal only)
-          nullable: true
-
-    AccommodationRequest:
-      type: object
-      required: [county, city, street, streetNumber, maxBeds, maxGuests, offerType, building, apartments, legalized]
-      properties:
-        county:
-          type: string
-          maxLength: 128
-        city:
-          type: string
-          maxLength: 128
-        settlement:
-          type: string
-          maxLength: 128
+          description: Settlement ID from `/api/adrese/naselja`
           nullable: true
         street:
           type: string
-          maxLength: 128
+          description: Street name
+          example: "Ulica kralja Tomislava"
         streetNumber:
           type: string
-          maxLength: 16
-        cadastralMunicipality:
+          description: House number
+          example: "14a"
+        postalCode:
           type: string
-          maxLength: 128
           nullable: true
-        cadastralParcelNumber:
-          type: string
-          maxLength: 64
-          nullable: true
+          example: "21000"
         maxBeds:
           type: integer
           minimum: 1
+          example: 4
         maxGuests:
           type: integer
           minimum: 1
+          example: 6
         offerType:
           $ref: '#/components/schemas/OfferType'
-        lessorResidence:
-          type: boolean
-          nullable: true
-        building:
-          type: boolean
-        floor:
-          type: string
-          maxLength: 8
-          nullable: true
-        apartments:
-          type: boolean
-        legalized:
-          type: boolean
-        coOwnerConsent:
-          type: boolean
-          nullable: true
-        consentDate:
-          type: string
-          format: date
-          nullable: true
-        consentWithdrawalDate:
-          type: string
-          format: date
-          nullable: true
-        accommodationCode:
-          type: string
-          maxLength: 64
-          nullable: true
-        accommodationTypeId:
-          type: integer
-          format: int64
-          nullable: true
-        coreObjectId:
-          type: string
-          format: uuid
-          nullable: true
-          description: Required for scenario S1_EXISTING_UNIT
 
     RegistrationResponse:
       type: object
-      required: [scenario, lessorId, assignedRbs]
+      required: [lessorId, assignedRbs]
       properties:
-        scenario:
-          $ref: '#/components/schemas/Scenario'
         lessorId:
           type: string
           format: uuid
         assignedRbs:
           type: array
           items:
-            $ref: '#/components/schemas/AssignedRn'
+            $ref: '#/components/schemas/AssignedRb'
 
-    AssignedRn:
+    AssignedRb:
       type: object
       required: [accommodationId, rn]
       properties:
@@ -677,7 +689,83 @@ components:
           format: uuid
         rn:
           type: string
-          example: "HR12345678"
+          example: "HR180000123456789001"
+
+    # ── Address lookup ─────────────────────────────────────────
+
+    CountyResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 2
+        name:
+          type: string
+          example: "Splitsko-dalmatinska županija"
+
+    MunicipalityResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 101
+        name:
+          type: string
+          example: "Split"
+        typeCode:
+          type: string
+          nullable: true
+          description: Municipality type code from str.municipality
+          example: "G"
+
+    SettlementResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 5001
+        name:
+          type: string
+          example: "Split"
+        postalCode:
+          type: string
+          nullable: true
+          example: "21000"
+
+    StreetResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 80001
+        name:
+          type: string
+          example: "Ulica kralja Tomislava"
+        typeCode:
+          type: string
+          nullable: true
+          description: Street type code from str.street
+          example: "UL"
+
+    HouseNumberResponse:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 300001
+        name:
+          type: string
+          example: "14a"
 
     # ── Activities ─────────────────────────────────────────────
 
@@ -702,7 +790,7 @@ components:
         rn:
           type: string
           description: Registration number
-          example: "HR12345678"
+          example: "HR180000123456789001"
         accommodationId:
           type: string
           format: uuid
@@ -738,7 +826,7 @@ components:
           format: int64
         rn:
           type: string
-          example: "HR12345678"
+          example: "HR180000123456789001"
         accommodationId:
           type: string
           format: uuid

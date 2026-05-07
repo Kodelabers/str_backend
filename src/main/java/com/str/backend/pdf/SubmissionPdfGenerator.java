@@ -31,7 +31,7 @@ public class SubmissionPdfGenerator {
      * Generates PDF for registration submission. {@code filingNumber} may be
      * {@code null} (first pass before eGOP reservation) or the final stamped number.
      */
-    public byte[] generate(RegistrationRequest req, LessorEntity lessor, String filingNumber) {
+    public byte[] generate(RegistrationRequest req, String countyName, LessorEntity lessor, String filingNumber) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4, 40, 40, 50, 40);
             PdfWriter.getInstance(doc, baos);
@@ -46,7 +46,7 @@ public class SubmissionPdfGenerator {
             doc.add(blank());
 
             doc.add(new Paragraph("Smještajna jedinica", LABEL));
-            doc.add(accommodationTable(req));
+            doc.add(accommodationTable(req, countyName));
             doc.add(blank());
 
             doc.add(new Paragraph("Generirano: " + java.time.LocalDateTime.now().format(DT), SMALL));
@@ -66,11 +66,11 @@ public class SubmissionPdfGenerator {
         return t;
     }
 
-    private PdfPTable accommodationTable(RegistrationRequest req) {
+    private PdfPTable accommodationTable(RegistrationRequest req, String countyName) {
         PdfPTable t = baseTable();
         addRow(t, "Name", nullSafe(req.getName()));
         addRow(t, "Address", nullSafe(req.getStreet()) + " " + nullSafe(req.getStreetNumber()) + ", "
-                + nullSafe(req.getCityId()) + ", " + (req.getCounty() != null ? req.getCounty().name() : ""));
+                + nullSafe(req.getCityId()) + ", " + nullSafe(countyName));
         addRow(t, "Capacity", "beds " + req.getMaxBeds() + ", guests " + req.getMaxGuests());
         addRow(t, "Offer type", req.getOfferType() != null ? req.getOfferType().name() : "");
         return t;

@@ -1,6 +1,5 @@
 package com.str.backend.registration.dto;
 
-import com.str.backend.domain.County;
 import com.str.backend.domain.OfferType;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -22,7 +21,7 @@ public class RegistrationRequest {
     @NotBlank private String name;
     private String typeId;
 
-    @NotNull private County county;
+    @NotNull @Min(1) private Long countyId;
     @NotBlank private String cityId;
     private String settlementId;
 
