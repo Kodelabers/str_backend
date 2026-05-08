@@ -27,6 +27,7 @@
     <include file="db/changelog/changes/020-accommodation-type-add-skupina.xml"/>
 
     <include file="db/changelog/changes/021-str-seed-expand-local.xml"/>
+    <include file="db/changelog/changes/022-str-seed-missing-house-numbers.xml"/>
 
     <!-- Mock 'str' schema and seed data — gated by Liquibase context="local" -->
     <include file="db/changelog/changes/100-str-schema-local.xml"/>
