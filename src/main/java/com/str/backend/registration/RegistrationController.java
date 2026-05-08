@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/generateRegistrationNumber")
 @Validated
 public class RegistrationController {
 
@@ -29,12 +28,22 @@ public class RegistrationController {
         this.service = service;
     }
 
-    @PostMapping
+    @PostMapping("/api/generateRegistrationNumber")
     public ResponseEntity<RegistrationResponse> generateRegistrationNumber(@Valid @RequestBody RegistrationRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(req));
     }
 
-    @GetMapping(value = "/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    @PostMapping("/api/objekti/registracija")
+    public ResponseEntity<ObjektRegistracijaOdgovor> registracija(@Valid @RequestBody RegistrationRequest req) {
+        RegistrationResponse resp = service.generateRegistrationNumber(req);
+        RegistrationResponse.AssignedRb rb = resp.getAssignedRbs().get(0);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new ObjektRegistracijaOdgovor(rb.getRn(), rb.getAccommodationId().toString()));
+    }
+
+    record ObjektRegistracijaOdgovor(String rbBroj, String zahtjevId) {}
+
+    @GetMapping(value = "/api/generateRegistrationNumber/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID submissionId) {
         SubmissionEntity submission = service.getSubmissionForPdf(submissionId);
         return ResponseEntity.ok()
