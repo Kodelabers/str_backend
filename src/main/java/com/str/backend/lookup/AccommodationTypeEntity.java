@@ -22,15 +22,20 @@ public class AccommodationTypeEntity {
     @Column(name = "registration_number_allowed", nullable = false)
     private boolean registrationNumberAllowed;
 
+    @Column(name = "skupina", nullable = false)
+    private String skupina;
+
     protected AccommodationTypeEntity() {
     }
 
-    public AccommodationTypeEntity(String name, boolean registrationNumberAllowed) {
+    public AccommodationTypeEntity(String name, boolean registrationNumberAllowed, String skupina) {
         this.name = name;
         this.registrationNumberAllowed = registrationNumberAllowed;
+        this.skupina = skupina;
     }
 
     public Long getTypeId() { return typeId; }
     public String getName() { return name; }
     public boolean isRegistrationNumberAllowed() { return registrationNumberAllowed; }
+    public String getSkupina() { return skupina; }
 }
