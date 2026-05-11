@@ -125,7 +125,16 @@
       "Bash(taskkill /F /IM java.exe)",
       "Bash(xargs ls *)",
       "Bash(git fetch *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(git -C /c/Projects/STR/str_backend pull origin develop)",
+      "Bash(git -C /c/Projects/STR/str_frontend pull origin develop)",
+      "Bash(git -C /c/Projects/STR/str_backend checkout feat/str-mock-app)",
+      "Bash(git -C /c/Projects/STR/str_frontend checkout feat/str-mock-app)",
+      "Bash(git -C /c/Projects/STR/str_backend stash pop)",
+      "Bash(git -C /c/Projects/STR/str_frontend stash pop)",
+      "Bash(git -C /c/Projects/STR/str_backend restore .claude/settings.local.json)",
+      "Bash(git -C /c/Projects/STR/str_backend diff HEAD -- src/main/java/com/str/backend/registration/RegistrationController.java)",
+      "Bash(git *)"
     ]
   }
 }

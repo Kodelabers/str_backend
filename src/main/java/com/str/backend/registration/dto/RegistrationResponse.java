@@ -1,22 +1,12 @@
 package com.str.backend.registration.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-
 import java.util.List;
 import java.util.UUID;
 
-@Getter
-@AllArgsConstructor
-public class RegistrationResponse {
-
-    private UUID lessorId;
-    private List<AssignedRb> assignedRbs;
-
-    @Getter
-    @AllArgsConstructor
-    public static class AssignedRb {
-        private UUID accommodationId;
-        private String rn;
-    }
+public record RegistrationResponse(
+        UUID lessorId,
+        UUID submissionId,
+        List<AssignedRb> assignedRbs
+) {
+    public record AssignedRb(UUID accommodationId, String rn) {}
 }
