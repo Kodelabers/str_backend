@@ -72,7 +72,7 @@ class RnServiceTest {
         when(accommodationRepository.findById(accommodationId))
                 .thenReturn(Optional.of(accommodation(accommodationId, typeId)));
         when(accommodationTypeRepository.findById(typeId))
-                .thenReturn(Optional.of(new AccommodationTypeEntity("Apartman", true)));
+                .thenReturn(Optional.of(new AccommodationTypeEntity("Apartman", true, "domacinstvo")));
         when(repository.existsByRn(anyString())).thenReturn(false);
 
         RnEntity result = service.issue(UUID.randomUUID(), accommodationId);
@@ -88,7 +88,7 @@ class RnServiceTest {
         when(accommodationRepository.findById(accommodationId))
                 .thenReturn(Optional.of(accommodation(accommodationId, typeId)));
         when(accommodationTypeRepository.findById(typeId))
-                .thenReturn(Optional.of(new AccommodationTypeEntity("Hotel", false)));
+                .thenReturn(Optional.of(new AccommodationTypeEntity("Hotel", false, "ostalo")));
 
         assertThatThrownBy(() -> service.issue(UUID.randomUUID(), accommodationId))
                 .isInstanceOf(BusinessException.class)

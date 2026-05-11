@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Expanded local seed: more municipalities, settlements, streets and house numbers
+      per county so the address cascade dropdowns feel realistic.
+      All changesets gated context="local".
+    -->
+
+    <!-- ── More municipalities ─────────────────────────────────────────── -->
+    <changeSet id="021-seed-municipalities-expand" author="str-backend" context="local">
+        <!-- Splitsko-dalmatinska (2) -->
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="11"/><column name="name" value="Makarska"/><column name="county_id" valueNumeric="2"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="12"/><column name="name" value="Trogir"/><column name="county_id" valueNumeric="2"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="13"/><column name="name" value="Omiš"/><column name="county_id" valueNumeric="2"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="14"/><column name="name" value="Hvar"/><column name="county_id" valueNumeric="2"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Istarska (4) -->
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="15"/><column name="name" value="Rovinj"/><column name="county_id" valueNumeric="4"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="16"/><column name="name" value="Poreč"/><column name="county_id" valueNumeric="4"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="17"/><column name="name" value="Umag"/><column name="county_id" valueNumeric="4"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Primorsko-goranska (5) -->
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="18"/><column name="name" value="Opatija"/><column name="county_id" valueNumeric="5"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="19"/><column name="name" value="Crikvenica"/><column name="county_id" valueNumeric="5"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Dubrovačko-neretvanska (6) -->
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="20"/><column name="name" value="Korčula"/><column name="county_id" valueNumeric="6"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="21"/><column name="name" value="Ploče"/><column name="county_id" valueNumeric="6"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Zadarska (8) -->
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="22"/><column name="name" value="Biograd na Moru"/><column name="county_id" valueNumeric="8"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="23"/><column name="name" value="Nin"/><column name="county_id" valueNumeric="8"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Šibensko-kninska (9) -->
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="24"/><column name="name" value="Vodice"/><column name="county_id" valueNumeric="9"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="25"/><column name="name" value="Knin"/><column name="county_id" valueNumeric="9"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Grad Zagreb (1) — more Zagreb settlements via extra municipalities -->
+        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="26"/><column name="name" value="Sesvete"/><column name="county_id" valueNumeric="1"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
+    </changeSet>
+
+    <!-- ── Settlements ─────────────────────────────────────────────────── -->
+    <changeSet id="021-seed-settlements-expand" author="str-backend" context="local">
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="11"/><column name="name" value="Makarska"/><column name="postal_code" value="21300"/><column name="municipality_id" valueNumeric="11"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="12"/><column name="name" value="Trogir"/><column name="postal_code" value="21220"/><column name="municipality_id" valueNumeric="12"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="13"/><column name="name" value="Omiš"/><column name="postal_code" value="21310"/><column name="municipality_id" valueNumeric="13"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="14"/><column name="name" value="Hvar"/><column name="postal_code" value="21450"/><column name="municipality_id" valueNumeric="14"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="15"/><column name="name" value="Rovinj"/><column name="postal_code" value="52210"/><column name="municipality_id" valueNumeric="15"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="16"/><column name="name" value="Poreč"/><column name="postal_code" value="52440"/><column name="municipality_id" valueNumeric="16"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="17"/><column name="name" value="Umag"/><column name="postal_code" value="52470"/><column name="municipality_id" valueNumeric="17"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="18"/><column name="name" value="Opatija"/><column name="postal_code" value="51410"/><column name="municipality_id" valueNumeric="18"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="19"/><column name="name" value="Crikvenica"/><column name="postal_code" value="51260"/><column name="municipality_id" valueNumeric="19"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="20"/><column name="name" value="Korčula"/><column name="postal_code" value="20260"/><column name="municipality_id" valueNumeric="20"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="21"/><column name="name" value="Ploče"/><column name="postal_code" value="20340"/><column name="municipality_id" valueNumeric="21"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="22"/><column name="name" value="Biograd na Moru"/><column name="postal_code" value="23210"/><column name="municipality_id" valueNumeric="22"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="23"/><column name="name" value="Nin"/><column name="postal_code" value="23232"/><column name="municipality_id" valueNumeric="23"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="24"/><column name="name" value="Vodice"/><column name="postal_code" value="22211"/><column name="municipality_id" valueNumeric="24"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="25"/><column name="name" value="Knin"/><column name="postal_code" value="22300"/><column name="municipality_id" valueNumeric="25"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="26"/><column name="name" value="Sesvete"/><column name="postal_code" value="10360"/><column name="municipality_id" valueNumeric="26"/><column name="active" valueBoolean="true"/></insert>
+    </changeSet>
+
+    <!-- ── Streets ─────────────────────────────────────────────────────── -->
+    <changeSet id="021-seed-streets-expand" author="str-backend" context="local">
+        <!-- Zagreb (settlement 1) — more streets -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="16"/><column name="name" value="Draškovićeva"/><column name="settlement_id" valueNumeric="1"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="17"/><column name="name" value="Vlaška"/><column name="settlement_id" valueNumeric="1"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="18"/><column name="name" value="Jurišićeva"/><column name="settlement_id" valueNumeric="1"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="19"/><column name="name" value="Petrinjska"/><column name="settlement_id" valueNumeric="1"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Split (settlement 2) — more streets -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="20"/><column name="name" value="Domovinskog rata"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="21"/><column name="name" value="Spinutska"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Makarska (settlement 11) -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="22"/><column name="name" value="Obala kralja Tomislava"/><column name="settlement_id" valueNumeric="11"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="23"/><column name="name" value="Stjepana Radića"/><column name="settlement_id" valueNumeric="11"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="24"/><column name="name" value="Trg dr. Franje Tuđmana"/><column name="settlement_id" valueNumeric="11"/><column name="type_code" value="TRG"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Trogir (settlement 12) -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="25"/><column name="name" value="Gradska vrata"/><column name="settlement_id" valueNumeric="12"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="26"/><column name="name" value="Kohl-Medicijeva"/><column name="settlement_id" valueNumeric="12"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Hvar (settlement 14) -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="27"/><column name="name" value="Trg svetog Stjepana"/><column name="settlement_id" valueNumeric="14"/><column name="type_code" value="TRG"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="28"/><column name="name" value="Kroz Burak"/><column name="settlement_id" valueNumeric="14"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Rovinj (settlement 15) -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="29"/><column name="name" value="Obala Pina Budicina"/><column name="settlement_id" valueNumeric="15"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="30"/><column name="name" value="Grisia"/><column name="settlement_id" valueNumeric="15"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Poreč (settlement 16) -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="31"/><column name="name" value="Decumanus"/><column name="settlement_id" valueNumeric="16"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="32"/><column name="name" value="Obala maršala Tita"/><column name="settlement_id" valueNumeric="16"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Opatija (settlement 18) -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="33"/><column name="name" value="Maršala Tita"/><column name="settlement_id" valueNumeric="18"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="34"/><column name="name" value="Šetalište Franza Josefa"/><column name="settlement_id" valueNumeric="18"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Dubrovnik (settlement 5) — more streets -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="35"/><column name="name" value="Od Puča"/><column name="settlement_id" valueNumeric="5"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="36"/><column name="name" value="Uz Jezuite"/><column name="settlement_id" valueNumeric="5"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Zadar (settlement 7) — more streets -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="37"/><column name="name" value="Široka ulica"/><column name="settlement_id" valueNumeric="7"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="38"/><column name="name" value="Obala kneza Branimira"/><column name="settlement_id" valueNumeric="7"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Sesvete (settlement 26) -->
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="39"/><column name="name" value="Trg D. Domjanića"/><column name="settlement_id" valueNumeric="26"/><column name="type_code" value="TRG"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="40"/><column name="name" value="Sesvetska cesta"/><column name="settlement_id" valueNumeric="26"/><column name="type_code" value="CES"/><column name="active" valueBoolean="true"/></insert>
+    </changeSet>
+
+    <!-- ── House numbers ───────────────────────────────────────────────── -->
+    <changeSet id="021-seed-house-numbers-expand" author="str-backend" context="local">
+        <!-- Zagreb extra streets -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="13"/><column name="name" value="1"/><column name="street_id" valueNumeric="16"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="14"/><column name="name" value="3"/><column name="street_id" valueNumeric="16"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="15"/><column name="name" value="10"/><column name="street_id" valueNumeric="17"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="16"/><column name="name" value="22"/><column name="street_id" valueNumeric="17"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="17"/><column name="name" value="5"/><column name="street_id" valueNumeric="18"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="18"/><column name="name" value="2"/><column name="street_id" valueNumeric="19"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="19"/><column name="name" value="8"/><column name="street_id" valueNumeric="19"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Ilica (street 1) — more numbers -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="20"/><column name="name" value="2"/><column name="street_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="21"/><column name="name" value="5"/><column name="street_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="22"/><column name="name" value="10"/><column name="street_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="23"/><column name="name" value="20"/><column name="street_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Split extra streets -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="24"/><column name="name" value="1"/><column name="street_id" valueNumeric="20"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="25"/><column name="name" value="6"/><column name="street_id" valueNumeric="20"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="26"/><column name="name" value="3"/><column name="street_id" valueNumeric="21"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Makarska -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="27"/><column name="name" value="1"/><column name="street_id" valueNumeric="22"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="28"/><column name="name" value="5"/><column name="street_id" valueNumeric="22"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="29"/><column name="name" value="12"/><column name="street_id" valueNumeric="23"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="30"/><column name="name" value="2"/><column name="street_id" valueNumeric="24"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Hvar -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="31"/><column name="name" value="1"/><column name="street_id" valueNumeric="27"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="32"/><column name="name" value="4"/><column name="street_id" valueNumeric="28"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Rovinj -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="33"/><column name="name" value="2"/><column name="street_id" valueNumeric="29"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="34"/><column name="name" value="7"/><column name="street_id" valueNumeric="30"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Poreč -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="35"/><column name="name" value="1"/><column name="street_id" valueNumeric="31"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="36"/><column name="name" value="10"/><column name="street_id" valueNumeric="32"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Opatija -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="37"/><column name="name" value="100"/><column name="street_id" valueNumeric="33"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="38"/><column name="name" value="1"/><column name="street_id" valueNumeric="34"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Dubrovnik extra -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="39"/><column name="name" value="3"/><column name="street_id" valueNumeric="35"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="40"/><column name="name" value="1"/><column name="street_id" valueNumeric="36"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Zadar extra -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="41"/><column name="name" value="5"/><column name="street_id" valueNumeric="37"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="42"/><column name="name" value="18"/><column name="street_id" valueNumeric="38"/><column name="active" valueBoolean="true"/></insert>
+        <!-- Sesvete -->
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="43"/><column name="name" value="1"/><column name="street_id" valueNumeric="39"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="44"/><column name="name" value="55"/><column name="street_id" valueNumeric="40"/><column name="active" valueBoolean="true"/></insert>
+    </changeSet>
+
+</databaseChangeLog>
