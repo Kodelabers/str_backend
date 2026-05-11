@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/adrese")
+@RequestMapping("/api/address")
 public class AddressLookupController {
 
     private final AddressLookupService service;
@@ -22,30 +22,30 @@ public class AddressLookupController {
         this.service = service;
     }
 
-    @GetMapping("/zupanije")
+    @GetMapping("/counties")
     public List<CountyResponse> getCounties(@RequestParam(required = false) String q) {
         return service.findCounties(q);
     }
 
-    @GetMapping("/opcine")
+    @GetMapping("/municipalities")
     public List<MunicipalityResponse> getMunicipalities(@RequestParam Long zupanijaId,
                                                         @RequestParam(required = false) String q) {
         return service.findMunicipalities(zupanijaId, q);
     }
 
-    @GetMapping("/naselja")
+    @GetMapping("/settlements")
     public List<SettlementResponse> getSettlements(@RequestParam Long opcinaId,
                                                    @RequestParam(required = false) String q) {
         return service.findSettlements(opcinaId, q);
     }
 
-    @GetMapping("/ulice")
+    @GetMapping("/streets")
     public List<StreetResponse> getStreets(@RequestParam Long naseljeId,
                                            @RequestParam(required = false) String q) {
         return service.findStreets(naseljeId, q);
     }
 
-    @GetMapping("/kucni-brojevi")
+    @GetMapping("/house-numbers")
     public List<HouseNumberResponse> getHouseNumbers(@RequestParam Long ulicaId,
                                                      @RequestParam(required = false) String q) {
         return service.findHouseNumbers(ulicaId, q);

@@ -102,7 +102,7 @@ public class RegistrationService {
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
 
         log.info("registration_success lessor={} submission={}", lessor.getLessorId(), submission.getSubmissionId());
-        return new RegistrationResponse(lessor.getLessorId(),
+        return new RegistrationResponse(lessor.getLessorId(), submission.getSubmissionId(),
                 List.of(new RegistrationResponse.AssignedRb(accommodation.getAccommodationId(), rn.getRn())));
     }
 

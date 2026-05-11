@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/sifarnici")
+@RequestMapping("/api/lookups")
 class AccommodationTypeController {
 
     private final AccommodationTypeRepository repository;
@@ -18,14 +18,14 @@ class AccommodationTypeController {
         this.repository = repository;
     }
 
-    @GetMapping("/vrste-objekata")
+    @GetMapping("/accommodation-types")
     @Transactional(readOnly = true)
-    ResponseEntity<List<VrstaObjektaResponse>> vrsteObjekata() {
+    ResponseEntity<List<VrstaObjektaResponse>> getAccommodationTypes() {
         List<VrstaObjektaResponse> body = repository.findAll().stream()
                 .map(e -> new VrstaObjektaResponse(
                         String.valueOf(e.getTypeId()),
                         e.getName(),
-                        e.getSkupina()))
+                        ""))
                 .toList();
         return ResponseEntity.ok(body);
     }

@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -33,15 +32,17 @@ public class RegistrationController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(req));
     }
 
-    @PostMapping("/api/objekti/registracija")
-    public ResponseEntity<ObjektRegistracijaOdgovor> registracija(@Valid @RequestBody RegistrationRequest req) {
+    @PostMapping("/api/accommodations/registration")
+    public ResponseEntity<AccommodationRegistrationResponse> register(@Valid @RequestBody RegistrationRequest req) {
         RegistrationResponse resp = service.generateRegistrationNumber(req);
-        RegistrationResponse.AssignedRb rb = resp.getAssignedRbs().get(0);
+        RegistrationResponse.AssignedRb rb = resp.assignedRbs().stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("no assigned RB in response"));
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new ObjektRegistracijaOdgovor(rb.getRn(), rb.getAccommodationId().toString()));
+                .body(new AccommodationRegistrationResponse(rb.rn(), resp.submissionId().toString()));
     }
 
-    record ObjektRegistracijaOdgovor(String rbBroj, String zahtjevId) {}
+    record AccommodationRegistrationResponse(String registrationNumber, String submissionId) {}
 
     @GetMapping(value = "/api/generateRegistrationNumber/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID submissionId) {

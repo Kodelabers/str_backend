@@ -42,8 +42,9 @@ class RegistrationControllerTest {
     void post_returns_201_with_assigned_rb() throws Exception {
         UUID lessorId = UUID.randomUUID();
         UUID accommodationId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
         RegistrationResponse resp = new RegistrationResponse(
-                lessorId,
+                lessorId, submissionId,
                 List.of(new RegistrationResponse.AssignedRb(accommodationId, "HR120001000000000001")));
         when(service.generateRegistrationNumber(any())).thenReturn(resp);
 
@@ -52,6 +53,7 @@ class RegistrationControllerTest {
                         .content(om.writeValueAsBytes(validRequest())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.lessorId").value(lessorId.toString()))
+                .andExpect(jsonPath("$.submissionId").value(submissionId.toString()))
                 .andExpect(jsonPath("$.assignedRbs[0].rn").value("HR120001000000000001"));
     }
 
@@ -120,6 +122,59 @@ class RegistrationControllerTest {
 
         mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void registracija_returns_201_with_rb_and_zahtjev_id() throws Exception {
+        UUID lessorId = UUID.randomUUID();
+        UUID accommodationId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        RegistrationResponse resp = new RegistrationResponse(
+                lessorId, submissionId,
+                List.of(new RegistrationResponse.AssignedRb(accommodationId, "HR00000042")));
+        when(service.generateRegistrationNumber(any())).thenReturn(resp);
+
+        mvc.perform(post("/api/accommodations/registration")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(validRequest())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.registrationNumber").value("HR00000042"))
+                .andExpect(jsonPath("$.submissionId").value(submissionId.toString()));
+    }
+
+    @Test
+    void registracija_returns_422_when_validation_rejected() throws Exception {
+        when(service.generateRegistrationNumber(any()))
+                .thenThrow(new ValidationRejectedException("GO-1", "vlasnik nije domaćin"));
+
+        mvc.perform(post("/api/accommodations/registration")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(validRequest())))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.details.step").value("GO-1"));
+    }
+
+    @Test
+    void registracija_returns_400_when_payload_invalid() throws Exception {
+        RegistrationRequest invalid = validRequest();
+        invalid.setMaxBeds(0);
+
+        mvc.perform(post("/api/accommodations/registration")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(invalid)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_returns_500_when_assigned_rbs_empty() throws Exception {
+        RegistrationResponse resp = new RegistrationResponse(
+                UUID.randomUUID(), UUID.randomUUID(), List.of());
+        when(service.generateRegistrationNumber(any())).thenReturn(resp);
+
+        mvc.perform(post("/api/accommodations/registration")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(validRequest())))
+                .andExpect(status().isInternalServerError());
     }
 
     private RegistrationRequest validRequest() {
