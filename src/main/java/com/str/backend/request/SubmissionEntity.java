@@ -45,7 +45,7 @@ public class SubmissionEntity {
     @Column(name = "filing_date")
     private Instant filingDate;
 
-    @JdbcTypeCode(SqlTypes.LONGVARBINARY)
+    @JdbcTypeCode(SqlTypes.BLOB)
     @Column(name = "pdf_content")
     @Setter private byte[] pdfContent;
 

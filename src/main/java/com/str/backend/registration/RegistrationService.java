@@ -16,6 +16,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
@@ -41,6 +42,7 @@ public class RegistrationService {
     private final SubmissionPdfGenerator pdfGenerator;
     private final StrLessorLookupService strLessorLookupService;
     private final CountyRepository countyRepository;
+    private final AccommodationTypeRepository accommodationTypeRepository;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -50,7 +52,8 @@ public class RegistrationService {
                                EgopClient egopClient,
                                SubmissionPdfGenerator pdfGenerator,
                                StrLessorLookupService strLessorLookupService,
-                               CountyRepository countyRepository) {
+                               CountyRepository countyRepository,
+                               AccommodationTypeRepository accommodationTypeRepository) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -60,6 +63,7 @@ public class RegistrationService {
         this.pdfGenerator = pdfGenerator;
         this.strLessorLookupService = strLessorLookupService;
         this.countyRepository = countyRepository;
+        this.accommodationTypeRepository = accommodationTypeRepository;
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
@@ -77,9 +81,10 @@ public class RegistrationService {
             throw new ValidationRejectedException(result.getStep(), result.getDetail());
         }
 
-        byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null);
+        String typeName = resolveTypeName(req.getTypeId());
+        byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
         EgopClient.UrudzbeniBroj filing = egopClient.rezervirajUrudzbeniBroj();
-        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatiran());
+        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatiran(), typeName);
         EgopClient.PotvrdaUrudzbiranja confirmation =
                 egopClient.posaljiZahtjev(filing.formatiran(), finalPdf);
 
@@ -130,5 +135,16 @@ public class RegistrationService {
             }
         }
         return entity;
+    }
+
+    private String resolveTypeName(String typeId) {
+        if (typeId == null) return null;
+        try {
+            return accommodationTypeRepository.findById(Long.parseLong(typeId))
+                    .map(t -> t.getName())
+                    .orElse(null);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }
