@@ -1,5 +1,6 @@
 package com.str.backend.registration;
 
+import com.str.backend.registration.dto.AccommodationRegistrationResponse;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
 import com.str.backend.request.SubmissionEntity;
@@ -42,14 +43,12 @@ public class RegistrationController {
                 .body(new AccommodationRegistrationResponse(rb.rn(), resp.submissionId().toString()));
     }
 
-    record AccommodationRegistrationResponse(String registrationNumber, String submissionId) {}
-
     @GetMapping(value = "/api/generateRegistrationNumber/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID submissionId) {
         SubmissionEntity submission = service.getSubmissionForPdf(submissionId);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"submission-" + submission.getFilingNumber().replace('/', '_') + ".pdf\"")
+                        "inline; filename=\"submission-" + submission.getFilingNumber().replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(submission.getPdfContent());
     }
