@@ -252,6 +252,30 @@ paths:
   # Address lookup
   # ─────────────────────────────────────────────────────────────
 
+  /api/address/countries:
+    get:
+      tags: [address]
+      summary: List countries
+      description: Returns all active countries sorted alphabetically. Optional `q` filters by name (case-insensitive substring).
+      operationId: getCountries
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Name filter (case-insensitive substring)
+          schema:
+            type: string
+            example: "hrvatska"
+      responses:
+        "200":
+          description: List of countries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CountryResponse'
+
   /api/adrese/zupanije:
     get:
       tags: [address]
@@ -692,6 +716,22 @@ components:
           example: "HR180000123456789001"
 
     # ── Address lookup ─────────────────────────────────────────
+
+    CountryResponse:
+      type: object
+      required: [id, name, iso2Alpha]
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 86
+        name:
+          type: string
+          example: "Hrvatska"
+        iso2Alpha:
+          type: string
+          description: ISO 3166-1 alpha-2 country code
+          example: "HR"
 
     CountyResponse:
       type: object

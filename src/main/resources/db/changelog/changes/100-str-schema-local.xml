@@ -20,6 +20,15 @@
         <sql>CREATE SCHEMA IF NOT EXISTS str</sql>
     </changeSet>
 
+    <changeSet id="100-str-country" author="str-backend" context="local">
+        <createTable schemaName="str" tableName="country">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
+            <column name="iso2_alpha" type="VARCHAR(2)"/>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
     <changeSet id="100-str-county" author="str-backend" context="local">
         <createTable schemaName="str" tableName="county">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
