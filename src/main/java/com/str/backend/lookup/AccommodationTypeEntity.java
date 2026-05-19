@@ -6,9 +6,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(schema = "str_rn", name = "accommodation_type")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AccommodationTypeEntity {
 
     @Id
@@ -22,20 +27,12 @@ public class AccommodationTypeEntity {
     @Column(name = "registration_number_allowed", nullable = false)
     private boolean registrationNumberAllowed;
 
-    @Column(name = "skupina", nullable = false)
-    private String skupina;
+    @Column(name = "group_name", nullable = false)
+    private String group;
 
-    protected AccommodationTypeEntity() {
-    }
-
-    public AccommodationTypeEntity(String name, boolean registrationNumberAllowed, String skupina) {
+    public AccommodationTypeEntity(String name, boolean registrationNumberAllowed, String group) {
         this.name = name;
         this.registrationNumberAllowed = registrationNumberAllowed;
-        this.skupina = skupina;
+        this.group = group;
     }
-
-    public Long getTypeId() { return typeId; }
-    public String getName() { return name; }
-    public boolean isRegistrationNumberAllowed() { return registrationNumberAllowed; }
-    public String getSkupina() { return skupina; }
 }

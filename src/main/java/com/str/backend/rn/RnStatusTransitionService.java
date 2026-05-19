@@ -1,7 +1,5 @@
 package com.str.backend.rn;
 
-import com.str.backend.audit.AuditLogEntity;
-import com.str.backend.audit.AuditLogRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.IllegalStatusTransitionException;
@@ -14,24 +12,28 @@ import org.springframework.transaction.annotation.Transactional;
 public class RnStatusTransitionService {
 
     private static final Logger log = LoggerFactory.getLogger(RnStatusTransitionService.class);
-    private static final String ENTITY_TYPE = "RN";
 
-    private final AuditLogRepository auditLogRepository;
+    private final RegistrationNumberLogRepository rnLogRepository;
 
-    public RnStatusTransitionService(AuditLogRepository auditLogRepository) {
-        this.auditLogRepository = auditLogRepository;
+    public RnStatusTransitionService(RegistrationNumberLogRepository rnLogRepository) {
+        this.rnLogRepository = rnLogRepository;
     }
 
     @Transactional
     public void transition(RnEntity rn, RnStatus target, RnTrigger trigger) {
+        transition(rn, target, trigger, null, null);
+    }
+
+    @Transactional
+    public void transition(RnEntity rn, RnStatus target, RnTrigger trigger, String actor, String reason) {
         RnStatus current = rn.getStatus();
         if (!current.canTransitionTo(target, trigger)) {
             throw new IllegalStatusTransitionException(
                     "Illegal rn transition: " + current + " -> " + target + " (trigger=" + trigger + ")");
         }
         rn.applyStatus(target);
-        auditLogRepository.save(AuditLogEntity.transition(
-                ENTITY_TYPE, rn.getRn(), current.name(), target.name(), trigger.name()));
+        rnLogRepository.save(RegistrationNumberLogEntity.transition(
+                rn.getRn(), current.name(), target.name(), trigger.name(), actor, reason));
         log.info("rn_transition rn={} from={} to={} trigger={}", rn.getRn(), current, target, trigger);
     }
 }

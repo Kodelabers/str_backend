@@ -85,6 +85,12 @@ public class LessorEntity {
     @Column(name = "official_person_id", length = 64)
     @Setter private String officialPersonId;
 
+    @Column(name = "username", length = 64, updatable = false)
+    private String username;
+
+    @Column(name = "password_hash", length = 255)
+    @Setter private String passwordHash;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -105,6 +111,15 @@ public class LessorEntity {
         Instant now = Instant.now();
         e.createdAt = now;
         e.updatedAt = now;
+        return e;
+    }
+
+    public static LessorEntity createNonEu(String firstName, String lastName, String street, String streetNumber,
+                                           String place, String county, String email,
+                                           String username, String passwordHash) {
+        LessorEntity e = create(firstName, lastName, street, streetNumber, place, county, email);
+        e.username = username;
+        e.passwordHash = passwordHash;
         return e;
     }
 

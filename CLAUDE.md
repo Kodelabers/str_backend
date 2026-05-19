@@ -9,7 +9,7 @@ Build tool is Maven. Run via IntelliJ ili terminalski:
 ```bash
 mvn spring-boot:run                     # pokretanje (local profil aktivan po defaultu)
 mvn test                                # svi testovi
-mvn test -Dtest="Go5*"                 # jedan test razred
+mvn test -Dtest="Go5*"                  # jedan test razred
 mvn compile                             # samo kompajlacija
 mvn package                             # build fat JAR
 ```
@@ -33,43 +33,50 @@ The `str` schema (subject, subject_version, subject_address, address, county, mu
 ## Architecture
 
 ### Schema ownership
-`core.*` is **read-only**. `CoreObjektEntity` carries `@Immutable` and `CoreObjektRepository` is `@Transactional(readOnly = true)`. No write path to `core` schema exists or should be added.
+`str.*` is owned externally (read-only on dev/prod; mocked on local/mock via Liquibase `context="local"`). Entities mapped to `str.*` carry `@Immutable` and their repositories are `@Transactional(readOnly = true)`.
 
-`str.*` is exclusively owned by this service. All `str` tables are managed by Liquibase.
+`str_rn.*` is exclusively owned by this service. All `str_rn` tables are managed by Liquibase.
 
 ### Registration flow
-`SsoService` orchestrates the lifecycle. A registration (`sso`) record is keyed by the same UUID as its `core.objekt` row.
+`RegistrationService` orchestrates the lifecycle. Submissions are keyed by `submission_id` (UUID); accommodations by `accommodation_id` (UUID); lessors by `lessor_id` (UUID).
 
 ```
-POST /api/sso/registracije          → SsoService.iniciraj()
-POST /{uuid}/validacija             → SsoService.validiraj()   ← runs GO pipeline
-POST /{uuid}/callback               → SsoService.potvrdiCallback()
-POST /{uuid}/suspend?razlog=...     → SsoService.suspendiraj()
-POST /{uuid}/povuci                 → SsoService.povuci()
+POST /api/generateRegistrationNumber             → RegistrationService.generateRegistrationNumber()  ← runs GO pipeline, returns {registrationNumber, submissionId}
+GET  /api/generateRegistrationNumber/{id}/pdf    → SubmissionPdfGenerator
 ```
 
-### State machine
-All `sso.status` changes go exclusively through `StatusTransitionService.transition()`. That method validates the transition against `Status.canTransitionTo()` and immediately writes an `audit_log` row — these two operations are inseparable. Never call `sso.applyStatus()` directly from service code.
+### State machines
+There are two separate state machines:
 
+`SubmissionStatus` (request lifecycle):
 ```
-INICIIRAN → VALIDACIJA → AKTIVAN
-                       ↘ U_OBRADI → AKTIVAN
-AKTIVAN → SUSPENDIRAN → VALIDACIJA (reactivation)
-AKTIVAN / SUSPENDIRAN → POVUCEN (terminal)
+INITIATED → IN_PROCESSING (SUBMIT)
+INITIATED → IN_VERIFICATION (FOREIGN_UPLOAD)
+IN_VERIFICATION → IN_PROCESSING (REFERENT_APPROVE)
+IN_PROCESSING → ACCEPTED (VALIDATION_PASSED) / REJECTED (VALIDATION_REJECTED)
 ```
+
+`RnStatus` (registration number lifecycle):
+```
+IN_PROCESSING → ACTIVE (ISSUE)
+ACTIVE → SUSPENDED (CONSENT_EXPIRY / INSPECTION) → ACTIVE (REACTIVATE)
+ACTIVE / SUSPENDED → WITHDRAWN (WITHDRAWAL) → ACTIVE (REACTIVATE)
+```
+
+All status changes go exclusively through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. Each validates the transition against `canTransitionTo()` and immediately writes a `submission_log` / `registration_number_log` row — these two operations are inseparable. Never mutate the status field directly from service code.
 
 ### GO validation pipeline
-`ValidacijskiOrkestrator` runs `ValidacijskaProvjera` implementations sorted by `order()` — sequential, no parallelism. Steps short-circuit on `Odbijena` or `CekaCallback`.
+`ParallelValidationOrchestrator` runs `ValidationCheck` implementations in waves. Within a wave checks fan out in parallel; the next wave starts only after the previous completes (so `ValidationContext` flags set by upstream checks are visible without races). The first `Rejected` short-circuits the remaining checks.
 
-Critical invariant: **GO-4 only runs when GO-2 sets the flag.** GO-2 calls `kontekst.markiraj()` when the building has > 3 units; GO-4 checks `kontekst.zahtjevaSuglasnost()` before calling DGU. Do not change GO-4 to run unconditionally.
+Critical invariant: **GO-4 only runs when GO-2 sets the flag.** `Go2BuildingType` calls `context.markCoOwnerConsentRequired()` when the building has > 3 units; `Go4CoOwnerConsent` checks `context.requiresCoOwnerConsent()` before calling DGU. Do not change GO-4 to run unconditionally.
 
 An `ExternalRegistryException` from MPGI or DGU propagates unhandled through the orchestrator — it is NOT a validation failure. It surfaces as 503 via `GlobalExceptionHandler`. This is intentional.
 
-### Iznajmljivac snapshot
-`IznajmljivacEntity` is immutable after creation (`updatable = false` on all identity columns). The only mutable field is `isDomacin`, which GO-1 sets during validation. Each re-validation fetches the latest snapshot via `findTopByUuidSsoOrderByCreatedAtDesc`.
+### Lessor snapshot
+`LessorEntity` is largely immutable after creation (`updatable = false` on identity columns: name, address, email, username). Mutable fields are limited to contact details and `applicationStatus`. Use the static `LessorEntity.create()` / `createNonEu()` factories — no public no-arg constructor exposed for application code (protected for JPA).
 
-### Registracijski broj
-Format `HR` + 8 random digits, validated by `RegistracijskiBroj` record. Assigned only on transition to `AKTIVAN`. Generation retries up to 5× checking uniqueness before insert — a `DataIntegrityViolationException` on concurrent collision returns 500 (rare, acceptable).
+### Registration number
+Format `HR` + 18 hex digits encoding county code, group code, type code, and 12 hex of randomness, validated by `RegistrationNumber` record (pattern `^HR[0-9A-Fa-f]{18}$`). Assigned only on transition to `RnStatus.ACTIVE`. Generation retries up to 5× checking uniqueness before insert — a `DataIntegrityViolationException` on concurrent collision returns 500 (rare, acceptable).
 
 ## Key Constraints
 
@@ -77,7 +84,7 @@ Format `HR` + 8 random digits, validated by `RegistracijskiBroj` record. Assigne
 - No field injection — constructor injection only.
 - Read-only repository/service methods must carry `@Transactional(readOnly = true)`.
 - All `@Table` annotations must declare `schema =` explicitly.
-- Lombok is used (`@Getter`, `@NoArgsConstructor` on entities). No `@Data` or `@Builder` — entities use static factory methods for controlled construction.
+- Lombok is used (`@Getter`, `@NoArgsConstructor(access = AccessLevel.PROTECTED)` on entities). No `@Data` or `@Builder` — entities use static factory methods for controlled construction.
 
 ## Workflow
 
@@ -86,8 +93,8 @@ Never run `git commit` or `git push` unless explicitly instructed. Always wait f
 ## Skills
 
 Domain-specific review guides live in `.claude/skills/`. Use them via the `code-reviewer` skill for pre-PR checks. Notable skills:
-- `str-domain-model` — SSO/iznajmljivac tables, UUID keys, enums, snapshot semantics
-- `str-state-machine` — allowed transitions and triggers
+- `str-domain-model` — submission/lessor/accommodation tables, UUID keys, enums, snapshot semantics
+- `str-state-machine` — allowed SubmissionStatus / RnStatus transitions and triggers
 - `str-validation-engine` — GO-1 through GO-5 sequencing rules
-- `str-schema-strategy` — core (read-only) vs str (read-write) boundary rules
+- `str-schema-strategy` — str (read-only) vs str_rn (read-write) boundary rules
 - `str-external-integrations` — MPGI/DGU retry, circuit breaker, timeout semantics

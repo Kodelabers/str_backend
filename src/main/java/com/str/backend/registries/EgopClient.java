@@ -3,25 +3,25 @@ package com.str.backend.registries;
 import java.time.Instant;
 
 /**
- * STR funkcionalna specifikacija §3 (osnovni flow): eGOP — sustav urudžbiranja
- * pisarnice. Dva poziva tijekom registracije:
- *   1. {@link #rezervirajUrudzbeniBroj()} — vraća službeni urudžbeni broj koji se
- *      utiskuje u PDF zahtjeva.
- *   2. {@link #posaljiZahtjev(String, byte[])} — predaje finalni PDF (s utisnutim
- *      brojem) eGOP-u i potvrđuje uredan unos u urudžbenu evidenciju.
+ * STR functional spec §3 (core flow): eGOP — registry-office filing system.
+ * Two calls during registration:
+ *   1. {@link #reserveFilingNumber()} — returns the official filing number that
+ *      gets stamped onto the request PDF.
+ *   2. {@link #submitFiling(String, byte[])} — submits the final PDF (with the
+ *      stamped number) to eGOP and confirms the filing record.
  */
 public interface EgopClient {
 
-    record UrudzbeniBroj(String klasa, String urbroj, Instant datumUrudzbe) {
+    record FilingNumber(String classificationCode, String referenceNumber, Instant filedAt) {
 
-        public String formatiran() {
-            return "KLASA: " + klasa + ", URBROJ: " + urbroj;
+        public String formatted() {
+            return "KLASA: " + classificationCode + ", URBROJ: " + referenceNumber;
         }
     }
 
-    record PotvrdaUrudzbiranja(String urudzbeniBroj, Instant datumPotvrde) {}
+    record FilingConfirmation(String filingNumber, Instant confirmedAt) {}
 
-    UrudzbeniBroj rezervirajUrudzbeniBroj();
+    FilingNumber reserveFilingNumber();
 
-    PotvrdaUrudzbiranja posaljiZahtjev(String urudzbeniBroj, byte[] pdf);
+    FilingConfirmation submitFiling(String filingNumber, byte[] pdf);
 }

@@ -1,7 +1,6 @@
 package com.str.backend.validation;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.domain.OfferType;
-import com.str.backend.audit.AuditLogRepository;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorEntity;
 import org.junit.jupiter.api.Test;
@@ -11,11 +10,8 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 
 class OrchestratorExternalRegistryExceptionTest {
-
-    private final AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
 
     @Test
     void externalRegistryException_propagatesUnchanged_notTreatedAsValidationFailure() {
@@ -29,7 +25,7 @@ class OrchestratorExternalRegistryExceptionTest {
         };
 
         ParallelValidationOrchestrator orchestrator =
-                new ParallelValidationOrchestrator(List.of(failingCheck), auditLogRepository);
+                new ParallelValidationOrchestrator(List.of(failingCheck));
         ValidationContext context = new ValidationContext(accommodation(), lessor());
 
         assertThatThrownBy(() -> orchestrator.execute(context))
@@ -57,7 +53,7 @@ class OrchestratorExternalRegistryExceptionTest {
         };
 
         ParallelValidationOrchestrator orchestrator =
-                new ParallelValidationOrchestrator(List.of(passing, failing), auditLogRepository);
+                new ParallelValidationOrchestrator(List.of(passing, failing));
         ValidationContext context = new ValidationContext(accommodation(), lessor());
 
         assertThatThrownBy(() -> orchestrator.execute(context))

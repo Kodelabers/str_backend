@@ -1,5 +1,6 @@
 package com.str.backend.request;
 
+import com.str.backend.domain.SubmissionChannel;
 import com.str.backend.domain.SubmissionStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.EnumType;
@@ -38,6 +39,13 @@ public class SubmissionEntity {
     @Column(name = "authority_id")
     private Long competentAuthorityId;
 
+    @Column(name = "submission_type_id")
+    @Setter private Long submissionTypeId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "channel", length = 16, nullable = false)
+    private SubmissionChannel channel;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 32, nullable = false)
     private SubmissionStatus status;
@@ -45,7 +53,7 @@ public class SubmissionEntity {
     @Column(name = "filing_date")
     private Instant filingDate;
 
-    @JdbcTypeCode(SqlTypes.BLOB)
+    @JdbcTypeCode(SqlTypes.MATERIALIZED_BLOB)
     @Column(name = "pdf_content")
     @Setter private byte[] pdfContent;
 
@@ -66,6 +74,7 @@ public class SubmissionEntity {
         z.filingDate = filingDate;
         z.documentLink = documentLink;
         z.pdfContent = pdfContent;
+        z.channel = SubmissionChannel.NIAS;
         z.status = SubmissionStatus.IN_PROCESSING;
         Instant now = Instant.now();
         z.createdAt = now;

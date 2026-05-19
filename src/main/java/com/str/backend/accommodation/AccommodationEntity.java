@@ -1,6 +1,7 @@
 package com.str.backend.accommodation;
 
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
 import jakarta.persistence.Column;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -67,6 +68,10 @@ public class AccommodationEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "offer_type", length = 16, nullable = false, updatable = false)
     private OfferType offerType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "offering", length = 8, nullable = false)
+    @Setter private Offering offering;
 
     @Column(name = "lessor_residence")
     @Setter private Boolean lessorResidence;
@@ -153,6 +158,7 @@ public class AccommodationEntity {
         s.maxBeds = maxBeds;
         s.maxGuests = maxGuests;
         s.offerType = offerType;
+        s.offering = Offering.WHOLE;
         s.building = building;
         s.apartments = apartments;
         s.legalized = legalized;

@@ -226,7 +226,7 @@ Read-only dohvat. Vraća status pismena (`status`, `UI`), urudžbeni broj (`urBr
 
 ## 6. Integracijski tok za STR registraciju objekta
 
-Polazni uvjet: validan i submitan zahtjev (sve GO-1…GO-5 provjere prošle, `sso.status = AKTIVAN`, generiran PDF).
+Polazni uvjet: validan i submitan zahtjev (sve GO-1…GO-5 provjere prošle, `submission.status = ACCEPTED`, `registration_number.status = ACTIVE`, generiran PDF).
 
 ```
                 ┌────────────────────────────────────────────────────┐

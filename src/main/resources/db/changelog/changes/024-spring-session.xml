@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Spring Session JDBC tables (postgres flavor).
+        Mirrors org/springframework/session/jdbc/schema-postgresql.sql from
+        spring-session-jdbc 3.3.x. Placed in str_rn schema; table-name override
+        in application properties points Spring Session at str_rn.spring_session.
+    -->
+    <changeSet id="024-spring-session" author="str-backend">
+        <createTable schemaName="str_rn" tableName="spring_session">
+            <column name="primary_id" type="CHAR(36)">
+                <constraints primaryKey="true" primaryKeyName="spring_session_pk" nullable="false"/>
+            </column>
+            <column name="session_id" type="CHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="creation_time" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_access_time" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="max_inactive_interval" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expiry_time" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="principal_name" type="VARCHAR(100)"/>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="spring_session" indexName="spring_session_ix1" unique="true">
+            <column name="session_id"/>
+        </createIndex>
+        <createIndex schemaName="str_rn" tableName="spring_session" indexName="spring_session_ix2">
+            <column name="expiry_time"/>
+        </createIndex>
+        <createIndex schemaName="str_rn" tableName="spring_session" indexName="spring_session_ix3">
+            <column name="principal_name"/>
+        </createIndex>
+
+        <createTable schemaName="str_rn" tableName="spring_session_attributes">
+            <column name="session_primary_id" type="CHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attribute_name" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attribute_bytes" type="BYTEA">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addPrimaryKey schemaName="str_rn" tableName="spring_session_attributes"
+                       columnNames="session_primary_id, attribute_name"
+                       constraintName="spring_session_attributes_pk"/>
+
+        <addForeignKeyConstraint baseTableSchemaName="str_rn" baseTableName="spring_session_attributes"
+                                 baseColumnNames="session_primary_id"
+                                 referencedTableSchemaName="str_rn" referencedTableName="spring_session"
+                                 referencedColumnNames="primary_id"
+                                 constraintName="spring_session_attributes_fk"
+                                 onDelete="CASCADE"/>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="spring_session_attributes"/>
+            <dropTable schemaName="str_rn" tableName="spring_session"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

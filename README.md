@@ -1,4 +1,4 @@
-# STR Backend — Short-Term Rental Microservice
+claude# STR Backend — Short-Term Rental Microservice
 
 Spring Boot 3 microservice for managing short-term rental **properties**, **guests**, and **bookings**.
 

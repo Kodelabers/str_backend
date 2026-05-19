@@ -1,7 +1,5 @@
 package com.str.backend.rn;
 
-import com.str.backend.audit.AuditLogEntity;
-import com.str.backend.audit.AuditLogRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.IllegalStatusTransitionException;
@@ -19,13 +17,13 @@ import static org.mockito.Mockito.verify;
 
 class RnStatusTransitionServiceTest {
 
-    private AuditLogRepository auditLogRepository;
+    private RegistrationNumberLogRepository rnLogRepository;
     private RnStatusTransitionService service;
 
     @BeforeEach
     void setUp() {
-        auditLogRepository = mock(AuditLogRepository.class);
-        service = new RnStatusTransitionService(auditLogRepository);
+        rnLogRepository = mock(RegistrationNumberLogRepository.class);
+        service = new RnStatusTransitionService(rnLogRepository);
     }
 
     // --- Valid transitions ---
@@ -35,7 +33,7 @@ class RnStatusTransitionServiceTest {
         RnEntity rn = active();
         service.transition(rn, RnStatus.SUSPENDED, RnTrigger.INSPECTION);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENDED);
-        verifyAuditLog("ACTIVE", "SUSPENDED", "INSPECTION");
+        verifyLog("ACTIVE", "SUSPENDED", "INSPECTION");
     }
 
     @Test
@@ -43,7 +41,7 @@ class RnStatusTransitionServiceTest {
         RnEntity rn = active();
         service.transition(rn, RnStatus.SUSPENDED, RnTrigger.CONSENT_EXPIRY);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENDED);
-        verifyAuditLog("ACTIVE", "SUSPENDED", "CONSENT_EXPIRY");
+        verifyLog("ACTIVE", "SUSPENDED", "CONSENT_EXPIRY");
     }
 
     @Test
@@ -51,7 +49,7 @@ class RnStatusTransitionServiceTest {
         RnEntity rn = active();
         service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
-        verifyAuditLog("ACTIVE", "WITHDRAWN", "WITHDRAWAL");
+        verifyLog("ACTIVE", "WITHDRAWN", "WITHDRAWAL");
     }
 
     @Test
@@ -59,7 +57,7 @@ class RnStatusTransitionServiceTest {
         RnEntity rn = suspended();
         service.transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.ACTIVE);
-        verifyAuditLog("SUSPENDED", "ACTIVE", "REACTIVATE");
+        verifyLog("SUSPENDED", "ACTIVE", "REACTIVATE");
     }
 
     @Test
@@ -67,7 +65,7 @@ class RnStatusTransitionServiceTest {
         RnEntity rn = suspended();
         service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
-        verifyAuditLog("SUSPENDED", "WITHDRAWN", "WITHDRAWAL");
+        verifyLog("SUSPENDED", "WITHDRAWN", "WITHDRAWAL");
     }
 
     // --- Illegal transitions ---
@@ -77,7 +75,7 @@ class RnStatusTransitionServiceTest {
         RnEntity rn = withdrawn();
         service.transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.ACTIVE);
-        verifyAuditLog("WITHDRAWN", "ACTIVE", "REACTIVATE");
+        verifyLog("WITHDRAWN", "ACTIVE", "REACTIVATE");
     }
 
     @Test
@@ -109,22 +107,23 @@ class RnStatusTransitionServiceTest {
                 .isInstanceOf(IllegalStatusTransitionException.class);
     }
 
-    // --- Audit log content ---
+    // --- Log content ---
 
     @Test
-    void audit_log_contains_correct_fields() {
+    void log_contains_correct_fields() {
         RnEntity rn = active();
         service.transition(rn, RnStatus.SUSPENDED, RnTrigger.INSPECTION);
 
-        ArgumentCaptor<AuditLogEntity> captor = ArgumentCaptor.forClass(AuditLogEntity.class);
-        verify(auditLogRepository).save(captor.capture());
-        AuditLogEntity log = captor.getValue();
+        ArgumentCaptor<RegistrationNumberLogEntity> captor =
+                ArgumentCaptor.forClass(RegistrationNumberLogEntity.class);
+        verify(rnLogRepository).save(captor.capture());
+        RegistrationNumberLogEntity entry = captor.getValue();
 
-        assertThat(log.getEntityType()).isEqualTo("RN");
-        assertThat(log.getFromStatus()).isEqualTo("ACTIVE");
-        assertThat(log.getToStatus()).isEqualTo("SUSPENDED");
-        assertThat(log.getTriggerName()).isEqualTo("INSPECTION");
-        assertThat(log.getOccurredAt()).isNotNull();
+        assertThat(entry.getRn()).isEqualTo(rn.getRn());
+        assertThat(entry.getFromStatus()).isEqualTo("ACTIVE");
+        assertThat(entry.getToStatus()).isEqualTo("SUSPENDED");
+        assertThat(entry.getTriggerName()).isEqualTo("INSPECTION");
+        assertThat(entry.getOccurredAt()).isNotNull();
     }
 
     // --- Helpers ---
@@ -145,12 +144,13 @@ class RnStatusTransitionServiceTest {
         return rn;
     }
 
-    private void verifyAuditLog(String from, String to, String trigger) {
-        ArgumentCaptor<AuditLogEntity> captor = ArgumentCaptor.forClass(AuditLogEntity.class);
-        verify(auditLogRepository).save(captor.capture());
-        AuditLogEntity log = captor.getValue();
-        assertThat(log.getFromStatus()).isEqualTo(from);
-        assertThat(log.getToStatus()).isEqualTo(to);
-        assertThat(log.getTriggerName()).isEqualTo(trigger);
+    private void verifyLog(String from, String to, String trigger) {
+        ArgumentCaptor<RegistrationNumberLogEntity> captor =
+                ArgumentCaptor.forClass(RegistrationNumberLogEntity.class);
+        verify(rnLogRepository).save(captor.capture());
+        RegistrationNumberLogEntity entry = captor.getValue();
+        assertThat(entry.getFromStatus()).isEqualTo(from);
+        assertThat(entry.getToStatus()).isEqualTo(to);
+        assertThat(entry.getTriggerName()).isEqualTo(trigger);
     }
 }

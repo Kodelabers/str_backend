@@ -10,24 +10,27 @@
     <include file="db/changelog/changes/003-submission.xml"/>
     <include file="db/changelog/changes/004-accommodation.xml"/>
     <include file="db/changelog/changes/005-registration-number.xml"/>
-    <include file="db/changelog/changes/006-audit-log.xml"/>
     <include file="db/changelog/changes/007-seed-accommodation-type.xml"/>
     <include file="db/changelog/changes/008-online-platform.xml"/>
     <include file="db/changelog/changes/009-seed-online-platform.xml"/>
     <include file="db/changelog/changes/010-accommodation-type-add-rn-allowed.xml"/>
-    <include file="db/changelog/changes/011-accommodation-unit.xml"/>
     <include file="db/changelog/changes/012-accommodation-activity.xml"/>
-    <include file="db/changelog/changes/013-submission-attachment.xml"/>
     <include file="db/changelog/changes/014-submission-add-filing-date.xml"/>
     <include file="db/changelog/changes/015-submission-add-pdf-content.xml"/>
-    <include file="db/changelog/changes/016-guest-injection.xml"/>
-    <include file="db/changelog/changes/017-publication-log.xml"/>
-    <include file="db/changelog/changes/018-lessor-log.xml"/>
     <include file="db/changelog/changes/019-lessor-email-nullable.xml"/>
-    <include file="db/changelog/changes/020-accommodation-type-add-skupina.xml"/>
+    <include file="db/changelog/changes/020-accommodation-type-add-group.xml"/>
 
     <include file="db/changelog/changes/021-str-seed-expand-local.xml"/>
     <include file="db/changelog/changes/022-str-seed-missing-house-numbers.xml"/>
+    <include file="db/changelog/changes/023-lessor-credentials.xml"/>
+    <include file="db/changelog/changes/024-spring-session.xml"/>
+    <include file="db/changelog/changes/025-authority.xml"/>
+    <include file="db/changelog/changes/026-submission-type.xml"/>
+    <include file="db/changelog/changes/027-submission-channel-and-type.xml"/>
+    <include file="db/changelog/changes/028-accommodation-offering.xml"/>
+    <include file="db/changelog/changes/029-guest.xml"/>
+    <include file="db/changelog/changes/030-submission-log.xml"/>
+    <include file="db/changelog/changes/031-registration-number-log.xml"/>
 
     <!-- Mock 'str' schema and seed data — gated by Liquibase context="local" -->
     <include file="db/changelog/changes/100-str-schema-local.xml"/>

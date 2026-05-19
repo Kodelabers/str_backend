@@ -82,8 +82,7 @@ class PdfLocalExportTest {
                 .andReturn();
 
         ObjectNode body = (ObjectNode) om.readTree(postResult.getResponse().getContentAsByteArray());
-        UUID lessorId = UUID.fromString(body.get("lessorId").asText());
-        String rn = body.get("assignedRbs").get(0).get("rn").asText();
+        String rn = body.get("registrationNumber").asText();
         UUID submissionId = UUID.fromString(body.get("submissionId").asText());
 
         MvcResult pdfResult = mvc.perform(

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="029-create-guest" author="str-backend">
+        <createTable schemaName="str_rn" tableName="guest"
+                     remarks="STR GOSTI — per-country breakdown of guests reported in an accommodation activity (per STR-ERA SHEMA V2)">
+            <column name="guest_id" type="UUID"
+                    remarks="UUID zapisa o gostima (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="activity_id" type="UUID"
+                    remarks="Aktivnost (izvješće) kojem zapis pripada (FK na accommodation_activity)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_guest_activity"
+                             references="str_rn.accommodation_activity(activity_id)"/>
+            </column>
+            <column name="guest_count" type="INTEGER"
+                    remarks="Broj gostiju iz pripadajuće države u izvještajnom razdoblju">
+                <constraints nullable="false"/>
+            </column>
+            <column name="country" type="VARCHAR(64)"
+                    remarks="Država porijekla gostiju (ISO 3166-1 alpha-2, npr. HR, DE, AT)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str_rn.guest
+                ADD CONSTRAINT chk_guest_count_nn
+                    CHECK (guest_count &gt;= 0)
+        </sql>
+
+        <createIndex schemaName="str_rn" tableName="guest" indexName="idx_guest_activity">
+            <column name="activity_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="guest"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

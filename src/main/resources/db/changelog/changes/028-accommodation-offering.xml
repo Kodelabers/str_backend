@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="028-accommodation-add-offering" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="accommodation">
+            <column name="offering" type="VARCHAR(8)"
+                    defaultValue="WHOLE"
+                    remarks="Ponuda (PART = dio objekta, WHOLE = cjelina; per STR-ERA SHEMA V2)">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <sql>
+            ALTER TABLE str_rn.accommodation
+                ADD CONSTRAINT chk_accommodation_offering
+                    CHECK (offering IN ('PART', 'WHOLE'))
+        </sql>
+
+        <rollback>
+            <sql>ALTER TABLE str_rn.accommodation DROP CONSTRAINT chk_accommodation_offering</sql>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="offering"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="027-submission-add-channel" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="submission">
+            <column name="channel" type="VARCHAR(16)"
+                    defaultValue="NIAS"
+                    remarks="Kanal podnošenja: NIAS / EIDAS / FOREIGN (per STR-ERA SHEMA V2)">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <sql>
+            ALTER TABLE str_rn.submission
+                ADD CONSTRAINT chk_submission_channel
+                    CHECK (channel IN ('NIAS', 'EIDAS', 'FOREIGN'))
+        </sql>
+
+        <rollback>
+            <sql>ALTER TABLE str_rn.submission DROP CONSTRAINT chk_submission_channel</sql>
+            <dropColumn schemaName="str_rn" tableName="submission" columnName="channel"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="027-submission-add-type-fk" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="submission">
+            <column name="submission_type_id" type="BIGINT"
+                    remarks="Oznaka vrste Zahtjeva (FK na submission_type)"/>
+        </addColumn>
+
+        <addForeignKeyConstraint
+                baseTableSchemaName="str_rn" baseTableName="submission" baseColumnNames="submission_type_id"
+                referencedTableSchemaName="str_rn" referencedTableName="submission_type" referencedColumnNames="submission_type_id"
+                constraintName="fk_submission_submission_type"/>
+
+        <rollback>
+            <dropForeignKeyConstraint baseTableSchemaName="str_rn" baseTableName="submission"
+                                      constraintName="fk_submission_submission_type"/>
+            <dropColumn schemaName="str_rn" tableName="submission" columnName="submission_type_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,55 +1,69 @@
 ---
 name: str-state-machine
-description: STR registration status transitions — INICIIRAN → VALIDACIJA → U_OBRADI → AKTIVAN, with SUSPENDIRAN/POVUCEN terminals and allowed triggers.
+description: STR registration status transitions — two state machines (SubmissionStatus and RnStatus) with allowed triggers and per-aggregate audit logs.
 ---
 
-# STR Status State Machine
+# STR Status State Machines
 
-Defines legal transitions for `str.sso.status`. Use when writing code that changes status, gating actions on status, or auditing why an SSO is in a given state.
+Defines legal transitions for `submission.status` (SubmissionStatus) and `registration_number.status` (RnStatus). Use when writing code that changes status, gating actions on status, or auditing why a record is in a given state.
 
 ## When to Activate
 
-- Any code path that writes `sso.status`
+- Any code path that writes `submission.status` or `registration_number.status`
 - Building guards/filters that read status
 - Implementing suspension, withdrawal, or reactivation flows
 - Writing tests that assert terminal or intermediate status
 
-## Transition Table
+## Submission Lifecycle (`SubmissionStatus`)
 
 | From | Trigger | To |
 | :--- | :--- | :--- |
-| — | Core data fetched, draft created | `INICIIRAN` |
-| `INICIIRAN` | User submits fields → pipeline starts | `VALIDACIJA` |
-| `VALIDACIJA` | GO-1..GO-5 all pass + signature confirmed | `AKTIVAN` |
-| `VALIDACIJA` | GO-4 pending (missing co-owner consent) or signature pending | `U_OBRADI` |
-| `U_OBRADI` | Callback confirms consent/signature | `AKTIVAN` |
-| `AKTIVAN` | Expiry of consent or inspection action | `SUSPENDIRAN` |
-| `AKTIVAN` / `SUSPENDIRAN` | Owner/admin withdrawal | `POVUCEN` |
+| — | New submission created | `INITIATED` |
+| `INITIATED` | `SUBMIT` (NIAS/eIDAS path) | `IN_PROCESSING` |
+| `INITIATED` | `FOREIGN_UPLOAD` (non-EU manual upload) | `IN_VERIFICATION` |
+| `IN_VERIFICATION` | `REFERENT_APPROVE` | `IN_PROCESSING` |
+| `IN_PROCESSING` | `VALIDATION_PASSED` | `ACCEPTED` (terminal) |
+| `IN_PROCESSING` | `VALIDATION_REJECTED` | `REJECTED` (terminal) |
+
+## Registration Number Lifecycle (`RnStatus`)
+
+| From | Trigger | To |
+| :--- | :--- | :--- |
+| — | RN issued when submission ACCEPTED | `IN_PROCESSING` |
+| `IN_PROCESSING` | `ISSUE` | `ACTIVE` |
+| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` | `SUSPENDED` |
+| `SUSPENDED` | `REACTIVATE` | `ACTIVE` |
+| `ACTIVE` / `SUSPENDED` | `WITHDRAWAL` | `WITHDRAWN` |
+| `WITHDRAWN` | `REACTIVATE` | `ACTIVE` |
 
 ## Rules
 
-- `AKTIVAN` is the **only** status with SDEP visibility. All other statuses must be filtered out of public-facing reads.
-- `POVUCEN` is terminal. Do not resurrect — create a new registration.
-- `SUSPENDIRAN` is reversible via a fresh validation cycle (return to `VALIDACIJA`); do not transition directly back to `AKTIVAN`.
-- `VALIDACIJA` is transient. Never persist long-term — a stuck `VALIDACIJA` row is a bug, not a valid state.
-- `U_OBRADI` requires a pending external callback. Store the expected callback type (consent | signature) alongside status so resumption is unambiguous.
+- `RnStatus.ACTIVE` is the **only** publicly visible state (see `RnStatus.isPubliclyVisible()`). All others must be filtered out of public-facing reads.
+- `SubmissionStatus.ACCEPTED` / `REJECTED` are terminal — `isTerminal()` returns true. Do not transition further.
+- `IN_PROCESSING` is transient. A stuck `IN_PROCESSING` row indicates an interrupted pipeline run, not a valid steady state.
+- `IN_VERIFICATION` requires a pending referent action (foreign upload review). It is the only non-NIAS entry into processing.
 
 ## Guard Pattern
 
-Gate transitions through a single service method; reject illegal transitions with a domain exception rather than silently ignoring:
+All transitions go through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. These validate the `(current, target, trigger)` triple via `canTransitionTo()` and immediately write a `submission_log` / `registration_number_log` row. These two operations are inseparable — never mutate the status field directly from service code.
 
 ```java
-void transition(UUID uuidSso, Status target, TransitionTrigger trigger) {
-  Status current = load(uuidSso).status();
+void transition(UUID submissionId, SubmissionStatus target, SubmissionTrigger trigger) {
+  SubmissionStatus current = submission.getStatus();
   if (!current.canTransitionTo(target, trigger)) {
     throw new IllegalStatusTransitionException(current, target, trigger);
   }
-  // persist + audit
+  submission.applyStatus(target);
+  submissionLogRepository.save(SubmissionLogEntity.transition(submissionId, current, target, trigger, actor));
 }
 ```
 
-Encode the allowed transitions on the `Status` enum itself — pattern-match the `(current, target, trigger)` triple instead of sprinkling `if` ladders across services.
+Encode the allowed transitions on the enum itself — pattern-match the `(current, target, trigger)` triple inside `canTransitionTo()` rather than sprinkling `if` ladders across services.
 
 ## Audit
 
-Every transition writes an audit row (old status, new status, trigger, actor, timestamp) to the `str` schema. Status changes with no audit row are not permitted.
+Every transition writes a row to the per-aggregate log table:
+- Submission transitions → `submission_log` (event_type `STATUS_TRANSITION`).
+- Registration-number transitions → `registration_number_log`.
+
+Status changes with no log row are not permitted. There is no longer a generic `audit_log` table — domain-specific log tables align with the PDF "LOG ZAHTJEVA IZNAJMLJIVAČ" spec.

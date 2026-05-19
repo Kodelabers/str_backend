@@ -1,7 +1,5 @@
 package com.str.backend.request;
 
-import com.str.backend.audit.AuditLogEntity;
-import com.str.backend.audit.AuditLogRepository;
 import com.str.backend.domain.SubmissionStatus;
 import com.str.backend.domain.SubmissionTrigger;
 import com.str.backend.exception.IllegalStatusTransitionException;
@@ -19,13 +17,13 @@ import static org.mockito.Mockito.verify;
 
 class SubmissionStatusTransitionServiceTest {
 
-    private AuditLogRepository auditLogRepository;
+    private SubmissionLogRepository submissionLogRepository;
     private SubmissionStatusTransitionService service;
 
     @BeforeEach
     void setUp() {
-        auditLogRepository = mock(AuditLogRepository.class);
-        service = new SubmissionStatusTransitionService(auditLogRepository);
+        submissionLogRepository = mock(SubmissionLogRepository.class);
+        service = new SubmissionStatusTransitionService(submissionLogRepository);
     }
 
     // --- Valid transitions ---
@@ -35,7 +33,7 @@ class SubmissionStatusTransitionServiceTest {
         SubmissionEntity s = submission(SubmissionStatus.INITIATED);
         service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.SUBMIT);
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.IN_PROCESSING);
-        verifyAuditLog("INITIATED", "IN_PROCESSING", "SUBMIT");
+        verifyLog("INITIATED", "IN_PROCESSING", "SUBMIT");
     }
 
     @Test
@@ -43,7 +41,7 @@ class SubmissionStatusTransitionServiceTest {
         SubmissionEntity s = submission(SubmissionStatus.INITIATED);
         service.transition(s, SubmissionStatus.IN_VERIFICATION, SubmissionTrigger.FOREIGN_UPLOAD);
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.IN_VERIFICATION);
-        verifyAuditLog("INITIATED", "IN_VERIFICATION", "FOREIGN_UPLOAD");
+        verifyLog("INITIATED", "IN_VERIFICATION", "FOREIGN_UPLOAD");
     }
 
     @Test
@@ -51,7 +49,7 @@ class SubmissionStatusTransitionServiceTest {
         SubmissionEntity s = submission(SubmissionStatus.IN_VERIFICATION);
         service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.REFERENT_APPROVE);
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.IN_PROCESSING);
-        verifyAuditLog("IN_VERIFICATION", "IN_PROCESSING", "REFERENT_APPROVE");
+        verifyLog("IN_VERIFICATION", "IN_PROCESSING", "REFERENT_APPROVE");
     }
 
     @Test
@@ -59,7 +57,7 @@ class SubmissionStatusTransitionServiceTest {
         SubmissionEntity s = submission(SubmissionStatus.IN_PROCESSING);
         service.transition(s, SubmissionStatus.ACCEPTED, SubmissionTrigger.VALIDATION_PASSED);
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.ACCEPTED);
-        verifyAuditLog("IN_PROCESSING", "ACCEPTED", "VALIDATION_PASSED");
+        verifyLog("IN_PROCESSING", "ACCEPTED", "VALIDATION_PASSED");
     }
 
     @Test
@@ -67,7 +65,7 @@ class SubmissionStatusTransitionServiceTest {
         SubmissionEntity s = submission(SubmissionStatus.IN_PROCESSING);
         service.transition(s, SubmissionStatus.REJECTED, SubmissionTrigger.VALIDATION_REJECTED);
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.REJECTED);
-        verifyAuditLog("IN_PROCESSING", "REJECTED", "VALIDATION_REJECTED");
+        verifyLog("IN_PROCESSING", "REJECTED", "VALIDATION_REJECTED");
     }
 
     // --- Illegal transitions ---
@@ -102,22 +100,23 @@ class SubmissionStatusTransitionServiceTest {
                 .isInstanceOf(IllegalStatusTransitionException.class);
     }
 
-    // --- Audit log content ---
+    // --- Log content ---
 
     @Test
-    void audit_log_contains_correct_fields() {
+    void log_contains_correct_fields() {
         SubmissionEntity s = submission(SubmissionStatus.IN_PROCESSING);
         service.transition(s, SubmissionStatus.ACCEPTED, SubmissionTrigger.VALIDATION_PASSED);
 
-        ArgumentCaptor<AuditLogEntity> captor = ArgumentCaptor.forClass(AuditLogEntity.class);
-        verify(auditLogRepository).save(captor.capture());
-        AuditLogEntity log = captor.getValue();
+        ArgumentCaptor<SubmissionLogEntity> captor = ArgumentCaptor.forClass(SubmissionLogEntity.class);
+        verify(submissionLogRepository).save(captor.capture());
+        SubmissionLogEntity entry = captor.getValue();
 
-        assertThat(log.getEntityType()).isEqualTo("ZAHTJEV");
-        assertThat(log.getFromStatus()).isEqualTo("IN_PROCESSING");
-        assertThat(log.getToStatus()).isEqualTo("ACCEPTED");
-        assertThat(log.getTriggerName()).isEqualTo("VALIDATION_PASSED");
-        assertThat(log.getOccurredAt()).isNotNull();
+        assertThat(entry.getSubmissionId()).isEqualTo(s.getSubmissionId());
+        assertThat(entry.getEventType()).isEqualTo("STATUS_TRANSITION");
+        assertThat(entry.getFromStatus()).isEqualTo("IN_PROCESSING");
+        assertThat(entry.getToStatus()).isEqualTo("ACCEPTED");
+        assertThat(entry.getTriggerName()).isEqualTo("VALIDATION_PASSED");
+        assertThat(entry.getOccurredAt()).isNotNull();
     }
 
     // --- Helpers ---
@@ -129,13 +128,13 @@ class SubmissionStatusTransitionServiceTest {
         return s;
     }
 
-    private void verifyAuditLog(String from, String to, String trigger) {
-        ArgumentCaptor<AuditLogEntity> captor = ArgumentCaptor.forClass(AuditLogEntity.class);
-        verify(auditLogRepository).save(captor.capture());
-        AuditLogEntity log = captor.getValue();
-        assertThat(log.getFromStatus()).isEqualTo(from);
-        assertThat(log.getToStatus()).isEqualTo(to);
-        assertThat(log.getTriggerName()).isEqualTo(trigger);
+    private void verifyLog(String from, String to, String trigger) {
+        ArgumentCaptor<SubmissionLogEntity> captor = ArgumentCaptor.forClass(SubmissionLogEntity.class);
+        verify(submissionLogRepository).save(captor.capture());
+        SubmissionLogEntity entry = captor.getValue();
+        assertThat(entry.getFromStatus()).isEqualTo(from);
+        assertThat(entry.getToStatus()).isEqualTo(to);
+        assertThat(entry.getTriggerName()).isEqualTo(trigger);
     }
 
     private void setField(Object target, String name, Object value) {

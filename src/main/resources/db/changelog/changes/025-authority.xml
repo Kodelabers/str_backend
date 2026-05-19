@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="025-create-authority" author="str-backend">
+        <createTable schemaName="str_rn" tableName="authority"
+                     remarks="NADLEŽNO TIJELO — competent authority that processes STR submissions (per STR-ERA SHEMA V2)">
+            <column name="authority_id" type="BIGINT" autoIncrement="true"
+                    remarks="Interni ID nadležnog tijela (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)"
+                    remarks="Naziv nadležnog tijela">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <insert schemaName="str_rn" tableName="authority">
+            <column name="name" value="Ministarstvo turizma i sporta"/>
+        </insert>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="authority"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
