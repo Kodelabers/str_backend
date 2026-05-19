@@ -1,5 +1,6 @@
 package com.str.backend.address;
 
+import com.str.backend.address.dto.CountryResponse;
 import com.str.backend.address.dto.CountyResponse;
 import com.str.backend.address.dto.HouseNumberResponse;
 import com.str.backend.address.dto.MunicipalityResponse;
@@ -20,6 +21,11 @@ public class AddressLookupController {
 
     public AddressLookupController(AddressLookupService service) {
         this.service = service;
+    }
+
+    @GetMapping("/countries")
+    public List<CountryResponse> getCountries(@RequestParam(required = false) String q) {
+        return service.findCountries(q);
     }
 
     @GetMapping("/counties")

@@ -1,5 +1,6 @@
 package com.str.backend.address;
 
+import com.str.backend.address.dto.CountryResponse;
 import com.str.backend.address.dto.CountyResponse;
 import com.str.backend.address.dto.HouseNumberResponse;
 import com.str.backend.address.dto.MunicipalityResponse;
@@ -14,22 +15,34 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class AddressLookupService {
 
+    private final CountryRepository countryRepository;
     private final CountyRepository countyRepository;
     private final MunicipalityRepository municipalityRepository;
     private final SettlementRepository settlementRepository;
     private final StreetRepository streetRepository;
     private final HouseNumberRepository houseNumberRepository;
 
-    public AddressLookupService(CountyRepository countyRepository,
+    public AddressLookupService(CountryRepository countryRepository,
+                                CountyRepository countyRepository,
                                 MunicipalityRepository municipalityRepository,
                                 SettlementRepository settlementRepository,
                                 StreetRepository streetRepository,
                                 HouseNumberRepository houseNumberRepository) {
+        this.countryRepository = countryRepository;
         this.countyRepository = countyRepository;
         this.municipalityRepository = municipalityRepository;
         this.settlementRepository = settlementRepository;
         this.streetRepository = streetRepository;
         this.houseNumberRepository = houseNumberRepository;
+    }
+
+    public List<CountryResponse> findCountries(String q) {
+        List<CountryEntity> entities = (q == null || q.isBlank())
+                ? countryRepository.findByActiveTrueOrderByName()
+                : countryRepository.findByActiveTrueAndNameContainingIgnoreCaseOrderByName(q);
+        return entities.stream()
+                .map(e -> new CountryResponse(e.getId(), e.getName(), e.getIso2Alpha()))
+                .toList();
     }
 
     public List<CountyResponse> findCounties(String q) {
