@@ -1,7 +1,5 @@
 package com.str.backend.validation;
 
-import com.str.backend.audit.AuditLogEntity;
-import com.str.backend.audit.AuditLogRepository;
 import com.str.backend.exception.ExternalRegistryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,21 +30,18 @@ import java.util.concurrent.Executors;
 public class ParallelValidationOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(ParallelValidationOrchestrator.class);
-    private static final String ENTITY_TYPE = "accommodation";
 
     private final List<ValidationCheck> checks;
-    private final AuditLogRepository auditLogRepository;
     private final ExecutorService executor;
 
-    public ParallelValidationOrchestrator(List<ValidationCheck> checks,
-                                          AuditLogRepository auditLogRepository) {
+    public ParallelValidationOrchestrator(List<ValidationCheck> checks) {
         this.checks = checks;
-        this.auditLogRepository = auditLogRepository;
         this.executor = Executors.newFixedThreadPool(Math.max(2, checks.size()));
     }
 
     public PipelineResult execute(ValidationContext context) {
-        String accommodationId = context.accommodation().getAccommodationId().toString();
+        String accommodationId = context.accommodation().getAccommodationId() == null
+                ? "<new>" : context.accommodation().getAccommodationId().toString();
         List<List<ValidationCheck>> waves = planWaves();
 
         for (List<ValidationCheck> wave : waves) {
@@ -55,8 +50,7 @@ public class ParallelValidationOrchestrator {
                 return result;
             }
         }
-        auditLogRepository.save(AuditLogEntity.validation(
-                ENTITY_TYPE, accommodationId, "PIPELINE", "PASSED", null));
+        log.info("go_pipeline_pass accommodation={}", accommodationId);
         return PipelineResult.passed();
     }
 
@@ -119,14 +113,10 @@ public class ParallelValidationOrchestrator {
     private PipelineResult record(String accommodationId, ValidationResult r) {
         return switch (r) {
             case ValidationResult.Passed p -> {
-                auditLogRepository.save(AuditLogEntity.validation(
-                        ENTITY_TYPE, accommodationId, p.getStep(), "PASSED", p.getDetail()));
                 log.info("go_pass accommodation={} step={} detail={}", accommodationId, p.getStep(), p.getDetail());
                 yield null;
             }
             case ValidationResult.Rejected o -> {
-                auditLogRepository.save(AuditLogEntity.validation(
-                        ENTITY_TYPE, accommodationId, o.getStep(), "REJECTED", o.getReason()));
                 log.warn("go_reject accommodation={} step={} reason={}", accommodationId, o.getStep(), o.getReason());
                 yield PipelineResult.rejected(o.getStep(), o.getReason());
             }

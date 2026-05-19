@@ -28,7 +28,6 @@ import java.util.Optional;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,20 +70,18 @@ class RegistrationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(om.writeValueAsBytes(baseRequest())))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.assignedRbs").isArray())
-                .andExpect(jsonPath("$.assignedRbs[0].rn").exists())
+                .andExpect(jsonPath("$.registrationNumber").exists())
+                .andExpect(jsonPath("$.submissionId").exists())
                 .andReturn();
 
         ObjectNode body = (ObjectNode) om.readTree(result.getResponse().getContentAsByteArray());
-        String rn = body.get("assignedRbs").get(0).get("rn").asText();
-        UUID lessorId = UUID.fromString(body.get("lessorId").asText());
+        String rn = body.get("registrationNumber").asText();
+        UUID submissionId = UUID.fromString(body.get("submissionId").asText());
 
         assertThat(rn).matches("HR[0-9A-Fa-f]{18}");
-        assertThat(lessorRepository.findById(lessorId)).isPresent();
 
-        List<SubmissionEntity> submissions = submissionRepository.findByLessorId(lessorId);
-        assertThat(submissions).hasSize(1);
-        SubmissionEntity submission = submissions.get(0);
+        SubmissionEntity submission = submissionRepository.findById(submissionId).orElseThrow();
+        assertThat(lessorRepository.findById(submission.getLessorId())).isPresent();
         assertThat(submission.getFilingNumber()).isNotBlank();
         assertThat(submission.getDocumentLink()).startsWith("egop://");
         assertThat(submission.getPdfContent()).isNotNull();
@@ -100,10 +97,10 @@ class RegistrationIntegrationTest {
                 .andReturn();
 
         ObjectNode body = (ObjectNode) om.readTree(postResult.getResponse().getContentAsByteArray());
-        UUID lessorId = UUID.fromString(body.get("lessorId").asText());
-        SubmissionEntity submission = submissionRepository.findByLessorId(lessorId).get(0);
+        UUID submissionId = UUID.fromString(body.get("submissionId").asText());
+        SubmissionEntity submission = submissionRepository.findById(submissionId).orElseThrow();
 
-        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", submission.getSubmissionId()))
+        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", submissionId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_PDF))
                 .andExpect(content().bytes(submission.getPdfContent()));

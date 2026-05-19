@@ -13,30 +13,31 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class StubEgopClient implements EgopClient {
 
     private static final Logger log = LoggerFactory.getLogger(StubEgopClient.class);
-    private static final String STR_KLASA = "334-01";
+    private static final String STR_CLASS_PREFIX = "334-01";
     private static final AtomicInteger SEQ = new AtomicInteger(
             (int) (System.currentTimeMillis() / 1000) % 1_000_000
     );
 
     @Override
-    public UrudzbeniBroj rezervirajUrudzbeniBroj() {
+    public FilingNumber reserveFilingNumber() {
         int year = LocalDate.now().getYear() % 100;
-        String klasa = STR_KLASA + "/" + year + "-01/" + SEQ.incrementAndGet();
-        String urbroj = "529-06/" + year + "-1";
+        String classificationCode = STR_CLASS_PREFIX + "/" + year + "-01/" + SEQ.incrementAndGet();
+        String referenceNumber = "529-06/" + year + "-1";
         Instant now = Instant.now();
-        log.info("egop_stub rezerviraj_urudzbeni_broj klasa={} urbroj={}", klasa, urbroj);
-        return new UrudzbeniBroj(klasa, urbroj, now);
+        log.info("egop_stub reserve_filing_number classification_code={} reference_number={}",
+                classificationCode, referenceNumber);
+        return new FilingNumber(classificationCode, referenceNumber, now);
     }
 
     @Override
-    public PotvrdaUrudzbiranja posaljiZahtjev(String urudzbeniBroj, byte[] pdf) {
-        if (urudzbeniBroj == null || urudzbeniBroj.isBlank()) {
-            throw new IllegalArgumentException("urudzbeniBroj is required");
+    public FilingConfirmation submitFiling(String filingNumber, byte[] pdf) {
+        if (filingNumber == null || filingNumber.isBlank()) {
+            throw new IllegalArgumentException("filingNumber is required");
         }
         if (pdf == null || pdf.length == 0) {
             throw new IllegalArgumentException("pdf payload is empty");
         }
-        log.info("egop_stub posalji_zahtjev urudzbeni={} pdf_size_bytes={}", urudzbeniBroj, pdf.length);
-        return new PotvrdaUrudzbiranja(urudzbeniBroj, Instant.now());
+        log.info("egop_stub submit_filing filing_number={} pdf_size_bytes={}", filingNumber, pdf.length);
+        return new FilingConfirmation(filingNumber, Instant.now());
     }
 }

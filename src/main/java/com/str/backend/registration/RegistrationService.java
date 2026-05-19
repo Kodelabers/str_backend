@@ -26,7 +26,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -83,21 +82,21 @@ public class RegistrationService {
 
         String typeName = resolveTypeName(req.getTypeId());
         byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
-        EgopClient.UrudzbeniBroj filing = egopClient.rezervirajUrudzbeniBroj();
-        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatiran(), typeName);
-        EgopClient.PotvrdaUrudzbiranja confirmation =
-                egopClient.posaljiZahtjev(filing.formatiran(), finalPdf);
+        EgopClient.FilingNumber filing = egopClient.reserveFilingNumber();
+        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatted(), typeName);
+        EgopClient.FilingConfirmation confirmation =
+                egopClient.submitFiling(filing.formatted(), finalPdf);
 
         log.info("egop_filing_ok filingNumber={} draft_size={} final_size={}",
-                confirmation.urudzbeniBroj(), draftPdf.length, finalPdf.length);
+                confirmation.filingNumber(), draftPdf.length, finalPdf.length);
 
         lessorRepository.save(lessor);
         SubmissionEntity submission = SubmissionEntity.create(
-                confirmation.urudzbeniBroj(),
+                confirmation.filingNumber(),
                 lessor.getLessorId(),
                 null,
-                confirmation.datumPotvrde(),
-                "egop://" + confirmation.urudzbeniBroj(),
+                confirmation.confirmedAt(),
+                "egop://" + confirmation.filingNumber(),
                 finalPdf);
         submissionRepository.save(submission);
 
@@ -107,8 +106,7 @@ public class RegistrationService {
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
 
         log.info("registration_success lessor={} submission={}", lessor.getLessorId(), submission.getSubmissionId());
-        return new RegistrationResponse(lessor.getLessorId(), submission.getSubmissionId(),
-                List.of(new RegistrationResponse.AssignedRb(accommodation.getAccommodationId(), rn.getRn())));
+        return new RegistrationResponse(rn.getRn(), submission.getSubmissionId());
     }
 
     @Transactional(readOnly = true)

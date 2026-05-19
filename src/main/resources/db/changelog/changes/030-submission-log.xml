@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="030-create-submission-log" author="str-backend">
+        <createTable schemaName="str_rn" tableName="submission_log"
+                     remarks="LOG ZAHTJEVA IZNAJMLJIVAČ — povijest događaja nad zahtjevom (status tranzicije i validacijski koraci) per STR-ERA SHEMA V2">
+            <column name="log_id" type="UUID"
+                    remarks="UUID zapisa loga (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="submission_id" type="UUID"
+                    remarks="Zahtjev na koji se zapis odnosi (FK na submission)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_submission_log_submission"
+                             references="str_rn.submission(submission_id)"/>
+            </column>
+            <column name="event_type" type="VARCHAR(32)"
+                    remarks="Vrsta događaja (STATUS_TRANSITION / VALIDATION)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="from_status" type="VARCHAR(32)"
+                    remarks="Prethodni status (null ako nije tranzicija statusa)"/>
+            <column name="to_status" type="VARCHAR(32)"
+                    remarks="Novi status (null ako nije tranzicija statusa)"/>
+            <column name="trigger_name" type="VARCHAR(64)"
+                    remarks="Okidač tranzicije (SUBMIT, VALIDATION_PASSED, ...)"/>
+            <column name="actor" type="VARCHAR(128)"
+                    remarks="Tko je inicirao događaj (korisnik ili sustav)"/>
+            <column name="reason" type="VARCHAR(1024)"
+                    remarks="Opis razloga ili detalj događaja"/>
+            <column name="occurred_at" type="TIMESTAMPTZ"
+                    remarks="Vrijeme događaja">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str_rn.submission_log
+                ADD CONSTRAINT chk_submission_log_event_type
+                    CHECK (event_type IN ('STATUS_TRANSITION', 'VALIDATION'))
+        </sql>
+
+        <createIndex schemaName="str_rn" tableName="submission_log" indexName="idx_submission_log_submission">
+            <column name="submission_id"/>
+            <column name="occurred_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="submission_log"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

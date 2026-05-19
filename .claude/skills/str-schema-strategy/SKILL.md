@@ -1,11 +1,11 @@
 ---
 name: str-schema-strategy
-description: STR database schema strategy — core (read-only) vs str (read-write) separation, ddl-auto=none migration policy, and cross-schema access rules.
+description: STR database schema strategy — str (external, read-only) vs str_rn (this service, read-write) separation, ddl-auto=none migration policy, and cross-schema access rules.
 ---
 
 # STR Schema Strategy
 
-Enforces the two-schema contract between `core` (shared matične podatke) and `str` (registration module). Use when writing SQL, JPA mappings, or migrations.
+Enforces the two-schema contract between `str` (externally owned reference data) and `str_rn` (this service's tables). Use when writing SQL, JPA mappings, or migrations.
 
 ## When to Activate
 
@@ -16,10 +16,10 @@ Enforces the two-schema contract between `core` (shared matične podatke) and `s
 
 ## Hard Rules
 
-1. **`core` is read-only.** No `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, or DDL against any `core.*` table. Ever. The backend user must lack write grants on `core`.
-2. **`str` is owned exclusively by this backend.** No other service writes here.
-3. **`spring.jpa.hibernate.ddl-auto=none`.** Hibernate must not generate or validate schema against the DB at runtime beyond mapping checks. All schema changes ship as hand-written SQL migration files.
-4. **Cross-schema reads** are allowed — e.g., join `str.sso` ↔ `core.objekt` via shared `uuid`. Prefer narrow queries over eager JPA joins.
+1. **`str` is read-only.** No `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, or DDL against any `str.*` table from this service on dev/prod. On local/mock the schema is mocked via Liquibase changesets gated by `context="local"`.
+2. **`str_rn` is owned exclusively by this backend.** No other service writes here.
+3. **`spring.jpa.hibernate.ddl-auto=none`.** Hibernate must not generate or validate schema against the DB beyond mapping checks. All schema changes ship as Liquibase changesets.
+4. **Cross-schema reads** are allowed — e.g., join `str_rn.lessor` ↔ `str.subject` via shared OIB. Prefer narrow queries over eager JPA joins.
 
 ## JPA Mapping
 
@@ -27,30 +27,32 @@ Always specify schema explicitly; never rely on default search_path:
 
 ```java
 @Entity
-@Table(schema = "str", name = "sso")
-public class SsoEntity { ... }
+@Table(schema = "str_rn", name = "submission")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class SubmissionEntity { ... }
 
 @Entity
-@Table(schema = "core", name = "objekt")
+@Table(schema = "str", name = "subject")
 @Immutable  // enforce read-only at ORM level as defense-in-depth
-public class CoreObjektEntity { ... }
+public class StrSubjectEntity { ... }
 ```
 
-Mark all `core.*` entities `@Immutable` and expose only via repositories that declare `readOnly = true` transactions.
+Mark all `str.*` entities `@Immutable` and expose only via repositories that declare `readOnly = true` transactions.
 
 ## Migrations
 
-- Tool: hand-written SQL (no Flyway/Liquibase auto-generation from entities).
-- Location: versioned migration files committed alongside code.
-- Review rule: every migration touching `str` must include a rollback script or documented reason one is not feasible.
-- Migrations against `core` are **out of scope** — raise with the core owners instead.
+- Tool: Liquibase XML changesets under `src/main/resources/db/changelog/changes/`. Numbered (`030-...`, `031-...`).
+- Mock `str.*` schema and seeds are gated by `context="local"`, activated via `spring.liquibase.contexts=local` in `application-local.properties` and `application-mock.properties`.
+- Review rule: every changeset touching `str_rn` must include a `<rollback>` or documented reason one is not feasible. Seed-only changesets can use `<rollback/>` (empty).
+- Changes against `str` are **out of scope** — that schema is owned externally.
 
 ## Snapshot vs. Live Data
 
-When STR needs core data that must survive future core edits (e.g., renter identity at the moment of registration), copy it into a `str` snapshot table (e.g., `str.iznajmljivac`). Do not rely on live `core` joins for audit-critical fields.
+When `str_rn` needs reference data that must survive future external edits (e.g., lessor identity at the moment of registration), copy it into a `str_rn` snapshot table (e.g., `str_rn.lessor`). Do not rely on live `str` joins for audit-critical fields.
 
 ## Common Pitfalls
 
 - Forgetting the schema prefix in native queries — breaks when `search_path` differs between envs.
-- Adding an FK from `str` → `core` at the DB level — allowed, but confirm `ON DELETE` is `RESTRICT` (never cascade, since core is not ours to modify).
-- Using `@GeneratedValue` against a `core` PK — never; `uuid_sso` is assigned from core, not generated in STR.
+- Using SQL reserved words as column names — e.g., `group_name` not `group` for accommodation type (Java field can still be `group`).
+- Using `@GeneratedValue` against a PK that originates externally — assigned values must be set explicitly.

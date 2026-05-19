@@ -1,6 +1,5 @@
 package com.str.backend.registration;
 
-import com.str.backend.registration.dto.AccommodationRegistrationResponse;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
 import com.str.backend.request.SubmissionEntity;
@@ -31,16 +30,6 @@ public class RegistrationController {
     @PostMapping("/api/generateRegistrationNumber")
     public ResponseEntity<RegistrationResponse> generateRegistrationNumber(@Valid @RequestBody RegistrationRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(req));
-    }
-
-    @PostMapping("/api/accommodations/registration")
-    public ResponseEntity<AccommodationRegistrationResponse> register(@Valid @RequestBody RegistrationRequest req) {
-        RegistrationResponse resp = service.generateRegistrationNumber(req);
-        RegistrationResponse.AssignedRb rb = resp.assignedRbs().stream()
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("no assigned RB in response"));
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new AccommodationRegistrationResponse(rb.rn(), resp.submissionId().toString()));
     }
 
     @GetMapping(value = "/api/generateRegistrationNumber/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)

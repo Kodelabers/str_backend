@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="026-create-submission-type" author="str-backend">
+        <createTable schemaName="str_rn" tableName="submission_type"
+                     remarks="STR VRSTA ZAHTJEVA — code list of submission types (per STR-ERA SHEMA V2)">
+            <column name="submission_type_id" type="BIGINT" autoIncrement="true"
+                    remarks="Oznaka vrste Zahtjeva (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="code" type="VARCHAR(32)"
+                    remarks="Kodna oznaka vrste zahtjeva">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_submission_type_code"/>
+            </column>
+            <column name="name" type="VARCHAR(255)"
+                    remarks="Naziv vrste zahtjeva">
+                <constraints nullable="false"/>
+            </column>
+            <column name="valid_from" type="DATE"
+                    remarks="Datum od kojeg vrsta vrijedi">
+                <constraints nullable="false"/>
+            </column>
+            <column name="valid_to" type="DATE"
+                    remarks="Datum do kojeg vrsta vrijedi (null = trajno)"/>
+            <column name="status" type="VARCHAR(16)"
+                    remarks="Status vrste (ACTIVE / INACTIVE)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str_rn.submission_type
+                ADD CONSTRAINT chk_submission_type_status
+                    CHECK (status IN ('ACTIVE', 'INACTIVE'))
+        </sql>
+
+        <insert schemaName="str_rn" tableName="submission_type">
+            <column name="code" value="NEW_RN"/>
+            <column name="name" value="Zahtjev za izdavanje registracijskog broja"/>
+            <column name="valid_from" valueDate="2024-01-01"/>
+            <column name="status" value="ACTIVE"/>
+        </insert>
+        <insert schemaName="str_rn" tableName="submission_type">
+            <column name="code" value="UPDATE_RN"/>
+            <column name="name" value="Zahtjev za izmjenu registracijskog broja"/>
+            <column name="valid_from" valueDate="2024-01-01"/>
+            <column name="status" value="ACTIVE"/>
+        </insert>
+        <insert schemaName="str_rn" tableName="submission_type">
+            <column name="code" value="REVOKE_RN"/>
+            <column name="name" value="Zahtjev za povlačenje registracijskog broja"/>
+            <column name="valid_from" valueDate="2024-01-01"/>
+            <column name="status" value="ACTIVE"/>
+        </insert>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="submission_type"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

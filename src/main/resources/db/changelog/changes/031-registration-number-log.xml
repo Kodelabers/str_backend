@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="031-create-registration-number-log" author="str-backend">
+        <createTable schemaName="str_rn" tableName="registration_number_log"
+                     remarks="Povijest statusnih tranzicija registracijskog broja (issue, suspend, reactivate, withdraw)">
+            <column name="log_id" type="UUID"
+                    remarks="UUID zapisa loga (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="rn" type="VARCHAR(20)"
+                    remarks="Registracijski broj na koji se zapis odnosi (FK na registration_number)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_rn_log_rn"
+                             references="str_rn.registration_number(rn)"/>
+            </column>
+            <column name="from_status" type="VARCHAR(16)"
+                    remarks="Prethodni status RN-a"/>
+            <column name="to_status" type="VARCHAR(16)"
+                    remarks="Novi status RN-a">
+                <constraints nullable="false"/>
+            </column>
+            <column name="trigger_name" type="VARCHAR(64)"
+                    remarks="Okidač tranzicije (ISSUE, SUSPEND, REACTIVATE, WITHDRAWAL, ...)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="actor" type="VARCHAR(128)"
+                    remarks="Tko je inicirao tranziciju (korisnik ili sustav)"/>
+            <column name="reason" type="VARCHAR(1024)"
+                    remarks="Opis razloga tranzicije"/>
+            <column name="occurred_at" type="TIMESTAMPTZ"
+                    remarks="Vrijeme tranzicije">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="registration_number_log" indexName="idx_rn_log_rn">
+            <column name="rn"/>
+            <column name="occurred_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="registration_number_log"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

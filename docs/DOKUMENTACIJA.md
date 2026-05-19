@@ -84,7 +84,7 @@ JUnit testovi (`@ActiveProfiles("test")`) override-aju konfiguraciju kroz `src/t
 
 ### 4.1 Format
 - 10 znakova: prefiks `HR` + 8 numeričkih znamenki.
-- Validacija: `^HR\d{8}$` (record `RegistracijskiBroj`).
+- Validacija: `^HR[0-9A-Fa-f]{18}$` (klasa `RegistrationNumber`).
 - Primjer: `HR04920183`.
 
 ### 4.2 Generiranje
@@ -126,7 +126,7 @@ RB se inserta u bazu **isključivo** nakon što sve GO provjere (GO-1 do GO-5) p
 | **GO-4** | Suglasnost suvlasnika | 4 | Pokreće se **samo** ako je GO-2 markirao kontekst; provjerava DGU registar |
 | **GO-5** | Provjera kapaciteta | 5 | `sso.kreveti ≤ core.maxKreveta` i `sso.gostiju ≤ core.maxGostiju`; kad `core` nedostupan, prolazi |
 
-### 6.2 Orkestracija (`ParallelValidacijskiOrkestrator`)
+### 6.2 Orkestracija (`ParallelValidationOrchestrator`)
 
 Provjere se izvode u **valovima** (waves) baziranim na `dependsOn()` skupu, koristeći `CompletableFuture.supplyAsync(...)` na fiksnom thread-poolu:
 
@@ -141,8 +141,8 @@ Provjere se izvode u **valovima** (waves) baziranim na `dependsOn()` skupu, kori
 
 ## 7. Status tranzicije
 
-### 7.1 Stari `sso.status` model
-Eliminiran u ovoj fazi — registracija ne prolazi više kroz `INICIIRAN → VALIDACIJA → AKTIVAN` pipeline; SSO se materijalizira u trenutku registracije i RB se izdaje u istoj transakciji.
+### 7.1 Submission status (`SubmissionStatus`)
+`INITIATED → IN_PROCESSING (SUBMIT) | IN_VERIFICATION (FOREIGN_UPLOAD)`; `IN_VERIFICATION → IN_PROCESSING (REFERENT_APPROVE)`; `IN_PROCESSING → ACCEPTED | REJECTED` (terminal). Sve tranzicije idu kroz `SubmissionStatusTransitionService.transition(...)` koja istovremeno upisuje `submission_log` red.
 
 ### 7.2 RB status (`RbStatusTransitionService`)
 Sve promjene `rb.status` idu **isključivo** kroz `RbStatusTransitionService.transition(...)`. Servis validira tranziciju protiv `RbStatus.canTransitionTo(...)` enum logike i istovremeno upisuje audit row — operacije su nedjeljive.
@@ -172,7 +172,7 @@ Jedinstveni endpoint `POST /api/registracija` pokriva **sva tri scenarija**, ras
 **Algoritam (po SSO-u):**
 1. Učitaj/kreiraj `SsoEntity`.
 2. Sastavi `ValidacijskiKontekst(sso, iznajmljivac, coreObjekt?)`.
-3. Pokreni `ParallelValidacijskiOrkestrator.izvrsi(...)`.
+3. Pokreni `ParallelValidationOrchestrator.execute(...)`.
 4. Ako `Odbijena` — baci `ValidationRejectedException` (HTTP 422) s `step` i `detail`.
 5. Inače — pozovi `RbService.issue(...)`, audit, dodaj u response.
 
@@ -207,7 +207,7 @@ Retencija: zapisi stariji od 18 mjeseci brišu se automatski (scheduler) ili na 
 
 ## 11. Iznajmljivač — snapshot semantika
 
-`IznajmljivacEntity` je **imutabilan** nakon kreiranja (`updatable=false` na svim identitetskim kolonama). Jedino mutabilno polje je `is_domacin` koje GO-1 postavlja tijekom validacije. Svaka re-validacija dohvaća **najnoviji snapshot** preko `findTopByUuidSsoOrderByCreatedAtDesc(...)`.
+`LessorEntity` je **uglavnom imutabilan** nakon kreiranja (`updatable=false` na identitetskim kolonama: ime, adresa, email, username). Mutabilna polja su ograničena na kontakt podatke, podatke o pravnoj osobi i `applicationStatus`. Re-validacija ne stvara novi snapshot — lessor je perzistentan, GO-1 ažurira host status flag.
 
 Posljedica: izmjena podataka iznajmljivača u core sustavu ne mijenja postojeće STR snapshote — registracija ostaje vezana uz stanje u trenutku izdavanja.
 
