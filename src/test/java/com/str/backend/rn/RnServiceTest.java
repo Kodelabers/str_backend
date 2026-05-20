@@ -1,6 +1,7 @@
 package com.str.backend.rn;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
@@ -137,7 +138,7 @@ class RnServiceTest {
     private AccommodationEntity accommodation(UUID id, Long typeId) {
         AccommodationEntity e = AccommodationEntity.create(
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", "Ilica", "1",
-                2, 4, OfferType.RESIDENCE, false, false, true);
+                2, 4, OfferType.RESIDENCE, Offering.WHOLE, false, false, true);
         e.setLocationDetails(null, null, null, null, null, null, typeId, null);
         // Override the generated accommodationId via reflection — entity uses UUID.randomUUID() internally
         try {

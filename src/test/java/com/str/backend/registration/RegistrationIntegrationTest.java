@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
@@ -133,17 +134,13 @@ class RegistrationIntegrationTest {
     }
 
     private RegistrationRequest baseRequest() {
-        RegistrationRequest req = new RegistrationRequest();
-        req.setOib("12312312316");
-        req.setName("Apartman Sunce");
-        req.setCountyId(2L);
-        req.setCityId("Split");
-        req.setStreet("Ulica kralja Tomislava");
-        req.setStreetNumber("14a");
-        req.setPostalCode("21000");
-        req.setMaxBeds(4);
-        req.setMaxGuests(6);
-        req.setOfferType(OfferType.RESIDENCE);
-        return req;
+        return new RegistrationRequest(
+                "12312312316", "Apartman Sunce", null,
+                2L, "Split", null,
+                "Ulica kralja Tomislava", "14a", "21000",
+                4, 6,
+                OfferType.RESIDENCE, Offering.WHOLE,
+                false, null, false, true,
+                null, null, null, null, null);
     }
 }

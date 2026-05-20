@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.registration.dto.RegistrationRequest;
@@ -55,8 +56,7 @@ class RegistrationControllerTest {
 
     @Test
     void post_returns_400_when_payload_invalid() throws Exception {
-        RegistrationRequest invalid = validRequest();
-        invalid.setMaxBeds(0); // violates @Min(1)
+        RegistrationRequest invalid = withMaxBeds(validRequest(), 0);
 
         mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -66,8 +66,7 @@ class RegistrationControllerTest {
 
     @Test
     void post_returns_400_when_oib_invalid() throws Exception {
-        RegistrationRequest invalid = validRequest();
-        invalid.setOib("abc"); // violates @Pattern
+        RegistrationRequest invalid = withOib(validRequest(), "abc");
 
         mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -121,17 +120,38 @@ class RegistrationControllerTest {
     }
 
     private RegistrationRequest validRequest() {
-        RegistrationRequest req = new RegistrationRequest();
-        req.setOib("12312312316");
-        req.setName("Apartman Sunce");
-        req.setCountyId(2L);
-        req.setCityId("Split");
-        req.setStreet("Ulica kralja Tomislava");
-        req.setStreetNumber("14a");
-        req.setMaxBeds(4);
-        req.setMaxGuests(6);
-        req.setOfferType(OfferType.RESIDENCE);
-        return req;
+        return new RegistrationRequest(
+                "12312312316", "Apartman Sunce", null,
+                2L, "Split", null,
+                "Ulica kralja Tomislava", "14a", null,
+                4, 6,
+                OfferType.RESIDENCE, Offering.WHOLE,
+                false, null, false, true,
+                null, null, null, null, null);
+    }
+
+    private RegistrationRequest withMaxBeds(RegistrationRequest r, int maxBeds) {
+        return new RegistrationRequest(
+                r.oib(), r.name(), r.typeId(),
+                r.countyId(), r.cityId(), r.settlementId(),
+                r.street(), r.streetNumber(), r.postalCode(),
+                maxBeds, r.maxGuests(),
+                r.offerType(), r.offering(),
+                r.building(), r.floor(), r.apartments(), r.legalized(),
+                r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
+                r.consentWithdrawalDate(), r.host());
+    }
+
+    private RegistrationRequest withOib(RegistrationRequest r, String oib) {
+        return new RegistrationRequest(
+                oib, r.name(), r.typeId(),
+                r.countyId(), r.cityId(), r.settlementId(),
+                r.street(), r.streetNumber(), r.postalCode(),
+                r.maxBeds(), r.maxGuests(),
+                r.offerType(), r.offering(),
+                r.building(), r.floor(), r.apartments(), r.legalized(),
+                r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
+                r.consentWithdrawalDate(), r.host());
     }
 
     private SubmissionEntity submissionWithPdf(UUID id, String filingNumber, byte[] pdf) {

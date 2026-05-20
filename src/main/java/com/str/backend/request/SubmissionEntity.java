@@ -53,7 +53,7 @@ public class SubmissionEntity {
     @Column(name = "filing_date")
     private Instant filingDate;
 
-    @JdbcTypeCode(SqlTypes.MATERIALIZED_BLOB)
+    @JdbcTypeCode(SqlTypes.VARBINARY)
     @Column(name = "pdf_content")
     @Setter private byte[] pdfContent;
 

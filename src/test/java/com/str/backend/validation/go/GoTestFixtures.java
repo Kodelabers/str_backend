@@ -2,6 +2,7 @@ package com.str.backend.validation.go;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
 
 import java.time.LocalDate;
@@ -20,7 +21,7 @@ final class GoTestFixtures {
                                              boolean building, boolean apartments, boolean legalized) {
         return AccommodationEntity.create(
                 UUID.randomUUID(), county, city, "Ulica", "1",
-                maxBeds, maxGuests, OfferType.RESIDENCE,
+                maxBeds, maxGuests, OfferType.RESIDENCE, Offering.WHOLE,
                 building, apartments, legalized);
     }
 

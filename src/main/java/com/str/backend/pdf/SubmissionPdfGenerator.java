@@ -122,8 +122,8 @@ public class SubmissionPdfGenerator {
             // ── OBJEKTI ───────────────────────────────────────────────────────
             addSectionHeader(main, "OBJEKTI");
 
-            String adresaObjekta = safe(req.getStreet()) + " " + safe(req.getStreetNumber())
-                    + ", " + safe(req.getPostalCode()) + " " + safe(req.getCityId()).toUpperCase();
+            String adresaObjekta = safe(req.street()) + " " + safe(req.streetNumber())
+                    + ", " + safe(req.postalCode()) + " " + safe(req.cityId()).toUpperCase();
 
             PdfPTable objektiTop = innerTable();
             addInnerRow(objektiTop, "Skupina objekta",
@@ -199,8 +199,8 @@ public class SubmissionPdfGenerator {
         addKapacitetHeader(t, "Broj soba");
 
         // data row — no vertical separators between cells
-        String[] dataValues = {typeName != null ? typeName : "", safe(req.getName()), "",
-                String.valueOf(req.getMaxBeds()), "", ""};
+        String[] dataValues = {typeName != null ? typeName : "", safe(req.name()), "",
+                String.valueOf(req.maxBeds()), "", ""};
         for (int i = 0; i < dataValues.length; i++) {
             PdfPCell c = new PdfPCell(new Phrase(dataValues[i], FNT_VALUE));
             int border = PdfPCell.TOP;
@@ -228,7 +228,7 @@ public class SubmissionPdfGenerator {
         ukupnoLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(ukupnoLabel, 3);
         t.addCell(ukupnoLabel);
-        String[] ukupnoValues = {"1", "", String.valueOf(req.getMaxBeds()), "", ""};
+        String[] ukupnoValues = {"1", "", String.valueOf(req.maxBeds()), "", ""};
         for (int i = 0; i < 4; i++) {
             PdfPCell c = new PdfPCell(new Phrase(ukupnoValues[i], FNT_VALUE));
             c.setBorder(PdfPCell.BOTTOM);
