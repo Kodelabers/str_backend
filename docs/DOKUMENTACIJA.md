@@ -248,6 +248,11 @@ Sve verzije endpointa su uklonjene (mock faza, bez versioniranja). Kompletna Ope
 | `/api/aktivnosti/ingest` | POST | SDEP ingest |
 | `/api/aktivnosti` | GET | Pretraživanje aktivnosti |
 | `/api/aktivnosti/purge` | DELETE | Ručni retencijski purge |
+| `/api/registerLessor` | POST | Self-service registracija non-EU iznajmljivača — detalji u `docs/LESSOR-REGISTRATION-API.md` |
+| `/api/auth/login` | POST | Login non-EU iznajmljivača (username + password) |
+| `/api/auth/me` | GET | Podaci o prijavljenom korisniku |
+| `/api/auth/logout` | POST | Odjava |
+| `/api/address/countries` | GET | Lista država (za `zemljaPrebivalistaId` polje) |
 
 ---
 

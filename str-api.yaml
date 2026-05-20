@@ -10,7 +10,9 @@ info:
     - **/api/generateRegistrationNumber** – accommodation registration and RN assignment
     - **/api/adrese** – cascading address lookup for autocomplete (county → municipality → settlement → street → house number)
     - **/api/aktivnosti** – SDEP activity ingestion and search
-  version: "5.0"
+    - **/api/registerLessor** – non-EU lessor self-registration (multipart/form-data)
+    - **/api/auth** – non-EU lessor authentication (session-based)
+  version: "6.0"
 
 tags:
   - name: verify
@@ -23,6 +25,10 @@ tags:
     description: Cascading address lookup for autocomplete dropdowns
   - name: activities
     description: SDEP activity ingestion and search (STR-3.x)
+  - name: lessor
+    description: Non-EU lessor self-registration
+  - name: auth
+    description: Non-EU lessor authentication (session-based)
 
 paths:
 
@@ -534,6 +540,186 @@ paths:
                 type: integer
                 example: 0
 
+  # ─────────────────────────────────────────────────────────────
+  # Non-EU Lessor self-registration
+  # ─────────────────────────────────────────────────────────────
+
+  /api/registerLessor:
+    post:
+      tags: [lessor]
+      summary: Register a non-EU lessor (self-service)
+      description: |
+        Self-service registration for lessors without eIDAS access. Accepts identity
+        data and document images as multipart/form-data. On success, generates a
+        username and a one-time temporary password returned in the 201 response.
+        The plaintext password is shown once and never stored.
+
+        Maximum file size: 10 MB per file; 22 MB total request.
+      operationId: registerLessor
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [ime, prezime, datumRodjenja, porezniBroj, zemljaPrebivalistaId, stalnaAdresa, vrstaIsprave, brojIsprave, email, ispravaPrednja]
+              properties:
+                ime:
+                  type: string
+                  maxLength: 128
+                  description: First name
+                  example: "Marko"
+                prezime:
+                  type: string
+                  maxLength: 128
+                  description: Last name
+                  example: "Petrović"
+                datumRodjenja:
+                  type: string
+                  format: date
+                  description: Date of birth — must be a past date (ISO 8601)
+                  example: "1985-06-15"
+                porezniBroj:
+                  type: string
+                  maxLength: 64
+                  description: Foreign tax identification number
+                  example: "DE123456789"
+                zemljaPrebivalistaId:
+                  type: integer
+                  description: Country of residence ID from GET /api/address/countries
+                  example: 53
+                stalnaAdresa:
+                  type: string
+                  maxLength: 500
+                  description: Full permanent address (street, city, postal code, country)
+                  example: "Musterstraße 12, 10115 Berlin, Njemačka"
+                vrstaIsprave:
+                  type: string
+                  maxLength: 32
+                  description: Document type (e.g. PASSPORT, ID_CARD)
+                  example: "PASSPORT"
+                brojIsprave:
+                  type: string
+                  maxLength: 64
+                  description: Document number as printed on the document
+                  example: "C01X00T47"
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  description: Email address — must be unique; used to derive the username
+                  example: "marko.petrovic@example.com"
+                telefon:
+                  type: string
+                  maxLength: 32
+                  description: Mobile phone number with country prefix (optional)
+                  example: "+4915112345678"
+                ispravaPrednja:
+                  type: string
+                  format: binary
+                  description: Front-side scan or photo of the identity document — must not be empty
+                ispravaStraznja:
+                  type: string
+                  format: binary
+                  description: Back-side scan or photo of the identity document (optional for passports)
+      responses:
+        "201":
+          description: Lessor registered – credentials returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LessorRegistrationResponse'
+              example:
+                lessorId: "81b4bc91-52f4-48ac-a880-fe0195fa7a90"
+                username: "marko.petrovic_a3f2b1c4"
+                temporaryPassword: "Xk9mRqL2nPwZ"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "409":
+          description: Email address already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                title: "Conflict"
+                status: 409
+                detail: "Email već registriran"
+
+  # ─────────────────────────────────────────────────────────────
+  # Auth (non-EU lessor)
+  # ─────────────────────────────────────────────────────────────
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: Login (non-EU lessor)
+      description: |
+        Authenticates a non-EU lessor with username and password.
+        On success, creates an HTTP session and returns `Set-Cookie: SESSION=...`.
+        EU lessors authenticate via eIDAS/NIAS — this endpoint is for non-EU only.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: "marko.petrovic_a3f2b1c4"
+              password: "Xk9mRqL2nPwZ"
+      responses:
+        "200":
+          description: Login successful – session cookie set
+          headers:
+            Set-Cookie:
+              description: Spring Session cookie (SESSION=...)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout
+      description: Invalidates the current session. Returns 204 regardless of whether a session existed.
+      operationId: logout
+      responses:
+        "204":
+          description: Logged out
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      summary: Get current user
+      description: |
+        Returns the profile of the authenticated lessor.
+        Requires an active session cookie from `/api/auth/login`.
+        Returns 401 if not authenticated.
+      operationId: getMe
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 # ─────────────────────────────────────────────────────────────
 # Components
 # ─────────────────────────────────────────────────────────────
@@ -887,6 +1073,62 @@ components:
         receivedAt:
           type: string
           format: date-time
+
+    # ── Lessor registration ────────────────────────────────────
+
+    LessorRegistrationResponse:
+      type: object
+      required: [lessorId, username, temporaryPassword]
+      properties:
+        lessorId:
+          type: string
+          format: uuid
+          description: Newly created lessor identifier
+        username:
+          type: string
+          description: Generated username (email prefix + 8 random hex chars)
+          example: "marko.petrovic_a3f2b1c4"
+        temporaryPassword:
+          type: string
+          description: One-time plaintext password — store securely, shown only once
+          example: "Xk9mRqL2nPwZ"
+
+    # ── Auth ───────────────────────────────────────────────────
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          maxLength: 64
+          example: "marko.petrovic_a3f2b1c4"
+        password:
+          type: string
+          maxLength: 255
+          example: "Xk9mRqL2nPwZ"
+
+    MeResponse:
+      type: object
+      required: [lessorId, username, firstName, lastName]
+      properties:
+        lessorId:
+          type: string
+          format: uuid
+        username:
+          type: string
+          example: "marko.petrovic_a3f2b1c4"
+        firstName:
+          type: string
+          example: "Marko"
+        lastName:
+          type: string
+          example: "Petrović"
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: "marko.petrovic@example.com"
 
     # ── Errors ─────────────────────────────────────────────────
 
