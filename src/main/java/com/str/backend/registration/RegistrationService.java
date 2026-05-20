@@ -16,6 +16,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
@@ -67,10 +68,10 @@ public class RegistrationService {
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse generateRegistrationNumber(RegistrationRequest req) {
-        CountyEntity county = countyRepository.findById(req.getCountyId())
-                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.getCountyId()));
+        CountyEntity county = countyRepository.findById(req.countyId())
+                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
 
-        LessorEntity lessor = strLessorLookupService.resolveLessor(req.getOib());
+        LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
 
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
 
@@ -80,7 +81,7 @@ public class RegistrationService {
             throw new ValidationRejectedException(result.getStep(), result.getDetail());
         }
 
-        String typeName = resolveTypeName(req.getTypeId());
+        String typeName = resolveTypeName(req.typeId());
         byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
         EgopClient.FilingNumber filing = egopClient.reserveFilingNumber();
         byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatted(), typeName);
@@ -119,17 +120,24 @@ public class RegistrationService {
         return submission;
     }
 
-    private AccommodationEntity buildAccommodation(RegistrationRequest req, String countyName) {
+    AccommodationEntity buildAccommodation(RegistrationRequest req, String countyName) {
         AccommodationEntity entity = AccommodationEntity.create(
-                null, countyName, req.getCityId(), req.getStreet(), req.getStreetNumber(),
-                req.getMaxBeds(), req.getMaxGuests(), req.getOfferType(), false, false, true);
-        entity.setName(req.getName());
-        entity.setSettlement(req.getSettlementId());
-        if (req.getTypeId() != null) {
+                null, countyName, req.cityId(), req.street(), req.streetNumber(),
+                req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
+                req.building(), req.apartments(), req.legalized());
+        entity.setName(req.name());
+        entity.setSettlement(req.settlementId());
+        entity.setFloor(req.floor());
+        entity.setLessorResidence(req.lessorResidence());
+        entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
+        if (req.host() != null) {
+            entity.markHost(req.host());
+        }
+        if (req.typeId() != null) {
             try {
-                entity.setAccommodationTypeId(Long.parseLong(req.getTypeId()));
+                entity.setAccommodationTypeId(Long.parseLong(req.typeId()));
             } catch (NumberFormatException e) {
-                log.warn("typeId '{}' nije numerički, polje se ignorira", req.getTypeId());
+                log.warn("typeId '{}' nije numerički, polje se ignorira", req.typeId());
             }
         }
         return entity;
@@ -139,7 +147,7 @@ public class RegistrationService {
         if (typeId == null) return null;
         try {
             return accommodationTypeRepository.findById(Long.parseLong(typeId))
-                    .map(t -> t.getName())
+                    .map(AccommodationTypeEntity::getName)
                     .orElse(null);
         } catch (NumberFormatException e) {
             return null;

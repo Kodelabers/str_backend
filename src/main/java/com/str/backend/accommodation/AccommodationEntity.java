@@ -73,9 +73,11 @@ public class AccommodationEntity {
     @Column(name = "offering", length = 8, nullable = false)
     @Setter private Offering offering;
 
+    /** User-claimed flag from the registration form: is this property the lessor's primary/secondary residence. */
     @Column(name = "lessor_residence")
     @Setter private Boolean lessorResidence;
 
+    /** MPGI-verified flag set by GO-1: does the lessor's official domicile match the property county. */
     @Column(name = "lessor_domicile")
     private Boolean lessorDomicile;
 
@@ -147,7 +149,8 @@ public class AccommodationEntity {
 
     public static AccommodationEntity create(UUID submissionId, String county, String city, String street,
                                              String streetNumber, int maxBeds, int maxGuests, OfferType offerType,
-                                             boolean building, boolean apartments, boolean legalized) {
+                                             Offering offering, boolean building, boolean apartments,
+                                             boolean legalized) {
         AccommodationEntity s = new AccommodationEntity();
         s.accommodationId = UUID.randomUUID();
         s.submissionId = submissionId;
@@ -158,7 +161,7 @@ public class AccommodationEntity {
         s.maxBeds = maxBeds;
         s.maxGuests = maxGuests;
         s.offerType = offerType;
-        s.offering = Offering.WHOLE;
+        s.offering = offering;
         s.building = building;
         s.apartments = apartments;
         s.legalized = legalized;

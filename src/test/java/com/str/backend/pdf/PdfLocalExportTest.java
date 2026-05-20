@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionEntity;
@@ -112,20 +113,14 @@ class PdfLocalExportTest {
     }
 
     private RegistrationRequest buildRequest() {
-        RegistrationRequest req = new RegistrationRequest();
-        req.setOib("12312312316");
-        req.setName("AP1 Dugi Rat");
-        req.setTypeId("1");
-        req.setCountyId(7L);
-        req.setCityId("Dugi Rat");
-        req.setSettlementId("Dugi Rat");
-        req.setStreet("Drage Ivaniševića");
-        req.setStreetNumber("3");
-        req.setPostalCode("21315");
-        req.setMaxBeds(4);
-        req.setMaxGuests(6);
-        req.setOfferType(OfferType.RESIDENCE);
-        return req;
+        return new RegistrationRequest(
+                "12312312316", "AP1 Dugi Rat", "1",
+                7L, "Dugi Rat", "Dugi Rat",
+                "Drage Ivaniševića", "3", "21315",
+                4, 6,
+                OfferType.RESIDENCE, Offering.WHOLE,
+                false, null, false, true,
+                null, null, null, null, null);
     }
 
     private CountyEntity buildCounty(Long id, String name) {

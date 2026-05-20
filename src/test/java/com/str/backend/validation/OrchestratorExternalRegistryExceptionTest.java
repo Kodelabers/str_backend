@@ -1,6 +1,7 @@
 package com.str.backend.validation;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorEntity;
 import org.junit.jupiter.api.Test;
@@ -64,7 +65,7 @@ class OrchestratorExternalRegistryExceptionTest {
     private AccommodationEntity accommodation() {
         return AccommodationEntity.create(
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", "Ilica", "1",
-                2, 4, OfferType.RESIDENCE, false, false, true);
+                2, 4, OfferType.RESIDENCE, Offering.WHOLE, false, false, true);
     }
 
     private LessorEntity lessor() {
