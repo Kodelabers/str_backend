@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -39,17 +40,26 @@ public class LessorEntity {
     @Column(name = "legal_entity_name")
     @Setter private String legalEntityName;
 
-    @Column(name = "street", length = 128, nullable = false, updatable = false)
+    @Column(name = "street", length = 500, nullable = false, updatable = false)
     private String street;
 
-    @Column(name = "street_number", length = 16, nullable = false, updatable = false)
+    @Column(name = "street_number", length = 16, updatable = false)
     private String streetNumber;
 
-    @Column(name = "place", length = 128, nullable = false, updatable = false)
+    @Column(name = "place", length = 128, updatable = false)
     private String place;
 
-    @Column(name = "county", length = 128, nullable = false, updatable = false)
+    @Column(name = "county", length = 128, updatable = false)
     private String county;
+
+    @Column(name = "date_of_birth", updatable = false)
+    private LocalDate dateOfBirth;
+
+    @Column(name = "country_of_residence_id", updatable = false)
+    private Integer countryOfResidenceId;
+
+    @Column(name = "tax_number", length = 64, updatable = false)
+    private String taxNumber;
 
     @Column(name = "contact_name")
     @Setter private String contactName;
@@ -120,6 +130,32 @@ public class LessorEntity {
         LessorEntity e = create(firstName, lastName, street, streetNumber, place, county, email);
         e.username = username;
         e.passwordHash = passwordHash;
+        return e;
+    }
+
+    public static LessorEntity createNonEuRegistration(
+            String firstName, String lastName,
+            String street, String email,
+            String username, String passwordHash,
+            LocalDate dateOfBirth, Integer countryOfResidenceId,
+            String taxNumber, String mobileNumber) {
+
+        LessorEntity e = new LessorEntity();
+        e.lessorId = UUID.randomUUID();
+        e.firstName = firstName;
+        e.lastName = lastName;
+        e.street = street;
+        e.email = email;
+        e.username = username;
+        e.passwordHash = passwordHash;
+        e.dateOfBirth = dateOfBirth;
+        e.countryOfResidenceId = countryOfResidenceId;
+        e.taxNumber = taxNumber;
+        e.mobileNumber = mobileNumber;
+        e.applicationStatus = SubmissionStatus.INITIATED;
+        Instant now = Instant.now();
+        e.createdAt = now;
+        e.updatedAt = now;
         return e;
     }
 

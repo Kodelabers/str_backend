@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="032-lessor-non-eu-fields" author="str-backend">
+
+        <!-- Widen street to accommodate full foreign addresses -->
+        <modifyDataType schemaName="str_rn" tableName="lessor"
+                        columnName="street" newDataType="VARCHAR(500)"/>
+
+        <!-- New identity fields for non-EU lessors -->
+        <addColumn schemaName="str_rn" tableName="lessor">
+            <column name="date_of_birth" type="DATE"
+                    remarks="Date of birth (non-EU lessors)"/>
+            <column name="country_of_residence_id" type="INTEGER"
+                    remarks="Logical reference to str.country(id) — no DB-level FK because str.* is owned externally (read-only). Country of permanent residence (non-EU lessors)."/>
+            <column name="tax_number" type="VARCHAR(64)"
+                    remarks="Foreign tax identification number (non-EU lessors)"/>
+        </addColumn>
+
+        <!-- Address sub-fields are optional for non-EU lessors who store everything in street -->
+        <dropNotNullConstraint schemaName="str_rn" tableName="lessor"
+                               columnName="street_number" columnDataType="VARCHAR(16)"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="lessor"
+                               columnName="place" columnDataType="VARCHAR(128)"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="lessor"
+                               columnName="county" columnDataType="VARCHAR(128)"/>
+
+        <!-- Enforce email uniqueness at DB level -->
+        <addUniqueConstraint schemaName="str_rn" tableName="lessor"
+                             columnNames="email"
+                             constraintName="uq_lessor_email"/>
+
+        <rollback>
+            <dropUniqueConstraint schemaName="str_rn" tableName="lessor"
+                                  constraintName="uq_lessor_email"/>
+            <addNotNullConstraint schemaName="str_rn" tableName="lessor"
+                                  columnName="county" columnDataType="VARCHAR(128)" defaultNullValue=""/>
+            <addNotNullConstraint schemaName="str_rn" tableName="lessor"
+                                  columnName="place" columnDataType="VARCHAR(128)" defaultNullValue=""/>
+            <addNotNullConstraint schemaName="str_rn" tableName="lessor"
+                                  columnName="street_number" columnDataType="VARCHAR(16)" defaultNullValue=""/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="tax_number"/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="country_of_residence_id"/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="date_of_birth"/>
+            <modifyDataType schemaName="str_rn" tableName="lessor"
+                            columnName="street" newDataType="VARCHAR(128)"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

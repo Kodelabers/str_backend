@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="033-lessor-document" author="str-backend">
+        <createTable schemaName="str_rn" tableName="lessor_document"
+                     remarks="Identity document images uploaded during non-EU lessor self-registration">
+            <column name="document_id" type="UUID"
+                    remarks="PK">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="lessor_id" type="UUID"
+                    remarks="FK to str_rn.lessor">
+                <constraints nullable="false"
+                             foreignKeyName="fk_lessor_document_lessor"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="lessor"
+                             referencedColumnNames="lessor_id"
+                             deleteCascade="true"/>
+            </column>
+            <column name="document_type" type="VARCHAR(32)"
+                    remarks="Type of identity document (e.g. PASSPORT, ID_CARD)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="document_number" type="VARCHAR(64)"
+                    remarks="Document number as printed on the document">
+                <constraints nullable="false"/>
+            </column>
+            <column name="front_image" type="BYTEA"
+                    remarks="Front-side scan / photo of the document">
+                <constraints nullable="false"/>
+            </column>
+            <column name="back_image" type="BYTEA"
+                    remarks="Back-side scan / photo of the document (optional for passports)"/>
+            <column name="uploaded_at" type="TIMESTAMPTZ"
+                    remarks="Timestamp when the document was uploaded">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="lessor_document"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
