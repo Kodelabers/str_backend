@@ -6,6 +6,9 @@
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
     <changeSet id="022-seed-missing-house-numbers" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.house_number WHERE id = 45</sqlCheck>
+        </preConditions>
         <!-- Savska cesta (street 13), Zagreb -->
         <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="45"/><column name="name" value="1"/><column name="street_id" valueNumeric="13"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="46"/><column name="name" value="3"/><column name="street_id" valueNumeric="13"/><column name="active" valueBoolean="true"/></insert>
