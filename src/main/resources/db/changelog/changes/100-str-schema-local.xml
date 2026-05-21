@@ -14,6 +14,10 @@
       the mock simple. This means invalid data can be inserted locally without error.
       All write paths that reference str.* tables must be validated against the dev
       profile before merging to main.
+
+      Every createTable is guarded by a preCondition so that re-running against a
+      database where the table already exists (e.g. Railway after a partial deploy)
+      marks the changeset as RAN instead of failing on duplicate relation errors.
     -->
 
     <changeSet id="100-str-schema" author="str-backend" context="local">
@@ -21,6 +25,9 @@
     </changeSet>
 
     <changeSet id="100-str-country" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="country"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="country">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
@@ -30,6 +37,9 @@
     </changeSet>
 
     <changeSet id="100-str-county" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="county"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="county">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
@@ -38,6 +48,9 @@
     </changeSet>
 
     <changeSet id="100-str-municipality" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="municipality"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="municipality">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
@@ -48,6 +61,9 @@
     </changeSet>
 
     <changeSet id="100-str-settlement" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="settlement"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="settlement">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
@@ -58,6 +74,9 @@
     </changeSet>
 
     <changeSet id="100-str-street" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="street"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="street">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
@@ -68,6 +87,9 @@
     </changeSet>
 
     <changeSet id="100-str-house-number" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="house_number"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="house_number">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="name" type="VARCHAR(32)"><constraints nullable="false"/></column>
@@ -77,6 +99,9 @@
     </changeSet>
 
     <changeSet id="100-str-address" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="address"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="address">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
@@ -98,6 +123,9 @@
     </changeSet>
 
     <changeSet id="100-str-subject" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="subject"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="subject">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
@@ -112,6 +140,9 @@
     </changeSet>
 
     <changeSet id="100-str-subject-version" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="subject_version"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="subject_version">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
@@ -132,6 +163,9 @@
     </changeSet>
 
     <changeSet id="100-str-subject-address" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="subject_address"/></not>
+        </preConditions>
         <createTable schemaName="str" tableName="subject_address">
             <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
             <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
