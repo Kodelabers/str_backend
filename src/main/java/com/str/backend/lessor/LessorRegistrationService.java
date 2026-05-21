@@ -7,17 +7,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
-import java.security.SecureRandom;
-import java.util.UUID;
 
 @Service
 @Transactional
 public class LessorRegistrationService {
-
-    private static final String PASSWORD_CHARS =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    private static final int PASSWORD_LENGTH = 12;
-    private static final SecureRandom RNG = new SecureRandom();
 
     private final LessorRepository lessorRepository;
     private final LessorDocumentRepository lessorDocumentRepository;
@@ -32,20 +25,23 @@ public class LessorRegistrationService {
     }
 
     public LessorRegistrationResponse register(LessorRegistrationRequest req) throws IOException {
-        if (lessorRepository.findByEmail(req.getEmail()).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email već registriran");
+        if (!req.getPassword().equals(req.getPasswordPotvrda())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lessor.password.mismatch");
         }
         if (req.getIspravaPrednja().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Prednja slika isprave je prazna");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lessor.document.empty");
         }
 
-        String username = generateUniqueUsername(req.getEmail());
-        String plaintextPassword = generateRandomPassword();
-        String hash = passwordEncoder.encode(plaintextPassword);
+        String username = req.getEmail().trim().toLowerCase();
+        if (lessorRepository.findByEmail(username).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lessor.registration.invalid");
+        }
+
+        String hash = passwordEncoder.encode(req.getPassword());
 
         LessorEntity lessor = LessorEntity.createNonEuRegistration(
                 req.getIme(), req.getPrezime(),
-                req.getStalnaAdresa(), req.getEmail(),
+                req.getStalnaAdresa(), username,
                 username, hash,
                 req.getDatumRodjenja(), req.getZemljaPrebivalistaId(),
                 req.getPorezniBroj(), req.getTelefon()
@@ -61,28 +57,6 @@ public class LessorRegistrationService {
         );
         lessorDocumentRepository.save(doc);
 
-        return new LessorRegistrationResponse(lessor.getLessorId(), username, plaintextPassword);
-    }
-
-    private String generateUniqueUsername(String email) {
-        String base = email.split("@")[0]
-                .toLowerCase()
-                .replaceAll("[^a-z0-9._-]", "");
-        if (base.isBlank()) {
-            base = "user";
-        }
-        // Append 8 random hex chars to eliminate the check-then-act race against the
-        // unique constraint on username. Sequential suffix loops are not safe under
-        // concurrent registration requests.
-        String randomSuffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-        return base + "_" + randomSuffix;
-    }
-
-    private String generateRandomPassword() {
-        StringBuilder sb = new StringBuilder(PASSWORD_LENGTH);
-        for (int i = 0; i < PASSWORD_LENGTH; i++) {
-            sb.append(PASSWORD_CHARS.charAt(RNG.nextInt(PASSWORD_CHARS.length())));
-        }
-        return sb.toString();
+        return new LessorRegistrationResponse(lessor.getLessorId(), username);
     }
 }

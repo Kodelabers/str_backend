@@ -1,6 +1,7 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -179,4 +180,5 @@ class RegistrationControllerTest {
             throw new RuntimeException(e);
         }
     }
+
 }
