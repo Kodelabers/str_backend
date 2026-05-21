@@ -7,6 +7,36 @@
 
     <!-- Seed data for local mock 'str' schema. Test OIB 12312312316 → Pero Perić, Ilica 1, Zagreb. -->
 
+    <!-- Country list for the residence-country dropdown on /register (non-EU lessor sign-up).
+         Dev/prod read the real str.country owned by the upstream service; on local/mock we seed
+         a representative subset (alphabetical by Croatian name). HR is included so the frontend
+         filter that excludes the host country exercises its branch. -->
+    <changeSet id="101-str-seed-countries-list" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.country WHERE id = 1</sqlCheck>
+        </preConditions>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="1"/><column name="name" value="Albanija"/><column name="iso2_alpha" value="AL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="2"/><column name="name" value="Austrija"/><column name="iso2_alpha" value="AT"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="3"/><column name="name" value="Bosna i Hercegovina"/><column name="iso2_alpha" value="BA"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="4"/><column name="name" value="Crna Gora"/><column name="iso2_alpha" value="ME"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="5"/><column name="name" value="Češka"/><column name="iso2_alpha" value="CZ"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="6"/><column name="name" value="Francuska"/><column name="iso2_alpha" value="FR"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="7"/><column name="name" value="Hrvatska"/><column name="iso2_alpha" value="HR"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="8"/><column name="name" value="Italija"/><column name="iso2_alpha" value="IT"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="9"/><column name="name" value="Mađarska"/><column name="iso2_alpha" value="HU"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="10"/><column name="name" value="Nizozemska"/><column name="iso2_alpha" value="NL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="11"/><column name="name" value="Njemačka"/><column name="iso2_alpha" value="DE"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="12"/><column name="name" value="Poljska"/><column name="iso2_alpha" value="PL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="13"/><column name="name" value="Sjedinjene Američke Države"/><column name="iso2_alpha" value="US"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="14"/><column name="name" value="Sjeverna Makedonija"/><column name="iso2_alpha" value="MK"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="15"/><column name="name" value="Slovačka"/><column name="iso2_alpha" value="SK"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="16"/><column name="name" value="Slovenija"/><column name="iso2_alpha" value="SI"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="17"/><column name="name" value="Srbija"/><column name="iso2_alpha" value="RS"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="18"/><column name="name" value="Španjolska"/><column name="iso2_alpha" value="ES"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="19"/><column name="name" value="Švicarska"/><column name="iso2_alpha" value="CH"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="20"/><column name="name" value="Ujedinjeno Kraljevstvo"/><column name="iso2_alpha" value="GB"/><column name="active" valueBoolean="true"/></insert>
+    </changeSet>
+
     <changeSet id="101-str-seed-counties" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.county WHERE id = 1</sqlCheck>
