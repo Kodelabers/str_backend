@@ -37,7 +37,7 @@ class LessorRegistrationServiceTest {
     }
 
     @Test
-    void register_happyPath_savesLessorAndDocumentAndReturnsCredentials() throws IOException {
+    void register_happyPath_savesLessorAndDocumentAndReturnsUsername() throws IOException {
         when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationResponse response = service.register(validRequest());
@@ -49,25 +49,50 @@ class LessorRegistrationServiceTest {
         assertThat(saved.getFirstName()).isEqualTo("John");
         assertThat(saved.getLastName()).isEqualTo("Doe");
         assertThat(saved.getEmail()).isEqualTo("john@example.com");
-        assertThat(saved.getUsername()).startsWith("john_");
-        assertThat(saved.getUsername()).hasSize("john_".length() + 8);
+        assertThat(saved.getUsername()).isEqualTo("john@example.com");
 
         verify(documentRepository).save(any(LessorDocumentEntity.class));
+        verify(passwordEncoder).encode("StrongPassw0rd!");
 
         assertThat(response.lessorId()).isEqualTo(saved.getLessorId());
-        assertThat(response.username()).isEqualTo(saved.getUsername());
-        assertThat(response.temporaryPassword()).hasSize(12);
+        assertThat(response.username()).isEqualTo("john@example.com");
     }
 
     @Test
-    void register_duplicateEmail_throws409_beforeAnyWrite() {
+    void register_normalizesEmailToLowercase() throws IOException {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+
+        LessorRegistrationRequest req = validRequest();
+        req.setEmail("  John@Example.COM  ");
+
+        LessorRegistrationResponse response = service.register(req);
+
+        assertThat(response.username()).isEqualTo("john@example.com");
+    }
+
+    @Test
+    void register_passwordMismatch_throws400_beforeAnyWrite() {
+        LessorRegistrationRequest req = validRequest();
+        req.setPasswordPotvrda("DifferentPassword!");
+
+        assertThatThrownBy(() -> service.register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(400);
+
+        verify(lessorRepository, never()).save(any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
+    void register_duplicateEmail_throwsGeneric400_beforeAnyWrite() {
         when(lessorRepository.findByEmail("john@example.com"))
                 .thenReturn(Optional.of(mock(LessorEntity.class)));
 
         assertThatThrownBy(() -> service.register(validRequest()))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
-                .isEqualTo(409);
+                .isEqualTo(400);
 
         verify(lessorRepository, never()).save(any());
         verify(documentRepository, never()).save(any());
@@ -118,32 +143,6 @@ class LessorRegistrationServiceTest {
     }
 
     @Test
-    void register_usernamePrefix_sanitizesSpecialChars() throws IOException {
-        when(lessorRepository.findByEmail("john.doe+test@example.com")).thenReturn(Optional.empty());
-
-        LessorRegistrationRequest req = validRequest();
-        req.setEmail("john.doe+test@example.com");
-
-        LessorRegistrationResponse response = service.register(req);
-
-        assertThat(response.username()).startsWith("johndoetest_");
-        assertThat(response.username()).hasSize("johndoetest_".length() + 8);
-    }
-
-    @Test
-    void register_usernamePrefix_allSpecialCharsStripped_fallsBackToUser() throws IOException {
-        when(lessorRepository.findByEmail("!!!@example.com")).thenReturn(Optional.empty());
-
-        LessorRegistrationRequest req = validRequest();
-        req.setEmail("!!!@example.com");
-
-        LessorRegistrationResponse response = service.register(req);
-
-        assertThat(response.username()).startsWith("user_");
-        assertThat(response.username()).hasSize("user_".length() + 8);
-    }
-
-    @Test
     void register_documentFieldsMapped() throws IOException {
         when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
 
@@ -171,6 +170,8 @@ class LessorRegistrationServiceTest {
         req.setBrojIsprave("AB123456");
         req.setEmail("john@example.com");
         req.setTelefon("+385912345678");
+        req.setPassword("StrongPassw0rd!");
+        req.setPasswordPotvrda("StrongPassw0rd!");
         req.setIspravaPrednja(
                 new MockMultipartFile("ispravaPrednja", "front.jpg", "image/jpeg", new byte[]{1, 2, 3}));
         return req;

@@ -1,5 +1,7 @@
 package com.str.backend.registration;
 
+import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
 import com.str.backend.request.SubmissionEntity;
@@ -8,12 +10,15 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -30,6 +35,17 @@ public class RegistrationController {
     @PostMapping("/api/generateRegistrationNumber")
     public ResponseEntity<RegistrationResponse> generateRegistrationNumber(@Valid @RequestBody RegistrationRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(req));
+    }
+
+    @PostMapping("/api/generateRegistrationNumberExternal")
+    public ResponseEntity<RegistrationResponse> generateRegistrationNumberExternal(
+            @Valid @RequestBody RegistrationExternalRequest req,
+            @AuthenticationPrincipal LessorPrincipal principal) {
+        if (principal == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(service.generateRegistrationNumberExternal(req, principal.getLessorId()));
     }
 
     @GetMapping(value = "/api/generateRegistrationNumber/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)

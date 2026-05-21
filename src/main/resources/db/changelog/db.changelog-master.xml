@@ -33,6 +33,7 @@
     <include file="db/changelog/changes/031-registration-number-log.xml"/>
     <include file="db/changelog/changes/032-lessor-non-eu-fields.xml"/>
     <include file="db/changelog/changes/033-lessor-document.xml"/>
+    <include file="db/changelog/changes/034-lessor-username-widen.xml"/>
 
     <!-- Mock 'str' schema and seed data — gated by Liquibase context="local" -->
     <include file="db/changelog/changes/100-str-schema-local.xml"/>

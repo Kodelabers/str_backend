@@ -12,6 +12,7 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.lessor.LessorEntity;
+import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import org.springframework.stereotype.Component;
 
@@ -73,6 +74,20 @@ public class SubmissionPdfGenerator {
 
     public byte[] generate(RegistrationRequest req, String countyName, LessorEntity lessor,
                            String filingNumber, String typeName) {
+        return generate0(req.name(), req.street(), req.streetNumber(), req.postalCode(), req.cityId(), req.maxBeds(),
+                countyName, lessor, filingNumber, typeName);
+    }
+
+    public byte[] generate(RegistrationExternalRequest req, String countyName, LessorEntity lessor,
+                           String filingNumber, String typeName) {
+        return generate0(req.name(), req.street(), req.streetNumber(), req.postalCode(), req.cityId(), req.maxBeds(),
+                countyName, lessor, filingNumber, typeName);
+    }
+
+    private byte[] generate0(String reqName, String reqStreet, String reqStreetNumber,
+                              String reqPostalCode, String reqCityId, int reqMaxBeds,
+                              String countyName, LessorEntity lessor,
+                              String filingNumber, String typeName) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4, 28, 28, 28, 28);
             PdfWriter.getInstance(doc, baos);
@@ -122,8 +137,8 @@ public class SubmissionPdfGenerator {
             // ── OBJEKTI ───────────────────────────────────────────────────────
             addSectionHeader(main, "OBJEKTI");
 
-            String adresaObjekta = safe(req.street()) + " " + safe(req.streetNumber())
-                    + ", " + safe(req.postalCode()) + " " + safe(req.cityId()).toUpperCase();
+            String adresaObjekta = safe(reqStreet) + " " + safe(reqStreetNumber)
+                    + ", " + safe(reqPostalCode) + " " + safe(reqCityId).toUpperCase();
 
             PdfPTable objektiTop = innerTable();
             addInnerRow(objektiTop, "Skupina objekta",
@@ -132,7 +147,7 @@ public class SubmissionPdfGenerator {
             addGroupRow(main, "OBJEKTI", objektiTop);
 
             addGroupRow(main, "VRSTA BROJ I\nKAPACITET OBJEKATA\nZA SMJEŠTAJ",
-                    buildKapacitetTable(req, typeName));
+                    buildKapacitetTable(reqName, reqMaxBeds, typeName));
 
             addGroupRow(main, "OSTALI SADRŽAJI", singleValueTable("označeno"));
 
@@ -186,7 +201,7 @@ public class SubmissionPdfGenerator {
 
     // ── builders ─────────────────────────────────────────────────────────────
 
-    private PdfPTable buildKapacitetTable(RegistrationRequest req, String typeName) {
+    private PdfPTable buildKapacitetTable(String reqName, int reqMaxBeds, String typeName) {
         PdfPTable t = new PdfPTable(new float[]{3.2f, 2.2f, 1.5f, 1.2f, 1.5f, 1.2f});
         t.setWidthPercentage(100);
 
@@ -199,8 +214,8 @@ public class SubmissionPdfGenerator {
         addKapacitetHeader(t, "Broj soba");
 
         // data row — no vertical separators between cells
-        String[] dataValues = {typeName != null ? typeName : "", safe(req.name()), "",
-                String.valueOf(req.maxBeds()), "", ""};
+        String[] dataValues = {typeName != null ? typeName : "", safe(reqName), "",
+                String.valueOf(reqMaxBeds), "", ""};
         for (int i = 0; i < dataValues.length; i++) {
             PdfPCell c = new PdfPCell(new Phrase(dataValues[i], FNT_VALUE));
             int border = PdfPCell.TOP;
@@ -228,7 +243,7 @@ public class SubmissionPdfGenerator {
         ukupnoLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(ukupnoLabel, 3);
         t.addCell(ukupnoLabel);
-        String[] ukupnoValues = {"1", "", String.valueOf(req.maxBeds()), "", ""};
+        String[] ukupnoValues = {"1", "", String.valueOf(reqMaxBeds), "", ""};
         for (int i = 0; i < 4; i++) {
             PdfPCell c = new PdfPCell(new Phrase(ukupnoValues[i], FNT_VALUE));
             c.setBorder(PdfPCell.BOTTOM);

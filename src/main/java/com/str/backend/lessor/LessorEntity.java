@@ -95,7 +95,7 @@ public class LessorEntity {
     @Column(name = "official_person_id", length = 64)
     @Setter private String officialPersonId;
 
-    @Column(name = "username", length = 64, updatable = false)
+    @Column(name = "username", length = 255, updatable = false)
     private String username;
 
     @Column(name = "password_hash", length = 255)

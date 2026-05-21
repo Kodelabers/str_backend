@@ -45,6 +45,12 @@ public class LessorRegistrationRequest {
     @Size(max = 32)
     private String telefon;
 
+    @NotBlank @Size(min = 12, max = 128) @NotBreached
+    private String password;
+
+    @NotBlank
+    private String passwordPotvrda;
+
     @NotNull
     private MultipartFile ispravaPrednja;
 
