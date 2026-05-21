@@ -25,6 +25,9 @@
     <!-- 1) Remaining counties: 11..21                                 -->
     <!-- ============================================================ -->
     <changeSet id="032-seed-counties-remaining" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.county WHERE id = 11</sqlCheck>
+        </preConditions>
         <insert schemaName="str" tableName="county"><column name="id" valueNumeric="11"/><column name="name" value="Krapinsko-zagorska"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="county"><column name="id" valueNumeric="12"/><column name="name" value="Sisačko-moslavačka"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="county"><column name="id" valueNumeric="13"/><column name="name" value="Varaždinska"/><column name="active" valueBoolean="true"/></insert>
@@ -42,6 +45,9 @@
     <!-- 2) Municipalities (27..70)                                    -->
     <!-- ============================================================ -->
     <changeSet id="032-seed-municipalities" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.municipality WHERE id = 27</sqlCheck>
+        </preConditions>
         <!-- Krapinsko-zagorska (11) -->
         <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="27"/><column name="name" value="Krapina"/><column name="county_id" valueNumeric="11"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="28"/><column name="name" value="Zabok"/><column name="county_id" valueNumeric="11"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
@@ -111,6 +117,9 @@
     <!-- 3) Settlements (27..70) — one per new municipality            -->
     <!-- ============================================================ -->
     <changeSet id="032-seed-settlements" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.settlement WHERE id = 27</sqlCheck>
+        </preConditions>
         <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="27"/><column name="name" value="Krapina"/><column name="postal_code" value="49000"/><column name="municipality_id" valueNumeric="27"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="28"/><column name="name" value="Zabok"/><column name="postal_code" value="49210"/><column name="municipality_id" valueNumeric="28"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="29"/><column name="name" value="Sisak"/><column name="postal_code" value="44000"/><column name="municipality_id" valueNumeric="29"/><column name="active" valueBoolean="true"/></insert>
@@ -161,6 +170,9 @@
     <!-- 4) Streets in new settlements (51..130) — 2 per settlement   -->
     <!-- ============================================================ -->
     <changeSet id="032-seed-streets-new" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.street WHERE id = 51</sqlCheck>
+        </preConditions>
         <!-- Krapina (27) -->
         <insert schemaName="str" tableName="street"><column name="id" valueNumeric="51"/><column name="name" value="Magistratska"/><column name="settlement_id" valueNumeric="27"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="street"><column name="id" valueNumeric="52"/><column name="name" value="Ljudevita Gaja"/><column name="settlement_id" valueNumeric="27"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
@@ -273,6 +285,9 @@
     <!--    Pula (3), Rijeka (4)                                      -->
     <!-- ============================================================ -->
     <changeSet id="032-seed-streets-tourist-extra" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.street WHERE id = 111</sqlCheck>
+        </preConditions>
         <!-- Split (2) — old town + center -->
         <insert schemaName="str" tableName="street"><column name="id" valueNumeric="111"/><column name="name" value="Krešimirova"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="street"><column name="id" valueNumeric="112"/><column name="name" value="Bosanska"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
@@ -312,6 +327,9 @@
     <!-- 6) House numbers (75..350)                                   -->
     <!-- ============================================================ -->
     <changeSet id="032-seed-house-numbers-new" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.house_number WHERE id = 75</sqlCheck>
+        </preConditions>
         <!-- For every newly added street give 3-5 numbers.            -->
         <!-- Krapina -->
         <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="75"/><column name="name" value="1"/><column name="street_id" valueNumeric="51"/><column name="active" valueBoolean="true"/></insert>
@@ -503,6 +521,9 @@
     <!--    (Ilica, Riva, Vukovarska, Stradun, etc.)                  -->
     <!-- ============================================================ -->
     <changeSet id="032-seed-house-numbers-popular-extra" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.house_number WHERE id = 194</sqlCheck>
+        </preConditions>
         <!-- Ilica (street 1) — more numbers (existing: 1, 2, 5, 10, 20) -->
         <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="194"/><column name="name" value="3"/><column name="street_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>
         <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="195"/><column name="name" value="15"/><column name="street_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>

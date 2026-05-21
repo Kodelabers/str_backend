@@ -54,7 +54,7 @@ public class SubmissionEntity {
     private Instant filingDate;
 
     @JdbcTypeCode(SqlTypes.VARBINARY)
-    @Column(name = "pdf_content")
+    @Column(name = "pdf_content", length = 10_485_760)
     @Setter private byte[] pdfContent;
 
     @Column(name = "created_at", nullable = false, updatable = false)
