@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="035-submission-draft" author="str-backend">
+        <createTable schemaName="str_rn" tableName="submission_draft"
+                     remarks="Half-filled, unvalidated registration submissions kept as encrypted JSON, scoped per owner (lessor or NIAS/eIDAS identifier).">
+            <column name="draft_id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="owner_type" type="VARCHAR(16)"
+                    remarks="LESSOR | NIAS_OIB | EIDAS_PID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="owner_key" type="VARCHAR(64)"
+                    remarks="Lessor UUID as string, or OIB / eIDAS identifier">
+                <constraints nullable="false"/>
+            </column>
+            <column name="title" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="payload" type="BYTEA"
+                    remarks="AES-256-GCM ciphertext (12-byte IV prefix + ciphertext + 16-byte tag) of the JSON form snapshot">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="submission_draft"
+                     indexName="idx_submission_draft_owner_updated">
+            <column name="owner_type"/>
+            <column name="owner_key"/>
+            <column name="updated_at" descending="true"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="submission_draft"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
