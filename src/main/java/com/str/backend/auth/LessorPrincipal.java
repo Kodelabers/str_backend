@@ -5,11 +5,16 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
-public final class LessorPrincipal implements UserDetails {
+public final class LessorPrincipal implements UserDetails, Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 7442011415242053533L;
 
     private static final List<GrantedAuthority> AUTHORITIES = List.of(new SimpleGrantedAuthority("ROLE_LESSOR"));
 

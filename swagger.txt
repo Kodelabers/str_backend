@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "STR Backend API",
-    "description": "Short-Term Rental (STR) accommodation registration and management system.\n\nEndpoint groups:\n- /api/verify – public registration number lookup (SDEP, OTA platforms)\n- /api/rn – registration number lifecycle management (competent authority)\n- /api/generateRegistrationNumber – accommodation registration and RN assignment\n- /api/adrese – cascading address lookup (county → municipality → settlement → street → house number)\n- /api/aktivnosti – SDEP activity ingestion and search\n- /api/registerLessor – non-EU lessor self-registration (multipart/form-data)\n- /api/auth – non-EU lessor authentication (session-based)",
-    "version": "6.0"
+    "description": "Short-Term Rental (STR) accommodation registration and management system.\n\nEndpoint groups:\n- /api/verify – public registration number lookup (SDEP, OTA platforms)\n- /api/rn – registration number lifecycle management (competent authority)\n- /api/generateRegistrationNumber – accommodation registration and RN assignment (EU lessor via OIB)\n- /api/generateRegistrationNumberExternal – accommodation registration for authenticated non-EU lessors\n- /api/adrese – cascading address lookup (county → municipality → settlement → street → house number)\n- /api/aktivnosti – SDEP activity ingestion and search\n- /api/registerLessor – non-EU lessor self-registration (multipart/form-data)\n- /api/auth – non-EU lessor authentication (session-based)\n- /api/admin – admin panel: review and approve/reject non-EU lessor registration requests",
+    "version": "7.0"
   },
   "tags": [
     { "name": "verify", "description": "Public registration number validity check" },
@@ -12,7 +12,8 @@
     { "name": "address", "description": "Cascading address lookup for autocomplete dropdowns" },
     { "name": "activities", "description": "SDEP activity ingestion and search (STR-3.x)" },
     { "name": "lessor", "description": "Non-EU lessor self-registration" },
-    { "name": "auth", "description": "Non-EU lessor authentication (session-based)" }
+    { "name": "auth", "description": "Non-EU lessor authentication (session-based)" },
+    { "name": "admin", "description": "Admin panel — non-EU lessor registration review and approval (auth TBD)" }
   ],
   "paths": {
     "/api/verify/{rn}": {
@@ -453,6 +454,185 @@
         }
       }
     },
+    "/api/generateRegistrationNumberExternal": {
+      "post": {
+        "tags": ["registration"],
+        "summary": "Register an accommodation for an authenticated non-EU lessor",
+        "description": "Same GO validation pipeline as /api/generateRegistrationNumber, but the lessor is identified by their active session instead of OIB. Requires a valid session cookie obtained from POST /api/auth/login.",
+        "operationId": "generateRegistrationNumberExternal",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegistrationExternalRequest" },
+              "example": {
+                "name": "Testni objekt",
+                "typeId": "9",
+                "countyId": 10,
+                "cityId": "9",
+                "settlementId": "9",
+                "street": "Šetalište dr. Franje Tuđmana",
+                "streetNumber": "5",
+                "postalCode": "47000 Karlovac",
+                "maxBeds": 4,
+                "maxGuests": 6,
+                "offerType": "RESIDENCE",
+                "offering": "WHOLE",
+                "building": true,
+                "floor": "2",
+                "apartments": true,
+                "legalized": true,
+                "coOwnerConsent": false,
+                "host": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Registration successful – RN assigned",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegistrationResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": {
+            "description": "Not authenticated — session cookie missing or expired",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "422": {
+            "description": "GO validation rejected",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": { "details": { "step": "GO-3", "detail": "accommodation is not legalized" } }
+              }
+            }
+          },
+          "503": {
+            "description": "External registry unavailable (MPGI or DGU)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/admin/pending-registrations": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Search non-EU lessor registrations (paginated, filtered)",
+        "description": "Returns a paginated page of non-EU lessor registrations. Filters (all optional, combined with AND): status (default INITIATED), q (substring across firstName/lastName/documentNumber), country (substring on country name), documentType (exact). Default page size 20, default sort createdAt desc. Auth: not enforced yet — will require ROLE_ADMIN.",
+        "operationId": "listPendingRegistrations",
+        "parameters": [
+          { "name": "status", "in": "query", "required": false, "description": "Application status filter. Defaults to INITIATED if omitted.", "schema": { "$ref": "#/components/schemas/ApplicationStatus" } },
+          { "name": "q", "in": "query", "required": false, "description": "Case-insensitive substring search across firstName, lastName, and documentNumber.", "schema": { "type": "string", "example": "marko" } },
+          { "name": "country", "in": "query", "required": false, "description": "Case-insensitive substring match on the country of residence name (str.country.name).", "schema": { "type": "string", "example": "njemačka" } },
+          { "name": "documentType", "in": "query", "required": false, "description": "Identity document type (exact match). Common values: PASSPORT, ID_CARD.", "schema": { "type": "string", "example": "PASSPORT" } },
+          { "name": "page", "in": "query", "required": false, "description": "Zero-based page index", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+          { "name": "size", "in": "query", "required": false, "description": "Page size (max recommended 100)", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "sort", "in": "query", "required": false, "description": "Sort spec in the form property,(asc|desc). Sortable: createdAt, lastName, firstName, email.", "schema": { "type": "string", "example": "createdAt,desc" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of registrations matching the filters (content may be empty)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PendingRegistrationSummaryPage" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pending-registrations/stats": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Dashboard counters for pending registrations",
+        "description": "Returns aggregate counters over INITIATED registrations: totalPending (all INITIATED), receivedToday (created since local midnight, Europe/Zagreb), olderThan5Days (created >5 days ago). Auth: not enforced yet — will require ROLE_ADMIN.",
+        "operationId": "getPendingRegistrationStats",
+        "responses": {
+          "200": {
+            "description": "Aggregate counters",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PendingRegistrationStats" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/pending-registrations/{lessorId}": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get full details of a pending registration",
+        "description": "Returns complete lessor data plus identity document metadata. Image bytes are served separately. Returns 404 if the lessor does not exist or is no longer in INITIATED status.",
+        "operationId": "getPendingRegistration",
+        "parameters": [{ "$ref": "#/components/parameters/lessorId" }],
+        "responses": {
+          "200": {
+            "description": "Lessor details with document metadata",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PendingRegistrationDetail" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/pending-registrations/{lessorId}/document/front": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Download the front-side image of the identity document",
+        "description": "Returns the binary content of the front-side scan/photo. Content-Type is application/octet-stream.",
+        "operationId": "getDocumentFront",
+        "parameters": [{ "$ref": "#/components/parameters/lessorId" }],
+        "responses": {
+          "200": {
+            "description": "Front-side image bytes",
+            "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/pending-registrations/{lessorId}/document/back": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Download the back-side image of the identity document",
+        "description": "Returns the binary content of the back-side scan/photo. Returns 404 if no back-side image was provided.",
+        "operationId": "getDocumentBack",
+        "parameters": [{ "$ref": "#/components/parameters/lessorId" }],
+        "responses": {
+          "200": {
+            "description": "Back-side image bytes",
+            "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/pending-registrations/{lessorId}/approve": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Approve a pending registration",
+        "description": "Sets applicationStatus to ACCEPTED. Returns 404 if the lessor is not in INITIATED status.",
+        "operationId": "approvePendingRegistration",
+        "parameters": [{ "$ref": "#/components/parameters/lessorId" }],
+        "responses": {
+          "204": { "description": "Registration approved" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/admin/pending-registrations/{lessorId}/reject": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Reject a pending registration",
+        "description": "Sets applicationStatus to REJECTED. Returns 404 if the lessor is not in INITIATED status.",
+        "operationId": "rejectPendingRegistration",
+        "parameters": [{ "$ref": "#/components/parameters/lessorId" }],
+        "responses": {
+          "204": { "description": "Registration rejected" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": ["auth"],
@@ -521,6 +701,13 @@
         "required": true,
         "description": "Registration number (format HR + 18 hex characters)",
         "schema": { "type": "string", "pattern": "^HR[0-9A-Fa-f]{18}$", "example": "HR180000123456789001" }
+      },
+      "lessorId": {
+        "name": "lessorId",
+        "in": "path",
+        "required": true,
+        "description": "Lessor UUID",
+        "schema": { "type": "string", "format": "uuid", "example": "81b4bc91-52f4-48ac-a880-fe0195fa7a90" }
       }
     },
     "responses": {
@@ -720,6 +907,111 @@
           "firstName": { "type": "string", "example": "Marko" },
           "lastName": { "type": "string", "example": "Petrović" },
           "email": { "type": "string", "format": "email", "nullable": true, "example": "marko.petrovic@example.com" }
+        }
+      },
+      "RegistrationExternalRequest": {
+        "type": "object",
+        "required": ["name", "countyId", "cityId", "street", "streetNumber", "maxBeds", "maxGuests", "offerType", "offering", "building", "apartments", "legalized", "host"],
+        "properties": {
+          "name": { "type": "string", "description": "Accommodation unit name", "example": "Testni objekt" },
+          "typeId": { "type": "string", "nullable": true, "description": "Accommodation type ID from the lookup table" },
+          "countyId": { "type": "integer", "format": "int64", "minimum": 1, "description": "County ID from /api/adrese/zupanije", "example": 10 },
+          "cityId": { "type": "string", "description": "Municipality/city ID or name", "example": "9" },
+          "settlementId": { "type": "string", "nullable": true, "description": "Settlement ID from /api/adrese/naselja" },
+          "street": { "type": "string", "description": "Street name", "example": "Šetalište dr. Franje Tuđmana" },
+          "streetNumber": { "type": "string", "description": "House number", "example": "5" },
+          "postalCode": { "type": "string", "nullable": true, "example": "47000 Karlovac" },
+          "maxBeds": { "type": "integer", "minimum": 1, "example": 4 },
+          "maxGuests": { "type": "integer", "minimum": 1, "example": 6 },
+          "offerType": { "$ref": "#/components/schemas/OfferType" },
+          "offering": { "type": "string", "description": "Rental offering type (e.g. WHOLE, ROOM)", "example": "WHOLE" },
+          "building": { "type": "boolean", "description": "Whether the accommodation is in a multi-unit building", "example": true },
+          "floor": { "type": "string", "nullable": true, "description": "Floor number within the building", "example": "2" },
+          "apartments": { "type": "boolean", "description": "Whether the building has more than 3 units (triggers GO-4 co-owner consent check)", "example": true },
+          "legalized": { "type": "boolean", "description": "Whether the accommodation has obtained legalization (GO-3)", "example": true },
+          "coOwnerConsent": { "type": "boolean", "description": "Whether co-owner consent has been obtained", "example": false },
+          "consentDate": { "type": "string", "format": "date", "nullable": true, "description": "Date on which co-owner consent was granted" },
+          "consentWithdrawalDate": { "type": "string", "format": "date", "nullable": true, "description": "Date on which co-owner consent was withdrawn" },
+          "host": { "type": "boolean", "description": "Whether the lessor will be physically present during the rental", "example": false }
+        }
+      },
+      "ApplicationStatus": {
+        "type": "string",
+        "enum": ["INITIATED", "IN_VERIFICATION", "IN_PROCESSING", "ACCEPTED", "REJECTED"],
+        "description": "INITIATED – registered, awaiting admin review; IN_VERIFICATION – documents under verification; IN_PROCESSING – being processed; ACCEPTED – approved; REJECTED – rejected"
+      },
+      "DocumentMeta": {
+        "type": "object",
+        "required": ["documentId", "documentType", "documentNumber", "hasFront", "hasBack"],
+        "properties": {
+          "documentId": { "type": "string", "format": "uuid" },
+          "documentType": { "type": "string", "description": "Document type (e.g. PASSPORT, ID_CARD)", "example": "PASSPORT" },
+          "documentNumber": { "type": "string", "description": "Document number as printed on the identity document", "example": "C01X00T47" },
+          "hasFront": { "type": "boolean", "description": "Always true — front image is mandatory", "example": true },
+          "hasBack": { "type": "boolean", "description": "True if a back-side image was uploaded", "example": false }
+        }
+      },
+      "PendingRegistrationStats": {
+        "type": "object",
+        "description": "Aggregate counters over INITIATED (pending) registrations for the admin dashboard.",
+        "required": ["totalPending", "receivedToday", "olderThan5Days"],
+        "properties": {
+          "totalPending": { "type": "integer", "format": "int64", "description": "Total registrations in INITIATED status", "example": 247 },
+          "receivedToday": { "type": "integer", "format": "int64", "description": "Registrations created since local midnight (Europe/Zagreb)", "example": 12 },
+          "olderThan5Days": { "type": "integer", "format": "int64", "description": "Pending registrations created more than 5 days ago", "example": 38 }
+        }
+      },
+      "PendingRegistrationSummaryPage": {
+        "type": "object",
+        "description": "Spring Data Page wrapper around a list of PendingRegistrationSummary.",
+        "required": ["content", "totalElements", "totalPages", "size", "number", "first", "last", "numberOfElements", "empty"],
+        "properties": {
+          "content": { "type": "array", "items": { "$ref": "#/components/schemas/PendingRegistrationSummary" } },
+          "totalElements": { "type": "integer", "format": "int64", "description": "Total number of items across all pages", "example": 247 },
+          "totalPages": { "type": "integer", "description": "Total number of pages", "example": 13 },
+          "size": { "type": "integer", "description": "Requested page size", "example": 20 },
+          "number": { "type": "integer", "description": "Zero-based page index", "example": 0 },
+          "numberOfElements": { "type": "integer", "description": "Number of elements on this page", "example": 20 },
+          "first": { "type": "boolean", "description": "True if this is the first page" },
+          "last": { "type": "boolean", "description": "True if this is the last page" },
+          "empty": { "type": "boolean", "description": "True if content is empty" }
+        }
+      },
+      "PendingRegistrationSummary": {
+        "type": "object",
+        "required": ["lessorId", "firstName", "lastName", "email", "applicationStatus", "createdAt", "documentType", "documentNumber"],
+        "properties": {
+          "lessorId": { "type": "string", "format": "uuid" },
+          "firstName": { "type": "string", "example": "Marko" },
+          "lastName": { "type": "string", "example": "Petrović" },
+          "email": { "type": "string", "format": "email", "example": "marko.petrovic@example.com" },
+          "dateOfBirth": { "type": "string", "format": "date", "nullable": true, "example": "1985-06-15" },
+          "countryOfResidenceId": { "type": "integer", "nullable": true, "description": "Country of residence ID (references str.country) — use as filter value", "example": 53 },
+          "countryOfResidenceName": { "type": "string", "nullable": true, "description": "Resolved country name from str.country (null if ID unknown or unset) — display this on the UI", "example": "Njemačka" },
+          "taxNumber": { "type": "string", "nullable": true, "description": "Foreign tax identification number", "example": "DE123456789" },
+          "applicationStatus": { "$ref": "#/components/schemas/ApplicationStatus" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "documentType": { "type": "string", "description": "Identity document type (e.g. PASSPORT, ID_CARD)", "example": "PASSPORT" },
+          "documentNumber": { "type": "string", "description": "Document number as printed on the identity document", "example": "C01X00T47" }
+        }
+      },
+      "PendingRegistrationDetail": {
+        "type": "object",
+        "required": ["lessorId", "firstName", "lastName", "email", "street", "applicationStatus", "createdAt", "document"],
+        "properties": {
+          "lessorId": { "type": "string", "format": "uuid" },
+          "firstName": { "type": "string", "example": "Marko" },
+          "lastName": { "type": "string", "example": "Petrović" },
+          "email": { "type": "string", "format": "email", "example": "marko.petrovic@example.com" },
+          "dateOfBirth": { "type": "string", "format": "date", "nullable": true, "example": "1985-06-15" },
+          "countryOfResidenceId": { "type": "integer", "nullable": true, "description": "Country of residence ID (references str.country) — use as filter value", "example": 53 },
+          "countryOfResidenceName": { "type": "string", "nullable": true, "description": "Resolved country name from str.country (null if ID unknown or unset) — display this on the UI", "example": "Njemačka" },
+          "taxNumber": { "type": "string", "nullable": true, "description": "Foreign tax identification number", "example": "DE123456789" },
+          "street": { "type": "string", "description": "Full permanent address as supplied during registration", "example": "Musterstraße 12, 10115 Berlin, Njemačka" },
+          "mobileNumber": { "type": "string", "nullable": true, "example": "+4915112345678" },
+          "applicationStatus": { "$ref": "#/components/schemas/ApplicationStatus" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "document": { "$ref": "#/components/schemas/DocumentMeta" }
         }
       },
       "ErrorResponse": {
