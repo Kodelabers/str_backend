@@ -182,4 +182,14 @@ public class LessorEntity {
         this.representativeAddress = representativeAddress;
         this.updatedAt = Instant.now();
     }
+
+    public void approveRegistration() {
+        this.applicationStatus = SubmissionStatus.ACCEPTED;
+        this.updatedAt = Instant.now();
+    }
+
+    public void rejectRegistration() {
+        this.applicationStatus = SubmissionStatus.REJECTED;
+        this.updatedAt = Instant.now();
+    }
 }
