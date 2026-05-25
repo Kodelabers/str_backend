@@ -7,11 +7,14 @@ import com.str.backend.admin.dto.PendingRegistrationDetailDto;
 import com.str.backend.admin.dto.PendingRegistrationStatsDto;
 import com.str.backend.admin.dto.PendingRegistrationSummaryDto;
 import com.str.backend.domain.SubmissionStatus;
+import com.str.backend.email.event.RegistrationApprovedEvent;
+import com.str.backend.email.event.RegistrationRejectedEvent;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorDocumentEntity;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -31,13 +34,16 @@ public class AdminPendingRegistrationService {
     private final LessorRepository lessorRepository;
     private final LessorDocumentRepository documentRepository;
     private final CountryRepository countryRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AdminPendingRegistrationService(LessorRepository lessorRepository,
                                            LessorDocumentRepository documentRepository,
-                                           CountryRepository countryRepository) {
+                                           CountryRepository countryRepository,
+                                           ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.documentRepository = documentRepository;
         this.countryRepository = countryRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -94,12 +100,23 @@ public class AdminPendingRegistrationService {
     public void approve(UUID lessorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
         lessor.approveRegistration();
+        eventPublisher.publishEvent(new RegistrationApprovedEvent(
+                lessor.getLessorId(),
+                lessor.getEmail(),
+                lessor.getFirstName(),
+                lessor.getUsername()
+        ));
     }
 
     @Transactional
     public void reject(UUID lessorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
         lessor.rejectRegistration();
+        eventPublisher.publishEvent(new RegistrationRejectedEvent(
+                lessor.getLessorId(),
+                lessor.getEmail(),
+                lessor.getFirstName()
+        ));
     }
 
     private LessorEntity findPendingOrThrow(UUID lessorId) {
