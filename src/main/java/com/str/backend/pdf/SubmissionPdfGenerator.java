@@ -20,7 +20,8 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 @Component
@@ -103,7 +104,7 @@ public class SubmissionPdfGenerator {
             PdfPTable podnesak = innerTable();
             addInnerRow(podnesak, "Vrsta podneska",
                     "Zahtjev za registraciju smještajne jedinice kratkoročnog najma");
-            addInnerRow(podnesak, "Datum zaprimanja podneska", LocalDateTime.now().format(DT));
+            addInnerRow(podnesak, "Datum zaprimanja podneska", ZonedDateTime.now(ZoneId.of("Europe/Zagreb")).format(DT));
             if (filingNumber != null) {
                 addInnerRow(podnesak, "Urudžbeni broj", filingNumber);
             }
