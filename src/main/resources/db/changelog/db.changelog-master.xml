@@ -35,6 +35,8 @@
     <include file="db/changelog/changes/033-lessor-document.xml"/>
     <include file="db/changelog/changes/034-lessor-username-widen.xml"/>
     <include file="db/changelog/changes/035-submission-draft.xml"/>
+    <include file="db/changelog/changes/036-lessor-application-status.xml"/>
+    <include file="db/changelog/changes/037-submission-status-tighten.xml"/>
 
     <!-- Mock 'str' schema and seed data — gated by Liquibase context="local" -->
     <include file="db/changelog/changes/100-str-schema-local.xml"/>

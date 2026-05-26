@@ -1,6 +1,6 @@
 package com.str.backend.admin.dto;
 
-import com.str.backend.domain.SubmissionStatus;
+import com.str.backend.domain.LessorApplicationStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -15,7 +15,7 @@ public record PendingRegistrationSummaryDto(
         Integer countryOfResidenceId,
         String countryOfResidenceName,
         String taxNumber,
-        SubmissionStatus applicationStatus,
+        LessorApplicationStatus applicationStatus,
         Instant createdAt,
         String documentType,
         String documentNumber

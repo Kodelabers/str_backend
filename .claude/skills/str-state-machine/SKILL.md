@@ -18,12 +18,10 @@ Defines legal transitions for `submission.status` (SubmissionStatus) and `regist
 
 | From | Trigger | To |
 | :--- | :--- | :--- |
-| — | New submission created | `INITIATED` |
-| `INITIATED` | `SUBMIT` (NIAS/eIDAS path) | `IN_PROCESSING` |
-| `INITIATED` | `FOREIGN_UPLOAD` (non-EU manual upload) | `IN_VERIFICATION` |
-| `IN_VERIFICATION` | `REFERENT_APPROVE` | `IN_PROCESSING` |
+| — | New submission created | `IN_PROCESSING` |
 | `IN_PROCESSING` | `VALIDATION_PASSED` | `ACCEPTED` (terminal) |
 | `IN_PROCESSING` | `VALIDATION_REJECTED` | `REJECTED` (terminal) |
+
 
 ## Registration Number Lifecycle (`RnStatus`)
 

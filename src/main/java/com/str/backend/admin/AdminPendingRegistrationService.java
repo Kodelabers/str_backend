@@ -6,7 +6,7 @@ import com.str.backend.admin.dto.DocumentMetaDto;
 import com.str.backend.admin.dto.PendingRegistrationDetailDto;
 import com.str.backend.admin.dto.PendingRegistrationStatsDto;
 import com.str.backend.admin.dto.PendingRegistrationSummaryDto;
-import com.str.backend.domain.SubmissionStatus;
+import com.str.backend.domain.LessorApplicationStatus;
 import com.str.backend.email.event.RegistrationApprovedEvent;
 import com.str.backend.email.event.RegistrationRejectedEvent;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -51,22 +51,22 @@ public class AdminPendingRegistrationService {
         Instant startOfToday = LocalDate.now(ZONE).atStartOfDay(ZONE).toInstant();
         Instant fiveDaysAgo = Instant.now().minus(5, ChronoUnit.DAYS);
 
-        long totalPending = lessorRepository.countByApplicationStatus(SubmissionStatus.INITIATED);
+        long totalPending = lessorRepository.countByApplicationStatus(LessorApplicationStatus.PENDING);
         long receivedToday = lessorRepository
-                .countByApplicationStatusAndCreatedAtGreaterThanEqual(SubmissionStatus.INITIATED, startOfToday);
+                .countByApplicationStatusAndCreatedAtGreaterThanEqual(LessorApplicationStatus.PENDING, startOfToday);
         long olderThan5Days = lessorRepository
-                .countByApplicationStatusAndCreatedAtLessThan(SubmissionStatus.INITIATED, fiveDaysAgo);
+                .countByApplicationStatusAndCreatedAtLessThan(LessorApplicationStatus.PENDING, fiveDaysAgo);
 
         return new PendingRegistrationStatsDto(totalPending, receivedToday, olderThan5Days);
     }
 
     @Transactional(readOnly = true)
-    public Page<PendingRegistrationSummaryDto> search(SubmissionStatus status,
+    public Page<PendingRegistrationSummaryDto> search(LessorApplicationStatus status,
                                                        String q,
                                                        String country,
                                                        String documentType,
                                                        Pageable pageable) {
-        SubmissionStatus effectiveStatus = status != null ? status : SubmissionStatus.INITIATED;
+        LessorApplicationStatus effectiveStatus = status != null ? status : LessorApplicationStatus.PENDING;
         String normalizedQ = blankToNull(q);
         String normalizedCountry = blankToNull(country);
         String normalizedDocumentType = blankToNull(documentType);
@@ -96,10 +96,11 @@ public class AdminPendingRegistrationService {
         return doc.getBackImage();
     }
 
+    // @Transactional is load-bearing: RegistrationApprovedEvent fires @TransactionalEventListener(AFTER_COMMIT)
     @Transactional
-    public void approve(UUID lessorId) {
+    public void approve(UUID lessorId, String actorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
-        lessor.approveRegistration();
+        lessor.approveRegistration(actorId);
         eventPublisher.publishEvent(new RegistrationApprovedEvent(
                 lessor.getLessorId(),
                 lessor.getEmail(),
@@ -108,10 +109,11 @@ public class AdminPendingRegistrationService {
         ));
     }
 
+    // @Transactional is load-bearing: RegistrationRejectedEvent fires @TransactionalEventListener(AFTER_COMMIT)
     @Transactional
-    public void reject(UUID lessorId) {
+    public void reject(UUID lessorId, String actorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
-        lessor.rejectRegistration();
+        lessor.rejectRegistration(actorId);
         eventPublisher.publishEvent(new RegistrationRejectedEvent(
                 lessor.getLessorId(),
                 lessor.getEmail(),
@@ -120,7 +122,7 @@ public class AdminPendingRegistrationService {
     }
 
     private LessorEntity findPendingOrThrow(UUID lessorId) {
-        return lessorRepository.findByLessorIdAndApplicationStatus(lessorId, SubmissionStatus.INITIATED)
+        return lessorRepository.findByLessorIdAndApplicationStatus(lessorId, LessorApplicationStatus.PENDING)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Zahtjev za registraciju nije pronađen: " + lessorId));
     }
