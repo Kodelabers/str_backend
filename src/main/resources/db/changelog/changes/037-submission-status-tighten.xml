@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="037-submission-status-tighten" author="str-backend">
+        <sql>
+            ALTER TABLE str_rn.submission DROP CONSTRAINT IF EXISTS chk_submission_status
+        </sql>
+
+        <sql>
+            ALTER TABLE str_rn.submission
+                ADD CONSTRAINT chk_submission_status
+                    CHECK (status IN ('IN_PROCESSING', 'ACCEPTED', 'REJECTED'))
+        </sql>
+
+        <rollback>
+            <sql>
+                ALTER TABLE str_rn.submission DROP CONSTRAINT IF EXISTS chk_submission_status
+            </sql>
+            <sql>
+                ALTER TABLE str_rn.submission
+                    ADD CONSTRAINT chk_submission_status
+                        CHECK (status IN ('INITIATED', 'IN_VERIFICATION', 'IN_PROCESSING', 'ACCEPTED', 'REJECTED'))
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

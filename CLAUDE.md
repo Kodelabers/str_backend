@@ -48,12 +48,15 @@ GET  /api/generateRegistrationNumber/{id}/pdf    → SubmissionPdfGenerator
 ### State machines
 There are two separate state machines:
 
-`SubmissionStatus` (request lifecycle):
+`SubmissionStatus` (GO pipeline, `submission.status`):
 ```
-INITIATED → IN_PROCESSING (SUBMIT)
-INITIATED → IN_VERIFICATION (FOREIGN_UPLOAD)
-IN_VERIFICATION → IN_PROCESSING (REFERENT_APPROVE)
 IN_PROCESSING → ACCEPTED (VALIDATION_PASSED) / REJECTED (VALIDATION_REJECTED)
+```
+
+`LessorApplicationStatus` (lessor registration review, `lessor.application_status`):
+```
+PENDING → ACCEPTED (admin approves)
+PENDING → REJECTED (admin rejects)
 ```
 
 `RnStatus` (registration number lifecycle):
@@ -64,6 +67,8 @@ ACTIVE / SUSPENDED → WITHDRAWN (WITHDRAWAL) → ACTIVE (REACTIVATE)
 ```
 
 All status changes go exclusively through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. Each validates the transition against `canTransitionTo()` and immediately writes a `submission_log` / `registration_number_log` row — these two operations are inseparable. Never mutate the status field directly from service code.
+
+Note: `SubmissionStatusTransitionService` is defined but not yet wired into any production call site — submissions remain in `IN_PROCESSING` indefinitely. Intentional for now; the GO pipeline will own the transition to `ACCEPTED`/`REJECTED` in a future iteration.
 
 ### GO validation pipeline
 `ParallelValidationOrchestrator` runs `ValidationCheck` implementations in waves. Within a wave checks fan out in parallel; the next wave starts only after the previous completes (so `ValidationContext` flags set by upstream checks are visible without races). The first `Rejected` short-circuits the remaining checks.
@@ -81,6 +86,7 @@ Format `HR` + 18 hex digits encoding county code, group code, type code, and 12 
 ## Key Constraints
 
 - `ddl-auto=none` always. Schema changes go in a new numbered Liquibase changeset under `db/changelog/changes/`.
+- **Liquibase changesets are immutable once applied.** Never edit the content of an existing changeset file — doing so changes its checksum and Liquibase will refuse to start (`ValidationFailedException`). Any correction or improvement to an already-applied changeset must go into a new, higher-numbered changeset. This applies even to "harmless" changes like adding `IF EXISTS` or a defensive `UPDATE`.
 - No field injection — constructor injection only.
 - Read-only repository/service methods must carry `@Transactional(readOnly = true)`.
 - All `@Table` annotations must declare `schema =` explicitly.

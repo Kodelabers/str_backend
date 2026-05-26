@@ -806,7 +806,7 @@ paths:
         Returns a paginated page of non-EU lessor registrations.
 
         **Filters** (all optional, combined with AND):
-        - `status` — `ApplicationStatus`; defaults to `INITIATED` if omitted
+        - `status` — `ApplicationStatus`; defaults to `PENDING` if omitted
         - `q` — case-insensitive substring matched against `firstName`, `lastName`, and `documentNumber`
         - `country` — case-insensitive substring match on the country of residence name (str.country.name)
         - `documentType` — exact match on `documentType` (e.g. `PASSPORT`, `ID_CARD`)
@@ -819,7 +819,7 @@ paths:
         - name: status
           in: query
           required: false
-          description: Application status filter. Defaults to INITIATED if omitted.
+          description: Application status filter. Defaults to PENDING if omitted.
           schema:
             $ref: '#/components/schemas/ApplicationStatus'
         - name: q
@@ -882,8 +882,8 @@ paths:
       tags: [admin]
       summary: Dashboard counters for pending registrations
       description: |
-        Returns aggregate counters over INITIATED (pending) registrations for the admin dashboard:
-        - `totalPending` — total in INITIATED status
+        Returns aggregate counters over PENDING registrations for the admin dashboard:
+        - `totalPending` — total in PENDING status
         - `receivedToday` — created since local midnight (Europe/Zagreb)
         - `olderThan5Days` — created more than 5 days ago (aging / needs attention)
 
@@ -904,7 +904,7 @@ paths:
       description: |
         Returns complete lessor data plus identity document metadata (type, number, image availability).
         Image bytes are served separately via the `/document/front` and `/document/back` sub-resources.
-        Returns 404 if the lessor does not exist or is no longer in `INITIATED` status.
+        Returns 404 if the lessor does not exist or is no longer in `PENDING` status.
       operationId: getPendingRegistration
       parameters:
         - $ref: '#/components/parameters/lessorId'
@@ -966,10 +966,20 @@ paths:
       summary: Approve a pending registration
       description: |
         Sets `applicationStatus` to `ACCEPTED`. The lessor may then log in and submit
-        accommodation registrations. Returns 404 if the lessor is not in `INITIATED` status.
+        accommodation registrations. Returns 404 if the lessor is not in `PENDING` status.
+
+        Optionally accepts a body with `actorId` (max 64 chars) that identifies the admin
+        performing the action. Persisted to `official_person_id`. Will be derived from
+        `SecurityContext` once `ROLE_ADMIN` authentication is enforced.
       operationId: approvePendingRegistration
       parameters:
         - $ref: '#/components/parameters/lessorId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewDecisionRequest'
       responses:
         "204":
           description: Registration approved
@@ -982,10 +992,20 @@ paths:
       summary: Reject a pending registration
       description: |
         Sets `applicationStatus` to `REJECTED`. Returns 404 if the lessor is not in
-        `INITIATED` status.
+        `PENDING` status.
+
+        Optionally accepts a body with `actorId` (max 64 chars) that identifies the admin
+        performing the action. Persisted to `official_person_id`. Will be derived from
+        `SecurityContext` once `ROLE_ADMIN` authentication is enforced.
       operationId: rejectPendingRegistration
       parameters:
         - $ref: '#/components/parameters/lessorId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewDecisionRequest'
       responses:
         "204":
           description: Registration rejected
@@ -1505,14 +1525,24 @@ components:
 
     ApplicationStatus:
       type: string
-      enum: [INITIATED, IN_VERIFICATION, IN_PROCESSING, ACCEPTED, REJECTED]
+      enum: [PENDING, ACCEPTED, REJECTED]
       description: |
-        Non-EU lessor application lifecycle:
-        - `INITIATED` – registered, awaiting admin review
-        - `IN_VERIFICATION` – documents under verification
-        - `IN_PROCESSING` – being processed by a referent
-        - `ACCEPTED` – approved; lessor may submit accommodation registrations
-        - `REJECTED` – application rejected
+        Non-EU lessor registration review lifecycle:
+        - `PENDING` – registered, awaiting admin review; login blocked
+        - `ACCEPTED` – approved; lessor may log in and submit accommodation registrations
+        - `REJECTED` – application rejected; login blocked
+
+    ReviewDecisionRequest:
+      type: object
+      properties:
+        actorId:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: |
+            Identifier of the admin performing the action. Persisted to `official_person_id`.
+            Optional; omit if the actor identity is not yet available. Will be derived
+            from `SecurityContext` once `ROLE_ADMIN` authentication is enforced.
 
     DocumentMeta:
       type: object
@@ -1540,13 +1570,13 @@ components:
 
     PendingRegistrationStats:
       type: object
-      description: Aggregate counters over INITIATED (pending) registrations for the admin dashboard.
+      description: Aggregate counters over PENDING registrations for the admin dashboard.
       required: [totalPending, receivedToday, olderThan5Days]
       properties:
         totalPending:
           type: integer
           format: int64
-          description: Total registrations in INITIATED status
+          description: Total registrations in PENDING status
           example: 247
         receivedToday:
           type: integer

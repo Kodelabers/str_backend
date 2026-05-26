@@ -29,30 +29,6 @@ class SubmissionStatusTransitionServiceTest {
     // --- Valid transitions ---
 
     @Test
-    void initiated_to_in_processing_via_submit() {
-        SubmissionEntity s = submission(SubmissionStatus.INITIATED);
-        service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.SUBMIT);
-        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.IN_PROCESSING);
-        verifyLog("INITIATED", "IN_PROCESSING", "SUBMIT");
-    }
-
-    @Test
-    void initiated_to_in_verification_via_foreign_upload() {
-        SubmissionEntity s = submission(SubmissionStatus.INITIATED);
-        service.transition(s, SubmissionStatus.IN_VERIFICATION, SubmissionTrigger.FOREIGN_UPLOAD);
-        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.IN_VERIFICATION);
-        verifyLog("INITIATED", "IN_VERIFICATION", "FOREIGN_UPLOAD");
-    }
-
-    @Test
-    void in_verification_to_in_processing_via_referent_approve() {
-        SubmissionEntity s = submission(SubmissionStatus.IN_VERIFICATION);
-        service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.REFERENT_APPROVE);
-        assertThat(s.getStatus()).isEqualTo(SubmissionStatus.IN_PROCESSING);
-        verifyLog("IN_VERIFICATION", "IN_PROCESSING", "REFERENT_APPROVE");
-    }
-
-    @Test
     void in_processing_to_accepted_via_validation_passed() {
         SubmissionEntity s = submission(SubmissionStatus.IN_PROCESSING);
         service.transition(s, SubmissionStatus.ACCEPTED, SubmissionTrigger.VALIDATION_PASSED);
@@ -73,7 +49,7 @@ class SubmissionStatusTransitionServiceTest {
     @Test
     void accepted_is_terminal() {
         SubmissionEntity s = submission(SubmissionStatus.ACCEPTED);
-        assertThatThrownBy(() -> service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.SUBMIT))
+        assertThatThrownBy(() -> service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.VALIDATION_PASSED))
                 .isInstanceOf(IllegalStatusTransitionException.class);
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.ACCEPTED);
     }
@@ -81,23 +57,9 @@ class SubmissionStatusTransitionServiceTest {
     @Test
     void rejected_is_terminal() {
         SubmissionEntity s = submission(SubmissionStatus.REJECTED);
-        assertThatThrownBy(() -> service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.SUBMIT))
+        assertThatThrownBy(() -> service.transition(s, SubmissionStatus.IN_PROCESSING, SubmissionTrigger.VALIDATION_PASSED))
                 .isInstanceOf(IllegalStatusTransitionException.class);
         assertThat(s.getStatus()).isEqualTo(SubmissionStatus.REJECTED);
-    }
-
-    @Test
-    void initiated_cannot_skip_to_accepted() {
-        SubmissionEntity s = submission(SubmissionStatus.INITIATED);
-        assertThatThrownBy(() -> service.transition(s, SubmissionStatus.ACCEPTED, SubmissionTrigger.VALIDATION_PASSED))
-                .isInstanceOf(IllegalStatusTransitionException.class);
-    }
-
-    @Test
-    void in_verification_cannot_go_back_to_initiated() {
-        SubmissionEntity s = submission(SubmissionStatus.IN_VERIFICATION);
-        assertThatThrownBy(() -> service.transition(s, SubmissionStatus.INITIATED, SubmissionTrigger.SUBMIT))
-                .isInstanceOf(IllegalStatusTransitionException.class);
     }
 
     // --- Log content ---

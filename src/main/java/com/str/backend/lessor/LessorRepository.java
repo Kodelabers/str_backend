@@ -1,7 +1,7 @@
 package com.str.backend.lessor;
 
 import com.str.backend.admin.dto.PendingRegistrationSummaryDto;
-import com.str.backend.domain.SubmissionStatus;
+import com.str.backend.domain.LessorApplicationStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -53,21 +53,21 @@ public interface LessorRepository extends JpaRepository<LessorEntity, UUID> {
               AND (CAST(:documentType AS string) IS NULL OR d.documentType = CAST(:documentType AS string))
             """)
     Page<PendingRegistrationSummaryDto> searchRegistrations(
-            @Param("status") SubmissionStatus status,
+            @Param("status") LessorApplicationStatus status,
             @Param("q") String q,
             @Param("country") String country,
             @Param("documentType") String documentType,
             Pageable pageable);
 
     @Transactional(readOnly = true)
-    Optional<LessorEntity> findByLessorIdAndApplicationStatus(UUID lessorId, SubmissionStatus status);
+    Optional<LessorEntity> findByLessorIdAndApplicationStatus(UUID lessorId, LessorApplicationStatus status);
 
     @Transactional(readOnly = true)
-    long countByApplicationStatus(SubmissionStatus status);
+    long countByApplicationStatus(LessorApplicationStatus status);
 
     @Transactional(readOnly = true)
-    long countByApplicationStatusAndCreatedAtGreaterThanEqual(SubmissionStatus status, Instant from);
+    long countByApplicationStatusAndCreatedAtGreaterThanEqual(LessorApplicationStatus status, Instant from);
 
     @Transactional(readOnly = true)
-    long countByApplicationStatusAndCreatedAtLessThan(SubmissionStatus status, Instant before);
+    long countByApplicationStatusAndCreatedAtLessThan(LessorApplicationStatus status, Instant before);
 }

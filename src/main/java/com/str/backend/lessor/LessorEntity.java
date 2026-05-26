@@ -1,6 +1,6 @@
 package com.str.backend.lessor;
 
-import com.str.backend.domain.SubmissionStatus;
+import com.str.backend.domain.LessorApplicationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -90,7 +90,7 @@ public class LessorEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "application_status", length = 32)
-    @Setter private SubmissionStatus applicationStatus;
+    @Setter private LessorApplicationStatus applicationStatus;
 
     @Column(name = "official_person_id", length = 64)
     @Setter private String officialPersonId;
@@ -152,7 +152,7 @@ public class LessorEntity {
         e.countryOfResidenceId = countryOfResidenceId;
         e.taxNumber = taxNumber;
         e.mobileNumber = mobileNumber;
-        e.applicationStatus = SubmissionStatus.INITIATED;
+        e.applicationStatus = LessorApplicationStatus.PENDING;
         Instant now = Instant.now();
         e.createdAt = now;
         e.updatedAt = now;
@@ -183,13 +183,15 @@ public class LessorEntity {
         this.updatedAt = Instant.now();
     }
 
-    public void approveRegistration() {
-        this.applicationStatus = SubmissionStatus.ACCEPTED;
+    public void approveRegistration(String actorId) {
+        this.applicationStatus = LessorApplicationStatus.ACCEPTED;
+        if (actorId != null) this.officialPersonId = actorId;
         this.updatedAt = Instant.now();
     }
 
-    public void rejectRegistration() {
-        this.applicationStatus = SubmissionStatus.REJECTED;
+    public void rejectRegistration(String actorId) {
+        this.applicationStatus = LessorApplicationStatus.REJECTED;
+        if (actorId != null) this.officialPersonId = actorId;
         this.updatedAt = Instant.now();
     }
 }
