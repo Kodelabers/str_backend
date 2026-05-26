@@ -1,7 +1,13 @@
 package com.str.backend.rn;
 
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnResponse;
+import com.str.backend.rn.dto.RnSummaryDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,6 +33,23 @@ public class RnController {
     @GetMapping("/inactive")
     public List<RnResponse> inactive() {
         return mapper.toResponseList(service.inactive());
+    }
+
+    /** STR wireframe §12 / §13: paginated public registry of RNs. */
+    @GetMapping
+    public Page<RnSummaryDto> registry(
+            @RequestParam(defaultValue = "ACTIVE") RnRegistryView view,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String county,
+            @RequestParam(required = false) Long typeId,
+            @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable) {
+        return service.searchRegistry(view, q, county, typeId, pageable);
+    }
+
+    /** STR wireframe §12 / §13: full detail of a single RN (accommodation + lessor). */
+    @GetMapping("/{rn}/detail")
+    public RnDetailDto detail(@PathVariable String rn) {
+        return service.detail(rn);
     }
 
     @GetMapping("/{rn}")

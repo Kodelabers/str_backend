@@ -8,8 +8,12 @@ import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnSummaryDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -133,6 +137,24 @@ public class RnService {
     @Transactional(readOnly = true)
     public List<RnEntity> inactive() {
         return repository.findByStatusInOrderByUpdatedAtDesc(List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
+    }
+
+    /** STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging. */
+    @Transactional(readOnly = true)
+    public Page<RnSummaryDto> searchRegistry(RnRegistryView view, String q, String county,
+                                             Long typeId, Pageable pageable) {
+        return repository.searchRegistry(view.statuses(), blankToNull(q), blankToNull(county), typeId, pageable);
+    }
+
+    /** STR wireframe §12 / §13: full detail for a single RN (joined accommodation + lessor). */
+    @Transactional(readOnly = true)
+    public RnDetailDto detail(String rn) {
+        return repository.findDetail(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
+    }
+
+    private static String blankToNull(String value) {
+        return (value != null && !value.isBlank()) ? value.trim() : null;
     }
 
     private static int countyCode(AccommodationEntity accommodation) {
