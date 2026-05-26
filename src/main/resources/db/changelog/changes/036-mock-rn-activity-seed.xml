@@ -45,20 +45,28 @@
                 SELECT COUNT(*) FROM str_rn.accommodation WHERE accommodation_id = '22222222-2222-2222-2222-222222222221'
             </sqlCheck>
         </preConditions>
+        <!-- accommodation_type_id resolved by name — 020-reseed deletes/reinserts so the
+             autoincrement sequence does not align with the original 007 seed IDs. -->
         <sql>
             INSERT INTO str_rn.accommodation (
                 accommodation_id, accommodation_type_id, county, city, street, street_number,
                 max_beds, max_guests, offer_type, building, apartments, legalized,
                 name, offering, created_at, updated_at
-            ) VALUES
-            ('22222222-2222-2222-2222-222222222221', 2, 'Grad Zagreb',             'Zagreb',    'Ilica',         '24',  4,  4, 'RESIDENCE', true,  false, true, 'Apartman Ilica Centar', 'WHOLE', NOW(), NOW()),
-            ('22222222-2222-2222-2222-222222222222', 2, 'Splitsko-dalmatinska',    'Split',     'Vukovarska',    '11',  6,  6, 'OTHER',     true,  true,  true, 'Apartman More',         'WHOLE', NOW(), NOW()),
-            ('22222222-2222-2222-2222-222222222223', 4, 'Istarska',                'Pula',      'Sergijevaca',   '5',   8,  8, 'OTHER',     false, false, true, 'Kuća Arena',            'WHOLE', NOW(), NOW()),
-            ('22222222-2222-2222-2222-222222222224', 2, 'Istarska',                'Rovinj',    'Carrera',       '18',  4,  4, 'OTHER',     true,  false, true, 'Apartman Stari Grad',   'WHOLE', NOW(), NOW()),
-            ('22222222-2222-2222-2222-222222222225', 3, 'Primorsko-goranska',      'Rijeka',    'Korzo',         '7',   2,  2, 'RESIDENCE', true,  false, true, 'Studio Korzo',          'WHOLE', NOW(), NOW()),
-            ('22222222-2222-2222-2222-222222222226', 5, 'Primorsko-goranska',      'Opatija',   'Maršala Tita',  '102', 10, 10, 'OTHER',    false, false, true, 'Vila Lungomare',        'WHOLE', NOW(), NOW()),
-            ('22222222-2222-2222-2222-222222222227', 2, 'Dubrovačko-neretvanska',  'Dubrovnik', 'Stradun',       '14',  4,  4, 'OTHER',     true,  false, true, 'Apartman Stradun',      'WHOLE', NOW(), NOW()),
-            ('22222222-2222-2222-2222-222222222228', 1, 'Splitsko-dalmatinska',    'Hvar',      'Stari grad',    '3',   2,  2, 'RESIDENCE', false, false, true, 'Soba Hvar Centar',      'PART',  NOW(), NOW());
+            )
+            SELECT v.accommodation_id::uuid, t.type_id, v.county, v.city, v.street, v.street_number,
+                   v.max_beds, v.max_guests, v.offer_type, v.building, v.apartments, v.legalized,
+                   v.name, v.offering, NOW(), NOW()
+            FROM (VALUES
+                ('22222222-2222-2222-2222-222222222221', 'Apartman',        'Grad Zagreb',             'Zagreb',    'Ilica',         '24',  4,  4, 'RESIDENCE', true,  false, true, 'Apartman Ilica Centar', 'WHOLE'),
+                ('22222222-2222-2222-2222-222222222222', 'Apartman',        'Splitsko-dalmatinska',    'Split',     'Vukovarska',    '11',  6,  6, 'OTHER',     true,  true,  true, 'Apartman More',         'WHOLE'),
+                ('22222222-2222-2222-2222-222222222223', 'Kuća za odmor',   'Istarska',                'Pula',      'Sergijevaca',   '5',   8,  8, 'OTHER',     false, false, true, 'Kuća Arena',            'WHOLE'),
+                ('22222222-2222-2222-2222-222222222224', 'Apartman',        'Istarska',                'Rovinj',    'Carrera',       '18',  4,  4, 'OTHER',     true,  false, true, 'Apartman Stari Grad',   'WHOLE'),
+                ('22222222-2222-2222-2222-222222222225', 'Studio apartman', 'Primorsko-goranska',      'Rijeka',    'Korzo',         '7',   2,  2, 'RESIDENCE', true,  false, true, 'Studio Korzo',          'WHOLE'),
+                ('22222222-2222-2222-2222-222222222226', 'Vila',            'Primorsko-goranska',      'Opatija',   'Maršala Tita',  '102', 10, 10, 'OTHER',    false, false, true, 'Vila Lungomare',        'WHOLE'),
+                ('22222222-2222-2222-2222-222222222227', 'Apartman',        'Dubrovačko-neretvanska',  'Dubrovnik', 'Stradun',       '14',  4,  4, 'OTHER',     true,  false, true, 'Apartman Stradun',      'WHOLE'),
+                ('22222222-2222-2222-2222-222222222228', 'Soba',            'Splitsko-dalmatinska',    'Hvar',      'Stari grad',    '3',   2,  2, 'RESIDENCE', false, false, true, 'Soba Hvar Centar',      'PART')
+            ) AS v(accommodation_id, type_name, county, city, street, street_number, max_beds, max_guests, offer_type, building, apartments, legalized, name, offering)
+            JOIN str_rn.accommodation_type t ON t.name = v.type_name;
         </sql>
         <rollback>
             <sql>DELETE FROM str_rn.accommodation WHERE accommodation_id BETWEEN '22222222-2222-2222-2222-222222222221' AND '22222222-2222-2222-2222-222222222228'</sql>
