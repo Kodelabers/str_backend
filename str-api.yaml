@@ -43,22 +43,34 @@ paths:
   /api/verify/{rn}:
     get:
       tags: [verify]
-      summary: Verify registration number validity
+      summary: Check registration number validity
       description: |
         Public endpoint used by SDEP and OTA platforms to check whether a registration
-        number is valid and retrieve the accommodation capacity. Returns 404 if not found.
+        number is valid. A registration number is valid if and only if it exists and its
+        status is ACTIVE. Returns valid=false for non-existent numbers and for numbers in
+        status IN_PROCESSING, SUSPENDED, or WITHDRAWN. Always returns HTTP 200 for a
+        well-formed registration number.
       operationId: verifyRn
       parameters:
         - $ref: '#/components/parameters/rn'
       responses:
         "200":
-          description: Registration number found
+          description: Validity check result
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/VerifyResponse'
-        "404":
-          $ref: '#/components/responses/NotFound'
+              examples:
+                valid:
+                  summary: Active registration number
+                  value:
+                    valid: true
+                invalid:
+                  summary: Non-existent or inactive registration number
+                  value:
+                    valid: false
+        "400":
+          $ref: '#/components/responses/BadRequest'
 
   # ─────────────────────────────────────────────────────────────
   # Registration numbers
@@ -1080,19 +1092,14 @@ components:
 
     VerifyResponse:
       type: object
-      required: [registrationNumber, status, capacity, offerType]
+      required: [valid]
       properties:
-        registrationNumber:
-          type: string
-          example: "HR180000123456789001"
-        status:
-          $ref: '#/components/schemas/RnStatus'
-        capacity:
-          type: integer
-          description: Maximum number of guests
-          example: 8
-        offerType:
-          $ref: '#/components/schemas/OfferType'
+        valid:
+          type: boolean
+          description: |
+            True if the registration number exists and has status ACTIVE;
+            false in all other cases (not found, IN_PROCESSING, SUSPENDED, WITHDRAWN).
+          example: true
 
     # ── Registration number ─────────────────────────────────────
 

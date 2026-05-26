@@ -1,37 +1,33 @@
 package com.str.backend.rn;
 
-import com.str.backend.accommodation.AccommodationEntity;
-import com.str.backend.accommodation.AccommodationRepository;
-import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.rn.dto.VerifyResponse;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Validated
 @RestController
 @RequestMapping("/api/verify")
 public class VerifyController {
 
     private final RnRepository rnRepository;
-    private final AccommodationRepository accommodationRepository;
-    private final VerifyMapper mapper;
 
-    public VerifyController(RnRepository rnRepository, AccommodationRepository accommodationRepository,
-                            VerifyMapper mapper) {
+    public VerifyController(RnRepository rnRepository) {
         this.rnRepository = rnRepository;
-        this.accommodationRepository = accommodationRepository;
-        this.mapper = mapper;
     }
 
     @GetMapping("/{rn}")
     @Transactional(readOnly = true)
-    public VerifyResponse verify(@PathVariable String rn) {
-        RnEntity entity = rnRepository.findById(rn)
-                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
-        AccommodationEntity accommodation = accommodationRepository.findById(entity.getAccommodationId())
-                .orElseThrow(() -> new ResourceNotFoundException("accommodation not found: " + entity.getAccommodationId()));
-        return mapper.toResponse(entity, accommodation);
+    public VerifyResponse verify(
+            @PathVariable @Pattern(regexp = RegistrationNumber.REGEXP) String rn) {
+        boolean valid = rnRepository.findById(rn)
+                .map(entity -> entity.getStatus().isPubliclyVisible())
+                .orElse(false);
+        return new VerifyResponse(valid);
     }
 }

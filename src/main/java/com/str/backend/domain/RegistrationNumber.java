@@ -8,7 +8,8 @@ import java.util.regex.Pattern;
 @Getter
 public class RegistrationNumber {
 
-    private static final Pattern PATTERN = Pattern.compile("^HR[0-9A-Fa-f]{18}$");
+    public static final String REGEXP = "^HR[0-9A-Fa-f]{18}$";
+    private static final Pattern PATTERN = Pattern.compile(REGEXP);
     private static final SecureRandom RNG = new SecureRandom();
 
     private final String value;
