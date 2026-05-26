@@ -1,5 +1,6 @@
 package com.str.backend.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.slf4j.Logger;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
@@ -61,6 +63,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         String message = "Invalid value '" + ex.getValue() + "' for parameter '" + ex.getName() + "'";
         return build(HttpStatus.BAD_REQUEST, message, null);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex) {
+        return build(HttpStatus.BAD_REQUEST, resolve("error.validation.failed"), null);
+    }
+
+    // Spring Framework 6.1+ throws HandlerMethodValidationException (not ConstraintViolationException)
+    // for @Pattern/@NotBlank/etc. on @PathVariable/@RequestParam in @Validated controllers.
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponse> handleHandlerMethodValidation(HandlerMethodValidationException ex) {
+        return build(HttpStatus.BAD_REQUEST, resolve("error.validation.failed"), null);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
