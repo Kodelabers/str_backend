@@ -26,6 +26,21 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     List<RnEntity> findByStatusInOrderByUpdatedAtDesc(List<RnStatus> statuses);
 
+    /** BPSO statistics: counts of RNs grouped by accommodation county + RN status. */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT a.county AS county, r.status AS status, COUNT(r) AS count
+            FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            GROUP BY a.county, r.status
+            """)
+    List<CountyStatusCount> countByCountyAndStatus();
+
+    interface CountyStatusCount {
+        String getCounty();
+        RnStatus getStatus();
+        long getCount();
+    }
+
     @Transactional(readOnly = true)
     @Query(value = """
             SELECT new com.str.backend.rn.dto.RnSummaryDto(
