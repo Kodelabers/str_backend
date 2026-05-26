@@ -41,4 +41,7 @@
     <include file="db/changelog/changes/101-str-seed-local.xml"/>
     <include file="db/changelog/changes/032-str-seed-local-expand-v2.xml"/>
 
+    <!-- Mock RN + Booking/Airbnb activity seed for analytics — gated by context="local" -->
+    <include file="db/changelog/changes/036-mock-rn-activity-seed.xml"/>
+
 </databaseChangeLog>
