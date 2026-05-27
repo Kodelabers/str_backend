@@ -130,7 +130,7 @@ class PdfLocalExportTest {
             CountyEntity c = ctor.newInstance();
             setField(c, "id", id);
             setField(c, "name", name);
-            setField(c, "active", true);
+            setField(c, "zuRb", id.intValue());
             return c;
         } catch (Exception e) {
             throw new RuntimeException(e);

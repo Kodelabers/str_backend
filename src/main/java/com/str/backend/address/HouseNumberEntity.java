@@ -10,7 +10,7 @@ import org.hibernate.annotations.Immutable;
 
 @Entity
 @Immutable
-@Table(schema = "str", name = "house_number")
+@Table(schema = "eturizam_test", name = "ar_address")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class HouseNumberEntity {
@@ -19,12 +19,9 @@ public class HouseNumberEntity {
     @Column(name = "id", nullable = false, updatable = false)
     private Long id;
 
-    @Column(name = "name", nullable = false, updatable = false)
+    @Column(name = "broj", nullable = false, updatable = false)
     private String name;
 
-    @Column(name = "street_id", nullable = false, updatable = false)
-    private Long streetId;
-
-    @Column(name = "active", nullable = false, updatable = false)
-    private boolean active;
+    @Column(name = "ulica_id", nullable = false, updatable = false)
+    private Long ulicaId;
 }

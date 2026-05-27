@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Seed for rpj_dgu address hierarchy. Picks 4 counties × a handful of
+      municipalities × a handful of settlements to exercise the dropdown
+      chain end-to-end:
+
+        Grad Zagreb (21) → Zagreb (21024)         → Zagreb, Maksimir, Trešnjevka
+        Splitsko-dalm. (17) → Split (17097)        → Split, Stobreč
+                            → Trogir (17453)       → Trogir
+        Istarska (18)     → Pula (18108)           → Pula
+                            → Rovinj (18248)       → Rovinj
+        Primorsko-gor. (8)→ Rijeka (08018)         → Rijeka
+                            → Opatija (08043)      → Opatija
+
+      Cross-schema FK conventions (must stay aligned with dev):
+        - zupanije.zu_rb  = gradovi_i_opcine.zu_rb            (NUMERIC)
+        - gradovi_i_opcine.jls_mb (5-char) = LPAD(naselja.jls_mb::text, 5, '0')
+        - naselja.na_mb (6-char) = ar_ulice.naselje_id        (VARCHAR)
+
+      Postal codes match by LOWER(naselje) = LOWER(na_ime), so naselje names
+      here mirror na_ime exactly. INSPIRE-style numeric IDs use a stable offset.
+    -->
+
+    <changeSet id="106-rpj-dgu-seed-zupanije" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.zupanije</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="zupanije"><column name="id" valueNumeric="2195100008"/><column name="inspire_id" value="HR.DGU.RPJ:ZU.0000000008"/><column name="zu_ime" value="Primorsko-goranska županija"/><column name="zu_rb" valueNumeric="8"/></insert>
+        <insert schemaName="rpj_dgu" tableName="zupanije"><column name="id" valueNumeric="2195100017"/><column name="inspire_id" value="HR.DGU.RPJ:ZU.0000000017"/><column name="zu_ime" value="Splitsko-dalmatinska županija"/><column name="zu_rb" valueNumeric="17"/></insert>
+        <insert schemaName="rpj_dgu" tableName="zupanije"><column name="id" valueNumeric="2195100018"/><column name="inspire_id" value="HR.DGU.RPJ:ZU.0000000018"/><column name="zu_ime" value="Istarska županija"/><column name="zu_rb" valueNumeric="18"/></insert>
+        <insert schemaName="rpj_dgu" tableName="zupanije"><column name="id" valueNumeric="2195100021"/><column name="inspire_id" value="HR.DGU.RPJ:ZU.0000000021"/><column name="zu_ime" value="Grad Zagreb"/><column name="zu_rb" valueNumeric="21"/></insert>
+    </changeSet>
+
+    <changeSet id="106-rpj-dgu-seed-gradovi-i-opcine" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.gradovi_i_opcine</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine"><column name="id" valueNumeric="2195200018"/><column name="inspire_id" value="HR.DGU.RPJ:JLS.0000000018"/><column name="jls_ime" value="Rijeka"/><column name="jls_mb" value="08018"/><column name="zu_ime" value="Primorsko-goranska županija"/><column name="zu_rb" valueNumeric="8"/></insert>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine"><column name="id" valueNumeric="2195200043"/><column name="inspire_id" value="HR.DGU.RPJ:JLS.0000000043"/><column name="jls_ime" value="Opatija"/><column name="jls_mb" value="08043"/><column name="zu_ime" value="Primorsko-goranska županija"/><column name="zu_rb" valueNumeric="8"/></insert>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine"><column name="id" valueNumeric="2195200097"/><column name="inspire_id" value="HR.DGU.RPJ:JLS.0000000097"/><column name="jls_ime" value="Split"/><column name="jls_mb" value="17097"/><column name="zu_ime" value="Splitsko-dalmatinska županija"/><column name="zu_rb" valueNumeric="17"/></insert>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine"><column name="id" valueNumeric="2195200108"/><column name="inspire_id" value="HR.DGU.RPJ:JLS.0000000108"/><column name="jls_ime" value="Pula"/><column name="jls_mb" value="18108"/><column name="zu_ime" value="Istarska županija"/><column name="zu_rb" valueNumeric="18"/></insert>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine"><column name="id" valueNumeric="2195200248"/><column name="inspire_id" value="HR.DGU.RPJ:JLS.0000000248"/><column name="jls_ime" value="Rovinj"/><column name="jls_mb" value="18248"/><column name="zu_ime" value="Istarska županija"/><column name="zu_rb" valueNumeric="18"/></insert>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine"><column name="id" valueNumeric="2195200453"/><column name="inspire_id" value="HR.DGU.RPJ:JLS.0000000453"/><column name="jls_ime" value="Trogir"/><column name="jls_mb" value="17453"/><column name="zu_ime" value="Splitsko-dalmatinska županija"/><column name="zu_rb" valueNumeric="17"/></insert>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine"><column name="id" valueNumeric="2195201024"/><column name="inspire_id" value="HR.DGU.RPJ:JLS.0000001024"/><column name="jls_ime" value="Zagreb"/><column name="jls_mb" value="21024"/><column name="zu_ime" value="Grad Zagreb"/><column name="zu_rb" valueNumeric="21"/></insert>
+    </changeSet>
+
+    <changeSet id="106-rpj-dgu-seed-naselja" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.naselja</sqlCheck>
+        </preConditions>
+        <!-- Grad Zagreb / Zagreb (21024) -->
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300001"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000001"/><column name="na_ime" value="Zagreb"/><column name="na_mb" value="210001"/><column name="jls_ime" value="Zagreb"/><column name="jls_mb" valueNumeric="21024"/></insert>
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300002"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000002"/><column name="na_ime" value="Maksimir"/><column name="na_mb" value="210002"/><column name="jls_ime" value="Zagreb"/><column name="jls_mb" valueNumeric="21024"/></insert>
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300003"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000003"/><column name="na_ime" value="Trešnjevka"/><column name="na_mb" value="210003"/><column name="jls_ime" value="Zagreb"/><column name="jls_mb" valueNumeric="21024"/></insert>
+        <!-- Splitsko-dalmatinska / Split (17097) -->
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300011"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000011"/><column name="na_ime" value="Split"/><column name="na_mb" value="170001"/><column name="jls_ime" value="Split"/><column name="jls_mb" valueNumeric="17097"/></insert>
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300012"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000012"/><column name="na_ime" value="Stobreč"/><column name="na_mb" value="170002"/><column name="jls_ime" value="Split"/><column name="jls_mb" valueNumeric="17097"/></insert>
+        <!-- Splitsko-dalmatinska / Trogir (17453) -->
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300013"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000013"/><column name="na_ime" value="Trogir"/><column name="na_mb" value="170003"/><column name="jls_ime" value="Trogir"/><column name="jls_mb" valueNumeric="17453"/></insert>
+        <!-- Istarska / Pula (18108) -->
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300021"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000021"/><column name="na_ime" value="Pula"/><column name="na_mb" value="180001"/><column name="jls_ime" value="Pula"/><column name="jls_mb" valueNumeric="18108"/></insert>
+        <!-- Istarska / Rovinj (18248) -->
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300022"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000022"/><column name="na_ime" value="Rovinj"/><column name="na_mb" value="180002"/><column name="jls_ime" value="Rovinj"/><column name="jls_mb" valueNumeric="18248"/></insert>
+        <!-- Primorsko-goranska / Rijeka (08018) -->
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300031"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000031"/><column name="na_ime" value="Rijeka"/><column name="na_mb" value="080001"/><column name="jls_ime" value="Rijeka"/><column name="jls_mb" valueNumeric="8018"/></insert>
+        <!-- Primorsko-goranska / Opatija (08043) -->
+        <insert schemaName="rpj_dgu" tableName="naselja"><column name="id" valueNumeric="2195300032"/><column name="inspire_id" value="HR.DGU.RPJ:NA.0000000032"/><column name="na_ime" value="Opatija"/><column name="na_mb" value="080002"/><column name="jls_ime" value="Opatija"/><column name="jls_mb" valueNumeric="8043"/></insert>
+    </changeSet>
+
+    <changeSet id="106-rpj-dgu-seed-postanski-brojevi" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.postanski_brojevi</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="1"/><column name="broj_pu" value="10000"/><column name="naziv_pu" value="Zagreb"/><column name="naselje" value="Zagreb"/><column name="zupanija" value="Grad Zagreb"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="2"/><column name="broj_pu" value="10000"/><column name="naziv_pu" value="Zagreb"/><column name="naselje" value="Maksimir"/><column name="zupanija" value="Grad Zagreb"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="3"/><column name="broj_pu" value="10000"/><column name="naziv_pu" value="Zagreb"/><column name="naselje" value="Trešnjevka"/><column name="zupanija" value="Grad Zagreb"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="4"/><column name="broj_pu" value="21000"/><column name="naziv_pu" value="Split"/><column name="naselje" value="Split"/><column name="zupanija" value="Splitsko-dalmatinska županija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="5"/><column name="broj_pu" value="21311"/><column name="naziv_pu" value="Stobreč"/><column name="naselje" value="Stobreč"/><column name="zupanija" value="Splitsko-dalmatinska županija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="6"/><column name="broj_pu" value="21220"/><column name="naziv_pu" value="Trogir"/><column name="naselje" value="Trogir"/><column name="zupanija" value="Splitsko-dalmatinska županija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="7"/><column name="broj_pu" value="52100"/><column name="naziv_pu" value="Pula"/><column name="naselje" value="Pula"/><column name="zupanija" value="Istarska županija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="8"/><column name="broj_pu" value="52210"/><column name="naziv_pu" value="Rovinj"/><column name="naselje" value="Rovinj"/><column name="zupanija" value="Istarska županija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="9"/><column name="broj_pu" value="51000"/><column name="naziv_pu" value="Rijeka"/><column name="naselje" value="Rijeka"/><column name="zupanija" value="Primorsko-goranska županija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi"><column name="id" valueNumeric="10"/><column name="broj_pu" value="51410"/><column name="naziv_pu" value="Opatija"/><column name="naselje" value="Opatija"/><column name="zupanija" value="Primorsko-goranska županija"/></insert>
+    </changeSet>
+
+</databaseChangeLog>

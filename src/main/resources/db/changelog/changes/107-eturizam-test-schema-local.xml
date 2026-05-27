@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock of the externally-owned 'eturizam_test' schema (eTurizam adresni
+      registar) for local development only. We recreate just the columns the
+      JPA entities read — ar_ulice for streets and ar_address for house
+      numbers. Geometry and integration columns (the_geom, kc_broj, post_id,
+      kat_opcina_id, status, dgu_ulica_id, ...) are omitted because nothing
+      in the code reads them.
+
+      ar_ulice.naselje_id is VARCHAR and joins to rpj_dgu.naselja.na_mb.
+      ar_address.ulica_id is INTEGER and FK's to ar_ulice.id.
+    -->
+
+    <changeSet id="107-eturizam-test-schema" author="str-backend" context="local">
+        <sql>CREATE SCHEMA IF NOT EXISTS eturizam_test</sql>
+    </changeSet>
+
+    <changeSet id="107-eturizam-test-ar-ulice" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="eturizam_test" tableName="ar_ulice"/></not>
+        </preConditions>
+        <createTable schemaName="eturizam_test" tableName="ar_ulice">
+            <column name="id" type="INTEGER"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="naselje_id" type="VARCHAR(30)"><constraints nullable="false"/></column>
+            <column name="naziv_ulice" type="VARCHAR(200)"><constraints nullable="false"/></column>
+            <column name="tip_ulice" type="VARCHAR(20)"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="107-eturizam-test-ar-address" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="eturizam_test" tableName="ar_address"/></not>
+        </preConditions>
+        <createTable schemaName="eturizam_test" tableName="ar_address">
+            <column name="id" type="INTEGER"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="broj" type="VARCHAR(10)"><constraints nullable="false"/></column>
+            <column name="ulica_id" type="INTEGER"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

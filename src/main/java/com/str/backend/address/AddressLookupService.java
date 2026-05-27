@@ -47,46 +47,42 @@ public class AddressLookupService {
 
     public List<CountyResponse> findCounties(String q) {
         List<CountyEntity> entities = (q == null || q.isBlank())
-                ? countyRepository.findByActiveTrueOrderByName()
-                : countyRepository.findByActiveTrueAndNameContainingIgnoreCaseOrderByName(q);
+                ? countyRepository.findAllByOrderByZuRb()
+                : countyRepository.findByNameContainingIgnoreCaseOrderByZuRb(q);
         return entities.stream()
                 .map(e -> new CountyResponse(e.getId(), e.getName()))
                 .toList();
     }
 
     public List<MunicipalityResponse> findMunicipalities(Long countyId, String q) {
-        List<MunicipalityEntity> entities = (q == null || q.isBlank())
-                ? municipalityRepository.findByActiveTrueAndCountyIdOrderByName(countyId)
-                : municipalityRepository.findByActiveTrueAndCountyIdAndNameContainingIgnoreCaseOrderByName(countyId, q);
-        return entities.stream()
+        return municipalityRepository.findByCountyIdOrderByName(countyId, normalize(q)).stream()
                 .map(e -> new MunicipalityResponse(e.getId(), e.getName(), e.getTypeCode()))
                 .toList();
     }
 
     public List<SettlementResponse> findSettlements(Long municipalityId, String q) {
-        List<SettlementEntity> entities = (q == null || q.isBlank())
-                ? settlementRepository.findByActiveTrueAndMunicipalityIdOrderByName(municipalityId)
-                : settlementRepository.findByActiveTrueAndMunicipalityIdAndNameContainingIgnoreCaseOrderByName(municipalityId, q);
-        return entities.stream()
-                .map(e -> new SettlementResponse(e.getId(), e.getName(), e.getPostalCode()))
+        String filter = (q == null || q.isBlank()) ? null : q;
+        return settlementRepository.findByMunicipalityIdOrderByName(municipalityId, filter).stream()
+                .map(p -> new SettlementResponse(p.getId(), p.getName(), p.getPostalCode()))
                 .toList();
     }
 
     public List<StreetResponse> findStreets(Long settlementId, String q) {
-        List<StreetEntity> entities = (q == null || q.isBlank())
-                ? streetRepository.findByActiveTrueAndSettlementIdOrderByName(settlementId)
-                : streetRepository.findByActiveTrueAndSettlementIdAndNameContainingIgnoreCaseOrderByName(settlementId, q);
-        return entities.stream()
+        return streetRepository.findBySettlementIdOrderByName(settlementId, normalize(q)).stream()
                 .map(e -> new StreetResponse(e.getId(), e.getName(), e.getTypeCode()))
                 .toList();
     }
 
     public List<HouseNumberResponse> findHouseNumbers(Long streetId, String q) {
-        List<HouseNumberEntity> entities = (q == null || q.isBlank())
-                ? houseNumberRepository.findByActiveTrueAndStreetIdOrderByName(streetId)
-                : houseNumberRepository.findByActiveTrueAndStreetIdAndNameContainingIgnoreCaseOrderByName(streetId, q);
-        return entities.stream()
+        return houseNumberRepository.findByStreetIdOrderByName(streetId, normalize(q)).stream()
                 .map(e -> new HouseNumberResponse(e.getId(), e.getName()))
                 .toList();
+    }
+
+    // Postgres can't infer a type for a null JPQL parameter inside LOWER(CONCAT(..., :q, ...)),
+    // and binds it as bytea — so JPQL queries that branch on `:q = ''` get an empty sentinel
+    // instead of null. Native queries (findSettlements) handle this with CAST(:q AS text).
+    private static String normalize(String q) {
+        return (q == null || q.isBlank()) ? "" : q;
     }
 }

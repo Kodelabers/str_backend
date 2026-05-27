@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock of the rpj_dgu address hierarchy for local development only:
+      zupanije / gradovi_i_opcine / naselja / postanski_brojevi.
+
+      Geometry columns (the_geom, roa) are omitted because we don't render
+      maps locally. Only the columns the JPA entities and native queries
+      actually read are recreated. Types mirror the dev schema so the
+      cross-schema joins (zu_rb numeric, jls_mb varchar/numeric, na_mb varchar
+      → ar_ulice.naselje_id) behave the same as on dev.
+    -->
+
+    <changeSet id="105-rpj-dgu-zupanije" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="rpj_dgu" tableName="zupanije"/></not>
+        </preConditions>
+        <createTable schemaName="rpj_dgu" tableName="zupanije">
+            <column name="id" type="NUMERIC(18,0)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="inspire_id" type="VARCHAR(50)"/>
+            <column name="zu_ime" type="VARCHAR(100)"><constraints nullable="false"/></column>
+            <column name="zu_rb" type="NUMERIC(18,0)"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="105-rpj-dgu-gradovi-i-opcine" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="rpj_dgu" tableName="gradovi_i_opcine"/></not>
+        </preConditions>
+        <createTable schemaName="rpj_dgu" tableName="gradovi_i_opcine">
+            <column name="id" type="NUMERIC(18,0)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="inspire_id" type="VARCHAR(50)"/>
+            <column name="jls_ime" type="VARCHAR(100)"><constraints nullable="false"/></column>
+            <column name="jls_mb" type="VARCHAR(30)"><constraints nullable="false"/></column>
+            <column name="zu_ime" type="VARCHAR(100)"/>
+            <column name="zu_rb" type="NUMERIC(18,0)"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="105-rpj-dgu-naselja" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="rpj_dgu" tableName="naselja"/></not>
+        </preConditions>
+        <createTable schemaName="rpj_dgu" tableName="naselja">
+            <column name="id" type="NUMERIC(18,0)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="inspire_id" type="VARCHAR(50)"/>
+            <column name="na_ime" type="VARCHAR(100)"><constraints nullable="false"/></column>
+            <column name="na_mb" type="VARCHAR(30)"><constraints nullable="false"/></column>
+            <column name="jls_ime" type="VARCHAR(100)"/>
+            <column name="jls_mb" type="NUMERIC(18,0)"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="105-rpj-dgu-postanski-brojevi" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="rpj_dgu" tableName="postanski_brojevi"/></not>
+        </preConditions>
+        <createTable schemaName="rpj_dgu" tableName="postanski_brojevi">
+            <column name="id" type="INTEGER"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="broj_pu" type="VARCHAR(10)"><constraints nullable="false"/></column>
+            <column name="red_broj" type="VARCHAR(10)"/>
+            <column name="naziv_pu" type="VARCHAR(100)"/>
+            <column name="naselje" type="VARCHAR(100)"/>
+            <column name="zupanija" type="VARCHAR(100)"/>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

@@ -5,111 +5,15 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
             https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
 
-    <!-- Seed data for local mock 'str' schema. Test OIB 12312312316 → Pero Perić, Ilica 1, Zagreb. -->
+    <!--
+      Seed data for local mock 'str' schema. Test OIB 12312312316 → Pero Perić.
 
-    <!-- Country list for the residence-country dropdown on /register (non-EU lessor sign-up).
-         Dev/prod read the real str.country owned by the upstream service; on local/mock we seed
-         a representative subset (alphabetical by Croatian name). HR is included so the frontend
-         filter that excludes the host country exercises its branch. -->
-    <changeSet id="101-str-seed-countries-list" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.country WHERE id = 1</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="1"/><column name="name" value="Albanija"/><column name="iso2_alpha" value="AL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="2"/><column name="name" value="Austrija"/><column name="iso2_alpha" value="AT"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="3"/><column name="name" value="Bosna i Hercegovina"/><column name="iso2_alpha" value="BA"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="4"/><column name="name" value="Crna Gora"/><column name="iso2_alpha" value="ME"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="5"/><column name="name" value="Češka"/><column name="iso2_alpha" value="CZ"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="6"/><column name="name" value="Francuska"/><column name="iso2_alpha" value="FR"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="7"/><column name="name" value="Hrvatska"/><column name="iso2_alpha" value="HR"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="8"/><column name="name" value="Italija"/><column name="iso2_alpha" value="IT"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="9"/><column name="name" value="Mađarska"/><column name="iso2_alpha" value="HU"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="10"/><column name="name" value="Nizozemska"/><column name="iso2_alpha" value="NL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="11"/><column name="name" value="Njemačka"/><column name="iso2_alpha" value="DE"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="12"/><column name="name" value="Poljska"/><column name="iso2_alpha" value="PL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="13"/><column name="name" value="Sjedinjene Američke Države"/><column name="iso2_alpha" value="US"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="14"/><column name="name" value="Sjeverna Makedonija"/><column name="iso2_alpha" value="MK"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="15"/><column name="name" value="Slovačka"/><column name="iso2_alpha" value="SK"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="16"/><column name="name" value="Slovenija"/><column name="iso2_alpha" value="SI"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="17"/><column name="name" value="Srbija"/><column name="iso2_alpha" value="RS"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="18"/><column name="name" value="Španjolska"/><column name="iso2_alpha" value="ES"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="19"/><column name="name" value="Švicarska"/><column name="iso2_alpha" value="CH"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="20"/><column name="name" value="Ujedinjeno Kraljevstvo"/><column name="iso2_alpha" value="GB"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-counties" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.county WHERE id = 1</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="1"/><column name="name" value="Grad Zagreb"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="2"/><column name="name" value="Splitsko-dalmatinska"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="3"/><column name="name" value="Zagrebačka"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="4"/><column name="name" value="Istarska"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="5"/><column name="name" value="Primorsko-goranska"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-municipalities" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.municipality WHERE id = 1</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="1"/><column name="name" value="Zagreb"/><column name="county_id" valueNumeric="1"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="2"/><column name="name" value="Split"/><column name="county_id" valueNumeric="2"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="3"/><column name="name" value="Pula"/><column name="county_id" valueNumeric="4"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="4"/><column name="name" value="Rijeka"/><column name="county_id" valueNumeric="5"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-settlements" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.settlement WHERE id = 1</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="1"/><column name="name" value="Zagreb"/><column name="postal_code" value="10000"/><column name="municipality_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="2"/><column name="name" value="Split"/><column name="postal_code" value="21000"/><column name="municipality_id" valueNumeric="2"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="3"/><column name="name" value="Pula"/><column name="postal_code" value="52100"/><column name="municipality_id" valueNumeric="3"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="4"/><column name="name" value="Rijeka"/><column name="postal_code" value="51000"/><column name="municipality_id" valueNumeric="4"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-streets" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.street WHERE id = 1</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="1"/><column name="name" value="Ilica"/><column name="settlement_id" valueNumeric="1"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="2"/><column name="name" value="Ulica kralja Tomislava"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="3"/><column name="name" value="Vukovarska"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="4"/><column name="name" value="Sergijevaca"/><column name="settlement_id" valueNumeric="3"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="5"/><column name="name" value="Korzo"/><column name="settlement_id" valueNumeric="4"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-house-numbers" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.house_number WHERE id = 1</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="1"/><column name="name" value="1"/><column name="street_id" valueNumeric="1"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="2"/><column name="name" value="14a"/><column name="street_id" valueNumeric="2"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="3"/><column name="name" value="15"/><column name="street_id" valueNumeric="3"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-address" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.address WHERE id = 1</sqlCheck>
-        </preConditions>
-        <!-- Address for Pero Perić: Ilica 1, Zagreb -->
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="1"/>
-            <column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="1"/>
-            <column name="street_id" valueNumeric="1"/>
-            <column name="house_number_id" valueNumeric="1"/>
-            <column name="county" value="Grad Zagreb"/>
-            <column name="county_id" valueNumeric="1"/>
-            <column name="municipality" value="Zagreb"/>
-            <column name="municipality_id" valueNumeric="1"/>
-            <column name="postal_code" value="10000"/>
-            <column name="settlement" value="Zagreb"/>
-            <column name="street" value="Ilica"/>
-            <column name="house_number" value="1"/>
-            <column name="full_address" value="Ilica 1, 10000 Zagreb"/>
-        </insert>
-    </changeSet>
+      Address-hierarchy and country seeds (county/municipality/settlement/street/
+      house_number/address/country) have moved to rpj_dgu + eturizam_test schemas
+      and are seeded in a separate changelog (TBD). Subject seeds below intentionally
+      reference address_id values that no longer resolve locally — StrLessorLookupService
+      will fail with "Adresa iznajmljivača nije pronađena" until the GIS mock is added.
+    -->
 
     <changeSet id="101-str-seed-subject" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
@@ -138,182 +42,41 @@
         </insert>
     </changeSet>
 
-    <!-- ============================================================
-         Expanded seed: additional counties, addresses, lessors.
-         Useful for testing GO domacin (county match) across regions
-         and for exercising multiple parallel registrations.
-         ============================================================ -->
-
-    <changeSet id="101-str-seed-counties-extra" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.county WHERE id = 6</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="6"/><column name="name" value="Dubrovačko-neretvanska"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="7"/><column name="name" value="Osječko-baranjska"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="8"/><column name="name" value="Zadarska"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="9"/><column name="name" value="Šibensko-kninska"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="county"><column name="id" valueNumeric="10"/><column name="name" value="Karlovačka"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-municipalities-extra" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.municipality WHERE id = 5</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="5"/><column name="name" value="Dubrovnik"/><column name="county_id" valueNumeric="6"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="6"/><column name="name" value="Osijek"/><column name="county_id" valueNumeric="7"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="7"/><column name="name" value="Zadar"/><column name="county_id" valueNumeric="8"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="8"/><column name="name" value="Šibenik"/><column name="county_id" valueNumeric="9"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="9"/><column name="name" value="Karlovac"/><column name="county_id" valueNumeric="10"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="municipality"><column name="id" valueNumeric="10"/><column name="name" value="Velika Gorica"/><column name="county_id" valueNumeric="3"/><column name="type_code" value="GRAD"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-settlements-extra" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.settlement WHERE id = 5</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="5"/><column name="name" value="Dubrovnik"/><column name="postal_code" value="20000"/><column name="municipality_id" valueNumeric="5"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="6"/><column name="name" value="Osijek"/><column name="postal_code" value="31000"/><column name="municipality_id" valueNumeric="6"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="7"/><column name="name" value="Zadar"/><column name="postal_code" value="23000"/><column name="municipality_id" valueNumeric="7"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="8"/><column name="name" value="Šibenik"/><column name="postal_code" value="22000"/><column name="municipality_id" valueNumeric="8"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="9"/><column name="name" value="Karlovac"/><column name="postal_code" value="47000"/><column name="municipality_id" valueNumeric="9"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="settlement"><column name="id" valueNumeric="10"/><column name="name" value="Velika Gorica"/><column name="postal_code" value="10410"/><column name="municipality_id" valueNumeric="10"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-streets-extra" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.street WHERE id = 6</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="6"/><column name="name" value="Stradun"/><column name="settlement_id" valueNumeric="5"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="7"/><column name="name" value="Europska avenija"/><column name="settlement_id" valueNumeric="6"/><column name="type_code" value="AV"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="8"/><column name="name" value="Kalelarga"/><column name="settlement_id" valueNumeric="7"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="9"/><column name="name" value="Obala palih omladinaca"/><column name="settlement_id" valueNumeric="8"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="10"/><column name="name" value="Trg bana Jelačića"/><column name="settlement_id" valueNumeric="9"/><column name="type_code" value="TRG"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="11"/><column name="name" value="Zagrebačka"/><column name="settlement_id" valueNumeric="10"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="12"/><column name="name" value="Maksimirska"/><column name="settlement_id" valueNumeric="1"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="13"/><column name="name" value="Savska cesta"/><column name="settlement_id" valueNumeric="1"/><column name="type_code" value="CES"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="14"/><column name="name" value="Riva"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="street"><column name="id" valueNumeric="15"/><column name="name" value="Marulićeva"/><column name="settlement_id" valueNumeric="2"/><column name="type_code" value="UL"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-house-numbers-extra" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.house_number WHERE id = 4</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="4"/><column name="name" value="5"/><column name="street_id" valueNumeric="6"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="5"/><column name="name" value="22"/><column name="street_id" valueNumeric="7"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="6"/><column name="name" value="7a"/><column name="street_id" valueNumeric="8"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="7"/><column name="name" value="8"/><column name="street_id" valueNumeric="9"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="8"/><column name="name" value="3"/><column name="street_id" valueNumeric="10"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="9"/><column name="name" value="17"/><column name="street_id" valueNumeric="11"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="10"/><column name="name" value="12"/><column name="street_id" valueNumeric="12"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="11"/><column name="name" value="100"/><column name="street_id" valueNumeric="14"/><column name="active" valueBoolean="true"/></insert>
-        <insert schemaName="str" tableName="house_number"><column name="id" valueNumeric="12"/><column name="name" value="25"/><column name="street_id" valueNumeric="15"/><column name="active" valueBoolean="true"/></insert>
-    </changeSet>
-
-    <changeSet id="101-str-seed-addresses-extra" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.address WHERE id = 2</sqlCheck>
-        </preConditions>
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="2"/><column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="5"/><column name="street_id" valueNumeric="6"/><column name="house_number_id" valueNumeric="4"/>
-            <column name="county" value="Dubrovačko-neretvanska"/><column name="county_id" valueNumeric="6"/>
-            <column name="municipality" value="Dubrovnik"/><column name="municipality_id" valueNumeric="5"/>
-            <column name="postal_code" value="20000"/><column name="settlement" value="Dubrovnik"/>
-            <column name="street" value="Stradun"/><column name="house_number" value="5"/>
-            <column name="full_address" value="Stradun 5, 20000 Dubrovnik"/>
-        </insert>
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="3"/><column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="6"/><column name="street_id" valueNumeric="7"/><column name="house_number_id" valueNumeric="5"/>
-            <column name="county" value="Osječko-baranjska"/><column name="county_id" valueNumeric="7"/>
-            <column name="municipality" value="Osijek"/><column name="municipality_id" valueNumeric="6"/>
-            <column name="postal_code" value="31000"/><column name="settlement" value="Osijek"/>
-            <column name="street" value="Europska avenija"/><column name="house_number" value="22"/>
-            <column name="full_address" value="Europska avenija 22, 31000 Osijek"/>
-        </insert>
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="4"/><column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="7"/><column name="street_id" valueNumeric="8"/><column name="house_number_id" valueNumeric="6"/>
-            <column name="county" value="Zadarska"/><column name="county_id" valueNumeric="8"/>
-            <column name="municipality" value="Zadar"/><column name="municipality_id" valueNumeric="7"/>
-            <column name="postal_code" value="23000"/><column name="settlement" value="Zadar"/>
-            <column name="street" value="Kalelarga"/><column name="house_number" value="7a"/>
-            <column name="full_address" value="Kalelarga 7a, 23000 Zadar"/>
-        </insert>
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="5"/><column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="2"/><column name="street_id" valueNumeric="14"/><column name="house_number_id" valueNumeric="11"/>
-            <column name="county" value="Splitsko-dalmatinska"/><column name="county_id" valueNumeric="2"/>
-            <column name="municipality" value="Split"/><column name="municipality_id" valueNumeric="2"/>
-            <column name="postal_code" value="21000"/><column name="settlement" value="Split"/>
-            <column name="street" value="Riva"/><column name="house_number" value="100"/>
-            <column name="full_address" value="Riva 100, 21000 Split"/>
-        </insert>
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="6"/><column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="1"/><column name="street_id" valueNumeric="12"/><column name="house_number_id" valueNumeric="10"/>
-            <column name="county" value="Grad Zagreb"/><column name="county_id" valueNumeric="1"/>
-            <column name="municipality" value="Zagreb"/><column name="municipality_id" valueNumeric="1"/>
-            <column name="postal_code" value="10000"/><column name="settlement" value="Zagreb"/>
-            <column name="street" value="Maksimirska"/><column name="house_number" value="12"/>
-            <column name="full_address" value="Maksimirska 12, 10000 Zagreb"/>
-        </insert>
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="7"/><column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="9"/><column name="street_id" valueNumeric="10"/><column name="house_number_id" valueNumeric="8"/>
-            <column name="county" value="Karlovačka"/><column name="county_id" valueNumeric="10"/>
-            <column name="municipality" value="Karlovac"/><column name="municipality_id" valueNumeric="9"/>
-            <column name="postal_code" value="47000"/><column name="settlement" value="Karlovac"/>
-            <column name="street" value="Trg bana Jelačića"/><column name="house_number" value="3"/>
-            <column name="full_address" value="Trg bana Jelačića 3, 47000 Karlovac"/>
-        </insert>
-        <insert schemaName="str" tableName="address">
-            <column name="id" valueNumeric="8"/><column name="active" valueBoolean="true"/>
-            <column name="settlement_id" valueNumeric="8"/><column name="street_id" valueNumeric="9"/><column name="house_number_id" valueNumeric="7"/>
-            <column name="county" value="Šibensko-kninska"/><column name="county_id" valueNumeric="9"/>
-            <column name="municipality" value="Šibenik"/><column name="municipality_id" valueNumeric="8"/>
-            <column name="postal_code" value="22000"/><column name="settlement" value="Šibenik"/>
-            <column name="street" value="Obala palih omladinaca"/><column name="house_number" value="8"/>
-            <column name="full_address" value="Obala palih omladinaca 8, 22000 Šibenik"/>
-        </insert>
-    </changeSet>
-
     <changeSet id="101-str-seed-subjects-extra" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.subject WHERE id = 2</sqlCheck>
         </preConditions>
-        <!-- Ana Anić, Dubrovnik -->
+        <!-- Ana Anić -->
         <insert schemaName="str" tableName="subject"><column name="id" valueNumeric="2"/><column name="active" valueBoolean="true"/><column name="jips" value="19819819816"/></insert>
         <insert schemaName="str" tableName="subject_version"><column name="id" valueNumeric="2"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="2"/><column name="first_name" value="Ana"/><column name="last_name" value="Anić"/><column name="pin" value="19819819816"/><column name="historical" valueBoolean="false"/></insert>
         <insert schemaName="str" tableName="subject_address"><column name="id" valueNumeric="2"/><column name="active" valueBoolean="true"/><column name="subject_version_id" valueNumeric="2"/><column name="address_id" valueNumeric="2"/></insert>
 
-        <!-- Marko Marić, Osijek -->
+        <!-- Marko Marić -->
         <insert schemaName="str" tableName="subject"><column name="id" valueNumeric="3"/><column name="active" valueBoolean="true"/><column name="jips" value="38503895634"/></insert>
         <insert schemaName="str" tableName="subject_version"><column name="id" valueNumeric="3"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="3"/><column name="first_name" value="Marko"/><column name="last_name" value="Marić"/><column name="pin" value="38503895634"/><column name="historical" valueBoolean="false"/></insert>
         <insert schemaName="str" tableName="subject_address"><column name="id" valueNumeric="3"/><column name="active" valueBoolean="true"/><column name="subject_version_id" valueNumeric="3"/><column name="address_id" valueNumeric="3"/></insert>
 
-        <!-- Ivana Ivić, Zadar -->
+        <!-- Ivana Ivić -->
         <insert schemaName="str" tableName="subject"><column name="id" valueNumeric="4"/><column name="active" valueBoolean="true"/><column name="jips" value="39867722683"/></insert>
         <insert schemaName="str" tableName="subject_version"><column name="id" valueNumeric="4"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="4"/><column name="first_name" value="Ivana"/><column name="last_name" value="Ivić"/><column name="pin" value="39867722683"/><column name="historical" valueBoolean="false"/></insert>
         <insert schemaName="str" tableName="subject_address"><column name="id" valueNumeric="4"/><column name="active" valueBoolean="true"/><column name="subject_version_id" valueNumeric="4"/><column name="address_id" valueNumeric="4"/></insert>
 
-        <!-- Stjepan Stjepić, Split -->
+        <!-- Stjepan Stjepić -->
         <insert schemaName="str" tableName="subject"><column name="id" valueNumeric="5"/><column name="active" valueBoolean="true"/><column name="jips" value="18459658359"/></insert>
         <insert schemaName="str" tableName="subject_version"><column name="id" valueNumeric="5"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="5"/><column name="first_name" value="Stjepan"/><column name="last_name" value="Stjepić"/><column name="pin" value="18459658359"/><column name="historical" valueBoolean="false"/></insert>
         <insert schemaName="str" tableName="subject_address"><column name="id" valueNumeric="5"/><column name="active" valueBoolean="true"/><column name="subject_version_id" valueNumeric="5"/><column name="address_id" valueNumeric="5"/></insert>
 
-        <!-- Jelena Jelić, Zagreb (drugi Zagreb subject) -->
+        <!-- Jelena Jelić -->
         <insert schemaName="str" tableName="subject"><column name="id" valueNumeric="6"/><column name="active" valueBoolean="true"/><column name="jips" value="90064042706"/></insert>
         <insert schemaName="str" tableName="subject_version"><column name="id" valueNumeric="6"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="6"/><column name="first_name" value="Jelena"/><column name="last_name" value="Jelić"/><column name="pin" value="90064042706"/><column name="historical" valueBoolean="false"/></insert>
         <insert schemaName="str" tableName="subject_address"><column name="id" valueNumeric="6"/><column name="active" valueBoolean="true"/><column name="subject_version_id" valueNumeric="6"/><column name="address_id" valueNumeric="6"/></insert>
 
-        <!-- Tomislav Tomić, Karlovac -->
+        <!-- Tomislav Tomić -->
         <insert schemaName="str" tableName="subject"><column name="id" valueNumeric="7"/><column name="active" valueBoolean="true"/><column name="jips" value="36699312733"/></insert>
         <insert schemaName="str" tableName="subject_version"><column name="id" valueNumeric="7"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="7"/><column name="first_name" value="Tomislav"/><column name="last_name" value="Tomić"/><column name="pin" value="36699312733"/><column name="historical" valueBoolean="false"/></insert>
         <insert schemaName="str" tableName="subject_address"><column name="id" valueNumeric="7"/><column name="active" valueBoolean="true"/><column name="subject_version_id" valueNumeric="7"/><column name="address_id" valueNumeric="7"/></insert>
 
-        <!-- Marija Marić, Šibenik -->
+        <!-- Marija Marić -->
         <insert schemaName="str" tableName="subject"><column name="id" valueNumeric="8"/><column name="active" valueBoolean="true"/><column name="jips" value="65049062208"/></insert>
         <insert schemaName="str" tableName="subject_version"><column name="id" valueNumeric="8"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="8"/><column name="first_name" value="Marija"/><column name="last_name" value="Marić"/><column name="pin" value="65049062208"/><column name="historical" valueBoolean="false"/></insert>
         <insert schemaName="str" tableName="subject_address"><column name="id" valueNumeric="8"/><column name="active" valueBoolean="true"/><column name="subject_version_id" valueNumeric="8"/><column name="address_id" valueNumeric="8"/></insert>

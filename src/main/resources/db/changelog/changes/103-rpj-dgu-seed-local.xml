@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Seed for rpj_dgu.drzava — 15 countries for the country-of-residence dropdown
+      on /register (non-EU lessor sign-up). Republika Hrvatska is included so the
+      frontend filter that excludes the host country exercises its branch.
+
+      IDs mimic the dev INSPIRE format (numeric(18,0)) using a stable offset.
+    -->
+
+    <changeSet id="103-rpj-dgu-seed-drzava" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.drzava</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082329"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000001"/><column name="drz_ime" value="Republika Hrvatska"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082330"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000002"/><column name="drz_ime" value="Bosna i Hercegovina"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082331"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000003"/><column name="drz_ime" value="Slovenija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082332"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000004"/><column name="drz_ime" value="Srbija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082333"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000005"/><column name="drz_ime" value="Mađarska"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082334"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000006"/><column name="drz_ime" value="Italija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082335"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000007"/><column name="drz_ime" value="Austrija"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082336"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000008"/><column name="drz_ime" value="Njemačka"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082337"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000009"/><column name="drz_ime" value="Francuska"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082338"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000010"/><column name="drz_ime" value="Sjedinjene Američke Države"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082339"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000011"/><column name="drz_ime" value="Ujedinjeno Kraljevstvo"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082340"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000012"/><column name="drz_ime" value="Slovačka"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082341"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000013"/><column name="drz_ime" value="Češka"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082342"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000014"/><column name="drz_ime" value="Poljska"/></insert>
+        <insert schemaName="rpj_dgu" tableName="drzava"><column name="id" valueNumeric="2195082343"/><column name="inspire_id" value="HR.DGU.RPJ:DR.0000000015"/><column name="drz_ime" value="Švicarska"/></insert>
+    </changeSet>
+
+</databaseChangeLog>

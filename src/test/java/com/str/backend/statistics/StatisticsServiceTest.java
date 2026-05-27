@@ -34,7 +34,7 @@ class StatisticsServiceTest {
 
     @Test
     void bpso_emitsRowForEveryActiveCounty_evenWithZeroData() {
-        when(countyRepository.findByActiveTrueOrderByName()).thenReturn(List.of(
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "Splitsko-dalmatinska županija"),
                 county(2L, "Grad Zagreb")
         ));
@@ -54,7 +54,7 @@ class StatisticsServiceTest {
 
     @Test
     void bpso_aggregatesRnsByStatusPerCounty_andComputesRate() {
-        when(countyRepository.findByActiveTrueOrderByName()).thenReturn(List.of(
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "Splitsko-dalmatinska županija")
         ));
         when(accommodationRepository.countByCounty()).thenReturn(List.of(
@@ -80,7 +80,7 @@ class StatisticsServiceTest {
 
     @Test
     void bpso_surfacesOrphanCountiesUnderOtherBucket_andTotalsRemainEqualToSumOfRows() {
-        when(countyRepository.findByActiveTrueOrderByName()).thenReturn(List.of(
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "Zagrebačka županija")
         ));
         // 5 accommodations in a county that isn't active (e.g. renamed/typo)
@@ -107,7 +107,7 @@ class StatisticsServiceTest {
 
     @Test
     void bpso_sortsByAccommodationsDescThenByName() {
-        when(countyRepository.findByActiveTrueOrderByName()).thenReturn(List.of(
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "A-zupanija"),
                 county(2L, "B-zupanija"),
                 county(3L, "C-zupanija")
@@ -130,7 +130,7 @@ class StatisticsServiceTest {
         CountyEntity c = new CountyEntity() {};
         ReflectionTestUtils.setField(c, "id", id);
         ReflectionTestUtils.setField(c, "name", name);
-        ReflectionTestUtils.setField(c, "active", true);
+        ReflectionTestUtils.setField(c, "zuRb", id.intValue());
         return c;
     }
 
