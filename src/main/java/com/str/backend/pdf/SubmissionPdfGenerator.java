@@ -19,7 +19,6 @@ import org.springframework.stereotype.Component;
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -45,28 +44,13 @@ public class SubmissionPdfGenerator {
     private static final Font FNT_IZJAVA;
 
     static {
-        BaseFont bf  = loadFont("fonts/arial.ttf");
+        BaseFont bf  = PdfFonts.loadArial();
         FNT_HEADER   = new Font(bf, 13, Font.NORMAL, BLUE);
         FNT_SECTION  = new Font(bf,  9, Font.NORMAL, BLUE);
         FNT_LABEL     = new Font(bf,       9, Font.NORMAL, BLUE);
         FNT_VALUE     = new Font(bf,       9, Font.NORMAL, BLACK);
         FNT_SMALL     = new Font(bf,       8, Font.NORMAL, BLACK);
         FNT_IZJAVA    = new Font(bf,       8, Font.NORMAL, BLACK);
-    }
-
-    private static BaseFont loadFont(String resourcePath) {
-        try {
-            InputStream is = SubmissionPdfGenerator.class.getClassLoader().getResourceAsStream(resourcePath);
-            if (is != null) {
-                byte[] bytes = is.readAllBytes();
-                return BaseFont.createFont(resourcePath, BaseFont.IDENTITY_H, BaseFont.EMBEDDED, true, bytes, null);
-            }
-        } catch (Exception ignored) {}
-        try {
-            return BaseFont.createFont(BaseFont.HELVETICA, "Cp1250", BaseFont.NOT_EMBEDDED);
-        } catch (Exception e) {
-            throw new IllegalStateException("Cannot initialise PDF fonts", e);
-        }
     }
 
     public byte[] generate(RegistrationRequest req, String countyName, LessorEntity lessor, String filingNumber) {

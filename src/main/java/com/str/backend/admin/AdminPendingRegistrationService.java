@@ -14,16 +14,24 @@ import com.str.backend.lessor.LessorDocumentEntity;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFFont;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -121,6 +129,62 @@ public class AdminPendingRegistrationService {
         ));
     }
 
+    @Transactional(readOnly = true)
+    public byte[] exportXlsx(LessorApplicationStatus status, String q, String country, String documentType) {
+        LessorApplicationStatus effectiveStatus = status != null ? status : LessorApplicationStatus.PENDING;
+        List<PendingRegistrationSummaryDto> rows = lessorRepository
+                .searchRegistrations(effectiveStatus, blankToNull(q), blankToNull(country),
+                        blankToNull(documentType), Pageable.unpaged())
+                .getContent();
+
+        DateTimeFormatter dateFmt     = DateTimeFormatter.ofPattern("dd.MM.yyyy.");
+        DateTimeFormatter dateTimeFmt = DateTimeFormatter.ofPattern("dd.MM.yyyy. HH:mm");
+
+        try (XSSFWorkbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            Sheet sheet = wb.createSheet("Zahtjevi za registraciju");
+
+            XSSFFont boldFont = wb.createFont();
+            boldFont.setBold(true);
+            CellStyle headerStyle = wb.createCellStyle();
+            headerStyle.setFont(boldFont);
+
+            String[] headers = {
+                    "Ime", "Prezime", "Email", "Datum rođenja", "Vrsta dokumenta",
+                    "Broj dokumenta", "Država boravka", "OIB / porezni broj", "Status", "Datum zahtjeva"
+            };
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                var cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int rowIdx = 1;
+            for (PendingRegistrationSummaryDto row : rows) {
+                Row r = sheet.createRow(rowIdx++);
+                r.createCell(0).setCellValue(nullToEmpty(row.firstName()));
+                r.createCell(1).setCellValue(nullToEmpty(row.lastName()));
+                r.createCell(2).setCellValue(nullToEmpty(row.email()));
+                r.createCell(3).setCellValue(row.dateOfBirth() != null
+                        ? row.dateOfBirth().format(dateFmt) : "");
+                r.createCell(4).setCellValue(translateDocumentType(row.documentType()));
+                r.createCell(5).setCellValue(nullToEmpty(row.documentNumber()));
+                r.createCell(6).setCellValue(nullToEmpty(row.countryOfResidenceName()));
+                r.createCell(7).setCellValue(nullToEmpty(row.taxNumber()));
+                r.createCell(8).setCellValue(translateApplicationStatus(row.applicationStatus()));
+                r.createCell(9).setCellValue(row.createdAt() != null
+                        ? row.createdAt().atZone(ZONE).format(dateTimeFmt) : "");
+            }
+
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate Excel export", e);
+        }
+    }
+
     private LessorEntity findPendingOrThrow(UUID lessorId) {
         return lessorRepository.findByLessorIdAndApplicationStatus(lessorId, LessorApplicationStatus.PENDING)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -165,6 +229,28 @@ public class AdminPendingRegistrationService {
         return countryRepository.findById(countryId.longValue())
                 .map(CountryEntity::getName)
                 .orElse(null);
+    }
+
+    private static String translateDocumentType(String type) {
+        if (type == null) return "";
+        return switch (type) {
+            case "PASSPORT" -> "Putovnica";
+            case "ID_CARD"  -> "Osobna iskaznica";
+            default         -> type;
+        };
+    }
+
+    private static String translateApplicationStatus(LessorApplicationStatus status) {
+        if (status == null) return "";
+        return switch (status) {
+            case PENDING  -> "Na čekanju";
+            case ACCEPTED -> "Odobreno";
+            case REJECTED -> "Odbijeno";
+        };
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
     }
 
     private static String blankToNull(String value) {
