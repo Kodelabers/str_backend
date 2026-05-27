@@ -19,6 +19,11 @@ public interface AccommodationRepository extends JpaRepository<AccommodationEnti
     @Query("SELECT a.county AS county, COUNT(a) AS count FROM AccommodationEntity a GROUP BY a.county")
     List<CountyCount> countByCounty();
 
+    /** Lookup: distinct county names present in accommodation data, alphabetically sorted. */
+    @Transactional(readOnly = true)
+    @Query("SELECT DISTINCT a.county FROM AccommodationEntity a WHERE a.county IS NOT NULL ORDER BY a.county")
+    List<String> findDistinctCountiesOrderByName();
+
     interface CountyCount {
         String getCounty();
         long getCount();
