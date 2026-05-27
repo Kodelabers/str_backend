@@ -23,7 +23,7 @@ import java.util.Set;
 @Service
 public class StatisticsService {
 
-    /** Synthetic county id for accommodations whose county name doesn't match any active CountyEntity. */
+    /** Synthetic county id for accommodations whose county name doesn't match any known CountyEntity. */
     static final String OTHER_COUNTY_ID = "OTHER";
 
     private final AccommodationRepository accommodationRepository;
@@ -40,7 +40,7 @@ public class StatisticsService {
 
     @Transactional(readOnly = true)
     public BpsoResponse bpso() {
-        List<CountyEntity> activeCounties = countyRepository.findByActiveTrueOrderByName();
+        List<CountyEntity> activeCounties = countyRepository.findAllByOrderByZuRb();
         Set<String> activeNames = new HashSet<>(activeCounties.size());
         for (CountyEntity c : activeCounties) activeNames.add(c.getName());
 

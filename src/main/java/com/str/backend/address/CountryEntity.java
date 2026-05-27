@@ -8,6 +8,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Immutable;
 
+/**
+ * TEMPORARY: still mapped to str.country because dev rpj_dgu.drzava only has 1 row
+ * (Republika Hrvatska). Switch to rpj_dgu.drzava once GIS populates the registry.
+ */
 @Entity
 @Immutable
 @Table(schema = "str", name = "country")

@@ -20,8 +20,6 @@
     <include file="db/changelog/changes/019-lessor-email-nullable.xml"/>
     <include file="db/changelog/changes/020-accommodation-type-add-group.xml"/>
 
-    <include file="db/changelog/changes/021-str-seed-expand-local.xml"/>
-    <include file="db/changelog/changes/022-str-seed-missing-house-numbers.xml"/>
     <include file="db/changelog/changes/023-lessor-credentials.xml"/>
     <include file="db/changelog/changes/024-spring-session.xml"/>
     <include file="db/changelog/changes/025-authority.xml"/>
@@ -38,10 +36,28 @@
     <include file="db/changelog/changes/036-lessor-application-status.xml"/>
     <include file="db/changelog/changes/037-submission-status-tighten.xml"/>
 
-    <!-- Mock 'str' schema and seed data — gated by Liquibase context="local" -->
+    <!-- Mock 'str' schema (subject lookup only) — gated by Liquibase context="local".
+         Address-hierarchy + lessor-address mocks moved to rpj_dgu/eturizam_test (TBD). -->
     <include file="db/changelog/changes/100-str-schema-local.xml"/>
     <include file="db/changelog/changes/101-str-seed-local.xml"/>
-    <include file="db/changelog/changes/032-str-seed-local-expand-v2.xml"/>
+
+    <!-- Mock 'rpj_dgu' schema — gated by context="local". Only 'drzava' is mocked for now;
+         zupanije/gradovi_i_opcine/naselja/postanski_brojevi TBD. -->
+    <include file="db/changelog/changes/102-rpj-dgu-schema-local.xml"/>
+    <include file="db/changelog/changes/103-rpj-dgu-seed-local.xml"/>
+
+    <!-- TEMPORARY: restore str.country mock because dev rpj_dgu.drzava holds only HR.
+         Remove once GIS populates rpj_dgu.drzava and CountryEntity flips back. -->
+    <include file="db/changelog/changes/104-str-country-restore-local.xml"/>
+
+    <!-- Mock rpj_dgu address hierarchy (zupanije / gradovi_i_opcine / naselja /
+         postanski_brojevi) — gated by context="local". -->
+    <include file="db/changelog/changes/105-rpj-dgu-address-schema-local.xml"/>
+    <include file="db/changelog/changes/106-rpj-dgu-address-seed-local.xml"/>
+
+    <!-- Mock eturizam_test schema (ar_ulice + ar_address) — gated by context="local". -->
+    <include file="db/changelog/changes/107-eturizam-test-schema-local.xml"/>
+    <include file="db/changelog/changes/108-eturizam-test-seed-local.xml"/>
 
     <!-- Mock RN + Booking/Airbnb activity seed for analytics — gated by context="local" -->
     <include file="db/changelog/changes/036-mock-rn-activity-seed.xml"/>

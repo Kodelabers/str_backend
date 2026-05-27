@@ -10,6 +10,10 @@
       In dev/prod 'str.*' is owned by another service; we read from it but never write.
       Locally we recreate just the columns the code consumes.
 
+      Address-hierarchy and country tables (county/municipality/settlement/street/
+      house_number/address/country) have moved to rpj_dgu + eturizam_test schemas;
+      their local mocks live in a separate changelog (TBD).
+
       INTENTIONALLY LOOSE SCHEMA: FK constraints and NOT NULLs are omitted to keep
       the mock simple. This means invalid data can be inserted locally without error.
       All write paths that reference str.* tables must be validated against the dev
@@ -22,104 +26,6 @@
 
     <changeSet id="100-str-schema" author="str-backend" context="local">
         <sql>CREATE SCHEMA IF NOT EXISTS str</sql>
-    </changeSet>
-
-    <changeSet id="100-str-country" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <not><tableExists schemaName="str" tableName="country"/></not>
-        </preConditions>
-        <createTable schemaName="str" tableName="country">
-            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
-            <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
-            <column name="iso2_alpha" type="VARCHAR(2)"/>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
-        </createTable>
-    </changeSet>
-
-    <changeSet id="100-str-county" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <not><tableExists schemaName="str" tableName="county"/></not>
-        </preConditions>
-        <createTable schemaName="str" tableName="county">
-            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
-            <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
-        </createTable>
-    </changeSet>
-
-    <changeSet id="100-str-municipality" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <not><tableExists schemaName="str" tableName="municipality"/></not>
-        </preConditions>
-        <createTable schemaName="str" tableName="municipality">
-            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
-            <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
-            <column name="county_id" type="BIGINT"><constraints nullable="false"/></column>
-            <column name="type_code" type="VARCHAR(16)"/>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
-        </createTable>
-    </changeSet>
-
-    <changeSet id="100-str-settlement" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <not><tableExists schemaName="str" tableName="settlement"/></not>
-        </preConditions>
-        <createTable schemaName="str" tableName="settlement">
-            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
-            <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
-            <column name="postal_code" type="VARCHAR(16)"/>
-            <column name="municipality_id" type="BIGINT"><constraints nullable="false"/></column>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
-        </createTable>
-    </changeSet>
-
-    <changeSet id="100-str-street" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <not><tableExists schemaName="str" tableName="street"/></not>
-        </preConditions>
-        <createTable schemaName="str" tableName="street">
-            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
-            <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
-            <column name="settlement_id" type="BIGINT"><constraints nullable="false"/></column>
-            <column name="type_code" type="VARCHAR(16)"/>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
-        </createTable>
-    </changeSet>
-
-    <changeSet id="100-str-house-number" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <not><tableExists schemaName="str" tableName="house_number"/></not>
-        </preConditions>
-        <createTable schemaName="str" tableName="house_number">
-            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
-            <column name="name" type="VARCHAR(32)"><constraints nullable="false"/></column>
-            <column name="street_id" type="BIGINT"><constraints nullable="false"/></column>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
-        </createTable>
-    </changeSet>
-
-    <changeSet id="100-str-address" author="str-backend" context="local">
-        <preConditions onFail="MARK_RAN">
-            <not><tableExists schemaName="str" tableName="address"/></not>
-        </preConditions>
-        <createTable schemaName="str" tableName="address">
-            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
-            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
-            <column name="country_id" type="BIGINT"/>
-            <column name="settlement_id" type="BIGINT"/>
-            <column name="street_id" type="BIGINT"/>
-            <column name="house_number_id" type="BIGINT"/>
-            <column name="county" type="VARCHAR(128)"/>
-            <column name="county_id" type="BIGINT"/>
-            <column name="municipality" type="VARCHAR(128)"/>
-            <column name="municipality_id" type="BIGINT"/>
-            <column name="postal_code" type="VARCHAR(16)"/>
-            <column name="settlement" type="VARCHAR(128)"/>
-            <column name="street" type="VARCHAR(128)"/>
-            <column name="house_number" type="VARCHAR(32)"/>
-            <column name="full_address" type="VARCHAR(512)"/>
-            <column name="address_description" type="VARCHAR(512)"/>
-        </createTable>
     </changeSet>
 
     <changeSet id="100-str-subject" author="str-backend" context="local">

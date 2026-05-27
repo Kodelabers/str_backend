@@ -20,15 +20,27 @@ Five Spring profiles — `local` (default), `mock`, `dev`, `test`, `prod`. Overr
 
 | Profile | DB | Notes |
 |---|---|---|
-| `local` | `localhost:5432/str_db_local`, user `postgres` | `LocalDatabaseConfig` auto-creates the DB **and `str_rn` schema** before Liquibase runs; Liquibase runs `context=local` (mock `str` schema + 8 test lessors). Password via `LOCAL_DB_PASSWORD` env var (default `postgres`) |
-| `mock` | Railway PostgreSQL via `PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD` | DB provisioned by Railway; `LocalDatabaseConfig` only creates `str_rn` schema; Liquibase runs `context=local` (same mock `str` schema + seed). Set `SPRING_PROFILES_ACTIVE=mock` in Railway service env vars. |
-| `dev` | shared dev PostgreSQL `s-str-02.infodom.hr:5431/str2` | `str` schema is owned by another service — read-only; Liquibase only manages `str_rn` |
+| `local` | `localhost:5432/str_db_local`, user `postgres` | `LocalDatabaseConfig` auto-creates the DB **and `str_rn` schema** before Liquibase runs; Liquibase runs `context=local` (mocks `str.subject*` + the rpj_dgu / eturizam_test address hierarchy + a temporary `str.country` restore until rpj_dgu.drzava is populated on dev). Password via `LOCAL_DB_PASSWORD` env var (default `postgres`) |
+| `mock` | Railway PostgreSQL via `PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD` | DB provisioned by Railway; `LocalDatabaseConfig` only creates `str_rn` schema; Liquibase runs `context=local` (same mock set). Set `SPRING_PROFILES_ACTIVE=mock` in Railway service env vars. |
+| `dev` | shared dev PostgreSQL `s-str-02.infodom.hr:5431/str2` | `str`, `rpj_dgu`, `eturizam_test` schemas are owned by other services — read-only; Liquibase only manages `str_rn` |
 | `test` | real PostgreSQL via `TEST_DB_URL/USERNAME/PASSWORD` env vars | Liquibase runs migrations only |
 | `prod` | real PostgreSQL via `PROD_DB_URL/USERNAME/PASSWORD` env vars | same as test |
 
 Unit tests (`@ActiveProfiles("test")`) use H2 from `src/test/resources/application-test.properties` — the test classpath file overrides the main one, so JUnit tests are unaffected by the real `test` env config.
 
-The `str` schema (subject, subject_version, subject_address, address, county, municipality, settlement, street, house_number) is owned externally. On `dev`/`prod` we read from the real registry. On `local` we mock those tables via Liquibase changesets `100-str-schema-local.xml` and `101-str-seed-local.xml`, both gated by `context="local"` and activated via `spring.liquibase.contexts=local` in `application-local.properties`.
+Two external read-only schema families:
+
+- `str` — `subject`, `subject_version`, `subject_address`, `address`, `country` (still used by `StrLessorLookupService` to resolve OIB → lessor identity + home address, and by `CountryRepository` for the country dropdown). On `dev`/`prod` these are fully populated by the upstream service; on `local`/`mock` only `subject*` are mocked, `address`/`country` mocks are TBD on `rpj_dgu`/`eturizam_test`. The address-hierarchy tables (`county`, `municipality`, `settlement`, `street`, `house_number`) used to live here but have been migrated off — see below.
+- `rpj_dgu` + `eturizam_test` — DGU registar prostornih jedinica + eTurizam adresni registar. Address hierarchy for the registration form now reads from these:
+  - `CountyEntity` → `rpj_dgu.zupanije` (id, zu_ime, zu_rb)
+  - `MunicipalityEntity` → `rpj_dgu.gradovi_i_opcine` (id, jls_ime, jls_mb, zu_rb)
+  - `SettlementEntity` → `rpj_dgu.naselja` (id, na_ime, na_mb, jls_mb)
+  - `StreetEntity` → `eturizam_test.ar_ulice` (id, naziv_ulice, naselje_id varchar)
+  - `HouseNumberEntity` → `eturizam_test.ar_address` (id, broj, ulica_id)
+  - Joins use string FKs (zu_rb, jls_mb LPAD'd to 5, na_mb varchar 6), so several repository queries are native SQL.
+  - Postal code is resolved via name-based LEFT JOIN on `rpj_dgu.postanski_brojevi` (≈98.6% match rate).
+
+On `dev`/`prod` we read from the real registries. On `local`/`mock` the address hierarchy (rpj_dgu.zupanije / gradovi_i_opcine / naselja / postanski_brojevi + eturizam_test.ar_ulice / ar_address) is seeded with 4 counties / 7 municipalities / 10 settlements / 14 streets / 42 house numbers so the registration form walks end-to-end. The country dropdown reads from `str.country` (temporary restore — see comment in `104-str-country-restore-local.xml`); flip `CountryEntity` back to `rpj_dgu.drzava` and drop that changeset once GIS populates the registry. The `str.address` mock is still TBD — OIB lookup for non-test subjects will fail locally until then. Liquibase context gating is via `spring.liquibase.contexts=local` in `application-local.properties`.
 
 ## Architecture
 

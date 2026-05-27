@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      TEMPORARY: restores the str.country mock for the country-of-residence dropdown
+      on non-EU lessor sign-up. Dev rpj_dgu.drzava currently holds only Republika
+      Hrvatska, so CountryEntity is still mapped to str.country until GIS populates
+      the registry. When that happens, remove this changeset, drop str.country, and
+      flip CountryEntity back to rpj_dgu.drzava (the schema + 15-row seed already
+      live in 102-rpj-dgu-schema-local.xml / 103-rpj-dgu-seed-local.xml).
+    -->
+
+    <changeSet id="104-str-country-restore" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="country"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="country">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(128)"><constraints nullable="false"/></column>
+            <column name="iso2_alpha" type="VARCHAR(2)"/>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="104-str-country-restore-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.country</sqlCheck>
+        </preConditions>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="1"/><column name="name" value="Albanija"/><column name="iso2_alpha" value="AL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="2"/><column name="name" value="Austrija"/><column name="iso2_alpha" value="AT"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="3"/><column name="name" value="Bosna i Hercegovina"/><column name="iso2_alpha" value="BA"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="4"/><column name="name" value="Crna Gora"/><column name="iso2_alpha" value="ME"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="5"/><column name="name" value="Češka"/><column name="iso2_alpha" value="CZ"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="6"/><column name="name" value="Francuska"/><column name="iso2_alpha" value="FR"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="7"/><column name="name" value="Hrvatska"/><column name="iso2_alpha" value="HR"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="8"/><column name="name" value="Italija"/><column name="iso2_alpha" value="IT"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="9"/><column name="name" value="Mađarska"/><column name="iso2_alpha" value="HU"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="10"/><column name="name" value="Nizozemska"/><column name="iso2_alpha" value="NL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="11"/><column name="name" value="Njemačka"/><column name="iso2_alpha" value="DE"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="12"/><column name="name" value="Poljska"/><column name="iso2_alpha" value="PL"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="13"/><column name="name" value="Sjedinjene Američke Države"/><column name="iso2_alpha" value="US"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="14"/><column name="name" value="Sjeverna Makedonija"/><column name="iso2_alpha" value="MK"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="15"/><column name="name" value="Slovačka"/><column name="iso2_alpha" value="SK"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="16"/><column name="name" value="Slovenija"/><column name="iso2_alpha" value="SI"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="17"/><column name="name" value="Srbija"/><column name="iso2_alpha" value="RS"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="18"/><column name="name" value="Španjolska"/><column name="iso2_alpha" value="ES"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="19"/><column name="name" value="Švicarska"/><column name="iso2_alpha" value="CH"/><column name="active" valueBoolean="true"/></insert>
+        <insert schemaName="str" tableName="country"><column name="id" valueNumeric="20"/><column name="name" value="Ujedinjeno Kraljevstvo"/><column name="iso2_alpha" value="GB"/><column name="active" valueBoolean="true"/></insert>
+    </changeSet>
+
+</databaseChangeLog>

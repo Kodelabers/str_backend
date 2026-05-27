@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Seed for eturizam_test.ar_ulice + ar_address. One or two streets per
+      mocked settlement, three house numbers per street, so the registration
+      form can be walked end-to-end. naselje_id values mirror naselja.na_mb
+      from 106-rpj-dgu-address-seed-local.xml.
+    -->
+
+    <changeSet id="108-eturizam-test-seed-ar-ulice" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM eturizam_test.ar_ulice</sqlCheck>
+        </preConditions>
+        <!-- Zagreb (210001) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1001"/><column name="naselje_id" value="210001"/><column name="naziv_ulice" value="Ilica"/><column name="tip_ulice" value="ULICA"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1002"/><column name="naselje_id" value="210001"/><column name="naziv_ulice" value="Vlaška ulica"/><column name="tip_ulice" value="ULICA"/></insert>
+        <!-- Maksimir (210002) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1003"/><column name="naselje_id" value="210002"/><column name="naziv_ulice" value="Maksimirska cesta"/><column name="tip_ulice" value="CESTA"/></insert>
+        <!-- Trešnjevka (210003) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1004"/><column name="naselje_id" value="210003"/><column name="naziv_ulice" value="Selska cesta"/><column name="tip_ulice" value="CESTA"/></insert>
+        <!-- Split (170001) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1005"/><column name="naselje_id" value="170001"/><column name="naziv_ulice" value="Riva"/><column name="tip_ulice" value="OBALA"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1006"/><column name="naselje_id" value="170001"/><column name="naziv_ulice" value="Marmontova ulica"/><column name="tip_ulice" value="ULICA"/></insert>
+        <!-- Stobreč (170002) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1007"/><column name="naselje_id" value="170002"/><column name="naziv_ulice" value="Sv. Lovre"/><column name="tip_ulice" value="ULICA"/></insert>
+        <!-- Trogir (170003) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1008"/><column name="naselje_id" value="170003"/><column name="naziv_ulice" value="Obala bana Berislavića"/><column name="tip_ulice" value="OBALA"/></insert>
+        <!-- Pula (180001) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1009"/><column name="naselje_id" value="180001"/><column name="naziv_ulice" value="Flanatička ulica"/><column name="tip_ulice" value="ULICA"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1010"/><column name="naselje_id" value="180001"/><column name="naziv_ulice" value="Giardini"/><column name="tip_ulice" value="TRG"/></insert>
+        <!-- Rovinj (180002) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1011"/><column name="naselje_id" value="180002"/><column name="naziv_ulice" value="Carera"/><column name="tip_ulice" value="ULICA"/></insert>
+        <!-- Rijeka (080001) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1012"/><column name="naselje_id" value="080001"/><column name="naziv_ulice" value="Korzo"/><column name="tip_ulice" value="ULICA"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1013"/><column name="naselje_id" value="080001"/><column name="naziv_ulice" value="Riva"/><column name="tip_ulice" value="OBALA"/></insert>
+        <!-- Opatija (080002) -->
+        <insert schemaName="eturizam_test" tableName="ar_ulice"><column name="id" valueNumeric="1014"/><column name="naselje_id" value="080002"/><column name="naziv_ulice" value="Maršala Tita"/><column name="tip_ulice" value="ULICA"/></insert>
+    </changeSet>
+
+    <changeSet id="108-eturizam-test-seed-ar-address" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM eturizam_test.ar_address</sqlCheck>
+        </preConditions>
+        <!-- 3 numbers per street -->
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10011"/><column name="broj" value="1"/><column name="ulica_id" valueNumeric="1001"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10012"/><column name="broj" value="3"/><column name="ulica_id" valueNumeric="1001"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10013"/><column name="broj" value="5"/><column name="ulica_id" valueNumeric="1001"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10021"/><column name="broj" value="2"/><column name="ulica_id" valueNumeric="1002"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10022"/><column name="broj" value="4"/><column name="ulica_id" valueNumeric="1002"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10023"/><column name="broj" value="6"/><column name="ulica_id" valueNumeric="1002"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10031"/><column name="broj" value="10"/><column name="ulica_id" valueNumeric="1003"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10032"/><column name="broj" value="12"/><column name="ulica_id" valueNumeric="1003"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10033"/><column name="broj" value="14"/><column name="ulica_id" valueNumeric="1003"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10041"/><column name="broj" value="20"/><column name="ulica_id" valueNumeric="1004"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10042"/><column name="broj" value="22"/><column name="ulica_id" valueNumeric="1004"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10043"/><column name="broj" value="24"/><column name="ulica_id" valueNumeric="1004"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10051"/><column name="broj" value="1"/><column name="ulica_id" valueNumeric="1005"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10052"/><column name="broj" value="3"/><column name="ulica_id" valueNumeric="1005"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10053"/><column name="broj" value="5"/><column name="ulica_id" valueNumeric="1005"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10061"/><column name="broj" value="2"/><column name="ulica_id" valueNumeric="1006"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10062"/><column name="broj" value="4"/><column name="ulica_id" valueNumeric="1006"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10063"/><column name="broj" value="6"/><column name="ulica_id" valueNumeric="1006"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10071"/><column name="broj" value="1"/><column name="ulica_id" valueNumeric="1007"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10072"/><column name="broj" value="3"/><column name="ulica_id" valueNumeric="1007"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10073"/><column name="broj" value="5"/><column name="ulica_id" valueNumeric="1007"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10081"/><column name="broj" value="2"/><column name="ulica_id" valueNumeric="1008"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10082"/><column name="broj" value="4"/><column name="ulica_id" valueNumeric="1008"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10083"/><column name="broj" value="6"/><column name="ulica_id" valueNumeric="1008"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10091"/><column name="broj" value="1"/><column name="ulica_id" valueNumeric="1009"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10092"/><column name="broj" value="3"/><column name="ulica_id" valueNumeric="1009"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10093"/><column name="broj" value="5"/><column name="ulica_id" valueNumeric="1009"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10101"/><column name="broj" value="2"/><column name="ulica_id" valueNumeric="1010"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10102"/><column name="broj" value="4"/><column name="ulica_id" valueNumeric="1010"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10103"/><column name="broj" value="6"/><column name="ulica_id" valueNumeric="1010"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10111"/><column name="broj" value="1"/><column name="ulica_id" valueNumeric="1011"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10112"/><column name="broj" value="3"/><column name="ulica_id" valueNumeric="1011"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10113"/><column name="broj" value="5"/><column name="ulica_id" valueNumeric="1011"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10121"/><column name="broj" value="2"/><column name="ulica_id" valueNumeric="1012"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10122"/><column name="broj" value="4"/><column name="ulica_id" valueNumeric="1012"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10123"/><column name="broj" value="6"/><column name="ulica_id" valueNumeric="1012"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10131"/><column name="broj" value="1"/><column name="ulica_id" valueNumeric="1013"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10132"/><column name="broj" value="3"/><column name="ulica_id" valueNumeric="1013"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10133"/><column name="broj" value="5"/><column name="ulica_id" valueNumeric="1013"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10141"/><column name="broj" value="2"/><column name="ulica_id" valueNumeric="1014"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10142"/><column name="broj" value="4"/><column name="ulica_id" valueNumeric="1014"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10143"/><column name="broj" value="6"/><column name="ulica_id" valueNumeric="1014"/></insert>
+    </changeSet>
+
+</databaseChangeLog>

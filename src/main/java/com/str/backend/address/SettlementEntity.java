@@ -4,13 +4,15 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.Immutable;
 
 @Entity
 @Immutable
-@Table(schema = "str", name = "settlement")
+@Table(schema = "rpj_dgu", name = "naselja")
 @Getter
 @NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
 public class SettlementEntity {
@@ -19,15 +21,16 @@ public class SettlementEntity {
     @Column(name = "id", nullable = false, updatable = false)
     private Long id;
 
-    @Column(name = "name", nullable = false, updatable = false)
+    @Column(name = "na_ime", nullable = false, updatable = false)
     private String name;
 
-    @Column(name = "postal_code", updatable = false)
+    @Column(name = "na_mb", nullable = false, updatable = false)
+    private String naMb;
+
+    @Column(name = "jls_mb", updatable = false)
+    private Long jlsMb;
+
+    @Transient
+    @Setter
     private String postalCode;
-
-    @Column(name = "municipality_id", nullable = false, updatable = false)
-    private Long municipalityId;
-
-    @Column(name = "active", nullable = false, updatable = false)
-    private boolean active;
 }

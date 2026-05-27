@@ -8,7 +8,7 @@ import java.util.List;
 @Transactional(readOnly = true)
 public interface CountyRepository extends JpaRepository<CountyEntity, Long> {
 
-    List<CountyEntity> findByActiveTrueOrderByName();
+    List<CountyEntity> findAllByOrderByZuRb();
 
-    List<CountyEntity> findByActiveTrueAndNameContainingIgnoreCaseOrderByName(String name);
+    List<CountyEntity> findByNameContainingIgnoreCaseOrderByZuRb(String name);
 }

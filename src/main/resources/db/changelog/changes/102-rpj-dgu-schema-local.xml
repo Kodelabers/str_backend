@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock of the externally-owned 'rpj_dgu' schema (DGU registar prostornih jedinica)
+      for local development only. Dev/prod read the real registry; on local we recreate
+      just the columns the code consumes — geometry columns are omitted because we
+      don't render maps locally.
+
+      Schema mock is incremental: only 'drzava' is currently mocked. Address-hierarchy
+      tables (zupanije / gradovi_i_opcine / naselja / postanski_brojevi) are TBD.
+    -->
+
+    <changeSet id="102-rpj-dgu-schema" author="str-backend" context="local">
+        <sql>CREATE SCHEMA IF NOT EXISTS rpj_dgu</sql>
+    </changeSet>
+
+    <changeSet id="102-rpj-dgu-drzava" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="rpj_dgu" tableName="drzava"/></not>
+        </preConditions>
+        <createTable schemaName="rpj_dgu" tableName="drzava">
+            <column name="id" type="NUMERIC(18,0)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="inspire_id" type="VARCHAR(50)"/>
+            <column name="drz_ime" type="VARCHAR(100)"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>
