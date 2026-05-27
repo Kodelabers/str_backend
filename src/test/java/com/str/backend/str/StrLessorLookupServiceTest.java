@@ -1,5 +1,6 @@
 package com.str.backend.str;
 
+import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,9 +13,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -23,7 +22,7 @@ class StrLessorLookupServiceTest {
     @Mock private StrSubjectRepository subjectRepo;
     @Mock private StrSubjectVersionRepository versionRepo;
     @Mock private StrSubjectAddressRepository addressRepo;
-    @Mock private StrAddressRepository strAddressRepo;
+    @Mock private HouseNumberRepository houseNumberRepo;
 
     private StrLessorLookupService service;
 
@@ -31,7 +30,7 @@ class StrLessorLookupServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new StrLessorLookupService(subjectRepo, versionRepo, addressRepo, strAddressRepo);
+        service = new StrLessorLookupService(subjectRepo, versionRepo, addressRepo, houseNumberRepo);
     }
 
     @Test
@@ -73,8 +72,9 @@ class StrLessorLookupServiceTest {
         when(versionRepo.findFirstBySubjectIdAndActiveTrueAndHistoricalFalseOrderByIdDesc(1L))
                 .thenReturn(Optional.of(version(10L, "Pero", "Perić", null, OIB)));
         when(addressRepo.findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(10L))
-                .thenReturn(Optional.of(subjectAddress(10L, 100L)));
-        when(strAddressRepo.findById(100L)).thenReturn(Optional.of(address("Ilica", "1", "Zagreb", "Grad Zagreb")));
+                .thenReturn(Optional.of(subjectAddress(10L, 10011L)));
+        when(houseNumberRepo.resolveFullAddress(10011L))
+                .thenReturn(Optional.of(addressProjection("Ilica", "1", "Zagreb", "Grad Zagreb")));
 
         LessorEntity lessor = service.resolveLessor(OIB);
 
@@ -91,8 +91,9 @@ class StrLessorLookupServiceTest {
         when(versionRepo.findFirstBySubjectIdAndActiveTrueAndHistoricalFalseOrderByIdDesc(1L))
                 .thenReturn(Optional.of(version(10L, null, null, "Adria d.o.o.", OIB)));
         when(addressRepo.findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(10L))
-                .thenReturn(Optional.of(subjectAddress(10L, 100L)));
-        when(strAddressRepo.findById(100L)).thenReturn(Optional.of(address("Vukovarska", "15", "Split", "Splitsko-dalmatinska županija")));
+                .thenReturn(Optional.of(subjectAddress(10L, 10021L)));
+        when(houseNumberRepo.resolveFullAddress(10021L))
+                .thenReturn(Optional.of(addressProjection("Vukovarska", "15", "Split", "Splitsko-dalmatinska")));
 
         LessorEntity lessor = service.resolveLessor(OIB);
 
@@ -100,6 +101,16 @@ class StrLessorLookupServiceTest {
     }
 
     // --- fixtures ---
+
+    private HouseNumberRepository.LessorAddressProjection addressProjection(
+            String street, String streetNumber, String settlement, String county) {
+        HouseNumberRepository.LessorAddressProjection p = mock(HouseNumberRepository.LessorAddressProjection.class);
+        when(p.getStreet()).thenReturn(street);
+        when(p.getStreetNumber()).thenReturn(streetNumber);
+        when(p.getSettlement()).thenReturn(settlement);
+        when(p.getCounty()).thenReturn(county);
+        return p;
+    }
 
     private StrSubjectEntity subject(long id) {
         try {
@@ -140,21 +151,6 @@ class StrLessorLookupServiceTest {
             set(sa, "subjectVersionId", versionId);
             set(sa, "addressId", addressId);
             return sa;
-        } catch (Exception e) { throw new RuntimeException(e); }
-    }
-
-    private StrAddressEntity address(String street, String houseNumber, String settlement, String county) {
-        try {
-            var ctor = StrAddressEntity.class.getDeclaredConstructor();
-            ctor.setAccessible(true);
-            var a = ctor.newInstance();
-            set(a, "id", 100L);
-            set(a, "active", true);
-            set(a, "street", street);
-            set(a, "houseNumber", houseNumber);
-            set(a, "settlement", settlement);
-            set(a, "county", county);
-            return a;
         } catch (Exception e) { throw new RuntimeException(e); }
     }
 
