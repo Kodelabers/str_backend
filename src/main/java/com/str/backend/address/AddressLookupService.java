@@ -75,7 +75,7 @@ public class AddressLookupService {
 
     public List<HouseNumberResponse> findHouseNumbers(Long streetId, String q) {
         return houseNumberRepository.findByStreetIdOrderByName(streetId, normalize(q)).stream()
-                .map(e -> new HouseNumberResponse(e.getId(), e.getName()))
+                .map(e -> new HouseNumberResponse(e.getId(), e.getName(), e.getKcBroj(), e.getKatOpcinaNaziv()))
                 .toList();
     }
 

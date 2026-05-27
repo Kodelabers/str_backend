@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Adds cadastral columns to eturizam_test.ar_address for local/mock profiles.
+      The real ar_address table has kc_broj and kat_opcina_id; in production the
+      municipality name would be resolved via a join. Here we denormalise the name
+      directly onto ar_address for simplicity. Both columns are nullable so existing
+      rows without data still work.
+    -->
+
+    <changeSet id="109-ar-address-cadastral-columns" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="eturizam_test" tableName="ar_address" columnName="kc_broj"/></not>
+        </preConditions>
+        <addColumn schemaName="eturizam_test" tableName="ar_address">
+            <column name="kc_broj" type="VARCHAR(50)"/>
+            <column name="kat_opcina_naziv" type="VARCHAR(128)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="109-ar-address-cadastral-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM eturizam_test.ar_address WHERE kc_broj IS NOT NULL
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Grad Zagreb',    kc_broj = '1201/1' WHERE id = 10011;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Grad Zagreb',    kc_broj = '1201/2' WHERE id = 10012;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Grad Zagreb',    kc_broj = '1201/3' WHERE id = 10013;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Grad Zagreb',    kc_broj = '1342/1' WHERE id = 10021;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Grad Zagreb',    kc_broj = '1342/2' WHERE id = 10022;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Grad Zagreb',    kc_broj = '1342/3' WHERE id = 10023;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Maksimir',       kc_broj = '875/1'  WHERE id = 10031;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Maksimir',       kc_broj = '875/2'  WHERE id = 10032;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Maksimir',       kc_broj = '875/3'  WHERE id = 10033;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Trešnjevka',     kc_broj = '2104/1' WHERE id = 10041;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Trešnjevka',     kc_broj = '2104/2' WHERE id = 10042;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Trešnjevka',     kc_broj = '2104/3' WHERE id = 10043;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Split',          kc_broj = '430/1'  WHERE id = 10051;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Split',          kc_broj = '430/2'  WHERE id = 10052;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Split',          kc_broj = '430/3'  WHERE id = 10053;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Split',          kc_broj = '617/1'  WHERE id = 10061;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Split',          kc_broj = '617/2'  WHERE id = 10062;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Split',          kc_broj = '617/3'  WHERE id = 10063;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Stobreč',        kc_broj = '312/1'  WHERE id = 10071;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Stobreč',        kc_broj = '312/2'  WHERE id = 10072;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Stobreč',        kc_broj = '312/3'  WHERE id = 10073;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Trogir',         kc_broj = '508/1'  WHERE id = 10081;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Trogir',         kc_broj = '508/2'  WHERE id = 10082;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Trogir',         kc_broj = '508/3'  WHERE id = 10083;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Pula',           kc_broj = '2233/1' WHERE id = 10091;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Pula',           kc_broj = '2233/2' WHERE id = 10092;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Pula',           kc_broj = '2233/3' WHERE id = 10093;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Pula',           kc_broj = '1987/1' WHERE id = 10101;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Pula',           kc_broj = '1987/2' WHERE id = 10102;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Pula',           kc_broj = '1987/3' WHERE id = 10103;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rovinj',         kc_broj = '756/1'  WHERE id = 10111;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rovinj',         kc_broj = '756/2'  WHERE id = 10112;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rovinj',         kc_broj = '756/3'  WHERE id = 10113;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rijeka',         kc_broj = '3401/1' WHERE id = 10121;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rijeka',         kc_broj = '3401/2' WHERE id = 10122;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rijeka',         kc_broj = '3401/3' WHERE id = 10123;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rijeka',         kc_broj = '2890/1' WHERE id = 10131;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rijeka',         kc_broj = '2890/2' WHERE id = 10132;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Rijeka',         kc_broj = '2890/3' WHERE id = 10133;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Opatija',        kc_broj = '644/1'  WHERE id = 10141;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Opatija',        kc_broj = '644/2'  WHERE id = 10142;
+            UPDATE eturizam_test.ar_address SET kat_opcina_naziv = 'Opatija',        kc_broj = '644/3'  WHERE id = 10143;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

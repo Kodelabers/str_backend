@@ -8,4 +8,6 @@ import lombok.Getter;
 public class HouseNumberResponse {
     private Long id;
     private String name;
+    private String kcBroj;
+    private String katOpcinaNaziv;
 }

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Re-points str.subject_address.address_id to eturizam_test.ar_address IDs so that
+      StrLessorLookupService can resolve the lessor's address through ar_address + ar_ulice
+      instead of the unavailable str.address table.
+
+      Mapping (subject_address.id → ar_address.id):
+        1 (Pero Perić)      → 10011 (Ilica 1, Zagreb)
+        2 (Ana Anić)        → 10051 (Riva 1, Split)
+        3 (Marko Marić)     → 10091 (Flanatička 1, Pula)
+        4 (Ivana Ivić)      → 10081 (Obala bana Berislavića 2, Trogir)
+        5 (Stjepan Stjepić) → 10121 (Korzo 2, Rijeka)
+        6 (Jelena Jelić)    → 10021 (Vlaška 2, Zagreb)
+        7 (Tomislav Tomić)  → 10031 (Maksimirska 10, Maksimir)
+        8 (Marija Marić)    → 10141 (Maršala Tita 2, Opatija)
+    -->
+
+    <changeSet id="110-str-subject-address-link" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str.subject_address WHERE address_id = 10011
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE str.subject_address SET address_id = 10011 WHERE id = 1;
+            UPDATE str.subject_address SET address_id = 10051 WHERE id = 2;
+            UPDATE str.subject_address SET address_id = 10091 WHERE id = 3;
+            UPDATE str.subject_address SET address_id = 10081 WHERE id = 4;
+            UPDATE str.subject_address SET address_id = 10121 WHERE id = 5;
+            UPDATE str.subject_address SET address_id = 10021 WHERE id = 6;
+            UPDATE str.subject_address SET address_id = 10031 WHERE id = 7;
+            UPDATE str.subject_address SET address_id = 10141 WHERE id = 8;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

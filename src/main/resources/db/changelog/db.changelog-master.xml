@@ -58,6 +58,8 @@
     <!-- Mock eturizam_test schema (ar_ulice + ar_address) — gated by context="local". -->
     <include file="db/changelog/changes/107-eturizam-test-schema-local.xml"/>
     <include file="db/changelog/changes/108-eturizam-test-seed-local.xml"/>
+    <include file="db/changelog/changes/109-eturizam-cadastral-local.xml"/>
+    <include file="db/changelog/changes/110-str-subject-address-link-local.xml"/>
 
     <!-- Mock RN + Booking/Airbnb activity seed for analytics — gated by context="local" -->
     <include file="db/changelog/changes/036-mock-rn-activity-seed.xml"/>

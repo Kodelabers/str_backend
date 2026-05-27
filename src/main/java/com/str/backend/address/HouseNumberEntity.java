@@ -24,4 +24,10 @@ public class HouseNumberEntity {
 
     @Column(name = "ulica_id", nullable = false, updatable = false)
     private Long ulicaId;
+
+    @Column(name = "kc_broj", updatable = false)
+    private String kcBroj;
+
+    @Column(name = "kat_opcina_naziv", updatable = false)
+    private String katOpcinaNaziv;
 }

@@ -1,5 +1,6 @@
 package com.str.backend.str;
 
+import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
 import org.springframework.stereotype.Service;
@@ -12,16 +13,16 @@ public class StrLessorLookupService {
     private final StrSubjectRepository subjectRepository;
     private final StrSubjectVersionRepository subjectVersionRepository;
     private final StrSubjectAddressRepository subjectAddressRepository;
-    private final StrAddressRepository addressRepository;
+    private final HouseNumberRepository houseNumberRepository;
 
     public StrLessorLookupService(StrSubjectRepository subjectRepository,
                                   StrSubjectVersionRepository subjectVersionRepository,
                                   StrSubjectAddressRepository subjectAddressRepository,
-                                  StrAddressRepository addressRepository) {
+                                  HouseNumberRepository houseNumberRepository) {
         this.subjectRepository = subjectRepository;
         this.subjectVersionRepository = subjectVersionRepository;
         this.subjectAddressRepository = subjectAddressRepository;
-        this.addressRepository = addressRepository;
+        this.houseNumberRepository = houseNumberRepository;
     }
 
     public LessorEntity resolveLessor(String oib) {
@@ -34,19 +35,19 @@ public class StrLessorLookupService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Aktivna verzija iznajmljivača (subject_version) nije pronađena"));
 
-        StrAddressEntity address = subjectAddressRepository
+        HouseNumberRepository.LessorAddressProjection addr = subjectAddressRepository
                 .findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(version.getId())
-                .flatMap(sa -> addressRepository.findById(sa.getAddressId()))
+                .flatMap(sa -> houseNumberRepository.resolveFullAddress(sa.getAddressId()))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Adresa iznajmljivača nije pronađena"));
 
         LessorEntity lessor = LessorEntity.create(
                 nullSafe(version.getFirstName(), "N/A"),
                 nullSafe(version.getLastName(), "N/A"),
-                nullSafe(address.getStreet(), "N/A"),
-                nullSafe(address.getHouseNumber(), "N/A"),
-                nullSafe(address.getSettlement(), "N/A"),
-                nullSafe(address.getCounty(), "N/A"),
+                nullSafe(addr.getStreet(), ""),
+                nullSafe(addr.getStreetNumber(), ""),
+                nullSafe(addr.getSettlement(), ""),
+                nullSafe(addr.getCounty(), ""),
                 null);
         lessor.setLessorOib(version.getPin() != null ? version.getPin() : oib);
         if (version.getName() != null && !version.getName().isBlank()) {
