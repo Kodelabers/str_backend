@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -25,7 +26,7 @@ class PlatformActivityQuery {
 
     private static final String BASE_SQL = """
             SELECT
-                aa.rn || '|' || aa.period_from || '|' || aa.period_to AS id,
+                aa.rn || '|' || aa.period_from::text || '|' || aa.period_to::text AS id,
                 aa.rn AS rb,
                 COALESCE(l.first_name || ' ' || l.last_name, '') AS owner_name,
                 a.street || ' ' || a.street_number AS address,
@@ -112,13 +113,13 @@ class PlatformActivityQuery {
     private MapSqlParameterSource buildParams(Long platformId, LocalDate od, LocalDate toDate,
                                               String county, String rnStatus, String q) {
         MapSqlParameterSource p = new MapSqlParameterSource();
-        p.addValue("platformId", platformId);
-        p.addValue("od", od);
-        p.addValue("toDate", toDate);
-        p.addValue("county", blankToNull(county));
-        p.addValue("rnStatus", mapToDbStatus(rnStatus));
-        p.addValue("q", blankToNull(q));
-        p.addValue("qLike", q != null && !q.isBlank() ? "%" + q.trim() + "%" : null);
+        p.addValue("platformId", platformId, Types.BIGINT);
+        p.addValue("od", od, Types.DATE);
+        p.addValue("toDate", toDate, Types.DATE);
+        p.addValue("county", blankToNull(county), Types.VARCHAR);
+        p.addValue("rnStatus", mapToDbStatus(rnStatus), Types.VARCHAR);
+        p.addValue("q", blankToNull(q), Types.VARCHAR);
+        p.addValue("qLike", q != null && !q.isBlank() ? "%" + q.trim() + "%" : null, Types.VARCHAR);
         return p;
     }
 
