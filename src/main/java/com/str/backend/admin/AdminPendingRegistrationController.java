@@ -50,6 +50,21 @@ public class AdminPendingRegistrationController {
         return service.search(status, q, country, documentType, pageable);
     }
 
+    @GetMapping("/export/xlsx")
+    public ResponseEntity<byte[]> exportXlsx(
+            @RequestParam(required = false) LessorApplicationStatus status,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String country,
+            @RequestParam(required = false) String documentType) {
+        byte[] bytes = service.exportXlsx(status, q, country, documentType);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"zahtjevi-za-registraciju.xlsx\"")
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(bytes);
+    }
+
     @GetMapping("/stats")
     public PendingRegistrationStatsDto stats() {
         return service.getStats();
