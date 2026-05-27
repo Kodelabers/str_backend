@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Fix: mock accommodation county values were seeded without the "županija" suffix,
+      causing the /api/rn?county= exact-match filter to return zero results.
+      Real form registrations store the full zu_ime from rpj_dgu.zupanije, so the
+      mock data must match that format.
+    -->
+
+    <changeSet id="111-fix-mock-county-names" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END
+                FROM str_rn.accommodation
+                WHERE county = 'Splitsko-dalmatinska'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE str_rn.accommodation
+            SET county = county || ' županija'
+            WHERE county IN ('Splitsko-dalmatinska', 'Istarska', 'Primorsko-goranska', 'Dubrovačko-neretvanska');
+        </sql>
+        <rollback>
+            <sql>
+                UPDATE str_rn.accommodation
+                SET county = REPLACE(county, ' županija', '')
+                WHERE county IN ('Splitsko-dalmatinska županija', 'Istarska županija',
+                                 'Primorsko-goranska županija', 'Dubrovačko-neretvanska županija')
+                  AND accommodation_id BETWEEN '22222222-2222-2222-2222-222222222221'
+                                           AND '22222222-2222-2222-2222-222222222228';
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -64,4 +64,7 @@
     <!-- Mock RN + Booking/Airbnb activity seed for analytics — gated by context="local" -->
     <include file="db/changelog/changes/036-mock-rn-activity-seed.xml"/>
 
+    <!-- Fix mock accommodation county names: append " županija" to match rpj_dgu.zupanije.zu_ime -->
+    <include file="db/changelog/changes/111-fix-mock-county-names.xml"/>
+
 </databaseChangeLog>
