@@ -8,6 +8,7 @@ import com.str.backend.rn.RnRepository;
 import com.str.backend.statistics.dto.BpsoResponse;
 import com.str.backend.statistics.dto.BpsoTotalsDto;
 import com.str.backend.statistics.dto.CountyBpsoDto;
+import com.str.backend.str.StrSubjectRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,13 +30,16 @@ public class StatisticsService {
     private final AccommodationRepository accommodationRepository;
     private final RnRepository rnRepository;
     private final CountyRepository countyRepository;
+    private final StrSubjectRepository subjectRepository;
 
     public StatisticsService(AccommodationRepository accommodationRepository,
                              RnRepository rnRepository,
-                             CountyRepository countyRepository) {
+                             CountyRepository countyRepository,
+                             StrSubjectRepository subjectRepository) {
         this.accommodationRepository = accommodationRepository;
         this.rnRepository = rnRepository;
         this.countyRepository = countyRepository;
+        this.subjectRepository = subjectRepository;
     }
 
     @Transactional(readOnly = true)
@@ -83,18 +87,16 @@ public class StatisticsService {
                 .comparingLong(CountyBpsoDto::accommodations).reversed()
                 .thenComparing(CountyBpsoDto::countyName));
 
-        long totalAcc = 0, totalActive = 0, totalSuspended = 0, totalWithdrawn = 0;
+        long totalActive = 0, totalSuspended = 0, totalWithdrawn = 0;
         for (CountyBpsoDto r : rows) {
-            totalAcc += r.accommodations();
             totalActive += r.activeRn();
             totalSuspended += r.suspendedRn();
             totalWithdrawn += r.withdrawnRn();
         }
 
-        BpsoTotalsDto totals = new BpsoTotalsDto(
-                totalAcc, totalActive, totalSuspended, totalWithdrawn,
-                rate(totalActive, totalAcc)
-        );
+        long totalObjects = subjectRepository.countByActiveTrue();
+        long totalRn = totalActive + totalSuspended + totalWithdrawn;
+        BpsoTotalsDto totals = new BpsoTotalsDto(totalObjects, totalRn, rate(totalRn, totalObjects));
         return new BpsoResponse(totals, rows);
     }
 

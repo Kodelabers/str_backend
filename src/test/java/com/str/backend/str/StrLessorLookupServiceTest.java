@@ -73,8 +73,8 @@ class StrLessorLookupServiceTest {
                 .thenReturn(Optional.of(version(10L, "Pero", "Perić", null, OIB)));
         when(addressRepo.findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(10L))
                 .thenReturn(Optional.of(subjectAddress(10L, 10011L)));
-        when(houseNumberRepo.resolveFullAddress(10011L))
-                .thenReturn(Optional.of(addressProjection("Ilica", "1", "Zagreb", "Grad Zagreb")));
+        var proj1 = addressProjection("Ilica", "1", "Zagreb", "Grad Zagreb");
+        when(houseNumberRepo.resolveFullAddress(10011L)).thenReturn(Optional.of(proj1));
 
         LessorEntity lessor = service.resolveLessor(OIB);
 
@@ -92,8 +92,8 @@ class StrLessorLookupServiceTest {
                 .thenReturn(Optional.of(version(10L, null, null, "Adria d.o.o.", OIB)));
         when(addressRepo.findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(10L))
                 .thenReturn(Optional.of(subjectAddress(10L, 10021L)));
-        when(houseNumberRepo.resolveFullAddress(10021L))
-                .thenReturn(Optional.of(addressProjection("Vukovarska", "15", "Split", "Splitsko-dalmatinska")));
+        var proj2 = addressProjection("Vukovarska", "15", "Split", "Splitsko-dalmatinska");
+        when(houseNumberRepo.resolveFullAddress(10021L)).thenReturn(Optional.of(proj2));
 
         LessorEntity lessor = service.resolveLessor(OIB);
 

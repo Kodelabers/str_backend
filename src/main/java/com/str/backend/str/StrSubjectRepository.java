@@ -9,4 +9,6 @@ import java.util.Optional;
 public interface StrSubjectRepository extends JpaRepository<StrSubjectEntity, Long> {
 
     Optional<StrSubjectEntity> findFirstByJipsAndActiveTrue(String jips);
+
+    long countByActiveTrue();
 }

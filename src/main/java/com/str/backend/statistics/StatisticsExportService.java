@@ -85,17 +85,15 @@ public class StatisticsExportService {
 
             // KPI summary table
             String[] kpiHeaders = {
-                    "Ukupno objekata", "Aktivni RB", "Suspendirani RB", "Povučeni RB", "Stopa registracije"
+                    "Ukupno objekata", "Registrirani objekti", "Pokrivenost registracijom"
             };
-            PdfPTable kpiTable = new PdfPTable(5);
+            PdfPTable kpiTable = new PdfPTable(3);
             kpiTable.setWidthPercentage(100);
             kpiTable.setSpacingAfter(16);
             for (String h : kpiHeaders) kpiTable.addCell(thCell(h));
-            kpiTable.addCell(tdCell(String.valueOf(data.totals().accommodations())));
-            kpiTable.addCell(tdCell(String.valueOf(data.totals().activeRn())));
-            kpiTable.addCell(tdCell(String.valueOf(data.totals().suspendedRn())));
-            kpiTable.addCell(tdCell(String.valueOf(data.totals().withdrawnRn())));
-            kpiTable.addCell(tdCell(formatRate(data.totals().registrationRate())));
+            kpiTable.addCell(tdCell(String.valueOf(data.totals().totalObjects())));
+            kpiTable.addCell(tdCell(String.valueOf(data.totals().totalRn())));
+            kpiTable.addCell(tdCell(formatRate(data.totals().coverageRate())));
             doc.add(kpiTable);
 
             // County breakdown table
