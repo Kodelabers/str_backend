@@ -19,6 +19,18 @@ public interface HouseNumberRepository extends JpaRepository<HouseNumberEntity, 
             """)
     List<HouseNumberEntity> findByStreetIdOrderByName(@Param("streetId") Long streetId, @Param("q") String q);
 
+    interface KatOpcinaRow {
+        Long getId();
+        String getKatOpcinaNaziv();
+    }
+
+    @Query(value = """
+            SELECT id, kat_opcina_naziv
+            FROM eturizam_test.ar_address
+            WHERE ulica_id = :streetId
+            """, nativeQuery = true)
+    List<KatOpcinaRow> findKatOpcinaByStreetId(@Param("streetId") Long streetId);
+
     interface LessorAddressProjection {
         String getStreet();
         String getStreetNumber();

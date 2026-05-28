@@ -6,10 +6,13 @@ import com.str.backend.address.dto.HouseNumberResponse;
 import com.str.backend.address.dto.MunicipalityResponse;
 import com.str.backend.address.dto.SettlementResponse;
 import com.str.backend.address.dto.StreetResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -21,19 +24,22 @@ public class AddressLookupService {
     private final SettlementRepository settlementRepository;
     private final StreetRepository streetRepository;
     private final HouseNumberRepository houseNumberRepository;
+    private final boolean cadastralEnabled;
 
     public AddressLookupService(CountryRepository countryRepository,
                                 CountyRepository countyRepository,
                                 MunicipalityRepository municipalityRepository,
                                 SettlementRepository settlementRepository,
                                 StreetRepository streetRepository,
-                                HouseNumberRepository houseNumberRepository) {
+                                HouseNumberRepository houseNumberRepository,
+                                @Value("${app.cadastral.enabled:false}") boolean cadastralEnabled) {
         this.countryRepository = countryRepository;
         this.countyRepository = countyRepository;
         this.municipalityRepository = municipalityRepository;
         this.settlementRepository = settlementRepository;
         this.streetRepository = streetRepository;
         this.houseNumberRepository = houseNumberRepository;
+        this.cadastralEnabled = cadastralEnabled;
     }
 
     public List<CountryResponse> findCountries(String q) {
@@ -74,8 +80,19 @@ public class AddressLookupService {
     }
 
     public List<HouseNumberResponse> findHouseNumbers(Long streetId, String q) {
-        return houseNumberRepository.findByStreetIdOrderByName(streetId, normalize(q)).stream()
-                .map(e -> new HouseNumberResponse(e.getId(), e.getName(), e.getKcBroj(), null))
+        List<HouseNumberEntity> entities = houseNumberRepository.findByStreetIdOrderByName(streetId, normalize(q));
+        Map<Long, String> katOpcina = cadastralEnabled
+                ? houseNumberRepository.findKatOpcinaByStreetId(streetId).stream()
+                        .collect(Collectors.toMap(HouseNumberRepository.KatOpcinaRow::getId,
+                                                  r -> r.getKatOpcinaNaziv() != null ? r.getKatOpcinaNaziv() : "",
+                                                  (a, b) -> a))
+                : Map.of();
+        return entities.stream()
+                .map(e -> {
+                    String kat = katOpcina.get(e.getId());
+                    return new HouseNumberResponse(e.getId(), e.getName(), e.getKcBroj(),
+                            (kat != null && !kat.isBlank()) ? kat : null);
+                })
                 .toList();
     }
 
