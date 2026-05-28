@@ -33,4 +33,4 @@ public record RegistrationRequest(
         LocalDate consentDate,
         LocalDate consentWithdrawalDate,
         Boolean host
-) {}
+) implements AccommodationRequest {}

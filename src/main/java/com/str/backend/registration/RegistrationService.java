@@ -4,13 +4,16 @@ import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
+import com.str.backend.address.MunicipalityEntity;
 import com.str.backend.address.MunicipalityRepository;
+import com.str.backend.address.SettlementEntity;
 import com.str.backend.address.SettlementRepository;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.pdf.SubmissionPdfGenerator;
+import com.str.backend.registration.dto.AccommodationRequest;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
@@ -27,10 +30,12 @@ import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.function.Function;
 
 @Service
 public class RegistrationService {
@@ -82,20 +87,80 @@ public class RegistrationService {
 
         LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
-
-        ValidationContext context = new ValidationContext(accommodation, lessor);
-        PipelineResult result = orchestrator.execute(context);
-        if (result.getOutcome() == PipelineResult.Outcome.REJECTED) {
-            throw new ValidationRejectedException(result.getStep(), result.getDetail());
-        }
+        runValidation(accommodation, lessor);
 
         String typeName = resolveTypeName(req.typeId());
         byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
         EgopClient.FilingNumber filing = egopClient.reserveFilingNumber();
         byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatted(), typeName);
-        EgopClient.FilingConfirmation confirmation =
-                egopClient.submitFiling(filing.formatted(), finalPdf);
+        EgopClient.FilingConfirmation confirmation = egopClient.submitFiling(filing.formatted(), finalPdf);
+        return commitRegistration(lessor, accommodation, confirmation, draftPdf, finalPdf);
+    }
 
+    @Transactional(noRollbackFor = ValidationRejectedException.class)
+    public RegistrationResponse generateRegistrationNumberExternal(RegistrationExternalRequest req, UUID lessorId) {
+        CountyEntity county = countyRepository.findById(req.countyId())
+                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
+
+        LessorEntity lessor = lessorRepository.findById(lessorId)
+                .orElseThrow(() -> new ResourceNotFoundException("lessor not found: " + lessorId));
+        AccommodationEntity accommodation = buildAccommodation(req, county.getName());
+        runValidation(accommodation, lessor);
+
+        String typeName = resolveTypeName(req.typeId());
+        byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
+        EgopClient.FilingNumber filing = egopClient.reserveFilingNumber();
+        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatted(), typeName);
+        EgopClient.FilingConfirmation confirmation = egopClient.submitFiling(filing.formatted(), finalPdf);
+        return commitRegistration(lessor, accommodation, confirmation, draftPdf, finalPdf);
+    }
+
+    @Transactional(readOnly = true)
+    public SubmissionEntity getSubmissionForPdf(UUID submissionId) {
+        SubmissionEntity submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
+        if (submission.getPdfContent() == null || submission.getPdfContent().length == 0) {
+            throw new ResourceNotFoundException("error.pdf.not.stored");
+        }
+        return submission;
+    }
+
+    AccommodationEntity buildAccommodation(AccommodationRequest req, String countyName) {
+        String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName, "");
+        String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName, null);
+        AccommodationEntity entity = AccommodationEntity.create(
+                null, countyName, cityName, req.street(), req.streetNumber(),
+                req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
+                req.building(), req.apartments(), req.legalized());
+        entity.setName(req.name());
+        entity.setSettlement(settlementName);
+        entity.setFloor(req.floor());
+        entity.setLessorResidence(req.lessorResidence());
+        entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
+        if (req.host() != null) {
+            entity.markHost(req.host());
+        }
+        if (req.typeId() != null) {
+            try {
+                entity.setAccommodationTypeId(Long.parseLong(req.typeId()));
+            } catch (NumberFormatException e) {
+                log.warn("typeId '{}' nije numerički, polje se ignorira", req.typeId());
+            }
+        }
+        return entity;
+    }
+
+    private void runValidation(AccommodationEntity accommodation, LessorEntity lessor) {
+        ValidationContext context = new ValidationContext(accommodation, lessor);
+        PipelineResult result = orchestrator.execute(context);
+        if (result.getOutcome() == PipelineResult.Outcome.REJECTED) {
+            throw new ValidationRejectedException(result.getStep(), result.getDetail());
+        }
+    }
+
+    private RegistrationResponse commitRegistration(LessorEntity lessor, AccommodationEntity accommodation,
+                                                     EgopClient.FilingConfirmation confirmation,
+                                                     byte[] draftPdf, byte[] finalPdf) {
         log.info("egop_filing_ok filingNumber={} draft_size={} final_size={}",
                 confirmation.filingNumber(), draftPdf.length, finalPdf.length);
 
@@ -118,128 +183,15 @@ public class RegistrationService {
         return new RegistrationResponse(rn.getRn(), submission.getSubmissionId());
     }
 
-    @Transactional(noRollbackFor = ValidationRejectedException.class)
-    public RegistrationResponse generateRegistrationNumberExternal(RegistrationExternalRequest req, UUID lessorId) {
-        CountyEntity county = countyRepository.findById(req.countyId())
-                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
-
-        LessorEntity lessor = lessorRepository.findById(lessorId)
-                .orElseThrow(() -> new ResourceNotFoundException("lessor not found: " + lessorId));
-        AccommodationEntity accommodation = buildAccommodation(req, county.getName());
-
-        ValidationContext context = new ValidationContext(accommodation, lessor);
-        PipelineResult result = orchestrator.execute(context);
-        if (result.getOutcome() == PipelineResult.Outcome.REJECTED) {
-            throw new ValidationRejectedException(result.getStep(), result.getDetail());
-        }
-
-        String typeName = resolveTypeName(req.typeId());
-        byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
-        EgopClient.FilingNumber filing = egopClient.reserveFilingNumber();
-        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatted(), typeName);
-        EgopClient.FilingConfirmation confirmation =
-                egopClient.submitFiling(filing.formatted(), finalPdf);
-
-        log.info("egop_filing_ok filingNumber={} draft_size={} final_size={}",
-                confirmation.filingNumber(), draftPdf.length, finalPdf.length);
-
-        SubmissionEntity submission = SubmissionEntity.create(
-                confirmation.filingNumber(),
-                lessor.getLessorId(),
-                null,
-                confirmation.confirmedAt(),
-                "egop://" + confirmation.filingNumber(),
-                finalPdf);
-        submissionRepository.save(submission);
-
-        accommodation.linkToSubmission(submission.getSubmissionId());
-        accommodationRepository.save(accommodation);
-
-        RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
-
-        log.info("registration_success lessor={} submission={}", lessor.getLessorId(), submission.getSubmissionId());
-        return new RegistrationResponse(rn.getRn(), submission.getSubmissionId());
-    }
-
-    @Transactional(readOnly = true)
-    public SubmissionEntity getSubmissionForPdf(UUID submissionId) {
-        SubmissionEntity submission = submissionRepository.findById(submissionId)
-                .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
-        if (submission.getPdfContent() == null || submission.getPdfContent().length == 0) {
-            throw new ResourceNotFoundException("error.pdf.not.stored");
-        }
-        return submission;
-    }
-
-    AccommodationEntity buildAccommodation(RegistrationRequest req, String countyName) {
-        String cityName = resolveCityName(req.cityId());
-        String settlementName = resolveSettlementName(req.settlementId());
-        AccommodationEntity entity = AccommodationEntity.create(
-                null, countyName, cityName, req.street(), req.streetNumber(),
-                req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
-                req.building(), req.apartments(), req.legalized());
-        entity.setName(req.name());
-        entity.setSettlement(settlementName);
-        entity.setFloor(req.floor());
-        entity.setLessorResidence(req.lessorResidence());
-        entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
-        if (req.host() != null) {
-            entity.markHost(req.host());
-        }
-        if (req.typeId() != null) {
-            try {
-                entity.setAccommodationTypeId(Long.parseLong(req.typeId()));
-            } catch (NumberFormatException e) {
-                log.warn("typeId '{}' nije numerički, polje se ignorira", req.typeId());
-            }
-        }
-        return entity;
-    }
-
-    AccommodationEntity buildAccommodation(RegistrationExternalRequest req, String countyName) {
-        String cityName = resolveCityName(req.cityId());
-        String settlementName = resolveSettlementName(req.settlementId());
-        AccommodationEntity entity = AccommodationEntity.create(
-                null, countyName, cityName, req.street(), req.streetNumber(),
-                req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
-                req.building(), req.apartments(), req.legalized());
-        entity.setName(req.name());
-        entity.setSettlement(settlementName);
-        entity.setFloor(req.floor());
-        entity.setLessorResidence(req.lessorResidence());
-        entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
-        if (req.host() != null) {
-            entity.markHost(req.host());
-        }
-        if (req.typeId() != null) {
-            try {
-                entity.setAccommodationTypeId(Long.parseLong(req.typeId()));
-            } catch (NumberFormatException e) {
-                log.warn("typeId '{}' nije numerički, polje se ignorira", req.typeId());
-            }
-        }
-        return entity;
-    }
-
-    private String resolveCityName(String cityId) {
-        if (cityId == null) return "";
+    private <T> String resolveEntityName(String id, JpaRepository<T, Long> repository,
+                                          Function<T, String> nameExtractor, String nullDefault) {
+        if (id == null) return nullDefault;
         try {
-            return municipalityRepository.findById(Long.parseLong(cityId))
-                    .map(e -> e.getName())
-                    .orElse(cityId);
-        } catch (NumberFormatException e) {
-            return cityId;
-        }
-    }
-
-    private String resolveSettlementName(String settlementId) {
-        if (settlementId == null) return null;
-        try {
-            return settlementRepository.findById(Long.parseLong(settlementId))
-                    .map(e -> e.getName())
-                    .orElse(settlementId);
-        } catch (NumberFormatException e) {
-            return settlementId;
+            return repository.findById(Long.parseLong(id))
+                    .map(nameExtractor)
+                    .orElse(id);
+        } catch (NumberFormatException ignored) {
+            return id;
         }
     }
 
@@ -249,7 +201,7 @@ public class RegistrationService {
             return accommodationTypeRepository.findById(Long.parseLong(typeId))
                     .map(AccommodationTypeEntity::getName)
                     .orElse(null);
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException ignored) {
             return null;
         }
     }
