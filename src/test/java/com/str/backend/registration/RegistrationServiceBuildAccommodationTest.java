@@ -3,6 +3,8 @@ package com.str.backend.registration;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.CountyRepository;
+import com.str.backend.address.MunicipalityRepository;
+import com.str.backend.address.SettlementRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorRepository;
@@ -34,6 +36,8 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(SubmissionPdfGenerator.class),
                 mock(StrLessorLookupService.class),
                 mock(CountyRepository.class),
+                mock(MunicipalityRepository.class),
+                mock(SettlementRepository.class),
                 mock(AccommodationTypeRepository.class));
     }
 

@@ -4,6 +4,8 @@ import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
+import com.str.backend.address.MunicipalityRepository;
+import com.str.backend.address.SettlementRepository;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
@@ -43,6 +45,8 @@ public class RegistrationService {
     private final SubmissionPdfGenerator pdfGenerator;
     private final StrLessorLookupService strLessorLookupService;
     private final CountyRepository countyRepository;
+    private final MunicipalityRepository municipalityRepository;
+    private final SettlementRepository settlementRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
 
     public RegistrationService(LessorRepository lessorRepository,
@@ -54,6 +58,8 @@ public class RegistrationService {
                                SubmissionPdfGenerator pdfGenerator,
                                StrLessorLookupService strLessorLookupService,
                                CountyRepository countyRepository,
+                               MunicipalityRepository municipalityRepository,
+                               SettlementRepository settlementRepository,
                                AccommodationTypeRepository accommodationTypeRepository) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
@@ -64,6 +70,8 @@ public class RegistrationService {
         this.pdfGenerator = pdfGenerator;
         this.strLessorLookupService = strLessorLookupService;
         this.countyRepository = countyRepository;
+        this.municipalityRepository = municipalityRepository;
+        this.settlementRepository = settlementRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
     }
 
@@ -164,12 +172,14 @@ public class RegistrationService {
     }
 
     AccommodationEntity buildAccommodation(RegistrationRequest req, String countyName) {
+        String cityName = resolveCityName(req.cityId());
+        String settlementName = resolveSettlementName(req.settlementId());
         AccommodationEntity entity = AccommodationEntity.create(
-                null, countyName, req.cityId(), req.street(), req.streetNumber(),
+                null, countyName, cityName, req.street(), req.streetNumber(),
                 req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
                 req.building(), req.apartments(), req.legalized());
         entity.setName(req.name());
-        entity.setSettlement(req.settlementId());
+        entity.setSettlement(settlementName);
         entity.setFloor(req.floor());
         entity.setLessorResidence(req.lessorResidence());
         entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
@@ -187,12 +197,14 @@ public class RegistrationService {
     }
 
     AccommodationEntity buildAccommodation(RegistrationExternalRequest req, String countyName) {
+        String cityName = resolveCityName(req.cityId());
+        String settlementName = resolveSettlementName(req.settlementId());
         AccommodationEntity entity = AccommodationEntity.create(
-                null, countyName, req.cityId(), req.street(), req.streetNumber(),
+                null, countyName, cityName, req.street(), req.streetNumber(),
                 req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
                 req.building(), req.apartments(), req.legalized());
         entity.setName(req.name());
-        entity.setSettlement(req.settlementId());
+        entity.setSettlement(settlementName);
         entity.setFloor(req.floor());
         entity.setLessorResidence(req.lessorResidence());
         entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
@@ -207,6 +219,28 @@ public class RegistrationService {
             }
         }
         return entity;
+    }
+
+    private String resolveCityName(String cityId) {
+        if (cityId == null) return "";
+        try {
+            return municipalityRepository.findById(Long.parseLong(cityId))
+                    .map(e -> e.getName())
+                    .orElse(cityId);
+        } catch (NumberFormatException e) {
+            return cityId;
+        }
+    }
+
+    private String resolveSettlementName(String settlementId) {
+        if (settlementId == null) return null;
+        try {
+            return settlementRepository.findById(Long.parseLong(settlementId))
+                    .map(e -> e.getName())
+                    .orElse(settlementId);
+        } catch (NumberFormatException e) {
+            return settlementId;
+        }
     }
 
     private String resolveTypeName(String typeId) {
