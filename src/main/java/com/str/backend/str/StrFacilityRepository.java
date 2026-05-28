@@ -3,10 +3,8 @@ package com.str.backend.str;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
-
 @Transactional(readOnly = true)
-public interface StrSubjectRepository extends JpaRepository<StrSubjectEntity, Long> {
+public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, Long> {
 
-    Optional<StrSubjectEntity> findFirstByJipsAndActiveTrue(String jips);
+    long countByActiveTrue();
 }

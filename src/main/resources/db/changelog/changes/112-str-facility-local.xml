@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock str.facility table — gated by context="local".
+      On dev/prod this table is owned by the external str service (read-only).
+      Columns kept minimal: only those the backend reads are declared.
+    -->
+
+    <changeSet id="112-str-facility-schema" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="facility"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="facility">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="subject_id" type="BIGINT"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="112-str-facility-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.facility</sqlCheck>
+        </preConditions>
+        <!-- 15 active accommodation units distributed across 8 mock subjects -->
+        <!-- Pero Perić (subject 1) — 2 objekta: kuća za odmor + apartman -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="1"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="1"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="2"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="1"/></insert>
+        <!-- Ana Anić (subject 2) — 2 objekta -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="3"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="2"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="4"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="2"/></insert>
+        <!-- Marko Marić (subject 3) — 2 objekta -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="5"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="3"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="6"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="3"/></insert>
+        <!-- Ivana Ivić (subject 4) — 2 objekta -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="7"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="4"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="8"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="4"/></insert>
+        <!-- Stjepan Stjepić (subject 5) — 2 objekta -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="9"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="5"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="10"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="5"/></insert>
+        <!-- Jelena Jelić (subject 6) — 2 objekta -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="11"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="6"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="12"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="6"/></insert>
+        <!-- Tomislav Tomić (subject 7) — 1 objekt -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="13"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="7"/></insert>
+        <!-- Marija Marić (subject 8) — 2 objekta -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="14"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="8"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="15"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="8"/></insert>
+    </changeSet>
+
+</databaseChangeLog>

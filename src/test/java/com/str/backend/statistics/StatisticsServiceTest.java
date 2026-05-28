@@ -7,7 +7,7 @@ import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.statistics.dto.BpsoResponse;
 import com.str.backend.statistics.dto.CountyBpsoDto;
-import com.str.backend.str.StrSubjectRepository;
+import com.str.backend.str.StrFacilityRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -23,7 +23,7 @@ class StatisticsServiceTest {
     private AccommodationRepository accommodationRepository;
     private RnRepository rnRepository;
     private CountyRepository countyRepository;
-    private StrSubjectRepository subjectRepository;
+    private StrFacilityRepository facilityRepository;
     private StatisticsService service;
 
     @BeforeEach
@@ -31,8 +31,8 @@ class StatisticsServiceTest {
         accommodationRepository = mock(AccommodationRepository.class);
         rnRepository = mock(RnRepository.class);
         countyRepository = mock(CountyRepository.class);
-        subjectRepository = mock(StrSubjectRepository.class);
-        service = new StatisticsService(accommodationRepository, rnRepository, countyRepository, subjectRepository);
+        facilityRepository = mock(StrFacilityRepository.class);
+        service = new StatisticsService(accommodationRepository, rnRepository, countyRepository, facilityRepository);
     }
 
     @Test
@@ -43,7 +43,7 @@ class StatisticsServiceTest {
         ));
         when(accommodationRepository.countByCounty()).thenReturn(List.of());
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
-        when(subjectRepository.countByActiveTrue()).thenReturn(0L);
+        when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
         BpsoResponse res = service.bpso();
 
@@ -71,7 +71,7 @@ class StatisticsServiceTest {
                 rnCount("Splitsko-dalmatinska županija", RnStatus.WITHDRAWN, 1L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.IN_PROCESSING, 99L)
         ));
-        when(subjectRepository.countByActiveTrue()).thenReturn(10L);
+        when(facilityRepository.countByActiveTrue()).thenReturn(10L);
 
         BpsoResponse res = service.bpso();
 
@@ -97,7 +97,7 @@ class StatisticsServiceTest {
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of(
                 rnCount("Nepoznata županija", RnStatus.ACTIVE, 2L)
         ));
-        when(subjectRepository.countByActiveTrue()).thenReturn(20L);
+        when(facilityRepository.countByActiveTrue()).thenReturn(20L);
 
         BpsoResponse res = service.bpso();
 
@@ -124,7 +124,7 @@ class StatisticsServiceTest {
                 accCount("C-zupanija", 5L)
         ));
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
-        when(subjectRepository.countByActiveTrue()).thenReturn(0L);
+        when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
         BpsoResponse res = service.bpso();
 

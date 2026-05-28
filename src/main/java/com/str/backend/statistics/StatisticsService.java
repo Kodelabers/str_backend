@@ -8,7 +8,7 @@ import com.str.backend.rn.RnRepository;
 import com.str.backend.statistics.dto.BpsoResponse;
 import com.str.backend.statistics.dto.BpsoTotalsDto;
 import com.str.backend.statistics.dto.CountyBpsoDto;
-import com.str.backend.str.StrSubjectRepository;
+import com.str.backend.str.StrFacilityRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,16 +30,16 @@ public class StatisticsService {
     private final AccommodationRepository accommodationRepository;
     private final RnRepository rnRepository;
     private final CountyRepository countyRepository;
-    private final StrSubjectRepository subjectRepository;
+    private final StrFacilityRepository facilityRepository;
 
     public StatisticsService(AccommodationRepository accommodationRepository,
                              RnRepository rnRepository,
                              CountyRepository countyRepository,
-                             StrSubjectRepository subjectRepository) {
+                             StrFacilityRepository facilityRepository) {
         this.accommodationRepository = accommodationRepository;
         this.rnRepository = rnRepository;
         this.countyRepository = countyRepository;
-        this.subjectRepository = subjectRepository;
+        this.facilityRepository = facilityRepository;
     }
 
     @Transactional(readOnly = true)
@@ -94,7 +94,7 @@ public class StatisticsService {
             totalWithdrawn += r.withdrawnRn();
         }
 
-        long totalObjects = subjectRepository.countByActiveTrue();
+        long totalObjects = facilityRepository.countByActiveTrue();
         long totalRn = totalActive + totalSuspended + totalWithdrawn;
         BpsoTotalsDto totals = new BpsoTotalsDto(totalObjects, totalRn, rate(totalRn, totalObjects));
         return new BpsoResponse(totals, rows);
