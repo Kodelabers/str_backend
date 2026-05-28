@@ -70,4 +70,7 @@
     <!-- Mock str.facility (accommodation units) — gated by context="local". -->
     <include file="db/changelog/changes/112-str-facility-local.xml"/>
 
+    <!-- Add Dubrovačko-neretvanska + Dubrovnik to address hierarchy — gated by context="local". -->
+    <include file="db/changelog/changes/113-dubrovnik-address-seed-local.xml"/>
+
 </databaseChangeLog>

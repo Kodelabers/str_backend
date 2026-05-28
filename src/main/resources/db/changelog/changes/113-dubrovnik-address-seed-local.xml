@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Adds Dubrovačko-neretvanska county + Dubrovnik municipality/settlement/
+      street/house-numbers so the "Kuća Stradun" mock existing-object prefills
+      correctly end-to-end.
+
+        Dubrovačko-neretvanska (19) → Dubrovnik (19048) → Dubrovnik (190001)
+                                                        ↳ Stradun: 3, 5, 7
+
+      Conventions follow 106-rpj-dgu-address-seed-local.xml.
+    -->
+
+    <changeSet id="113-dubrovnik-zupanija" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.zupanije WHERE zu_rb = 19</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="zupanije">
+            <column name="id" valueNumeric="2195100019"/>
+            <column name="inspire_id" value="HR.DGU.RPJ:ZU.0000000019"/>
+            <column name="zu_ime" value="Dubrovačko-neretvanska županija"/>
+            <column name="zu_rb" valueNumeric="19"/>
+        </insert>
+    </changeSet>
+
+    <changeSet id="113-dubrovnik-grad" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.gradovi_i_opcine WHERE jls_mb = '19048'</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="gradovi_i_opcine">
+            <column name="id" valueNumeric="2195219048"/>
+            <column name="inspire_id" value="HR.DGU.RPJ:JLS.0000019048"/>
+            <column name="jls_ime" value="Dubrovnik"/>
+            <column name="jls_mb" value="19048"/>
+            <column name="zu_ime" value="Dubrovačko-neretvanska županija"/>
+            <column name="zu_rb" valueNumeric="19"/>
+        </insert>
+    </changeSet>
+
+    <changeSet id="113-dubrovnik-naselje" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.naselja WHERE na_mb = '190001'</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="naselja">
+            <column name="id" valueNumeric="2195300041"/>
+            <column name="inspire_id" value="HR.DGU.RPJ:NA.0000000041"/>
+            <column name="na_ime" value="Dubrovnik"/>
+            <column name="na_mb" value="190001"/>
+            <column name="jls_ime" value="Dubrovnik"/>
+            <column name="jls_mb" valueNumeric="19048"/>
+        </insert>
+    </changeSet>
+
+    <changeSet id="113-dubrovnik-postanski-broj" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM rpj_dgu.postanski_brojevi WHERE naselje = 'Dubrovnik'</sqlCheck>
+        </preConditions>
+        <insert schemaName="rpj_dgu" tableName="postanski_brojevi">
+            <column name="id" valueNumeric="11"/>
+            <column name="broj_pu" value="20000"/>
+            <column name="naziv_pu" value="Dubrovnik"/>
+            <column name="naselje" value="Dubrovnik"/>
+            <column name="zupanija" value="Dubrovačko-neretvanska županija"/>
+        </insert>
+    </changeSet>
+
+    <changeSet id="113-dubrovnik-ulica-stradun" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM eturizam_test.ar_ulice WHERE id = 1015</sqlCheck>
+        </preConditions>
+        <insert schemaName="eturizam_test" tableName="ar_ulice">
+            <column name="id" valueNumeric="1015"/>
+            <column name="naselje_id" value="190001"/>
+            <column name="naziv_ulice" value="Stradun"/>
+            <column name="tip_ulice" value="ULICA"/>
+        </insert>
+    </changeSet>
+
+    <changeSet id="113-dubrovnik-kucni-brojevi" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM eturizam_test.ar_address WHERE ulica_id = 1015</sqlCheck>
+        </preConditions>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10151"/><column name="broj" value="3"/><column name="ulica_id" valueNumeric="1015"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10152"/><column name="broj" value="5"/><column name="ulica_id" valueNumeric="1015"/></insert>
+        <insert schemaName="eturizam_test" tableName="ar_address"><column name="id" valueNumeric="10153"/><column name="broj" value="7"/><column name="ulica_id" valueNumeric="1015"/></insert>
+    </changeSet>
+
+</databaseChangeLog>
