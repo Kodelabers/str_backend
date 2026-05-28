@@ -32,6 +32,9 @@ public class DraftOwnerResolver {
             cookie.setHttpOnly(true);
             cookie.setPath("/");
             cookie.setMaxAge(MOCK_COOKIE_MAX_AGE_SECONDS);
+            cookie.setSecure(true);
+            // SameSite=None required for cross-origin requests (frontend ≠ backend domain on Railway)
+            cookie.setAttribute("SameSite", "None");
             response.addCookie(cookie);
         }
         return new DraftOwner(DraftOwnerType.NIAS_OIB, mockOib);
