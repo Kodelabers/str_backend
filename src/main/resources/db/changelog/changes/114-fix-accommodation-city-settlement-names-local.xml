@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Backfill: existing accommodation rows that were saved before
+        RegistrationService resolved municipality/settlement IDs to names.
+        Joins str_rn.accommodation against rpj_dgu to replace numeric ID
+        strings (e.g. "2195200108") with human-readable names.
+        Gated by context="local" — requires rpj_dgu to be populated.
+    -->
+
+    <changeSet id="114-fix-city-names" author="str" context="local">
+        <sql>
+            UPDATE str_rn.accommodation a
+            SET city = g.jls_ime
+            FROM rpj_dgu.gradovi_i_opcine g
+            WHERE a.city = g.id::text;
+        </sql>
+    </changeSet>
+
+    <changeSet id="114-fix-settlement-names" author="str" context="local">
+        <sql>
+            UPDATE str_rn.accommodation a
+            SET settlement = n.na_ime
+            FROM rpj_dgu.naselja n
+            WHERE a.settlement = n.id::text;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

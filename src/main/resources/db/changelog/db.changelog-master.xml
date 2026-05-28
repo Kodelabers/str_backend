@@ -73,4 +73,7 @@
     <!-- Add Dubrovačko-neretvanska + Dubrovnik to address hierarchy — gated by context="local". -->
     <include file="db/changelog/changes/113-dubrovnik-address-seed-local.xml"/>
 
+    <!-- Backfill accommodation.city / settlement from numeric IDs to names — gated by context="local". -->
+    <include file="db/changelog/changes/114-fix-accommodation-city-settlement-names-local.xml"/>
+
 </databaseChangeLog>
