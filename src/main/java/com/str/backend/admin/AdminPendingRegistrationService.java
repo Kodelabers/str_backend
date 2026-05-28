@@ -84,7 +84,9 @@ public class AdminPendingRegistrationService {
 
     @Transactional(readOnly = true)
     public PendingRegistrationDetailDto getDetail(UUID lessorId) {
-        LessorEntity lessor = findPendingOrThrow(lessorId);
+        LessorEntity lessor = lessorRepository.findById(lessorId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Zahtjev za registraciju nije pronađen: " + lessorId));
         LessorDocumentEntity doc = findDocumentOrThrow(lessorId);
         return toDetail(lessor, doc);
     }
