@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.statistics.dto.PlatformActivitiesPageDto;
 import com.str.backend.statistics.dto.PlatformActivityRowDto;
 import com.str.backend.statistics.dto.PlatformChipDto;
+import com.str.backend.statistics.dto.PlatformSummaryDto;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -63,6 +64,27 @@ class PlatformActivityQuery {
 
     private static final String COUNT_SQL = "SELECT COUNT(*) FROM (" + BASE_SQL + ") AS sub";
 
+    private static final String SUMMARY_SQL = """
+            SELECT
+                COUNT(DISTINCT aa.rn) AS accommodations_with_activities,
+                COUNT(DISTINCT aa.platform_id) AS platforms_reporting,
+                COALESCE(SUM(aa.overnight_stays), 0) AS total_nights,
+                COALESCE(SUM(aa.guest_count), 0) AS total_guests,
+                COUNT(DISTINCT CASE WHEN rn.status != 'ACTIVE' THEN aa.rn END) AS anomalies
+            FROM str_rn.accommodation_activity aa
+            JOIN str_rn.online_platform p ON p.platform_id = aa.platform_id
+            JOIN str_rn.registration_number rn ON rn.rn = aa.rn
+            JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id
+            LEFT JOIN str_rn.submission s ON s.submission_id = rn.submission_id
+            LEFT JOIN str_rn.lessor l ON l.lessor_id = s.lessor_id
+            WHERE (:platformId IS NULL OR aa.platform_id = :platformId)
+              AND (:od IS NULL OR aa.period_to >= :od)
+              AND (:toDate IS NULL OR aa.period_from <= :toDate)
+              AND (:county IS NULL OR a.county = :county)
+              AND (:rnStatus IS NULL OR rn.status = :rnStatus)
+              AND (:q IS NULL OR aa.rn ILIKE :qLike OR a.street ILIKE :qLike OR a.city ILIKE :qLike)
+            """;
+
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
 
@@ -80,6 +102,16 @@ class PlatformActivityQuery {
         long totalElements = total == null ? 0 : total;
         int totalPages = Math.max(1, (int) Math.ceil((double) totalElements / size));
         int clampedPage = Math.min(Math.max(0, page), Math.max(0, totalPages - 1));
+
+        PlatformSummaryDto summary = jdbc.queryForObject(SUMMARY_SQL, params, (rs, rowNum) ->
+                new PlatformSummaryDto(
+                        rs.getLong("accommodations_with_activities"),
+                        rs.getLong("platforms_reporting"),
+                        rs.getLong("total_nights"),
+                        rs.getLong("total_guests"),
+                        rs.getLong("anomalies")
+                ));
+        if (summary == null) summary = new PlatformSummaryDto(0, 0, 0, 0, 0);
 
         String pagedSql = BASE_SQL + " LIMIT :limit OFFSET :offset";
         params.addValue("limit", size);
@@ -107,7 +139,7 @@ class PlatformActivityQuery {
             );
         });
 
-        return new PlatformActivitiesPageDto(rows, totalElements, totalPages, clampedPage, size);
+        return new PlatformActivitiesPageDto(rows, totalElements, totalPages, clampedPage, size, summary);
     }
 
     private MapSqlParameterSource buildParams(Long platformId, LocalDate od, LocalDate toDate,

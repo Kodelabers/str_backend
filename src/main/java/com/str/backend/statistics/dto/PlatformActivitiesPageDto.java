@@ -7,5 +7,6 @@ public record PlatformActivitiesPageDto(
         long totalElements,
         int totalPages,
         int page,
-        int size
+        int size,
+        PlatformSummaryDto summary
 ) {}
