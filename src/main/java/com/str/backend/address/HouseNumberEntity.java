@@ -27,7 +27,4 @@ public class HouseNumberEntity {
 
     @Column(name = "kc_broj", updatable = false)
     private String kcBroj;
-
-    @Column(name = "kat_opcina_naziv", updatable = false)
-    private String katOpcinaNaziv;
 }
