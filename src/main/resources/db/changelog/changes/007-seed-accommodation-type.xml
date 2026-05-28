@@ -18,9 +18,6 @@
         <insert schemaName="str_rn" tableName="accommodation_type">
             <column name="name" value="Kuca za odmor"/>
         </insert>
-        <insert schemaName="str_rn" tableName="accommodation_type">
-            <column name="name" value="Vila"/>
-        </insert>
         <rollback>
             <delete schemaName="str_rn" tableName="accommodation_type"/>
         </rollback>

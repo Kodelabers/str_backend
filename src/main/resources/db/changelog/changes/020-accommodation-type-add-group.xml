@@ -36,26 +36,6 @@
             <column name="registration_number_allowed" valueBoolean="true"/>
             <column name="group_name" value="domacinstvo"/>
         </insert>
-        <insert schemaName="str_rn" tableName="accommodation_type">
-            <column name="name" value="Vila"/>
-            <column name="registration_number_allowed" valueBoolean="true"/>
-            <column name="group_name" value="domacinstvo"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="accommodation_type">
-            <column name="name" value="Kamp odmorište"/>
-            <column name="registration_number_allowed" valueBoolean="false"/>
-            <column name="group_name" value="kamp"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="accommodation_type">
-            <column name="name" value="Mobilna kućica"/>
-            <column name="registration_number_allowed" valueBoolean="false"/>
-            <column name="group_name" value="kamp"/>
-        </insert>
-        <insert schemaName="str_rn" tableName="accommodation_type">
-            <column name="name" value="Plovni objekt"/>
-            <column name="registration_number_allowed" valueBoolean="false"/>
-            <column name="group_name" value="nautika"/>
-        </insert>
         <rollback/><!-- seed-only changeset; rollback to empty is acceptable -->
     </changeSet>
 
