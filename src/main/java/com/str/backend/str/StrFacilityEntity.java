@@ -22,6 +22,6 @@ public class StrFacilityEntity {
     @Column(name = "active", nullable = false, updatable = false)
     private boolean active;
 
-    @Column(name = "subject_id", updatable = false)
-    private Long subjectId;
+    @Column(name = "subject_version_id", updatable = false)
+    private Long subjectVersionId;
 }

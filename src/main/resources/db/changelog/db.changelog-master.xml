@@ -82,4 +82,7 @@
     <!-- Extra 35 mock facility rows (ids 66-100) — gated by context="local". -->
     <include file="db/changelog/changes/116-str-facility-seed-extra2-local.xml"/>
 
+    <!-- Align mock str.facility columns with real dev/prod schema — gated by context="local". -->
+    <include file="db/changelog/changes/117-str-facility-add-columns-local.xml"/>
+
 </databaseChangeLog>
