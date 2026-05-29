@@ -1,6 +1,7 @@
 package com.str.backend.rn;
 
 import com.str.backend.domain.RnStatus;
+import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.springframework.data.domain.Page;
@@ -108,4 +109,21 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             WHERE r.rn = :rn
             """)
     Optional<RnDetailDto> findDetail(@Param("rn") String rn);
+
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.str.backend.lessor.LessorRnSummaryDto(
+                r.rn, r.status, r.issueDate,
+                a.name, a.street, a.streetNumber, a.city,
+                t.name
+            )
+            FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
+            WHERE r.submissionId IN (
+                SELECT s.submissionId FROM SubmissionEntity s WHERE s.lessorId = :lessorId
+            )
+            ORDER BY r.issueDate DESC
+            """)
+    List<LessorRnSummaryDto> findByLessorId(@Param("lessorId") UUID lessorId);
 }
