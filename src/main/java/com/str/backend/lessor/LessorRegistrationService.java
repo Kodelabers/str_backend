@@ -31,6 +31,13 @@ public class LessorRegistrationService {
         if (req.getIspravaPrednja().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lessor.document.empty");
         }
+        boolean hasBack = req.getIspravaStraznja() != null && !req.getIspravaStraznja().isEmpty();
+        if ("PASSPORT".equals(req.getVrstaIsprave()) && hasBack) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "lessor.document.passport.noBack");
+        }
+        if ("ID_CARD".equals(req.getVrstaIsprave()) && !hasBack) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "lessor.document.idcard.backRequired");
+        }
 
         String username = req.getEmail().trim().toLowerCase();
         if (lessorRepository.findByEmail(username).isPresent()) {
