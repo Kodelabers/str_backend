@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Additional 35 mock facility rows (ids 66-100), gated by context="local". -->
+    <changeSet id="116-str-facility-seed-extra2" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.facility WHERE id &gt;= 66</sqlCheck>
+        </preConditions>
+        <!-- subject 1 — Pero Perić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="66"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="1"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="67"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="1"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="68"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="1"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="69"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="1"/></insert>
+        <!-- subject 2 — Ana Anić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="70"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="2"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="71"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="2"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="72"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="2"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="73"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="2"/></insert>
+        <!-- subject 3 — Marko Marić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="74"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="3"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="75"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="3"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="76"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="3"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="77"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="3"/></insert>
+        <!-- subject 4 — Ivana Ivić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="78"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="4"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="79"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="4"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="80"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="4"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="81"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="4"/></insert>
+        <!-- subject 5 — Stjepan Stjepić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="82"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="5"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="83"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="5"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="84"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="5"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="85"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="5"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="86"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="5"/></insert>
+        <!-- subject 6 — Jelena Jelić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="87"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="6"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="88"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="6"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="89"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="6"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="90"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="6"/></insert>
+        <!-- subject 7 — Tomislav Tomić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="91"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="7"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="92"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="7"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="93"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="7"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="94"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="7"/></insert>
+        <!-- subject 8 — Marija Marić -->
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="95"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="8"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="96"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="8"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="97"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="8"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="98"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="8"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="99"/><column name="active" valueBoolean="true"/><column name="subject_id" valueNumeric="8"/></insert>
+        <insert schemaName="str" tableName="facility"><column name="id" valueNumeric="100"/><column name="active" valueBoolean="false"/><column name="subject_id" valueNumeric="8"/></insert>
+    </changeSet>
+
+</databaseChangeLog>

@@ -79,4 +79,7 @@
     <!-- Extra 50 mock facility rows (ids 16-65) — gated by context="local". -->
     <include file="db/changelog/changes/115-str-facility-seed-extra-local.xml"/>
 
+    <!-- Extra 35 mock facility rows (ids 66-100) — gated by context="local". -->
+    <include file="db/changelog/changes/116-str-facility-seed-extra2-local.xml"/>
+
 </databaseChangeLog>
