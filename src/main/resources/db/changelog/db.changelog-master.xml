@@ -76,4 +76,7 @@
     <!-- Backfill accommodation.city / settlement from numeric IDs to names — gated by context="local". -->
     <include file="db/changelog/changes/114-fix-accommodation-city-settlement-names-local.xml"/>
 
+    <!-- Extra 50 mock facility rows (ids 16-65) — gated by context="local". -->
+    <include file="db/changelog/changes/115-str-facility-seed-extra-local.xml"/>
+
 </databaseChangeLog>
