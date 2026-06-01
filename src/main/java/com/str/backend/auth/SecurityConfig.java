@@ -41,7 +41,8 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/me", "/api/auth/logout",
-                                "/api/generateRegistrationNumberExternal").authenticated()
+                                "/api/generateRegistrationNumberExternal",
+                                "/api/lessor/profile", "/api/lessor/registrations").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(eh -> eh
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

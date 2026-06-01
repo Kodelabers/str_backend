@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Aligns mock str.facility with the real dev/prod column set.
+      All new columns are nullable — existing rows are not broken.
+      context="local" — on dev/prod the real table already has these columns.
+    -->
+    <changeSet id="117-str-facility-add-columns" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="facility" columnName="subject_version_id"/></not>
+        </preConditions>
+
+        <addColumn schemaName="str" tableName="facility">
+            <column name="created_by"                        type="VARCHAR(255)"/>
+            <column name="created_date"                      type="TIMESTAMP"/>
+            <column name="last_modified_by"                  type="VARCHAR(255)"/>
+            <column name="last_modified_date"                type="TIMESTAMP"/>
+            <column name="system_uuid"                       type="VARCHAR(36)"/>
+            <column name="name"                              type="VARCHAR(255)"/>
+            <column name="category_id"                       type="BIGINT"/>
+            <column name="subject_version_id"                type="BIGINT"/>
+            <column name="external_uid"                      type="VARCHAR(255)"/>
+            <column name="migration_notice"                  type="VARCHAR(1000)"/>
+            <column name="existing"                          type="BOOLEAN"/>
+            <column name="working_season_id"                 type="BIGINT"/>
+            <column name="business_status_id"                type="BIGINT"/>
+            <column name="quality_mark"                      type="VARCHAR(100)"/>
+            <column name="document_id"                       type="BIGINT"/>
+            <column name="same_address_subject"              type="BOOLEAN"/>
+            <column name="parent_facility_id"                type="BIGINT"/>
+            <column name="for_private_members"               type="BOOLEAN"/>
+            <column name="number_of_buildings"               type="INTEGER"/>
+            <column name="additional_services"               type="TEXT"/>
+            <column name="additional_contents"               type="TEXT"/>
+            <column name="permanent_sea_berth"               type="BOOLEAN"/>
+            <column name="for_long_transportation"           type="BOOLEAN"/>
+            <column name="outdoor_area"                      type="NUMERIC(10,2)"/>
+            <column name="indoor_area"                       type="NUMERIC(10,2)"/>
+            <column name="service_providing_start_date"      type="DATE"/>
+            <column name="manager_id"                        type="BIGINT"/>
+            <column name="package_deal"                      type="BOOLEAN"/>
+            <column name="pin"                               type="VARCHAR(20)"/>
+            <column name="founding_meeting_date"             type="DATE"/>
+            <column name="statute_entry_into_force_date"     type="DATE"/>
+            <column name="tourist_guide_service_scope"       type="VARCHAR(255)"/>
+            <column name="tourist_guide_birth_date"          type="DATE"/>
+            <column name="tourist_guide_birth_place"         type="VARCHAR(255)"/>
+            <column name="tourist_guide_nationality"         type="VARCHAR(100)"/>
+            <column name="tourist_guide_card_needed"         type="BOOLEAN"/>
+            <column name="educational_level_id"              type="BIGINT"/>
+            <column name="personal_document_type_id"         type="BIGINT"/>
+            <column name="personal_document_number"          type="VARCHAR(50)"/>
+            <column name="common_exam"                       type="BOOLEAN"/>
+            <column name="port_authority_id"                 type="BIGINT"/>
+            <column name="address_id"                        type="BIGINT"/>
+            <column name="insurer"                           type="VARCHAR(255)"/>
+            <column name="insurance_start_date"              type="DATE"/>
+            <column name="insurance_end_date"                type="DATE"/>
+            <column name="historical"                        type="BOOLEAN"/>
+            <column name="business_status_activation_date"   type="DATE"/>
+            <column name="historical_date"                   type="DATE"/>
+            <column name="insufficient_conditions"           type="BOOLEAN"/>
+            <column name="vessel_type_id"                    type="BIGINT"/>
+            <column name="registration_mark"                 type="VARCHAR(50)"/>
+            <column name="phone"                             type="VARCHAR(50)"/>
+            <column name="web_address"                       type="VARCHAR(255)"/>
+            <column name="email"                             type="VARCHAR(255)"/>
+            <column name="geo_location_longitude"            type="NUMERIC(11,8)"/>
+            <column name="geo_lon_orient"                    type="VARCHAR(1)"/>
+            <column name="geo_location_latitude"             type="NUMERIC(11,8)"/>
+            <column name="geo_lat_orient"                    type="VARCHAR(1)"/>
+            <column name="sea_surface"                       type="NUMERIC(10,2)"/>
+            <column name="coast_surface"                     type="NUMERIC(10,2)"/>
+            <column name="coast_length"                      type="NUMERIC(10,2)"/>
+            <column name="depth"                             type="NUMERIC(10,2)"/>
+            <column name="width"                             type="NUMERIC(10,2)"/>
+            <column name="insurance_policy"                  type="VARCHAR(100)"/>
+            <column name="insurance_secondary_end_date"      type="DATE"/>
+            <column name="insurance_secondary_policy"        type="VARCHAR(100)"/>
+            <column name="insurance_secondary_start_date"    type="DATE"/>
+            <column name="insurer_secondary"                 type="VARCHAR(255)"/>
+            <column name="special_exam"                      type="BOOLEAN"/>
+            <column name="is_in_sync_queue"                  type="BOOLEAN"/>
+            <column name="migration_notice_fulltext"         type="TEXT"/>
+        </addColumn>
+
+        <!-- Backfill subject_version_id from subject_id (in mock, subject_version.id == subject.id). -->
+        <sql>UPDATE str.facility SET subject_version_id = subject_id WHERE subject_version_id IS NULL AND subject_id IS NOT NULL</sql>
+    </changeSet>
+
+</databaseChangeLog>

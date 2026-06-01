@@ -28,10 +28,12 @@ public class StatisticsController {
         this.exportService = exportService;
     }
 
-    /** Wireframe §11: BPSO dashboard — RB counts per county. */
+    /** Wireframe §11: BPSO dashboard — RB counts per county, optionally filtered by year/month snapshot. */
     @GetMapping("/bpso")
-    public BpsoResponse bpso() {
-        return service.bpso();
+    public BpsoResponse bpso(
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month) {
+        return service.bpso(year, month);
     }
 
     /** Wireframe §11: BPSO PDF export — summary with KPI totals and county breakdown. */
@@ -76,9 +78,10 @@ public class StatisticsController {
             @RequestParam(required = false) String county,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) String rn,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         int clampedSize = Math.min(Math.max(1, size), 100);
-        return platformActivityQuery.query(platformId, od, toDate, county, status, q, page, clampedSize);
+        return platformActivityQuery.query(platformId, od, toDate, county, status, q, rn, page, clampedSize);
     }
 }

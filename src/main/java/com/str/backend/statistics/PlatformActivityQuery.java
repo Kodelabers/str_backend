@@ -56,6 +56,7 @@ class PlatformActivityQuery {
               AND (:toDate IS NULL OR aa.period_from <= :toDate)
               AND (:county IS NULL OR a.county = :county)
               AND (:rnStatus IS NULL OR rn.status = :rnStatus)
+              AND (:rn IS NULL OR aa.rn = :rn)
               AND (:q IS NULL OR aa.rn ILIKE :qLike OR a.street ILIKE :qLike OR a.city ILIKE :qLike)
             GROUP BY aa.rn, a.street, a.street_number, a.city, a.county,
                      rn.status, l.first_name, l.last_name, aa.period_from, aa.period_to
@@ -82,6 +83,7 @@ class PlatformActivityQuery {
               AND (:toDate IS NULL OR aa.period_from <= :toDate)
               AND (:county IS NULL OR a.county = :county)
               AND (:rnStatus IS NULL OR rn.status = :rnStatus)
+              AND (:rn IS NULL OR aa.rn = :rn)
               AND (:q IS NULL OR aa.rn ILIKE :qLike OR a.street ILIKE :qLike OR a.city ILIKE :qLike)
             """;
 
@@ -94,9 +96,9 @@ class PlatformActivityQuery {
     }
 
     PlatformActivitiesPageDto query(Long platformId, LocalDate od, LocalDate toDate,
-                                    String county, String rnStatus, String q,
+                                    String county, String rnStatus, String q, String rn,
                                     int page, int size) {
-        MapSqlParameterSource params = buildParams(platformId, od, toDate, county, rnStatus, q);
+        MapSqlParameterSource params = buildParams(platformId, od, toDate, county, rnStatus, q, rn);
 
         Long total = jdbc.queryForObject(COUNT_SQL, params, Long.class);
         long totalElements = total == null ? 0 : total;
@@ -143,13 +145,14 @@ class PlatformActivityQuery {
     }
 
     private MapSqlParameterSource buildParams(Long platformId, LocalDate od, LocalDate toDate,
-                                              String county, String rnStatus, String q) {
+                                              String county, String rnStatus, String q, String rn) {
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("platformId", platformId, Types.BIGINT);
         p.addValue("od", od, Types.DATE);
         p.addValue("toDate", toDate, Types.DATE);
         p.addValue("county", blankToNull(county), Types.VARCHAR);
         p.addValue("rnStatus", mapToDbStatus(rnStatus), Types.VARCHAR);
+        p.addValue("rn", blankToNull(rn), Types.VARCHAR);
         p.addValue("q", blankToNull(q), Types.VARCHAR);
         p.addValue("qLike", q != null && !q.isBlank() ? "%" + q.trim() + "%" : null, Types.VARCHAR);
         return p;

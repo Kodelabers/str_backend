@@ -69,7 +69,7 @@ public class StatisticsExportService {
     // ── PDF ──────────────────────────────────────────────────────────────────
 
     public byte[] generateBpsoPdf() {
-        BpsoResponse data = statisticsService.bpso();
+        BpsoResponse data = statisticsService.bpso(null, null);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4, 36, 36, 40, 36);
             PdfWriter.getInstance(doc, baos);

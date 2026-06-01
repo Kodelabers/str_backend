@@ -45,7 +45,7 @@ class StatisticsServiceTest {
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
         when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
-        BpsoResponse res = service.bpso();
+        BpsoResponse res = service.bpso(null, null);
 
         assertThat(res.counties()).hasSize(2);
         assertThat(res.counties()).allSatisfy(c -> {
@@ -73,7 +73,7 @@ class StatisticsServiceTest {
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(10L);
 
-        BpsoResponse res = service.bpso();
+        BpsoResponse res = service.bpso(null, null);
 
         CountyBpsoDto row = res.counties().get(0);
         assertThat(row.accommodations()).isEqualTo(10L);
@@ -99,7 +99,7 @@ class StatisticsServiceTest {
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(20L);
 
-        BpsoResponse res = service.bpso();
+        BpsoResponse res = service.bpso(null, null);
 
         assertThat(res.counties()).hasSize(2);
         assertThat(res.counties())
@@ -126,7 +126,7 @@ class StatisticsServiceTest {
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
         when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
-        BpsoResponse res = service.bpso();
+        BpsoResponse res = service.bpso(null, null);
 
         assertThat(res.counties())
                 .extracting(CountyBpsoDto::countyName)
