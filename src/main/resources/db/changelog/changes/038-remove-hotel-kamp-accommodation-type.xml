@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Hotel and Kamp are not STR types and must not appear in str_rn.
+         accommodation rows referencing these types are removed first (FK safety). -->
+    <changeSet id="038-remove-hotel-kamp-accommodation-type" author="str-backend">
+        <delete schemaName="str_rn" tableName="accommodation">
+            <where>accommodation_type_id IN (
+                SELECT type_id FROM str_rn.accommodation_type WHERE name IN ('Hotel', 'Kamp')
+            )</where>
+        </delete>
+        <delete schemaName="str_rn" tableName="accommodation_type">
+            <where>name IN ('Hotel', 'Kamp')</where>
+        </delete>
+        <rollback>
+            <insert schemaName="str_rn" tableName="accommodation_type">
+                <column name="name" value="Hotel"/>
+                <column name="registration_number_allowed" valueBoolean="false"/>
+                <column name="group_name" value="ostalo"/>
+            </insert>
+            <insert schemaName="str_rn" tableName="accommodation_type">
+                <column name="name" value="Kamp"/>
+                <column name="registration_number_allowed" valueBoolean="false"/>
+                <column name="group_name" value="ostalo"/>
+            </insert>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

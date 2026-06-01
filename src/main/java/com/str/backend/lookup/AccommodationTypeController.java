@@ -21,7 +21,7 @@ class AccommodationTypeController {
     @GetMapping("/accommodation-types")
     @Transactional(readOnly = true)
     ResponseEntity<List<AccommodationTypeResponse>> getAccommodationTypes() {
-        List<AccommodationTypeResponse> body = repository.findAll().stream()
+        List<AccommodationTypeResponse> body = repository.findAllByRegistrationNumberAllowedTrue().stream()
                 .map(e -> new AccommodationTypeResponse(
                         String.valueOf(e.getTypeId()),
                         e.getName(),
