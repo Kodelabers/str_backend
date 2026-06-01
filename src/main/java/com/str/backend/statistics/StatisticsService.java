@@ -12,6 +12,8 @@ import com.str.backend.str.StrFacilityRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -43,7 +45,7 @@ public class StatisticsService {
     }
 
     @Transactional(readOnly = true)
-    public BpsoResponse bpso() {
+    public BpsoResponse bpso(Integer year, Integer month) {
         List<CountyEntity> activeCounties = countyRepository.findAllByOrderByZuRb();
         Set<String> activeNames = new HashSet<>(activeCounties.size());
         for (CountyEntity c : activeCounties) activeNames.add(c.getName());
@@ -53,8 +55,17 @@ public class StatisticsService {
             accByCounty.merge(row.getCounty(), row.getCount(), Long::sum);
         }
 
+        List<RnRepository.CountyStatusCount> rnCounts;
+        if (year != null) {
+            int m = (month != null && month >= 1 && month <= 12) ? month : 12;
+            LocalDate asOf = YearMonth.of(year, m).atEndOfMonth();
+            rnCounts = rnRepository.countByCountyAndStatusUpTo(asOf);
+        } else {
+            rnCounts = rnRepository.countByCountyAndStatus();
+        }
+
         Map<String, Map<RnStatus, Long>> rnByCounty = new HashMap<>();
-        for (var row : rnRepository.countByCountyAndStatus()) {
+        for (var row : rnCounts) {
             rnByCounty
                     .computeIfAbsent(row.getCounty(), k -> new EnumMap<>(RnStatus.class))
                     .merge(row.getStatus(), row.getCount(), Long::sum);

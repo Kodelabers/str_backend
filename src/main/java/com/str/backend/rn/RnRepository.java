@@ -36,6 +36,16 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     List<CountyStatusCount> countByCountyAndStatus();
 
+    /** BPSO statistics: same as above but only RNs issued on or before the given date. */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT a.county AS county, r.status AS status, COUNT(r) AS count
+            FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE r.issueDate <= :asOf
+            GROUP BY a.county, r.status
+            """)
+    List<CountyStatusCount> countByCountyAndStatusUpTo(@Param("asOf") java.time.LocalDate asOf);
+
     interface CountyStatusCount {
         String getCounty();
         RnStatus getStatus();
