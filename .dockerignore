@@ -1,0 +1,9 @@
+target
+.idea
+*.iml
+.git
+.gitignore
+docs
+README.md
+CLAUDE.md
+swagger.txt
