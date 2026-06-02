@@ -22,7 +22,7 @@ services:
       args:
         VITE_API_URL: http://s-str-02.infodom.hr:8086
         VITE_USE_MOCK: "false"
-        VITE_NIAS_ENABLED: "false"
+        VITE_NIAS_ENABLED: "true"
     container_name: str-frontend
     restart: unless-stopped
     ports:
