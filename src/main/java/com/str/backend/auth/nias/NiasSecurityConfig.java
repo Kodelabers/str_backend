@@ -25,6 +25,7 @@ public class NiasSecurityConfig {
                         "/api/generateRegistrationNumber/**",
                         "/api/drafts/**",
                         "/api/nias/**",
+                        "/saml2/**",
                         "/login/saml2/**",
                         "/logout/saml2/**")
                 .csrf(csrf -> csrf.disable())
