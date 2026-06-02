@@ -1,6 +1,7 @@
 package com.str.backend.draft;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.NiasOibExtractor;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -20,10 +21,17 @@ public class DraftOwnerResolver {
 
     public DraftOwner resolve(HttpServletRequest request, HttpServletResponse response) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof LessorPrincipal lessor) {
-            return new DraftOwner(DraftOwnerType.LESSOR, lessor.getLessorId().toString());
+        if (auth != null && auth.isAuthenticated()) {
+            if (auth.getPrincipal() instanceof LessorPrincipal lessor) {
+                return new DraftOwner(DraftOwnerType.LESSOR, lessor.getLessorId().toString());
+            }
+            // Real NIAS SAML2 authentication — extract OIB from assertion attribute "oib"
+            var niasOib = NiasOibExtractor.extractOib(auth);
+            if (niasOib.isPresent()) {
+                return new DraftOwner(DraftOwnerType.NIAS_OIB, niasOib.get());
+            }
         }
-        // NIAS/eIDAS auth not yet implemented — fall back to a per-browser mock OIB
+        // NIAS/eIDAS not yet active — fall back to a per-browser mock OIB
         // stored in a cookie so each browser sees a stable identity in demo flows.
         String mockOib = readMockOib(request);
         if (mockOib == null) {
