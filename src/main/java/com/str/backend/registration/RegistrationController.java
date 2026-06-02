@@ -1,6 +1,7 @@
 package com.str.backend.registration;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
@@ -10,7 +11,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,8 +34,14 @@ public class RegistrationController {
     }
 
     @PostMapping("/api/generateRegistrationNumber")
-    public ResponseEntity<RegistrationResponse> generateRegistrationNumber(@Valid @RequestBody RegistrationRequest req) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(req));
+    public ResponseEntity<RegistrationResponse> generateRegistrationNumber(
+            @Valid @RequestBody RegistrationRequest req,
+            Authentication authentication) {
+        // When NIAS SAML2 is active, OIB comes from the assertion — override whatever the client sent.
+        RegistrationRequest finalReq = NiasOibExtractor.extractOib(authentication)
+                .map(oib -> RegistrationRequest.withOib(req, oib))
+                .orElse(req);
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(finalReq));
     }
 
     @PostMapping("/api/generateRegistrationNumberExternal")
