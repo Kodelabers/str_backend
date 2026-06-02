@@ -17,6 +17,14 @@
     <version>0.0.1-SNAPSHOT</version>
     <name>str-backend</name>
 
+    <repositories>
+        <repository>
+            <id>shibboleth</id>
+            <url>https://build.shibboleth.net/maven/releases/</url>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
+
     <properties>
         <java.version>21</java.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
