@@ -6,6 +6,7 @@ import com.str.backend.admin.dto.DocumentMetaDto;
 import com.str.backend.admin.dto.PendingRegistrationDetailDto;
 import com.str.backend.admin.dto.PendingRegistrationStatsDto;
 import com.str.backend.admin.dto.PendingRegistrationSummaryDto;
+import com.str.backend.common.SearchTokens;
 import com.str.backend.domain.LessorApplicationStatus;
 import com.str.backend.email.event.RegistrationApprovedEvent;
 import com.str.backend.email.event.RegistrationRejectedEvent;
@@ -73,13 +74,25 @@ public class AdminPendingRegistrationService {
                                                        String q,
                                                        String country,
                                                        String documentType,
+                                                       String name,
+                                                       String email,
+                                                       String taxNumber,
+                                                       String documentNumber,
                                                        Pageable pageable) {
+        return runSearch(status, q, country, documentType, name, email, taxNumber, documentNumber, pageable);
+    }
+
+    /** Shared by the list endpoint and the xlsx export so both apply identical filtering. */
+    private Page<PendingRegistrationSummaryDto> runSearch(LessorApplicationStatus status, String q, String country,
+                                                          String documentType, String name, String email,
+                                                          String taxNumber, String documentNumber, Pageable pageable) {
         LessorApplicationStatus effectiveStatus = status != null ? status : LessorApplicationStatus.PENDING;
-        String normalizedQ = blankToNull(q);
-        String normalizedCountry = blankToNull(country);
-        String normalizedDocumentType = blankToNull(documentType);
-        return lessorRepository.searchRegistrations(
-                effectiveStatus, normalizedQ, normalizedCountry, normalizedDocumentType, pageable);
+        String[] t = SearchTokens.slots(q);
+        return lessorRepository.searchRegistrations(effectiveStatus,
+                t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
+                blankToNull(country), blankToNull(documentType),
+                blankToNull(name), blankToNull(email), blankToNull(taxNumber), blankToNull(documentNumber),
+                pageable);
     }
 
     @Transactional(readOnly = true)
@@ -132,11 +145,10 @@ public class AdminPendingRegistrationService {
     }
 
     @Transactional(readOnly = true)
-    public byte[] exportXlsx(LessorApplicationStatus status, String q, String country, String documentType) {
-        LessorApplicationStatus effectiveStatus = status != null ? status : LessorApplicationStatus.PENDING;
-        List<PendingRegistrationSummaryDto> rows = lessorRepository
-                .searchRegistrations(effectiveStatus, blankToNull(q), blankToNull(country),
-                        blankToNull(documentType), Pageable.unpaged())
+    public byte[] exportXlsx(LessorApplicationStatus status, String q, String country, String documentType,
+                             String name, String email, String taxNumber, String documentNumber) {
+        List<PendingRegistrationSummaryDto> rows = runSearch(status, q, country, documentType,
+                name, email, taxNumber, documentNumber, Pageable.unpaged())
                 .getContent();
 
         DateTimeFormatter dateFmt     = DateTimeFormatter.ofPattern("dd.MM.yyyy.");

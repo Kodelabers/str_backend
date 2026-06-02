@@ -46,8 +46,12 @@ public class AdminPendingRegistrationController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String country,
             @RequestParam(required = false) String documentType,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String taxNumber,
+            @RequestParam(required = false) String documentNumber,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.search(status, q, country, documentType, pageable);
+        return service.search(status, q, country, documentType, name, email, taxNumber, documentNumber, pageable);
     }
 
     @GetMapping("/export/xlsx")
@@ -55,8 +59,13 @@ public class AdminPendingRegistrationController {
             @RequestParam(required = false) LessorApplicationStatus status,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String country,
-            @RequestParam(required = false) String documentType) {
-        byte[] bytes = service.exportXlsx(status, q, country, documentType);
+            @RequestParam(required = false) String documentType,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String taxNumber,
+            @RequestParam(required = false) String documentNumber) {
+        byte[] bytes = service.exportXlsx(status, q, country, documentType,
+                name, email, taxNumber, documentNumber);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"zahtjevi-za-registraciju.xlsx\"")
