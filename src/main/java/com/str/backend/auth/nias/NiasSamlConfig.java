@@ -69,7 +69,7 @@ public class NiasSamlConfig {
         RelyingPartyRegistration registration = RelyingPartyRegistrations
                 .fromMetadataLocation(props.metadataUri())
                 .registrationId(REGISTRATION_ID)
-                .entityId(spSigningCredential.getCertificate().getSubjectX500Principal().toString())
+                .entityId(props.entityId())
                 .assertionConsumerServiceLocation(props.acsUrl())
                 .singleLogoutServiceLocation(props.sloUrl())
                 .signingX509Credentials(c -> c.add(spSigningCredential))
