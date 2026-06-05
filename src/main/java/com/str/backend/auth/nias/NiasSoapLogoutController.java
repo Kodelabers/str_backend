@@ -8,7 +8,9 @@ import org.opensaml.saml.common.SAMLVersion;
 import org.opensaml.saml.saml2.core.Issuer;
 import org.opensaml.saml.saml2.core.LogoutRequest;
 import org.opensaml.saml.saml2.core.LogoutResponse;
+import org.opensaml.saml.saml2.core.NameID;
 import org.opensaml.saml.saml2.core.NameIDType;
+import org.opensaml.saml.saml2.core.SessionIndex;
 import org.opensaml.saml.saml2.core.Status;
 import org.opensaml.saml.saml2.core.StatusCode;
 import org.opensaml.saml.saml2.core.impl.IssuerBuilder;
@@ -60,12 +62,15 @@ public class NiasSoapLogoutController {
 
     private final RelyingPartyRegistrationRepository registrations;
     private final Saml2X509Credential spSigningCredential;
+    private final NiasSessionRegistry sessionRegistry;
 
     public NiasSoapLogoutController(
             RelyingPartyRegistrationRepository registrations,
-            Saml2X509Credential spSigningCredential) {
+            Saml2X509Credential spSigningCredential,
+            NiasSessionRegistry sessionRegistry) {
         this.registrations = registrations;
         this.spSigningCredential = spSigningCredential;
+        this.sessionRegistry = sessionRegistry;
     }
 
     @PostMapping(
@@ -104,6 +109,8 @@ public class NiasSoapLogoutController {
             return ResponseEntity.badRequest().build();
         }
 
+        invalidateLocalSessions(logoutRequest);
+
         LogoutResponse response = buildLogoutResponse(logoutRequest, rp.getEntityId());
         signResponse(response);
 
@@ -111,6 +118,26 @@ public class NiasSoapLogoutController {
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_XML)
                 .body(wrapInSoapEnvelope(responseXml));
+    }
+
+    private void invalidateLocalSessions(LogoutRequest req) {
+        NameID nameId = req.getNameID();
+        if (nameId == null || nameId.getValue() == null) {
+            log.warn("LogoutRequest missing NameID — cannot match local session");
+            return;
+        }
+        String name = nameId.getValue();
+        if (req.getSessionIndexes() == null || req.getSessionIndexes().isEmpty()) {
+            log.warn("LogoutRequest for {} carries no SessionIndex — skipping local invalidation", name);
+            return;
+        }
+        for (SessionIndex si : req.getSessionIndexes()) {
+            if (si.getValue() == null) continue;
+            boolean invalidated = sessionRegistry.invalidate(name, si.getValue());
+            if (!invalidated) {
+                log.warn("No local session matched ({}, {})", name, si.getValue());
+            }
+        }
     }
 
     private boolean verifySignature(Signature signature, RelyingPartyRegistration rp) {

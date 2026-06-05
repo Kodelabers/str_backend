@@ -108,7 +108,8 @@ public class NiasSamlConfig {
     }
 
     @Bean
-    public AuthenticationSuccessHandler authenticationSuccessHandler(NiasSamlProperties props) {
+    public AuthenticationSuccessHandler authenticationSuccessHandler(
+            NiasSamlProperties props, NiasSessionRegistry sessionRegistry) {
         return (request, response, authentication) -> {
             if (authentication instanceof Saml2Authentication) {
                 Saml2Authentication saml2Auth = (Saml2Authentication) authentication;
@@ -124,6 +125,10 @@ public class NiasSamlConfig {
                         newPrincipal, samlResponse, saml2Auth.getAuthorities());
                 enriched.setDetails(saml2Auth.getDetails());
                 SecurityContextHolder.getContext().setAuthentication(enriched);
+
+                for (String sessionIndex : sessionIndexes) {
+                    sessionRegistry.register(currentPrincipal.getName(), sessionIndex, request.getSession());
+                }
             }
             response.sendRedirect(props.successRedirectUrl());
         };
