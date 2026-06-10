@@ -51,4 +51,27 @@ public interface HouseNumberRepository extends JpaRepository<HouseNumberEntity, 
             WHERE a.id = :id
             """, nativeQuery = true)
     Optional<LessorAddressProjection> resolveFullAddress(@Param("id") Long id);
+
+    interface FullAddressProjection {
+        String getCounty();
+        String getMunicipality();
+        String getSettlement();
+        String getStreet();
+        String getStreetNumber();
+    }
+
+    @Query(value = """
+            SELECT z.zu_ime               AS county,
+                   g.jls_ime              AS municipality,
+                   n.na_ime               AS settlement,
+                   u.naziv_ulice          AS street,
+                   a.broj                 AS streetNumber
+            FROM eturizam_test.ar_address a
+            JOIN eturizam_test.ar_ulice         u ON u.id      = a.ulica_id
+            JOIN rpj_dgu.naselja                n ON n.na_mb   = u.naselje_id
+            JOIN rpj_dgu.gradovi_i_opcine       g ON g.jls_mb  = LPAD(n.jls_mb::text, 5, '0')
+            JOIN rpj_dgu.zupanije               z ON z.zu_rb   = g.zu_rb
+            WHERE a.id = :id
+            """, nativeQuery = true)
+    Optional<FullAddressProjection> resolveAddressHierarchy(@Param("id") Long id);
 }
