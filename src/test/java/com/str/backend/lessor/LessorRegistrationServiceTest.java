@@ -1,5 +1,7 @@
 package com.str.backend.lessor;
 
+import com.str.backend.address.CountryEntity;
+import com.str.backend.address.CountryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -14,6 +16,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -25,6 +28,7 @@ class LessorRegistrationServiceTest {
     private LessorRepository lessorRepository;
     private LessorDocumentRepository documentRepository;
     private PasswordEncoder passwordEncoder;
+    private CountryRepository countryRepository;
     private LessorRegistrationService service;
 
     @BeforeEach
@@ -32,8 +36,14 @@ class LessorRegistrationServiceTest {
         lessorRepository = mock(LessorRepository.class);
         documentRepository = mock(LessorDocumentRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
+        countryRepository = mock(CountryRepository.class);
         when(passwordEncoder.encode(anyString())).thenReturn("hashed");
-        service = new LessorRegistrationService(lessorRepository, documentRepository, passwordEncoder);
+        // By default every referenced country exists and is active.
+        CountryEntity activeCountry = mock(CountryEntity.class);
+        when(activeCountry.isActive()).thenReturn(true);
+        when(countryRepository.findById(anyLong())).thenReturn(Optional.of(activeCountry));
+        service = new LessorRegistrationService(
+                lessorRepository, documentRepository, passwordEncoder, countryRepository);
     }
 
     @Test
@@ -156,6 +166,123 @@ class LessorRegistrationServiceTest {
         assertThat(doc.getDocumentNumber()).isEqualTo("AB123456");
         assertThat(doc.getFrontImage()).isEqualTo(new byte[]{1, 2, 3});
         assertThat(doc.getUploadedAt()).isNotNull();
+    }
+
+    @Test
+    void register_legalEntityOwner_mapsGroupToEntity() throws IOException {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+
+        LessorRegistrationRequest req = validRequest();
+        req.setVlasnikJePravnaOsoba(true);
+        req.setNazivPravneOsobe("  Acme Holdings Ltd  ");
+        req.setDrzavaSjedistaId(380);
+        req.setGradSjedista("  Milano  ");
+        req.setMaticniBrojPravneOsobe("  MI-12345678  ");
+
+        service.register(req);
+
+        ArgumentCaptor<LessorEntity> captor = ArgumentCaptor.forClass(LessorEntity.class);
+        verify(lessorRepository).save(captor.capture());
+        LessorEntity saved = captor.getValue();
+
+        assertThat(saved.isLegalEntityOwner()).isTrue();
+        assertThat(saved.getLegalEntityName()).isEqualTo("Acme Holdings Ltd");
+        assertThat(saved.getLegalEntityCountryId()).isEqualTo(380);
+        assertThat(saved.getLegalEntityCity()).isEqualTo("Milano");
+        assertThat(saved.getLegalEntityRegistrationNumber()).isEqualTo("MI-12345678");
+    }
+
+    @Test
+    void register_residenceCountryNotFound_throws422_beforeAnyWrite() {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(countryRepository.findById(999L)).thenReturn(Optional.empty());
+
+        LessorRegistrationRequest req = validRequest();
+        req.setZemljaPrebivalistaId(999);
+
+        assertThatThrownBy(() -> service.register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(422);
+
+        verify(lessorRepository, never()).save(any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
+    void register_residenceCountryInactive_throws422() {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        CountryEntity inactive = mock(CountryEntity.class);
+        when(inactive.isActive()).thenReturn(false);
+        when(countryRepository.findById(2L)).thenReturn(Optional.of(inactive));
+
+        LessorRegistrationRequest req = validRequest();
+        req.setZemljaPrebivalistaId(2);
+
+        assertThatThrownBy(() -> service.register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(422);
+
+        verify(lessorRepository, never()).save(any());
+    }
+
+    @Test
+    void register_legalEntitySeatCountryNotFound_throws422_beforeAnyWrite() {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(countryRepository.findById(999L)).thenReturn(Optional.empty());
+
+        LessorRegistrationRequest req = validRequest();   // residence country (1) stays valid via default stub
+        req.setVlasnikJePravnaOsoba(true);
+        req.setNazivPravneOsobe("Acme Holdings Ltd");
+        req.setDrzavaSjedistaId(999);
+        req.setGradSjedista("Milano");
+        req.setMaticniBrojPravneOsobe("MI-12345678");
+
+        assertThatThrownBy(() -> service.register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(422);
+
+        verify(lessorRepository, never()).save(any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
+    void register_legalEntityFlagTrueWithMissingField_throws422_beforeAnyWrite() {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+
+        LessorRegistrationRequest req = validRequest();
+        req.setVlasnikJePravnaOsoba(true);
+        req.setNazivPravneOsobe("Acme Holdings Ltd");
+        req.setDrzavaSjedistaId(null);          // missing — must not NPE
+        req.setGradSjedista("Milano");
+        req.setMaticniBrojPravneOsobe("MI-12345678");
+
+        assertThatThrownBy(() -> service.register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(422);
+
+        verify(lessorRepository, never()).save(any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
+    void register_withoutLegalEntity_leavesGroupUnset() throws IOException {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+
+        service.register(validRequest());
+
+        ArgumentCaptor<LessorEntity> captor = ArgumentCaptor.forClass(LessorEntity.class);
+        verify(lessorRepository).save(captor.capture());
+        LessorEntity saved = captor.getValue();
+
+        assertThat(saved.isLegalEntityOwner()).isFalse();
+        assertThat(saved.getLegalEntityName()).isNull();
+        assertThat(saved.getLegalEntityCountryId()).isNull();
+        assertThat(saved.getLegalEntityCity()).isNull();
+        assertThat(saved.getLegalEntityRegistrationNumber()).isNull();
     }
 
     private LessorRegistrationRequest validRequest() {

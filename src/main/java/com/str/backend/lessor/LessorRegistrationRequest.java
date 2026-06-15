@@ -1,5 +1,6 @@
 package com.str.backend.lessor;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -55,4 +56,34 @@ public class LessorRegistrationRequest {
     private MultipartFile ispravaPrednja;
 
     private MultipartFile ispravaStraznja;
+
+    // Pravna osoba (opcionalna grupa) — popunjeno samo kad je podnositelj ovlaštena
+    // osoba pravne osobe koja je vlasnik smještajnog objekta. Odsutan flag => false.
+    private boolean vlasnikJePravnaOsoba;
+
+    @Size(max = 200)
+    private String nazivPravneOsobe;
+
+    private Integer drzavaSjedistaId;
+
+    @Size(max = 200)
+    private String gradSjedista;
+
+    @Size(max = 40)
+    private String maticniBrojPravneOsobe;
+
+    @AssertTrue(message = "lessor.legalEntity.incomplete")
+    public boolean isLegalEntityGroupComplete() {
+        if (!vlasnikJePravnaOsoba) {
+            return true;
+        }
+        return notBlank(nazivPravneOsobe)
+                && drzavaSjedistaId != null
+                && notBlank(gradSjedista)
+                && notBlank(maticniBrojPravneOsobe);
+    }
+
+    private static boolean notBlank(String value) {
+        return value != null && !value.isBlank();
+    }
 }

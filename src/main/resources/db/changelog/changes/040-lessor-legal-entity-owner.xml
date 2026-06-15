@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="040-lessor-legal-entity-owner" author="str-backend">
+
+        <!-- Foreign (non-EU) self-registration: optional "legal entity owner" group.
+             Populated only when the applicant is the authorised person of a legal entity
+             that owns the accommodation. Reuses existing legal_entity_name for the name. -->
+        <addColumn schemaName="str_rn" tableName="lessor">
+            <column name="is_legal_entity_owner" type="BOOLEAN" defaultValueBoolean="false"
+                    remarks="True if the accommodation owner is a legal entity (applicant is its authorised person)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="legal_entity_country_id" type="INTEGER"
+                    remarks="Logical reference to str.country(id) — no DB-level FK because str.* is owned externally (read-only). Country of the legal entity's seat. Same source as country_of_residence_id."/>
+            <column name="legal_entity_city" type="VARCHAR(200)"
+                    remarks="City of the legal entity's seat (free text, not a code list)"/>
+            <column name="legal_entity_registration_number" type="VARCHAR(40)"
+                    remarks="Registration/identification number of the legal entity (foreign equivalent of MBS)"/>
+        </addColumn>
+
+        <!-- All-or-nothing integrity: if the owner is a legal entity, the whole group must be present. -->
+        <sql>
+            ALTER TABLE str_rn.lessor
+                ADD CONSTRAINT chk_lessor_legal_entity_owner
+                    CHECK (
+                        is_legal_entity_owner = FALSE OR (
+                            legal_entity_name IS NOT NULL AND
+                            legal_entity_country_id IS NOT NULL AND
+                            legal_entity_city IS NOT NULL AND
+                            legal_entity_registration_number IS NOT NULL
+                        )
+                    )
+        </sql>
+
+        <rollback>
+            <sql>ALTER TABLE str_rn.lessor DROP CONSTRAINT chk_lessor_legal_entity_owner</sql>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="legal_entity_registration_number"/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="legal_entity_city"/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="legal_entity_country_id"/>
+            <dropColumn schemaName="str_rn" tableName="lessor" columnName="is_legal_entity_owner"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
