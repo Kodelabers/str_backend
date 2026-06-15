@@ -61,6 +61,18 @@ public class LessorEntity {
     @Column(name = "tax_number", length = 64, updatable = false)
     private String taxNumber;
 
+    @Column(name = "is_legal_entity_owner", nullable = false, updatable = false)
+    private boolean legalEntityOwner;
+
+    @Column(name = "legal_entity_country_id", updatable = false)
+    private Integer legalEntityCountryId;
+
+    @Column(name = "legal_entity_city", length = 200, updatable = false)
+    private String legalEntityCity;
+
+    @Column(name = "legal_entity_registration_number", length = 40, updatable = false)
+    private String legalEntityRegistrationNumber;
+
     @Column(name = "contact_name")
     @Setter private String contactName;
 
@@ -157,6 +169,21 @@ public class LessorEntity {
         e.createdAt = now;
         e.updatedAt = now;
         return e;
+    }
+
+    /**
+     * Applies the optional "legal entity owner" group captured during non-EU self-registration.
+     * Call before the entity is first persisted — the columns are {@code updatable = false},
+     * so they are written on INSERT only (this is construction, not a mutation, so timestamps
+     * are left as set by the factory). Reuses {@code legalEntityName} for the name; note that
+     * column stays mutable for the legacy {@code StrLessorLookupService} flow.
+     */
+    public void applyLegalEntityOwner(String name, Integer countryId, String city, String registrationNumber) {
+        this.legalEntityOwner = true;
+        this.legalEntityName = name;
+        this.legalEntityCountryId = countryId;
+        this.legalEntityCity = city;
+        this.legalEntityRegistrationNumber = registrationNumber;
     }
 
     public void setLegalEntity(String representativeOib, String legalEntityName, String legalRepresentativeName,

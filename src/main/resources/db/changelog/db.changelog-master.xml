@@ -37,6 +37,7 @@
     <include file="db/changelog/changes/037-submission-status-tighten.xml"/>
     <include file="db/changelog/changes/038-remove-hotel-kamp-accommodation-type.xml"/>
     <include file="db/changelog/changes/039-registration-prefill.xml"/>
+    <include file="db/changelog/changes/040-lessor-legal-entity-owner.xml"/>
 
     <!-- Mock 'str' schema (subject lookup only) — gated by Liquibase context="local".
          Address-hierarchy + lessor-address mocks moved to rpj_dgu/eturizam_test (TBD). -->

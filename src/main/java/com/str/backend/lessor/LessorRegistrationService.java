@@ -1,5 +1,7 @@
 package com.str.backend.lessor;
 
+import com.str.backend.address.CountryEntity;
+import com.str.backend.address.CountryRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,13 +17,16 @@ public class LessorRegistrationService {
     private final LessorRepository lessorRepository;
     private final LessorDocumentRepository lessorDocumentRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CountryRepository countryRepository;
 
     public LessorRegistrationService(LessorRepository lessorRepository,
                                      LessorDocumentRepository lessorDocumentRepository,
-                                     PasswordEncoder passwordEncoder) {
+                                     PasswordEncoder passwordEncoder,
+                                     CountryRepository countryRepository) {
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
         this.passwordEncoder = passwordEncoder;
+        this.countryRepository = countryRepository;
     }
 
     public LessorRegistrationResponse register(LessorRegistrationRequest req) throws IOException {
@@ -44,6 +49,8 @@ public class LessorRegistrationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lessor.registration.invalid");
         }
 
+        requireActiveCountry(req.getZemljaPrebivalistaId(), "lessor.country.invalid");
+
         String hash = passwordEncoder.encode(req.getPassword());
 
         LessorEntity lessor = LessorEntity.createNonEuRegistration(
@@ -53,6 +60,16 @@ public class LessorRegistrationService {
                 req.getDatumRodjenja(), req.getZemljaPrebivalistaId(),
                 req.getPorezniBroj(), req.getTelefon()
         );
+        if (req.isVlasnikJePravnaOsoba()) {
+            if (isBlank(req.getNazivPravneOsobe()) || req.getDrzavaSjedistaId() == null
+                    || isBlank(req.getGradSjedista()) || isBlank(req.getMaticniBrojPravneOsobe())) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "lessor.legalEntity.incomplete");
+            }
+            requireActiveCountry(req.getDrzavaSjedistaId(), "lessor.legalEntity.country.invalid");
+            lessor.applyLegalEntityOwner(
+                    req.getNazivPravneOsobe().trim(), req.getDrzavaSjedistaId(),
+                    req.getGradSjedista().trim(), req.getMaticniBrojPravneOsobe().trim());
+        }
         lessorRepository.save(lessor);
 
         byte[] back = req.getIspravaStraznja() != null && !req.getIspravaStraznja().isEmpty()
@@ -65,5 +82,19 @@ public class LessorRegistrationService {
         lessorDocumentRepository.save(doc);
 
         return new LessorRegistrationResponse(lessor.getLessorId(), username);
+    }
+
+    private void requireActiveCountry(Integer countryId, String errorKey) {
+        boolean valid = countryId != null
+                && countryRepository.findById(countryId.longValue())
+                        .filter(CountryEntity::isActive)
+                        .isPresent();
+        if (!valid) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, errorKey);
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
