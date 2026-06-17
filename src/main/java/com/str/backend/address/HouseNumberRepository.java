@@ -71,7 +71,7 @@ public interface HouseNumberRepository extends JpaRepository<HouseNumberEntity, 
             JOIN rpj_dgu.naselja                n ON n.na_mb   = u.naselje_id
             JOIN rpj_dgu.gradovi_i_opcine       g ON g.jls_mb  = LPAD(n.jls_mb::text, 5, '0')
             JOIN rpj_dgu.zupanije               z ON z.zu_rb   = g.zu_rb
-            WHERE a.id = :id
+            WHERE a.id::text = :code
             """, nativeQuery = true)
-    Optional<FullAddressProjection> resolveAddressHierarchy(@Param("id") Long id);
+    Optional<FullAddressProjection> resolveAddressHierarchy(@Param("code") String code);
 }
