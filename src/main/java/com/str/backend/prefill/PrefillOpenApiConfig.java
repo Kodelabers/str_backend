@@ -22,9 +22,14 @@ class PrefillOpenApiConfig {
                                 Vanjski portali (TuStart i sl.) prosljeđuju autenticirane podatke najmoprimca
                                 koji frontend STR-a koristi za prefill forme."""))
                 .servers(List.of(
-                        new Server().url("https://str.infodom.hr").description("Production"),
-                        new Server().url("https://s-str-02.infodom.hr:8080").description("Dev"),
-                        new Server().url("http://localhost:8080").description("Local")
+                        new Server().url("https://str.eturizam.gov.hr")
+                                .description("Production (TBD — točan URL nije potvrđen; trenutni eTurizam: https://eturizam.gov.hr/)"),
+                        new Server().url("https://str.testeduturizam.gov.hr")
+                                .description("Test (CDU)"),
+                        new Server().url("https://s-str-02.infodom.hr:8080")
+                                .description("Dev (interni Infodom)"),
+                        new Server().url("https://strbackend-production.up.railway.app")
+                                .description("Mock (Railway)")
                 ));
     }
 }
