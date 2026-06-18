@@ -17,7 +17,6 @@ public record PlatformActivityRowDto(
         LocalDate periodTo,
         long nights,
         long guestsTotal,
-        double avgGuestsPerNight,
         String rnStatus,
         Instant reportedAt
 ) {}
