@@ -2,6 +2,7 @@ package com.str.backend.lessor;
 
 import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
+import com.str.backend.address.EuMembership;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -84,10 +85,14 @@ public class LessorRegistrationService {
         return new LessorRegistrationResponse(lessor.getLessorId(), username);
     }
 
+    // Mirrors the GET /api/address/countries filter: this flow is for non-EU registration,
+    // so the chosen country must be active AND not an EU member (the dropdown only offers
+    // non-EU countries, but a client could still POST an EU id directly).
     private void requireActiveCountry(Integer countryId, String errorKey) {
         boolean valid = countryId != null
                 && countryRepository.findById(countryId.longValue())
                         .filter(CountryEntity::isActive)
+                        .filter(c -> !EuMembership.isEu(c.getIso2Alpha()))
                         .isPresent();
         if (!valid) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, errorKey);

@@ -228,6 +228,50 @@ class LessorRegistrationServiceTest {
     }
 
     @Test
+    void register_residenceCountryIsEuMember_throws422_beforeAnyWrite() {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        CountryEntity euCountry = mock(CountryEntity.class);
+        when(euCountry.isActive()).thenReturn(true);
+        when(euCountry.getIso2Alpha()).thenReturn("DE");   // EU member -> rejected
+        when(countryRepository.findById(11L)).thenReturn(Optional.of(euCountry));
+
+        LessorRegistrationRequest req = validRequest();
+        req.setZemljaPrebivalistaId(11);
+
+        assertThatThrownBy(() -> service.register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(422);
+
+        verify(lessorRepository, never()).save(any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
+    void register_legalEntitySeatCountryIsEuMember_throws422_beforeAnyWrite() {
+        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        CountryEntity euCountry = mock(CountryEntity.class);
+        when(euCountry.isActive()).thenReturn(true);
+        when(euCountry.getIso2Alpha()).thenReturn("IT");   // EU member -> rejected
+        when(countryRepository.findById(380L)).thenReturn(Optional.of(euCountry));
+
+        LessorRegistrationRequest req = validRequest();   // residence country (1) stays valid via default stub
+        req.setVlasnikJePravnaOsoba(true);
+        req.setNazivPravneOsobe("Acme Holdings Ltd");
+        req.setDrzavaSjedistaId(380);
+        req.setGradSjedista("Milano");
+        req.setMaticniBrojPravneOsobe("MI-12345678");
+
+        assertThatThrownBy(() -> service.register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(422);
+
+        verify(lessorRepository, never()).save(any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    @Test
     void register_legalEntitySeatCountryNotFound_throws422_beforeAnyWrite() {
         when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
         when(countryRepository.findById(999L)).thenReturn(Optional.empty());
