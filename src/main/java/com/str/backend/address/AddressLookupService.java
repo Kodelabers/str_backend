@@ -47,6 +47,7 @@ public class AddressLookupService {
                 ? countryRepository.findByActiveTrueOrderByName()
                 : countryRepository.findByActiveTrueAndNameContainingIgnoreCaseOrderByName(q);
         return entities.stream()
+                .filter(e -> !EuMembership.isEu(e.getIso2Alpha()))
                 .map(e -> new CountryResponse(e.getId(), e.getName(), e.getIso2Alpha()))
                 .toList();
     }
