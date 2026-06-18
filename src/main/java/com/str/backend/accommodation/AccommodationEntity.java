@@ -66,7 +66,7 @@ public class AccommodationEntity {
     private int maxGuests;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "offer_type", length = 16, nullable = false, updatable = false)
+    @Column(name = "offer_type", length = 32, nullable = false, updatable = false)
     private OfferType offerType;
 
     @Enumerated(EnumType.STRING)

@@ -11,6 +11,9 @@
                 DROP CONSTRAINT chk_accommodation_offer_type
         </sql>
 
+        <modifyDataType schemaName="str_rn" tableName="accommodation"
+                        columnName="offer_type" newDataType="VARCHAR(32)"/>
+
         <sql>
             UPDATE str_rn.accommodation
             SET offer_type = 'PRIMARY_RESIDENCE'
@@ -33,6 +36,8 @@
                 SET offer_type = 'RESIDENCE'
                 WHERE offer_type IN ('PRIMARY_RESIDENCE', 'SECONDARY_RESIDENCE')
             </sql>
+            <modifyDataType schemaName="str_rn" tableName="accommodation"
+                            columnName="offer_type" newDataType="VARCHAR(16)"/>
             <sql>
                 ALTER TABLE str_rn.accommodation
                     ADD CONSTRAINT chk_accommodation_offer_type
