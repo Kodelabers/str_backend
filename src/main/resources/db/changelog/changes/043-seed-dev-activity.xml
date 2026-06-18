@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Seed mock platform-activity rows on dev so the "Aktivnosti platformi"
+        dashboard isn't empty for demos. Mock seed 036 is context="local" only,
+        so dev never received any accommodation_activity data.
+
+        Generates 6 months (2025-12 .. 2026-05) × 2 platforms (Airbnb + Booking.com)
+        for every ACTIVE registration_number on the target DB. Nights/guests follow
+        a simple ramp (winter → spring).
+
+        Skipped on local (context attribute) AND when activity table already has data
+        (sqlCheck preCondition), so it's safe to re-run.
+    -->
+    <changeSet id="043-seed-dev-activity" author="str-backend" context="dev">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str_rn.accommodation_activity
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.accommodation_activity (
+                activity_id, platform_id, rn, accommodation_id,
+                period_from, period_to,
+                overnight_stays, guest_count,
+                received_at, purge_after
+            )
+            WITH months AS (
+                SELECT
+                    period_from::date AS period_from,
+                    (period_from + INTERVAL '1 month - 1 day')::date AS period_to,
+                    ROW_NUMBER() OVER (ORDER BY period_from)::int AS month_idx
+                FROM generate_series(DATE '2025-12-01', DATE '2026-05-01', INTERVAL '1 month') AS period_from
+            )
+            SELECT
+                gen_random_uuid(),
+                p.platform_id,
+                rn.rn,
+                rn.accommodation_id,
+                m.period_from,
+                m.period_to,
+                CASE WHEN p.name = 'Airbnb'
+                     THEN 5 + (m.month_idx * 3)
+                     ELSE 3 + (m.month_idx * 2)
+                END,
+                CASE WHEN p.name = 'Airbnb'
+                     THEN 2 + m.month_idx
+                     ELSE 1 + m.month_idx
+                END,
+                (m.period_to + INTERVAL '1 day')::timestamptz,
+                ((m.period_to + INTERVAL '1 day')::timestamptz + INTERVAL '18 months')
+            FROM str_rn.registration_number rn
+            CROSS JOIN str_rn.online_platform p
+            CROSS JOIN months m
+            WHERE rn.status = 'ACTIVE'
+              AND p.name IN ('Airbnb', 'Booking.com');
+        </sql>
+        <rollback>
+            <sql>
+                DELETE FROM str_rn.accommodation_activity
+                WHERE period_from &gt;= DATE '2025-12-01'
+                  AND period_to   &lt;= DATE '2026-05-31'
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -79,7 +79,7 @@ class RegistrationIntegrationTest {
         String rn = body.get("registrationNumber").asText();
         UUID submissionId = UUID.fromString(body.get("submissionId").asText());
 
-        assertThat(rn).matches("HR[0-9A-Fa-f]{18}");
+        assertThat(rn).matches("HR\\d{18}");
 
         SubmissionEntity submission = submissionRepository.findById(submissionId).orElseThrow();
         assertThat(lessorRepository.findById(submission.getLessorId())).isPresent();

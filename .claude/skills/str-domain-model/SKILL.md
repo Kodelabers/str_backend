@@ -49,14 +49,14 @@ Lookup of accommodation types. Note: column is `group_name` (not `group` — SQL
 
 ## Registration Number
 
-- Format: `HR` + 18 hex digits → 20 chars total. Pattern: `^HR[0-9A-Fa-f]{18}$`.
-- Encodes: county code (2 hex), group code (2 hex), type code (2 hex), 12 hex random.
+- Format: `HR` + 18 decimal digits → 20 chars total. Pattern: `^HR\d{18}$`.
+- Encodes: county code (2 digits), group code (2 digits), type code (2 digits), 12 digits random.
 - Must be UNIQUE. On generation, retry up to 5× on collision rather than sequence.
 - Only assigned on transition to `RnStatus.ACTIVE`; never expose a pre-activation RN.
 
 ```java
 public class RegistrationNumber {
-  private static final Pattern PATTERN = Pattern.compile("^HR[0-9A-Fa-f]{18}$");
+  private static final Pattern PATTERN = Pattern.compile("^HR\\d{18}$");
 
   public RegistrationNumber(String value) {
     if (value == null || !PATTERN.matcher(value).matches()) {

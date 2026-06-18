@@ -1,6 +1,6 @@
 package com.str.backend.statistics.dto;
 
-public record BpsoTotalsDto(
+public record StrTotalsDto(
         long totalObjects,
         long totalRn,
         double coverageRate

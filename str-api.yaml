@@ -1035,10 +1035,10 @@ components:
       name: rn
       in: path
       required: true
-      description: Registration number (format HR + 18 hex characters)
+      description: Registration number (format HR + 18 decimal digits)
       schema:
         type: string
-        pattern: '^HR[0-9A-Fa-f]{18}$'
+        pattern: '^HR\d{18}$'
         example: "HR180000123456789001"
     lessorId:
       name: lessorId

@@ -5,15 +5,14 @@ import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.RnRepository;
-import com.str.backend.statistics.dto.BpsoResponse;
-import com.str.backend.statistics.dto.BpsoTotalsDto;
-import com.str.backend.statistics.dto.CountyBpsoDto;
+import com.str.backend.statistics.dto.StrResponse;
+import com.str.backend.statistics.dto.StrTotalsDto;
+import com.str.backend.statistics.dto.CountyStrDto;
 import com.str.backend.str.StrFacilityRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -45,7 +44,7 @@ public class StatisticsService {
     }
 
     @Transactional(readOnly = true)
-    public BpsoResponse bpso(Integer year, Integer month) {
+    public StrResponse str(LocalDate from, LocalDate to) {
         List<CountyEntity> activeCounties = countyRepository.findAllByOrderByZuRb();
         Set<String> activeNames = new HashSet<>(activeCounties.size());
         for (CountyEntity c : activeCounties) activeNames.add(c.getName());
@@ -56,10 +55,8 @@ public class StatisticsService {
         }
 
         List<RnRepository.CountyStatusCount> rnCounts;
-        if (year != null) {
-            int m = (month != null && month >= 1 && month <= 12) ? month : 12;
-            LocalDate asOf = YearMonth.of(year, m).atEndOfMonth();
-            rnCounts = rnRepository.countByCountyAndStatusUpTo(asOf);
+        if (from != null && to != null) {
+            rnCounts = rnRepository.countByCountyAndStatusBetween(from, to);
         } else {
             rnCounts = rnRepository.countByCountyAndStatus();
         }
@@ -71,7 +68,7 @@ public class StatisticsService {
                     .merge(row.getStatus(), row.getCount(), Long::sum);
         }
 
-        List<CountyBpsoDto> rows = new ArrayList<>(activeCounties.size() + 1);
+        List<CountyStrDto> rows = new ArrayList<>(activeCounties.size() + 1);
 
         for (CountyEntity c : activeCounties) {
             rows.add(buildRow(String.valueOf(c.getId()), c.getName(),
@@ -95,11 +92,11 @@ public class StatisticsService {
         }
 
         rows.sort(Comparator
-                .comparingLong(CountyBpsoDto::accommodations).reversed()
-                .thenComparing(CountyBpsoDto::countyName));
+                .comparingLong(CountyStrDto::accommodations).reversed()
+                .thenComparing(CountyStrDto::countyName));
 
         long totalActive = 0, totalSuspended = 0, totalWithdrawn = 0;
-        for (CountyBpsoDto r : rows) {
+        for (CountyStrDto r : rows) {
             totalActive += r.activeRn();
             totalSuspended += r.suspendedRn();
             totalWithdrawn += r.withdrawnRn();
@@ -107,16 +104,16 @@ public class StatisticsService {
 
         long totalObjects = facilityRepository.countByActiveTrue();
         long totalRn = totalActive + totalSuspended + totalWithdrawn;
-        BpsoTotalsDto totals = new BpsoTotalsDto(totalObjects, totalRn, rate(totalRn, totalObjects));
-        return new BpsoResponse(totals, rows);
+        StrTotalsDto totals = new StrTotalsDto(totalObjects, totalRn, rate(totalRn, totalObjects));
+        return new StrResponse(totals, rows);
     }
 
-    private static CountyBpsoDto buildRow(String id, String name, long accommodations,
+    private static CountyStrDto buildRow(String id, String name, long accommodations,
                                           Map<RnStatus, Long> byStatus) {
         long active = byStatus.getOrDefault(RnStatus.ACTIVE, 0L);
         long suspended = byStatus.getOrDefault(RnStatus.SUSPENDED, 0L);
         long withdrawn = byStatus.getOrDefault(RnStatus.WITHDRAWN, 0L);
-        return new CountyBpsoDto(id, name, accommodations, active, suspended, withdrawn,
+        return new CountyStrDto(id, name, accommodations, active, suspended, withdrawn,
                 rate(active, accommodations));
     }
 

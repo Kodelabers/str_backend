@@ -12,8 +12,8 @@ import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.pdf.PdfFonts;
 import com.str.backend.statistics.StatisticsRepository.DetailRowProjection;
-import com.str.backend.statistics.dto.BpsoResponse;
-import com.str.backend.statistics.dto.CountyBpsoDto;
+import com.str.backend.statistics.dto.StrResponse;
+import com.str.backend.statistics.dto.CountyStrDto;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -68,14 +68,14 @@ public class StatisticsExportService {
 
     // ── PDF ──────────────────────────────────────────────────────────────────
 
-    public byte[] generateBpsoPdf() {
-        BpsoResponse data = statisticsService.bpso(null, null);
+    public byte[] generateStrPdf() {
+        StrResponse data = statisticsService.str(null, null);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4, 36, 36, 40, 36);
             PdfWriter.getInstance(doc, baos);
             doc.open();
 
-            Paragraph title = new Paragraph("BPSO – Registracijski brodovi u brojkama", FNT_TITLE);
+            Paragraph title = new Paragraph("STR – Registracijski brojevi u brojkama", FNT_TITLE);
             title.setSpacingAfter(4);
             doc.add(title);
 
@@ -104,7 +104,7 @@ public class StatisticsExportService {
             PdfPTable countyTable = new PdfPTable(colWidths);
             countyTable.setWidthPercentage(100);
             for (String h : countyHeaders) countyTable.addCell(thCell(h));
-            for (CountyBpsoDto row : data.counties()) {
+            for (CountyStrDto row : data.counties()) {
                 countyTable.addCell(tdCell(row.countyName()));
                 countyTable.addCell(tdCell(String.valueOf(row.accommodations())));
                 countyTable.addCell(tdCell(String.valueOf(row.activeRn())));
@@ -117,7 +117,7 @@ public class StatisticsExportService {
             doc.close();
             return baos.toByteArray();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to generate BPSO PDF", e);
+            throw new RuntimeException("Failed to generate STR PDF", e);
         }
     }
 
@@ -143,7 +143,7 @@ public class StatisticsExportService {
     // ── CSV ──────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public byte[] generateBpsoCsv() {
+    public byte[] generateStrCsv() {
         List<DetailRowProjection> rows = statisticsRepository.findDetailRows(EXPORT_STATUSES);
         StringBuilder sb = new StringBuilder();
         sb.append('﻿'); // BOM for Excel-compatible UTF-8
@@ -171,12 +171,12 @@ public class StatisticsExportService {
     // ── Excel ─────────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public byte[] generateBpsoXlsx() {
+    public byte[] generateStrXlsx() {
         List<DetailRowProjection> rows = statisticsRepository.findDetailRows(EXPORT_STATUSES);
         try (XSSFWorkbook wb = new XSSFWorkbook();
              ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
-            Sheet sheet = wb.createSheet("BPSO detaljna statistika");
+            Sheet sheet = wb.createSheet("STR detaljna statistika");
 
             XSSFFont boldFont = wb.createFont();
             boldFont.setBold(true);
@@ -216,7 +216,7 @@ public class StatisticsExportService {
             wb.write(baos);
             return baos.toByteArray();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to generate BPSO Excel", e);
+            throw new RuntimeException("Failed to generate STR Excel", e);
         }
     }
 

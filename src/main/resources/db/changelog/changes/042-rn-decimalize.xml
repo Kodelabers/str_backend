@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Prevodi sve postojeće RB-ove u strogo decimalni format (^HR[0-9]{18}$).
+        Hex-znakovi A-F (case-insensitive) preslikavaju se na decimalne znamenke:
+        A→1, B→2, C→3, D→4, E→5, F→6.
+
+        Ažurira sve tri tablice koje sadrže rn (registration_number,
+        registration_number_log s FK-om, i accommodation_activity bez FK-a).
+        FK fk_rn_log_rn se privremeno skida da bi se obje strane mogle ažurirati
+        unutar iste changeSet transakcije, pa se zatim ponovno postavlja.
+        Na kraju se stegnu oba CHECK constraint-a na ^HR[0-9]{18}$.
+
+        Rollback ne vraća izvorne hex vrijednosti (operacija je lossy), samo
+        omekšava CHECK constraint-e nazad na ^HR[0-9A-Fa-f]{18}$.
+    -->
+    <changeSet id="042-rn-decimalize" author="str-backend">
+        <sql>
+            ALTER TABLE str_rn.registration_number_log DROP CONSTRAINT fk_rn_log_rn
+        </sql>
+
+        <sql>
+            UPDATE str_rn.registration_number
+               SET rn = translate(rn, 'AaBbCcDdEeFf', '112233445566')
+             WHERE rn ~ '[A-Fa-f]'
+        </sql>
+        <sql>
+            UPDATE str_rn.registration_number_log
+               SET rn = translate(rn, 'AaBbCcDdEeFf', '112233445566')
+             WHERE rn ~ '[A-Fa-f]'
+        </sql>
+        <sql>
+            UPDATE str_rn.accommodation_activity
+               SET rn = translate(rn, 'AaBbCcDdEeFf', '112233445566')
+             WHERE rn ~ '[A-Fa-f]'
+        </sql>
+
+        <sql>
+            ALTER TABLE str_rn.registration_number_log
+                ADD CONSTRAINT fk_rn_log_rn
+                FOREIGN KEY (rn) REFERENCES str_rn.registration_number(rn)
+        </sql>
+
+        <sql>
+            ALTER TABLE str_rn.registration_number DROP CONSTRAINT chk_rn_format
+        </sql>
+        <sql>
+            ALTER TABLE str_rn.registration_number
+                ADD CONSTRAINT chk_rn_format CHECK (rn ~ '^HR[0-9]{18}$')
+        </sql>
+        <sql>
+            ALTER TABLE str_rn.accommodation_activity DROP CONSTRAINT chk_activity_rn_format
+        </sql>
+        <sql>
+            ALTER TABLE str_rn.accommodation_activity
+                ADD CONSTRAINT chk_activity_rn_format CHECK (rn ~ '^HR[0-9]{18}$')
+        </sql>
+
+        <rollback>
+            <sql>
+                ALTER TABLE str_rn.registration_number DROP CONSTRAINT chk_rn_format
+            </sql>
+            <sql>
+                ALTER TABLE str_rn.registration_number
+                    ADD CONSTRAINT chk_rn_format CHECK (rn ~ '^HR[0-9A-Fa-f]{18}$')
+            </sql>
+            <sql>
+                ALTER TABLE str_rn.accommodation_activity DROP CONSTRAINT chk_activity_rn_format
+            </sql>
+            <sql>
+                ALTER TABLE str_rn.accommodation_activity
+                    ADD CONSTRAINT chk_activity_rn_format CHECK (rn ~ '^HR[0-9A-Fa-f]{18}$')
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

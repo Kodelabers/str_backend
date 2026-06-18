@@ -14,7 +14,7 @@ public interface AccommodationRepository extends JpaRepository<AccommodationEnti
 
     Optional<AccommodationEntity> findByCoreObjectId(UUID coreObjectId);
 
-    /** BPSO statistics: accommodation counts grouped by county name. */
+    /** STR statistics: accommodation counts grouped by county name. */
     @Transactional(readOnly = true)
     @Query("SELECT a.county AS county, COUNT(a) AS count FROM AccommodationEntity a GROUP BY a.county")
     List<CountyCount> countByCounty();

@@ -83,13 +83,13 @@ JUnit testovi (`@ActiveProfiles("test")`) override-aju konfiguraciju kroz `src/t
 ## 4. Domena registracijskog broja (RB)
 
 ### 4.1 Format
-- 10 znakova: prefiks `HR` + 8 numeričkih znamenki.
-- Validacija: `^HR[0-9A-Fa-f]{18}$` (klasa `RegistrationNumber`).
-- Primjer: `HR04920183`.
+- 20 znakova: prefiks `HR` + 18 numeričkih znamenki (CC = županija, GG = grupa, TT = vrsta, XXXXXXXXXXXX = 12 znamenki slučajnosti).
+- Validacija: `^HR\d{18}$` (klasa `RegistrationNumber`).
+- Primjer: `HR120001839271650412`.
 
 ### 4.2 Generiranje
-- 8 znamenki generira se preko `SecureRandom.nextInt(100_000_000)` formatirano kao `HR%08d`.
-- Bez kontrolne znamenke — kolizije se rješavaju retry petljom (do 5 pokušaja u `RbService.issue`) uz unique constraint na `str.rb.rb`.
+- 12 znamenki slučajnosti generira se preko `SecureRandom.nextLong()` i formatira kao `HR%02d%02d%02d%012d`.
+- Bez kontrolne znamenke — kolizije se rješavaju retry petljom (do 5 pokušaja u `RnService.issue`) uz unique constraint na `str_rn.registration_number.rn`.
 - Generiranje je atomski dio iste transakcije kao i izdavanje (insert), pa se istovremene kolizije svode na `DataIntegrityViolationException` (vrlo rijetko, prihvatljivo kao 500).
 
 ### 4.3 Životni ciklus

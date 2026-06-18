@@ -5,8 +5,8 @@ import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.RnRepository;
-import com.str.backend.statistics.dto.BpsoResponse;
-import com.str.backend.statistics.dto.CountyBpsoDto;
+import com.str.backend.statistics.dto.StrResponse;
+import com.str.backend.statistics.dto.CountyStrDto;
 import com.str.backend.str.StrFacilityRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ class StatisticsServiceTest {
     }
 
     @Test
-    void bpso_emitsRowForEveryActiveCounty_evenWithZeroData() {
+    void str_emitsRowForEveryActiveCounty_evenWithZeroData() {
         when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "Splitsko-dalmatinska županija"),
                 county(2L, "Grad Zagreb")
@@ -45,7 +45,7 @@ class StatisticsServiceTest {
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
         when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
-        BpsoResponse res = service.bpso(null, null);
+        StrResponse res = service.str(null, null);
 
         assertThat(res.counties()).hasSize(2);
         assertThat(res.counties()).allSatisfy(c -> {
@@ -58,7 +58,7 @@ class StatisticsServiceTest {
     }
 
     @Test
-    void bpso_aggregatesRnsByStatusPerCounty_andComputesRate() {
+    void str_aggregatesRnsByStatusPerCounty_andComputesRate() {
         when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "Splitsko-dalmatinska županija")
         ));
@@ -73,9 +73,9 @@ class StatisticsServiceTest {
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(10L);
 
-        BpsoResponse res = service.bpso(null, null);
+        StrResponse res = service.str(null, null);
 
-        CountyBpsoDto row = res.counties().get(0);
+        CountyStrDto row = res.counties().get(0);
         assertThat(row.accommodations()).isEqualTo(10L);
         assertThat(row.activeRn()).isEqualTo(4L);
         assertThat(row.suspendedRn()).isEqualTo(1L);
@@ -85,7 +85,7 @@ class StatisticsServiceTest {
     }
 
     @Test
-    void bpso_surfacesOrphanCountiesUnderOtherBucket_andTotalsRemainEqualToSumOfRows() {
+    void str_surfacesOrphanCountiesUnderOtherBucket_andTotalsRemainEqualToSumOfRows() {
         when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "Zagrebačka županija")
         ));
@@ -99,20 +99,20 @@ class StatisticsServiceTest {
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(20L);
 
-        BpsoResponse res = service.bpso(null, null);
+        StrResponse res = service.str(null, null);
 
         assertThat(res.counties()).hasSize(2);
         assertThat(res.counties())
-                .extracting(CountyBpsoDto::countyId)
+                .extracting(CountyStrDto::countyId)
                 .containsExactlyInAnyOrder("1", StatisticsService.OTHER_COUNTY_ID);
 
-        long sumActive = res.counties().stream().mapToLong(CountyBpsoDto::activeRn).sum();
+        long sumActive = res.counties().stream().mapToLong(CountyStrDto::activeRn).sum();
         assertThat(res.totals().totalObjects()).isEqualTo(20L);
         assertThat(res.totals().totalRn()).isEqualTo(sumActive).isEqualTo(2L);
     }
 
     @Test
-    void bpso_sortsByAccommodationsDescThenByName() {
+    void str_sortsByAccommodationsDescThenByName() {
         when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
                 county(1L, "A-zupanija"),
                 county(2L, "B-zupanija"),
@@ -126,10 +126,10 @@ class StatisticsServiceTest {
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
         when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
-        BpsoResponse res = service.bpso(null, null);
+        StrResponse res = service.str(null, null);
 
         assertThat(res.counties())
-                .extracting(CountyBpsoDto::countyName)
+                .extracting(CountyStrDto::countyName)
                 .containsExactly("B-zupanija", "C-zupanija", "A-zupanija");
     }
 

@@ -38,7 +38,7 @@ public class RnController {
     /** STR wireframe §12 / §13: paginated public registry of RNs. */
     @GetMapping
     public Page<RnSummaryDto> registry(
-            @RequestParam(defaultValue = "ACTIVE") RnRegistryView view,
+            @RequestParam(defaultValue = "ALL") RnRegistryView view,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String county,
             @RequestParam(required = false) Long typeId,

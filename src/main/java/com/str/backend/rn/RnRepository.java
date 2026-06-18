@@ -27,7 +27,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     List<RnEntity> findByStatusInOrderByUpdatedAtDesc(List<RnStatus> statuses);
 
-    /** BPSO statistics: counts of RNs grouped by accommodation county + RN status. */
+    /** STR statistics: counts of RNs grouped by accommodation county + RN status. */
     @Transactional(readOnly = true)
     @Query("""
             SELECT a.county AS county, r.status AS status, COUNT(r) AS count
@@ -36,15 +36,16 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     List<CountyStatusCount> countByCountyAndStatus();
 
-    /** BPSO statistics: same as above but only RNs issued on or before the given date. */
+    /** STR statistics: same as above but only RNs issued within the given date range (inclusive). */
     @Transactional(readOnly = true)
     @Query("""
             SELECT a.county AS county, r.status AS status, COUNT(r) AS count
             FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
-            WHERE r.issueDate <= :asOf
+            WHERE r.issueDate BETWEEN :from AND :to
             GROUP BY a.county, r.status
             """)
-    List<CountyStatusCount> countByCountyAndStatusUpTo(@Param("asOf") java.time.LocalDate asOf);
+    List<CountyStatusCount> countByCountyAndStatusBetween(@Param("from") java.time.LocalDate from,
+                                                          @Param("to") java.time.LocalDate to);
 
     interface CountyStatusCount {
         String getCounty();
@@ -122,13 +123,17 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
                 r.createdAt, r.updatedAt, r.submissionId,
                 a.accommodationId, a.county, a.city, a.settlement, a.street, a.streetNumber,
                 a.name, t.name, a.maxBeds, a.maxGuests, a.category,
-                l.lessorId, l.firstName, l.lastName, l.legalEntityName, l.email, l.lessorOib
+                l.lessorId, l.firstName, l.lastName, l.legalEntityName, l.email, l.lessorOib,
+                l.legalEntityOwner, c.name, l.legalEntityCity, l.legalEntityRegistrationNumber,
+                l.representativeOib, l.legalRepresentativeName,
+                l.representativeEmail, l.representativePhone, l.representativeAddress
             )
             FROM RnEntity r
             JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
             LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
             LEFT JOIN LessorEntity l ON l.lessorId =
                 (SELECT s.lessorId FROM SubmissionEntity s WHERE s.submissionId = r.submissionId)
+            LEFT JOIN CountryEntity c ON c.id = l.legalEntityCountryId
             WHERE r.rn = :rn
             """)
     Optional<RnDetailDto> findDetail(@Param("rn") String rn);

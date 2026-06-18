@@ -58,7 +58,7 @@ class RnServiceTest {
 
         RnEntity result = service.issue(submissionId, accommodationId);
 
-        assertThat(result.getRn()).matches("HR[0-9A-Fa-f]{18}");
+        assertThat(result.getRn()).matches("HR\\d{18}");
         assertThat(result.getStatus()).isEqualTo(RnStatus.ACTIVE);
         assertThat(result.getIssueDate()).isEqualTo(LocalDate.of(2026, 4, 30));
         assertThat(result.getSubmissionId()).isEqualTo(submissionId);
@@ -78,7 +78,7 @@ class RnServiceTest {
 
         RnEntity result = service.issue(UUID.randomUUID(), accommodationId);
 
-        assertThat(result.getRn()).matches("HR[0-9A-Fa-f]{18}");
+        assertThat(result.getRn()).matches("HR\\d{18}");
         verify(repository).save(result);
     }
 
@@ -108,7 +108,7 @@ class RnServiceTest {
 
         RnEntity result = service.issue(UUID.randomUUID(), accommodationId);
 
-        assertThat(result.getRn()).matches("HR[0-9A-Fa-f]{18}");
+        assertThat(result.getRn()).matches("HR\\d{18}");
         verify(repository, times(5)).existsByRn(anyString());
         verify(repository).save(result);
     }

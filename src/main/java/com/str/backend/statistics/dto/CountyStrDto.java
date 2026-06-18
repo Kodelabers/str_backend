@@ -1,6 +1,6 @@
 package com.str.backend.statistics.dto;
 
-public record CountyBpsoDto(
+public record CountyStrDto(
         String countyId,
         String countyName,
         long accommodations,

@@ -89,4 +89,14 @@
     <!-- Align mock str.facility columns with real dev/prod schema — gated by context="local". -->
     <include file="db/changelog/changes/117-str-facility-add-columns-local.xml"/>
 
+    <!-- Prevodi sve postojeće RB-ove (uključujući hex iz mock seeda 036) u
+         strogo decimalni format i stegne CHECK constraint-e na ^HR[0-9]{18}$.
+         Mora ići iza 036-mock-rn-activity-seed da pokupi i lokalni mock. -->
+    <include file="db/changelog/changes/042-rn-decimalize.xml"/>
+
+    <!-- Demo seed za platform-activity dashboard na devu (context="dev").
+         Ne dira local (već ima 036 mock seed) ni postojeće dev podatke
+         (preCondition: tablica je prazna). -->
+    <include file="db/changelog/changes/043-seed-dev-activity.xml"/>
+
 </databaseChangeLog>
