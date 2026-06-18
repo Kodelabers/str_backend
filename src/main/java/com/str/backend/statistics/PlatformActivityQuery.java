@@ -39,7 +39,6 @@ class PlatformActivityQuery {
                 aa.period_to,
                 SUM(aa.overnight_stays) AS nights,
                 SUM(aa.guest_count) AS guests_total,
-                ROUND(SUM(aa.guest_count)::numeric / NULLIF(SUM(aa.overnight_stays), 0), 1) AS avg_guests,
                 MAX(aa.received_at) AS reported_at,
                 JSON_AGG(DISTINCT jsonb_build_object(
                     'id', p.platform_id::text,
@@ -135,7 +134,6 @@ class PlatformActivityQuery {
                     rs.getObject("period_to", LocalDate.class),
                     rs.getLong("nights"),
                     rs.getLong("guests_total"),
-                    rs.getDouble("avg_guests"),
                     mapStatus(rs.getString("rn_status")),
                     ts != null ? ts.toInstant() : null
             );
