@@ -138,7 +138,7 @@ class RnServiceTest {
     private AccommodationEntity accommodation(UUID id, Long typeId) {
         AccommodationEntity e = AccommodationEntity.create(
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", "Ilica", "1",
-                2, 4, OfferType.RESIDENCE, Offering.WHOLE, false, false, true);
+                2, 4, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, false, true);
         e.setLocationDetails(null, null, null, null, null, null, typeId, null);
         // Override the generated accommodationId via reflection — entity uses UUID.randomUUID() internally
         try {

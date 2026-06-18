@@ -65,7 +65,7 @@ class OrchestratorExternalRegistryExceptionTest {
     private AccommodationEntity accommodation() {
         return AccommodationEntity.create(
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", "Ilica", "1",
-                2, 4, OfferType.RESIDENCE, Offering.WHOLE, false, false, true);
+                2, 4, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, false, true);
     }
 
     private LessorEntity lessor() {

@@ -89,7 +89,7 @@ class RnRegistrySearchIntegrationTest {
             submissionId = UUID.randomUUID(); // no matching submission → lessor stays null
         }
         AccommodationEntity acc = AccommodationEntity.create(submissionId, county, city, street,
-                streetNumber, 4, 8, OfferType.RESIDENCE, Offering.WHOLE, true, false, true);
+                streetNumber, 4, 8, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, true, false, true);
         acc.setName(name);
         acc.setAccommodationTypeId(apartmanTypeId);
         accommodationRepository.save(acc);

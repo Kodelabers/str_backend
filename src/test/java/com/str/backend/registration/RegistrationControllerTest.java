@@ -126,7 +126,7 @@ class RegistrationControllerTest {
                 2L, "Split", null,
                 "Ulica kralja Tomislava", "14a", null,
                 4, 6,
-                OfferType.RESIDENCE, Offering.WHOLE,
+                OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
                 null, null, null, null, null);
     }

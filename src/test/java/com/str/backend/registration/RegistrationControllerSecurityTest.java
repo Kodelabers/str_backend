@@ -72,7 +72,7 @@ class RegistrationControllerSecurityTest {
     void external_authenticated_invalid_payload_returns_400() throws Exception {
         RegistrationExternalRequest invalid = new RegistrationExternalRequest(
                 "", null, 2L, "Split", null, "Ulica", "14a", null,
-                0, 6, OfferType.RESIDENCE, Offering.WHOLE,
+                0, 6, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true, null, null, null, null, null);
 
         mvc.perform(post("/api/generateRegistrationNumberExternal")
@@ -88,7 +88,7 @@ class RegistrationControllerSecurityTest {
                 2L, "Split", null,
                 "Ulica kralja Tomislava", "14a", null,
                 4, 6,
-                OfferType.RESIDENCE, Offering.WHOLE,
+                OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
                 null, null, null, null, null);
     }

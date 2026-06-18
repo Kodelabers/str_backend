@@ -1,6 +1,7 @@
 package com.str.backend.domain;
 
 public enum OfferType {
-    RESIDENCE,
+    PRIMARY_RESIDENCE,
+    SECONDARY_RESIDENCE,
     OTHER
 }

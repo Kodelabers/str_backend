@@ -47,7 +47,7 @@ class RegistrationServiceBuildAccommodationTest {
                 7L, "Split", "Meje",
                 "Marulićeva", "5", "21000",
                 4, 6,
-                OfferType.RESIDENCE, Offering.PART,
+                OfferType.PRIMARY_RESIDENCE, Offering.PART,
                 true, "3", false, true,
                 Boolean.TRUE, Boolean.TRUE,
                 LocalDate.of(2026, 1, 15), LocalDate.of(2027, 1, 15),
@@ -67,7 +67,7 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getStreetNumber()).isEqualTo("5");
         assertThat(e.getMaxBeds()).isEqualTo(4);
         assertThat(e.getMaxGuests()).isEqualTo(6);
-        assertThat(e.getOfferType()).isEqualTo(OfferType.RESIDENCE);
+        assertThat(e.getOfferType()).isEqualTo(OfferType.PRIMARY_RESIDENCE);
         assertThat(e.getOffering()).isEqualTo(Offering.PART);
         assertThat(e.isBuilding()).isTrue();
         assertThat(e.getFloor()).isEqualTo("3");

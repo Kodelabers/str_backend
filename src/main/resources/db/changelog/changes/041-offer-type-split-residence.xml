@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="041-offer-type-split-residence" author="str-backend">
+        <sql>
+            ALTER TABLE str_rn.accommodation
+                DROP CONSTRAINT chk_accommodation_offer_type
+        </sql>
+
+        <sql>
+            UPDATE str_rn.accommodation
+            SET offer_type = 'PRIMARY_RESIDENCE'
+            WHERE offer_type = 'RESIDENCE'
+        </sql>
+
+        <sql>
+            ALTER TABLE str_rn.accommodation
+                ADD CONSTRAINT chk_accommodation_offer_type
+                    CHECK (offer_type IN ('PRIMARY_RESIDENCE', 'SECONDARY_RESIDENCE', 'OTHER'))
+        </sql>
+
+        <rollback>
+            <sql>
+                ALTER TABLE str_rn.accommodation
+                    DROP CONSTRAINT chk_accommodation_offer_type
+            </sql>
+            <sql>
+                UPDATE str_rn.accommodation
+                SET offer_type = 'RESIDENCE'
+                WHERE offer_type IN ('PRIMARY_RESIDENCE', 'SECONDARY_RESIDENCE')
+            </sql>
+            <sql>
+                ALTER TABLE str_rn.accommodation
+                    ADD CONSTRAINT chk_accommodation_offer_type
+                        CHECK (offer_type IN ('RESIDENCE', 'OTHER'))
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

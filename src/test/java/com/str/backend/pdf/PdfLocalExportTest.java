@@ -118,7 +118,7 @@ class PdfLocalExportTest {
                 7L, "Dugi Rat", "Dugi Rat",
                 "Drage Ivaniševića", "3", "21315",
                 4, 6,
-                OfferType.RESIDENCE, Offering.WHOLE,
+                OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
                 null, null, null, null, null);
     }
