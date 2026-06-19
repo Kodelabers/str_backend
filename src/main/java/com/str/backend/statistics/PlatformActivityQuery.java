@@ -2,8 +2,11 @@ package com.str.backend.statistics;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.str.backend.statistics.dto.CountryBreakdownDto;
 import com.str.backend.statistics.dto.PlatformActivitiesPageDto;
 import com.str.backend.statistics.dto.PlatformActivityRowDto;
+import com.str.backend.statistics.dto.PlatformBreakdownDto;
+import com.str.backend.statistics.dto.PlatformBreakdownItemDto;
 import com.str.backend.statistics.dto.PlatformChipDto;
 import com.str.backend.statistics.dto.PlatformSummaryDto;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -13,7 +16,11 @@ import org.springframework.stereotype.Component;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Native SQL implementation of the SDIP activity dashboard query.
@@ -188,5 +195,139 @@ class PlatformActivityQuery {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
+    }
+
+    // ── Per-row accordion breakdown (RB × period → platform × country) ──────────
+
+    /** Platform totals for the given (rn, period). One row per platform. */
+    private static final String BREAKDOWN_PLATFORM_SQL = """
+            SELECT
+                p.platform_id::text AS platform_id,
+                p.name              AS platform_name,
+                SUM(aa.overnight_stays) AS platform_nights,
+                SUM(aa.guest_count)     AS platform_guests
+            FROM str_rn.accommodation_activity aa
+            JOIN str_rn.online_platform p ON p.platform_id = aa.platform_id
+            WHERE aa.rn = :rn
+              AND aa.period_from = :periodFrom
+              AND aa.period_to   = :periodTo
+            GROUP BY p.platform_id, p.name
+            ORDER BY p.name
+            """;
+
+    /** Per-platform per-country guest counts for the given (rn, period). */
+    private static final String BREAKDOWN_COUNTRY_SQL = """
+            SELECT
+                aa.platform_id::text AS platform_id,
+                g.country            AS country,
+                SUM(g.guest_count)   AS country_guests
+            FROM str_rn.accommodation_activity aa
+            JOIN str_rn.guest g ON g.activity_id = aa.activity_id
+            WHERE aa.rn = :rn
+              AND aa.period_from = :periodFrom
+              AND aa.period_to   = :periodTo
+            GROUP BY aa.platform_id, g.country
+            """;
+
+    /**
+     * Per-row breakdown for the accordion panel. Nights per country are derived
+     * proportionally from the per-platform guest share (the guest table only
+     * stores guest counts per country, not nights).
+     */
+    PlatformBreakdownDto breakdown(String rn, LocalDate periodFrom, LocalDate periodTo) {
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("rn", rn, Types.VARCHAR)
+                .addValue("periodFrom", periodFrom, Types.DATE)
+                .addValue("periodTo", periodTo, Types.DATE);
+
+        record PlatformAgg(String id, String name, long nights, long guests) {}
+        record CountryAgg(String platformId, String country, long guests) {}
+
+        List<PlatformAgg> platformRows = jdbc.query(BREAKDOWN_PLATFORM_SQL, params, (rs, rowNum) ->
+                new PlatformAgg(
+                        rs.getString("platform_id"),
+                        rs.getString("platform_name"),
+                        rs.getLong("platform_nights"),
+                        rs.getLong("platform_guests")
+                ));
+
+        if (platformRows.isEmpty()) {
+            return new PlatformBreakdownDto(rn, 0L, 0L, List.of());
+        }
+
+        List<CountryAgg> countryRows = jdbc.query(BREAKDOWN_COUNTRY_SQL, params, (rs, rowNum) ->
+                new CountryAgg(
+                        rs.getString("platform_id"),
+                        rs.getString("country"),
+                        rs.getLong("country_guests")
+                ));
+
+        Map<String, List<CountryAgg>> countriesByPlatform = new LinkedHashMap<>();
+        for (CountryAgg c : countryRows) {
+            countriesByPlatform.computeIfAbsent(c.platformId(), k -> new ArrayList<>()).add(c);
+        }
+
+        long totalNights = 0;
+        long totalGuests = 0;
+        for (PlatformAgg p : platformRows) {
+            totalNights += p.nights();
+            totalGuests += p.guests();
+        }
+
+        List<PlatformBreakdownItemDto> platforms = new ArrayList<>(platformRows.size());
+        for (PlatformAgg p : platformRows) {
+            List<CountryAgg> raw = countriesByPlatform.getOrDefault(p.id(), List.of());
+            List<CountryBreakdownDto> countries = new ArrayList<>(raw.size());
+
+            // Distribute platform nights proportionally to guest shares. Round
+            // each country to the nearest int; any drift goes to the largest bucket.
+            long nightsAllocated = 0;
+            CountryBreakdownDto largest = null;
+            long largestGuests = -1;
+
+            for (CountryAgg c : raw) {
+                double shareOfPlatform = p.guests() == 0 ? 0d : (double) c.guests() / p.guests();
+                long countryNights = Math.round(p.nights() * shareOfPlatform);
+                nightsAllocated += countryNights;
+                CountryBreakdownDto dto = new CountryBreakdownDto(
+                        c.country(),
+                        countryNights,
+                        c.guests(),
+                        roundOne(shareOfPlatform * 100d)
+                );
+                countries.add(dto);
+                if (c.guests() > largestGuests) {
+                    largestGuests = c.guests();
+                    largest = dto;
+                }
+            }
+
+            // Rounding drift: top-up the biggest country so platform total reconciles.
+            long drift = p.nights() - nightsAllocated;
+            if (drift != 0 && largest != null) {
+                int idx = countries.indexOf(largest);
+                countries.set(idx, new CountryBreakdownDto(
+                        largest.country(),
+                        largest.nights() + drift,
+                        largest.guests(),
+                        largest.sharePercent()
+                ));
+            }
+
+            countries.sort(Comparator.comparingLong(CountryBreakdownDto::guests).reversed());
+
+            double platformShare = totalNights == 0 ? 0d
+                    : roundOne((double) p.nights() / totalNights * 100d);
+
+            platforms.add(new PlatformBreakdownItemDto(
+                    p.id(), p.name(), p.nights(), p.guests(), platformShare, countries
+            ));
+        }
+
+        return new PlatformBreakdownDto(rn, totalNights, totalGuests, platforms);
+    }
+
+    private static double roundOne(double v) {
+        return Math.round(v * 10d) / 10d;
     }
 }

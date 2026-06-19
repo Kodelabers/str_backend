@@ -267,8 +267,9 @@
 
     <!--
         Per-country breakdown za svaku aktivnost. Profil 'zg' (Zagreb, city/business) ima
-        DE/AT/US dominantne goste; 'coast' (priobalni) ima DE/IT/AT. Postoci se primijene
-        na ukupan guest_count aktivnosti, zaokruženi naviše (najmanje 1 ako share > 0).
+        Njemačka/Austrija/SAD dominantne goste; 'coast' (priobalni) ima Njemačka/Italija/Austrija/Slovenija.
+        Postoci se primijene na ukupan guest_count aktivnosti, zaokruženi naviše (min 1 ako share > 0).
+        Puna imena (a ne ISO kodovi) jer se prikazuju izravno u UI-u.
     -->
     <changeSet id="036-seed-mock-guests" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
@@ -290,13 +291,13 @@
                 GREATEST(1, CEIL(aa.guest_count * cs.share)::INT)
             FROM str_rn.accommodation_activity aa
             JOIN (VALUES
-                ('zg',    'DE', 0.55),
-                ('zg',    'AT', 0.25),
-                ('zg',    'US', 0.20),
-                ('coast', 'DE', 0.45),
-                ('coast', 'IT', 0.25),
-                ('coast', 'AT', 0.20),
-                ('coast', 'SI', 0.10)
+                ('zg',    'Njemačka',  0.55),
+                ('zg',    'Austrija',  0.25),
+                ('zg',    'SAD',       0.20),
+                ('coast', 'Njemačka',  0.45),
+                ('coast', 'Italija',   0.25),
+                ('coast', 'Austrija',  0.20),
+                ('coast', 'Slovenija', 0.10)
             ) AS cs(profile, country, share)
               ON cs.profile = CASE WHEN aa.rn = 'HR010001A0B0C0D0E0F0' THEN 'zg' ELSE 'coast' END
             WHERE aa.activity_id::text LIKE 'a0000000-0000-0000-%'

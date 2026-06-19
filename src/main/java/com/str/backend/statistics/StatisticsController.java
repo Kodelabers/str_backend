@@ -2,6 +2,7 @@ package com.str.backend.statistics;
 
 import com.str.backend.statistics.dto.StrResponse;
 import com.str.backend.statistics.dto.PlatformActivitiesPageDto;
+import com.str.backend.statistics.dto.PlatformBreakdownDto;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
@@ -83,5 +84,14 @@ public class StatisticsController {
             @RequestParam(defaultValue = "20") int size) {
         int clampedSize = Math.min(Math.max(1, size), 100);
         return platformActivityQuery.query(platformId, od, toDate, county, status, q, rn, page, clampedSize);
+    }
+
+    /** Accordion: per-platform per-country breakdown for a single (RN × period) row. */
+    @GetMapping("/platform-activities/breakdown")
+    public PlatformBreakdownDto platformActivityBreakdown(
+            @RequestParam String rn,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodFrom,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodTo) {
+        return platformActivityQuery.breakdown(rn, periodFrom, periodTo);
     }
 }
