@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        DB-ovi koji su pokrenuli originalnu verziju changeseta 036-seed-mock-guests imaju
+        ISO kodove (DE/AT/US/IT/SI) u str_rn.guest. 036 se na njima više neće izvršiti
+        (preCondition: već postoje retci), pa preimenovanje iz 631832f nije stiglo do njih.
+        Ovaj changeset prevodi postojeće ISO retke u puna hrvatska imena.
+
+        Idempotentno: na DB-ovima koji su seedani novom verzijom (puna imena) ne mijenja
+        ništa jer WHERE country = '<ISO>' ne pogađa nijedan redak. Gated context="local"
+        — guest seed retci postoje samo u local/mock okruženjima.
+    -->
+    <changeSet id="118-fix-mock-guest-country-names" author="str-backend" context="local">
+        <sql>
+            UPDATE str_rn.guest SET country = 'Njemačka'  WHERE country = 'DE'
+              AND activity_id::text LIKE 'a0000000-0000-0000-%';
+            UPDATE str_rn.guest SET country = 'Austrija'  WHERE country = 'AT'
+              AND activity_id::text LIKE 'a0000000-0000-0000-%';
+            UPDATE str_rn.guest SET country = 'SAD'       WHERE country = 'US'
+              AND activity_id::text LIKE 'a0000000-0000-0000-%';
+            UPDATE str_rn.guest SET country = 'Italija'   WHERE country = 'IT'
+              AND activity_id::text LIKE 'a0000000-0000-0000-%';
+            UPDATE str_rn.guest SET country = 'Slovenija' WHERE country = 'SI'
+              AND activity_id::text LIKE 'a0000000-0000-0000-%';
+        </sql>
+        <rollback/>
+    </changeSet>
+
+</databaseChangeLog>

@@ -272,6 +272,16 @@
         Puna imena (a ne ISO kodovi) jer se prikazuju izravno u UI-u.
     -->
     <changeSet id="036-seed-mock-guests" author="str-backend" context="local">
+        <!--
+            Original (2bb65d0) seedao je ISO kodove (DE/AT/US/IT/SI); 631832f je u istom
+            changesetu prešao na puna imena (Njemačka/Austrija/...), čime se promijenio checksum.
+            DB-ovi koji su pokrenuli originalnu verziju (npr. Railway mock) imaju stari checksum
+            zapisan, pa Liquibase odbija start. Navodimo OBJE poznate sume — staru (ISO seed,
+            40ed...) i novu (puna imena, a4a1...) — da prođu i Railway i lokalni DB-ovi.
+            Postojeće ISO retke u puna imena prevodi 118-fix-mock-guest-country-names-local.
+        -->
+        <validCheckSum>9:40ed396f6d98763ace7c5371a665281c</validCheckSum>
+        <validCheckSum>9:a4a1745461c67ade695b3b714c6e2d3e</validCheckSum>
         <preConditions onFail="MARK_RAN">
             <and>
                 <sqlCheck expectedResult="1">
