@@ -99,4 +99,8 @@
          (preCondition: tablica je prazna). -->
     <include file="db/changelog/changes/043-seed-dev-activity.xml"/>
 
+    <!-- Prevodi ISO kodove gostiju (DE/AT/US/IT/SI) iz originalne verzije 036-seed-mock-guests
+         u puna imena na DB-ovima koji su seedani prije 631832f — gated context="local". -->
+    <include file="db/changelog/changes/118-fix-mock-guest-country-names-local.xml"/>
+
 </databaseChangeLog>
