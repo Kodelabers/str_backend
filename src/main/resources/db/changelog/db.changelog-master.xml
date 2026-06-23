@@ -108,4 +108,9 @@
          prazan ako podnesak ide direktno na email non-EU korisnika). -->
     <include file="db/changelog/changes/044-submission-filing-number-nullable.xml"/>
 
+    <!-- Backfill mock submissiona za 8 RN-ova iz 036 (izvorno seedani bez
+         submission_id), pa /api/rn/{rn}/detail vraća stvarne lessor podatke
+         umjesto null-ova — gated context="local". -->
+    <include file="db/changelog/changes/045-seed-mock-submissions-local.xml"/>
+
 </databaseChangeLog>

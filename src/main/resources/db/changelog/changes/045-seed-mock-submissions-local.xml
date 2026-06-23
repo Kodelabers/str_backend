@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Mock RN-ovi iz 036 su izvorno seedani bez submission_id pa /api/rn/{rn}/detail
+        ne može povezati RN s iznajmljivačem (LEFT JOIN preko submissiona vraća null).
+        Ovaj changeset za svaki od 8 mock RN-ova kreira pripadni submission red i
+        upiše submission_id natrag u registration_number.
+
+        Mapping accommodation_id ↔ lessor_id je preuzet iz 036 seeda (posljednja
+        znamenka usklađena, vidi 036-seed-mock-accommodations).
+
+        Aktivira se samo s Liquibase context="local"; gated preCondition-om koja
+        traži postojanje mock lessora 111.
+    -->
+
+    <changeSet id="045-seed-mock-submissions" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM str_rn.lessor WHERE lessor_id = '11111111-1111-1111-1111-111111111111'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM str_rn.submission WHERE submission_id = '33333333-3333-3333-3333-333333333331'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.submission (
+                submission_id, lessor_id, status, channel, created_at, updated_at
+            ) VALUES
+            ('33333333-3333-3333-3333-333333333331', '11111111-1111-1111-1111-111111111111', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('33333333-3333-3333-3333-333333333332', '11111111-1111-1111-1111-111111111112', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111113', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('33333333-3333-3333-3333-333333333334', '11111111-1111-1111-1111-111111111114', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('33333333-3333-3333-3333-333333333335', '11111111-1111-1111-1111-111111111115', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('33333333-3333-3333-3333-333333333336', '11111111-1111-1111-1111-111111111116', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('33333333-3333-3333-3333-333333333337', '11111111-1111-1111-1111-111111111117', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('33333333-3333-3333-3333-333333333338', '11111111-1111-1111-1111-111111111118', 'ACCEPTED', 'NIAS', NOW(), NOW());
+        </sql>
+        <rollback>
+            <sql>DELETE FROM str_rn.submission WHERE submission_id BETWEEN '33333333-3333-3333-3333-333333333331' AND '33333333-3333-3333-3333-333333333338'</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="045-link-mock-rns-to-submissions" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT COUNT(*) FROM str_rn.submission WHERE submission_id = '33333333-3333-3333-3333-333333333331'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333331' WHERE accommodation_id = '22222222-2222-2222-2222-222222222221';
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333332' WHERE accommodation_id = '22222222-2222-2222-2222-222222222222';
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333333' WHERE accommodation_id = '22222222-2222-2222-2222-222222222223';
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333334' WHERE accommodation_id = '22222222-2222-2222-2222-222222222224';
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333335' WHERE accommodation_id = '22222222-2222-2222-2222-222222222225';
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333336' WHERE accommodation_id = '22222222-2222-2222-2222-222222222226';
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333337' WHERE accommodation_id = '22222222-2222-2222-2222-222222222227';
+            UPDATE str_rn.registration_number SET submission_id = '33333333-3333-3333-3333-333333333338' WHERE accommodation_id = '22222222-2222-2222-2222-222222222228';
+        </sql>
+        <rollback>
+            <sql>
+                UPDATE str_rn.registration_number SET submission_id = NULL
+                 WHERE submission_id BETWEEN '33333333-3333-3333-3333-333333333331' AND '33333333-3333-3333-3333-333333333338'
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Veza submission ↔ accommodation: u 036 je accommodation kreiran bez
+        submission_id (nije bio dio originalnog seeda). Backfill da detail upit
+        i ostali read paths vide cjelovit graf.
+    -->
+    <changeSet id="045-link-mock-accommodations-to-submissions" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM str_rn.submission WHERE submission_id = '33333333-3333-3333-3333-333333333331'
+                </sqlCheck>
+                <columnExists schemaName="str_rn" tableName="accommodation" columnName="submission_id"/>
+            </and>
+        </preConditions>
+        <sql>
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333331' WHERE accommodation_id = '22222222-2222-2222-2222-222222222221';
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333332' WHERE accommodation_id = '22222222-2222-2222-2222-222222222222';
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333333' WHERE accommodation_id = '22222222-2222-2222-2222-222222222223';
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333334' WHERE accommodation_id = '22222222-2222-2222-2222-222222222224';
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333335' WHERE accommodation_id = '22222222-2222-2222-2222-222222222225';
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333336' WHERE accommodation_id = '22222222-2222-2222-2222-222222222226';
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333337' WHERE accommodation_id = '22222222-2222-2222-2222-222222222227';
+            UPDATE str_rn.accommodation SET submission_id = '33333333-3333-3333-3333-333333333338' WHERE accommodation_id = '22222222-2222-2222-2222-222222222228';
+        </sql>
+        <rollback>
+            <sql>
+                UPDATE str_rn.accommodation SET submission_id = NULL
+                 WHERE submission_id BETWEEN '33333333-3333-3333-3333-333333333331' AND '33333333-3333-3333-3333-333333333338'
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
