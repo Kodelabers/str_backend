@@ -35,7 +35,7 @@ public record RnDetailDto(
         String lessorEmail,
         String lessorOib,
 
-        boolean legalEntityOwner,
+        Boolean legalEntityOwner,
         String legalEntityCountryName,
         String legalEntityCity,
         String legalEntityRegistrationNumber,
