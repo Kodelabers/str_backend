@@ -12,6 +12,8 @@ target/
 
 ### Environment ###
 *.env
+.env.*
+!.env.*.example
 .claude/settings.local.json
 .claude/worktrees/
 

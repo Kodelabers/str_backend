@@ -1,0 +1,50 @@
+# CDU deployment — single-origin via frontend nginx reverse-proxy.
+# Public entry: https://str-test.eturizam.gov.hr (SSL offload at gateway → host :8085).
+# Backend is NOT exposed on the host — only reachable via the compose network.
+#
+# Prereqs on the server:
+#   1. Clone repos side-by-side: ~/str/str_backend and ~/str/str_frontend
+#   2. Copy .env.cdu.example → .env.cdu and fill in CDU_DB_PASSWORD, DRAFT_ENC_KEY
+#   3. Ensure schema `str_rn` exists in db `eturizam` (or that user shorttermrental
+#      has CREATE permission so Liquibase can create it)
+#
+# Run:
+#   docker compose --env-file .env.cdu -f docker-compose.cdu.yml up -d --build
+#   docker compose -f docker-compose.cdu.yml logs -f
+
+services:
+  backend:
+    build:
+      context: .
+    container_name: str-backend-cdu
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: cdu
+      CDU_DB_URL: ${CDU_DB_URL:-jdbc:postgresql://172.20.8.196:5432/eturizam}
+      CDU_DB_USERNAME: ${CDU_DB_USERNAME:-shorttermrental}
+      CDU_DB_PASSWORD: ${CDU_DB_PASSWORD}
+      DRAFT_ENC_KEY: ${DRAFT_ENC_KEY}
+      APP_CORS_ALLOWED_ORIGINS: https://str-test.eturizam.gov.hr
+      APP_FRONTEND_BASE_URL: https://str-test.eturizam.gov.hr
+      APP_MAIL_LOGIN_URL: https://str-test.eturizam.gov.hr/login
+      NIAS_KEYSTORE_PASSWORD: ${NIAS_KEYSTORE_PASSWORD:-niassp2024}
+    volumes:
+      - ${CDU_SECRETS_DIR:-/home/vviskov/str-secrets}:/secrets:ro
+
+  frontend:
+    build:
+      context: ../str_frontend
+      args:
+        VITE_API_URL: https://str-test.eturizam.gov.hr/api
+        VITE_USE_MOCK: "false"
+        VITE_NIAS_ENABLED: "true"
+    container_name: str-frontend-cdu
+    restart: unless-stopped
+    environment:
+      PORT: "80"
+    ports:
+      - "8085:80"
+    depends_on:
+      - backend
