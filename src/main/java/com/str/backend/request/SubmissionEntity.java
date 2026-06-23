@@ -27,13 +27,13 @@ public class SubmissionEntity {
     @Column(name = "submission_id", nullable = false, updatable = false)
     private UUID submissionId;
 
-    @Column(name = "filing_number", length = 64, nullable = false, updatable = false)
-    private String filingNumber;
+    @Column(name = "filing_number", length = 64)
+    @Setter private String filingNumber;
 
     @Column(name = "document_link", length = 500)
     @Setter private String documentLink;
 
-@Column(name = "lessor_id", nullable = false, updatable = false)
+    @Column(name = "lessor_id", nullable = false, updatable = false)
     private UUID lessorId;
 
     @Column(name = "authority_id")
@@ -51,7 +51,7 @@ public class SubmissionEntity {
     private SubmissionStatus status;
 
     @Column(name = "filing_date")
-    private Instant filingDate;
+    @Setter private Instant filingDate;
 
     @JdbcTypeCode(SqlTypes.VARBINARY)
     @Column(name = "pdf_content", length = 10_485_760)

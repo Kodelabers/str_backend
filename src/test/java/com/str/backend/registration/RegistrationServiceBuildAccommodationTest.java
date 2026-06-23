@@ -9,14 +9,13 @@ import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lookup.AccommodationTypeRepository;
-import com.str.backend.pdf.SubmissionPdfGenerator;
 import com.str.backend.registration.dto.RegistrationRequest;
-import com.str.backend.registries.EgopClient;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDate;
 
@@ -32,13 +31,12 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(SubmissionRepository.class),
                 mock(ParallelValidationOrchestrator.class),
                 mock(RnService.class),
-                mock(EgopClient.class),
-                mock(SubmissionPdfGenerator.class),
                 mock(StrLessorLookupService.class),
                 mock(CountyRepository.class),
                 mock(MunicipalityRepository.class),
                 mock(SettlementRepository.class),
-                mock(AccommodationTypeRepository.class));
+                mock(AccommodationTypeRepository.class),
+                mock(ApplicationEventPublisher.class));
     }
 
     private RegistrationRequest fullRequest(Boolean host) {

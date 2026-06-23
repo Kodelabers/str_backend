@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      New flow: RN is issued before the eGOP filing number is known.
+      filing_number is now populated asynchronously (after eGOP submit), or
+      stays NULL on the non-EU email path. Unique constraint stays (partial
+      uniqueness via PostgreSQL — NULLs are not considered equal).
+    -->
+    <changeSet id="044-submission-filing-number-nullable" author="str-backend">
+        <dropNotNullConstraint schemaName="str_rn"
+                               tableName="submission"
+                               columnName="filing_number"
+                               columnDataType="VARCHAR(64)"/>
+    </changeSet>
+
+</databaseChangeLog>

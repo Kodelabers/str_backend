@@ -103,4 +103,9 @@
          u puna imena na DB-ovima koji su seedani prije 631832f — gated context="local". -->
     <include file="db/changelog/changes/118-fix-mock-guest-country-names-local.xml"/>
 
+    <!-- Skida NOT NULL sa submission.filing_number — novi flow izdaje RN
+         prije eGOP poziva, filing broj se popunjava naknadno (ili ostaje
+         prazan ako podnesak ide direktno na email non-EU korisnika). -->
+    <include file="db/changelog/changes/044-submission-filing-number-nullable.xml"/>
+
 </databaseChangeLog>

@@ -12,12 +12,11 @@ import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
-import com.str.backend.pdf.SubmissionPdfGenerator;
 import com.str.backend.registration.dto.AccommodationRequest;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
-import com.str.backend.registries.EgopClient;
+import com.str.backend.registration.event.RnIssuedEvent;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
@@ -30,10 +29,12 @@ import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -46,38 +47,35 @@ public class RegistrationService {
     private final SubmissionRepository submissionRepository;
     private final ParallelValidationOrchestrator orchestrator;
     private final RnService rnService;
-    private final EgopClient egopClient;
-    private final SubmissionPdfGenerator pdfGenerator;
     private final StrLessorLookupService strLessorLookupService;
     private final CountyRepository countyRepository;
     private final MunicipalityRepository municipalityRepository;
     private final SettlementRepository settlementRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
                                SubmissionRepository submissionRepository,
                                ParallelValidationOrchestrator orchestrator,
                                RnService rnService,
-                               EgopClient egopClient,
-                               SubmissionPdfGenerator pdfGenerator,
                                StrLessorLookupService strLessorLookupService,
                                CountyRepository countyRepository,
                                MunicipalityRepository municipalityRepository,
                                SettlementRepository settlementRepository,
-                               AccommodationTypeRepository accommodationTypeRepository) {
+                               AccommodationTypeRepository accommodationTypeRepository,
+                               ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
         this.orchestrator = orchestrator;
         this.rnService = rnService;
-        this.egopClient = egopClient;
-        this.pdfGenerator = pdfGenerator;
         this.strLessorLookupService = strLessorLookupService;
         this.countyRepository = countyRepository;
         this.municipalityRepository = municipalityRepository;
         this.settlementRepository = settlementRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
@@ -89,12 +87,8 @@ public class RegistrationService {
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
         runValidation(accommodation, lessor);
 
-        String typeName = resolveTypeName(req.typeId());
-        byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
-        EgopClient.FilingNumber filing = egopClient.reserveFilingNumber();
-        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatted(), typeName);
-        EgopClient.FilingConfirmation confirmation = egopClient.submitFiling(filing.formatted(), finalPdf);
-        return commitRegistration(lessor, accommodation, confirmation, draftPdf, finalPdf);
+        return commitRegistration(lessor, accommodation, county.getName(),
+                resolveTypeName(req.typeId()), req.postalCode());
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
@@ -107,12 +101,8 @@ public class RegistrationService {
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
         runValidation(accommodation, lessor);
 
-        String typeName = resolveTypeName(req.typeId());
-        byte[] draftPdf = pdfGenerator.generate(req, county.getName(), lessor, null, typeName);
-        EgopClient.FilingNumber filing = egopClient.reserveFilingNumber();
-        byte[] finalPdf = pdfGenerator.generate(req, county.getName(), lessor, filing.formatted(), typeName);
-        EgopClient.FilingConfirmation confirmation = egopClient.submitFiling(filing.formatted(), finalPdf);
-        return commitRegistration(lessor, accommodation, confirmation, draftPdf, finalPdf);
+        return commitRegistration(lessor, accommodation, county.getName(),
+                resolveTypeName(req.typeId()), req.postalCode());
     }
 
     @Transactional(readOnly = true)
@@ -159,19 +149,19 @@ public class RegistrationService {
     }
 
     private RegistrationResponse commitRegistration(LessorEntity lessor, AccommodationEntity accommodation,
-                                                     EgopClient.FilingConfirmation confirmation,
-                                                     byte[] draftPdf, byte[] finalPdf) {
-        log.info("egop_filing_ok filingNumber={} draft_size={} final_size={}",
-                confirmation.filingNumber(), draftPdf.length, finalPdf.length);
-
+                                                    String countyName, String typeName, String postalCode) {
         lessorRepository.save(lessor);
+
+        // RN is issued before PDF/eGOP/e-mail. filing_number stays null — it
+        // will be populated asynchronously after eGOP confirms, or stay null
+        // on the non-EU e-mail path.
         SubmissionEntity submission = SubmissionEntity.create(
-                confirmation.filingNumber(),
+                null,
                 lessor.getLessorId(),
                 null,
-                confirmation.confirmedAt(),
-                "egop://" + confirmation.filingNumber(),
-                finalPdf);
+                Instant.now(),
+                null,
+                null);
         submissionRepository.save(submission);
 
         accommodation.linkToSubmission(submission.getSubmissionId());
@@ -179,7 +169,17 @@ public class RegistrationService {
 
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
 
-        log.info("registration_success lessor={} submission={}", lessor.getLessorId(), submission.getSubmissionId());
+        eventPublisher.publishEvent(new RnIssuedEvent(
+                submission.getSubmissionId(),
+                accommodation.getAccommodationId(),
+                lessor.getLessorId(),
+                rn.getRn(),
+                countyName,
+                typeName,
+                postalCode));
+
+        log.info("registration_success lessor={} submission={} rn={}",
+                lessor.getLessorId(), submission.getSubmissionId(), rn.getRn());
         return new RegistrationResponse(rn.getRn(), submission.getSubmissionId());
     }
 

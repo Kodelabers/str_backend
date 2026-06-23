@@ -16,4 +16,10 @@ public class LoggingEmailService implements EmailService {
     public void sendRejectionNotification(String to, String firstName) {
         log.info("[mail/mock] REJECTION → to={}, firstName={}", to, firstName);
     }
+
+    @Override
+    public void sendRnIssuedNotification(String to, String firstName, String registrationNumber, byte[] pdf) {
+        log.info("[mail/mock] RN_ISSUED → to={}, firstName={}, rn={}, pdf_bytes={}",
+                to, firstName, registrationNumber, pdf == null ? 0 : pdf.length);
+    }
 }

@@ -12,8 +12,6 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.lessor.LessorEntity;
-import com.str.backend.registration.dto.RegistrationExternalRequest;
-import com.str.backend.registration.dto.RegistrationRequest;
 import org.springframework.stereotype.Component;
 
 import java.awt.Color;
@@ -53,26 +51,18 @@ public class SubmissionPdfGenerator {
         FNT_IZJAVA    = new Font(bf,       8, Font.NORMAL, BLACK);
     }
 
-    public byte[] generate(RegistrationRequest req, String countyName, LessorEntity lessor, String filingNumber) {
-        return generate(req, countyName, lessor, filingNumber, null);
-    }
-
-    public byte[] generate(RegistrationRequest req, String countyName, LessorEntity lessor,
-                           String filingNumber, String typeName) {
-        return generate0(req.name(), req.street(), req.streetNumber(), req.postalCode(), req.cityId(), req.maxBeds(),
-                countyName, lessor, filingNumber, typeName);
-    }
-
-    public byte[] generate(RegistrationExternalRequest req, String countyName, LessorEntity lessor,
-                           String filingNumber, String typeName) {
-        return generate0(req.name(), req.street(), req.streetNumber(), req.postalCode(), req.cityId(), req.maxBeds(),
-                countyName, lessor, filingNumber, typeName);
-    }
-
-    private byte[] generate0(String reqName, String reqStreet, String reqStreetNumber,
-                              String reqPostalCode, String reqCityId, int reqMaxBeds,
-                              String countyName, LessorEntity lessor,
-                              String filingNumber, String typeName) {
+    /**
+     * Renders the submission PDF. Called after the RN has been issued.
+     * <ul>
+     *   <li>{@code registrationNumber} — always present (issued before this call).</li>
+     *   <li>{@code filingNumber} (Urudžbeni broj) — only present when the request
+     *       is routed through eGOP; null on the non-EU e-mail path.</li>
+     * </ul>
+     */
+    public byte[] generate(String accommodationName, String street, String streetNumber,
+                           String postalCode, String cityName, int maxBeds,
+                           String countyName, LessorEntity lessor,
+                           String filingNumber, String registrationNumber, String typeName) {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4, 28, 28, 28, 28);
             PdfWriter.getInstance(doc, baos);
@@ -91,6 +81,9 @@ public class SubmissionPdfGenerator {
             addInnerRow(podnesak, "Datum zaprimanja podneska", ZonedDateTime.now(ZoneId.of("Europe/Zagreb")).format(DT));
             if (filingNumber != null) {
                 addInnerRow(podnesak, "Urudžbeni broj", filingNumber);
+            }
+            if (registrationNumber != null) {
+                addInnerRow(podnesak, "Registracijski broj", registrationNumber);
             }
             addGroupRow(main, "PODNESAK", podnesak);
 
@@ -122,8 +115,8 @@ public class SubmissionPdfGenerator {
             // ── OBJEKTI ───────────────────────────────────────────────────────
             addSectionHeader(main, "OBJEKTI");
 
-            String adresaObjekta = safe(reqStreet) + " " + safe(reqStreetNumber)
-                    + ", " + safe(reqPostalCode) + " " + safe(reqCityId).toUpperCase();
+            String adresaObjekta = safe(street) + " " + safe(streetNumber)
+                    + ", " + safe(postalCode) + " " + safe(cityName).toUpperCase();
 
             PdfPTable objektiTop = innerTable();
             addInnerRow(objektiTop, "Skupina objekta",
@@ -132,7 +125,7 @@ public class SubmissionPdfGenerator {
             addGroupRow(main, "OBJEKTI", objektiTop);
 
             addGroupRow(main, "VRSTA BROJ I\nKAPACITET OBJEKATA\nZA SMJEŠTAJ",
-                    buildKapacitetTable(reqName, reqMaxBeds, typeName));
+                    buildKapacitetTable(accommodationName, maxBeds, typeName));
 
             addGroupRow(main, "OSTALI SADRŽAJI", singleValueTable("označeno"));
 

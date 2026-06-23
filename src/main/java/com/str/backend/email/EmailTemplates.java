@@ -31,6 +31,28 @@ final class EmailTemplates {
         );
     }
 
+    static String rnIssuedBody(String firstName, String registrationNumber) {
+        String safeName = escape(firstName);
+        String safeRn = escape(registrationNumber);
+        return wrap(
+                """
+                <h2 style="color:#168ABF;margin:0 0 12px;">Registracijski broj je izdan</h2>
+                <p>Poštovani/a %s,</p>
+                <p>Vaš zahtjev za registraciju smještajne jedinice kratkoročnog najma je obrađen.
+                Izdani registracijski broj je: <strong>%s</strong>.</p>
+                <p>U privitku se nalazi PDF zahtjeva s izdanim registracijskim brojem.</p>
+
+                <hr style="border:none;border-top:1px solid #DEE2E6;margin:24px 0;">
+
+                <h2 style="color:#168ABF;margin:0 0 12px;">Registration number issued</h2>
+                <p>Dear %s,</p>
+                <p>Your short-term rental registration request has been processed.
+                The issued registration number is: <strong>%s</strong>.</p>
+                <p>The submission PDF with the issued registration number is attached.</p>
+                """.formatted(safeName, safeRn, safeName, safeRn)
+        );
+    }
+
     static String rejectionBody(String firstName) {
         String safeName = escape(firstName);
         return wrap(

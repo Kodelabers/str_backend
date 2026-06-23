@@ -58,8 +58,12 @@ class RegistrationIntegrationTest {
     @BeforeEach
     void setupMocks() {
         when(strLessorLookupService.resolveLessor(anyString()))
-                .thenAnswer(inv -> LessorEntity.create("PERO", "PERIĆ",
-                        "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr"));
+                .thenAnswer(inv -> {
+                    LessorEntity l = LessorEntity.create("PERO", "PERIĆ",
+                            "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr");
+                    l.setLessorOib((String) inv.getArgument(0));
+                    return l;
+                });
 
         CountyEntity county = buildCountyEntity(2L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(2L)).thenReturn(Optional.of(county));
