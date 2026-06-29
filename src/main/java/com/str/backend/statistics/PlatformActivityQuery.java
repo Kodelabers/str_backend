@@ -2,6 +2,7 @@ package com.str.backend.statistics;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.str.backend.common.Strings;
 import com.str.backend.statistics.dto.CountryBreakdownDto;
 import com.str.backend.statistics.dto.PlatformActivitiesPageDto;
 import com.str.backend.statistics.dto.PlatformActivityRowDto;
@@ -13,6 +14,8 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.LocalDate;
@@ -125,28 +128,41 @@ class PlatformActivityQuery {
         params.addValue("limit", size);
         params.addValue("offset", (long) clampedPage * size);
 
-        List<PlatformActivityRowDto> rows = jdbc.query(pagedSql, params, (rs, rowNum) -> {
-            List<PlatformChipDto> chips = parseChips(rs.getString("platforms"));
-            Timestamp ts = rs.getTimestamp("reported_at");
-            return new PlatformActivityRowDto(
-                    rs.getString("id"),
-                    rs.getString("rb"),
-                    rs.getString("owner_name"),
-                    rs.getString("address"),
-                    rs.getString("city"),
-                    rs.getString("county_id"),
-                    rs.getString("county_name"),
-                    chips,
-                    rs.getObject("period_from", LocalDate.class),
-                    rs.getObject("period_to", LocalDate.class),
-                    rs.getLong("nights"),
-                    rs.getLong("guests_total"),
-                    mapStatus(rs.getString("rn_status")),
-                    ts != null ? ts.toInstant() : null
-            );
-        });
+        List<PlatformActivityRowDto> rows = jdbc.query(pagedSql, params, this::mapRow);
 
         return new PlatformActivitiesPageDto(rows, totalElements, totalPages, clampedPage, size, summary);
+    }
+
+    /**
+     * STR-3.2: all matching rows (no paging) for Excel/CSV export. Same filters as {@link #query}.
+     * TODO: nije ograničeno LIMIT-om — prihvatljivo za očekivani volumen; razmotriti streaming/cap
+     * ako broj redaka naraste.
+     */
+    List<PlatformActivityRowDto> queryAll(Long platformId, LocalDate od, LocalDate toDate,
+                                          String county, String rnStatus, String q, String rn) {
+        MapSqlParameterSource params = buildParams(platformId, od, toDate, county, rnStatus, q, rn);
+        return jdbc.query(BASE_SQL, params, this::mapRow);
+    }
+
+    private PlatformActivityRowDto mapRow(ResultSet rs, int rowNum) throws SQLException {
+        List<PlatformChipDto> chips = parseChips(rs.getString("platforms"));
+        Timestamp ts = rs.getTimestamp("reported_at");
+        return new PlatformActivityRowDto(
+                rs.getString("id"),
+                rs.getString("rb"),
+                rs.getString("owner_name"),
+                rs.getString("address"),
+                rs.getString("city"),
+                rs.getString("county_id"),
+                rs.getString("county_name"),
+                chips,
+                rs.getObject("period_from", LocalDate.class),
+                rs.getObject("period_to", LocalDate.class),
+                rs.getLong("nights"),
+                rs.getLong("guests_total"),
+                mapStatus(rs.getString("rn_status")),
+                ts != null ? ts.toInstant() : null
+        );
     }
 
     private MapSqlParameterSource buildParams(Long platformId, LocalDate od, LocalDate toDate,
@@ -155,10 +171,10 @@ class PlatformActivityQuery {
         p.addValue("platformId", platformId, Types.BIGINT);
         p.addValue("od", od, Types.DATE);
         p.addValue("toDate", toDate, Types.DATE);
-        p.addValue("county", blankToNull(county), Types.VARCHAR);
+        p.addValue("county", Strings.blankToNull(county), Types.VARCHAR);
         p.addValue("rnStatus", mapToDbStatus(rnStatus), Types.VARCHAR);
-        p.addValue("rn", blankToNull(rn), Types.VARCHAR);
-        p.addValue("q", blankToNull(q), Types.VARCHAR);
+        p.addValue("rn", Strings.blankToNull(rn), Types.VARCHAR);
+        p.addValue("q", Strings.blankToNull(q), Types.VARCHAR);
         p.addValue("qLike", q != null && !q.isBlank() ? "%" + q.trim() + "%" : null, Types.VARCHAR);
         return p;
     }
@@ -191,10 +207,6 @@ class PlatformActivityQuery {
             case "povucen" -> "WITHDRAWN";
             default -> null;
         };
-    }
-
-    private static String blankToNull(String s) {
-        return (s == null || s.isBlank()) ? null : s;
     }
 
     // ── Per-row accordion breakdown (RB × period → platform × country) ──────────

@@ -45,6 +45,14 @@ class RnStatusTransitionServiceTest {
     }
 
     @Test
+    void active_to_suspended_via_incomplete_documentation() {
+        RnEntity rn = active();
+        service.transition(rn, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENDED);
+        verifyLog("ACTIVE", "SUSPENDED", "INCOMPLETE_DOCUMENTATION");
+    }
+
+    @Test
     void active_to_withdrawn_via_withdrawal() {
         RnEntity rn = active();
         service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
@@ -71,11 +79,12 @@ class RnStatusTransitionServiceTest {
     // --- Illegal transitions ---
 
     @Test
-    void withdrawn_to_active_via_reactivate() {
+    void withdrawn_cannot_be_reactivated() {
+        // Povlačenje/opoziv je trajno — reaktivacija samo za suspendirane (TC-STR-2.1-002, TC-STR-2.2-001).
         RnEntity rn = withdrawn();
-        service.transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE);
-        assertThat(rn.getStatus()).isEqualTo(RnStatus.ACTIVE);
-        verifyLog("WITHDRAWN", "ACTIVE", "REACTIVATE");
+        assertThatThrownBy(() -> service.transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE))
+                .isInstanceOf(IllegalStatusTransitionException.class);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
     }
 
     @Test
