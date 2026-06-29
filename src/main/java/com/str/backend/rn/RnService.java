@@ -3,6 +3,7 @@ package com.str.backend.rn;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.common.SearchTokens;
+import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.domain.RegistrationNumber;
@@ -102,7 +103,9 @@ public class RnService {
 
     @Transactional
     public RnEntity suspend(String rn, RnTrigger trigger) {
-        if (trigger != RnTrigger.CONSENT_EXPIRY && trigger != RnTrigger.INSPECTION) {
+        if (trigger != RnTrigger.CONSENT_EXPIRY
+                && trigger != RnTrigger.INSPECTION
+                && trigger != RnTrigger.INCOMPLETE_DOCUMENTATION) {
             throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
         RnEntity e = load(rn);
@@ -117,10 +120,19 @@ public class RnService {
         return e;
     }
 
+    /**
+     * Officer-initiated withdrawal (povlačenje) of a registration number → WITHDRAWN.
+     * Permanent: allowed from ACTIVE and SUSPENDED, never reactivated (čl. 6 STR Uredbe).
+     * The optional reason is persisted on the audit log. STR-2.1-002.
+     *
+     * <p>TODO (zasebni epic, "Zajedničke backend teme"): obavijest Internetskim platformama
+     * (mail/M2M) + dostava potvrde u KP. Retencija (18 mj.) se računa iz {@code valid_to}
+     * koji {@link RnEntity#applyStatus} postavlja na dan povlačenja.
+     */
     @Transactional
-    public RnEntity withdraw(String rn) {
+    public RnEntity withdraw(String rn, String reason) {
         RnEntity e = load(rn);
-        transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
+        transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, Strings.blankToNull(reason));
         return e;
     }
 
@@ -148,8 +160,9 @@ public class RnService {
         String[] t = SearchTokens.slots(q);
         return repository.searchRegistry(view.statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
-                blankToNull(county), typeId,
-                blankToNull(rb), blankToNull(city), blankToNull(street), blankToNull(name), blankToNull(lessor),
+                Strings.blankToNull(county), typeId,
+                Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
+                Strings.blankToNull(name), Strings.blankToNull(lessor),
                 pageable);
     }
 
@@ -158,10 +171,6 @@ public class RnService {
     public RnDetailDto detail(String rn) {
         return repository.findDetail(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
-    }
-
-    private static String blankToNull(String value) {
-        return (value != null && !value.isBlank()) ? value.trim() : null;
     }
 
     private static int countyCode(AccommodationEntity accommodation) {

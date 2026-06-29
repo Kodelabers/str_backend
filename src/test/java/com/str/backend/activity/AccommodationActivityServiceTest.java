@@ -1,6 +1,7 @@
 package com.str.backend.activity;
 
 import com.str.backend.activity.dto.SdepIngestRequest;
+import com.str.backend.admin.AdminAuditService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -11,7 +12,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,12 +23,14 @@ import static org.mockito.Mockito.when;
 class AccommodationActivityServiceTest {
 
     private AccommodationActivityRepository repository;
+    private AdminAuditService auditService;
     private AccommodationActivityService service;
 
     @BeforeEach
     void setUp() {
         repository = mock(AccommodationActivityRepository.class);
-        service = new AccommodationActivityService(repository);
+        auditService = mock(AdminAuditService.class);
+        service = new AccommodationActivityService(repository, auditService);
     }
 
     @Test
@@ -86,19 +92,22 @@ class AccommodationActivityServiceTest {
     }
 
     @Test
-    void purgeExpired_returnsDeletedCount() {
+    void purgeExpired_returnsDeletedCount_andWritesAudit() {
         when(repository.purgeExpired(any())).thenReturn(7);
 
         int deleted = service.purgeExpired();
 
         assertThat(deleted).isEqualTo(7);
+        verify(auditService).record(eq(AdminAuditService.SYSTEM), eq("ACTIVITY_PURGE"),
+                eq("ACTIVITY"), isNull(), eq("removed=7"));
     }
 
     @Test
-    void purgeExpired_returnsZero_whenNothingToDelete() {
+    void purgeExpired_returnsZero_andSkipsAudit_whenNothingToDelete() {
         when(repository.purgeExpired(any())).thenReturn(0);
 
         assertThat(service.purgeExpired()).isZero();
+        verify(auditService, never()).record(any(), any(), any(), any(), any());
     }
 
     private SdepIngestRequest request(String... rns) {

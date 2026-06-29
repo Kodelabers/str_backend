@@ -4,6 +4,7 @@ import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.domain.RnStatus;
+import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeEntity;
@@ -133,6 +134,51 @@ class RnServiceTest {
 
         assertThatThrownBy(() -> service.issue(UUID.randomUUID(), accommodationId))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void suspend_acceptsIncompleteDocumentation() {
+        RnEntity rn = activeRn();
+        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION);
+
+        verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION);
+    }
+
+    @Test
+    void suspend_rejectsNonSuspendTrigger() {
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.WITHDRAWAL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.suspend.trigger.invalid");
+        verify(transitionService, never())
+                .transition(any(), any(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void withdraw_passesReasonToTransition() {
+        RnEntity rn = activeRn();
+        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.withdraw(rn.getRn(), "  nedostaje suglasnost  ");
+
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
+                null, "nedostaje suglasnost");
+    }
+
+    @Test
+    void withdraw_nullReasonStaysNull() {
+        RnEntity rn = activeRn();
+        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.withdraw(rn.getRn(), null);
+
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, null);
+    }
+
+    private RnEntity activeRn() {
+        return RnEntity.issue("HR120001000000000001", UUID.randomUUID(), UUID.randomUUID(),
+                LocalDate.of(2026, 4, 30));
     }
 
     private AccommodationEntity accommodation(UUID id, Long typeId) {

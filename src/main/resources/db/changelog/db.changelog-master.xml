@@ -113,4 +113,7 @@
          umjesto null-ova — gated context="local". -->
     <include file="db/changelog/changes/045-seed-mock-submissions-local.xml"/>
 
+    <!-- Revizijski log administrativnih akcija (STR-3.3 + GDPR). -->
+    <include file="db/changelog/changes/046-admin-audit-log.xml"/>
+
 </databaseChangeLog>

@@ -1,3 +1,48 @@
 package com.str.backend.rn.dto;
 
-public record VerifyResponse(boolean valid) {}
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.str.backend.domain.RnStatus;
+
+/**
+ * Public registry verification result (STR-1.4-001, čl. 4. st. 5. STR Uredbe).
+ *
+ * <ul>
+ *   <li>ACTIVE + verified → {@code valid=true}, {@code status=ACTIVE} + advertise-safe object data.</li>
+ *   <li>SUSPENDED → {@code valid=true}, {@code status=SUSPENDED}, no object data
+ *       (invalid for advertising).</li>
+ *   <li>WITHDRAWN (opozvan) or non-existent → {@code valid=false} only — privacy: a withdrawn RN
+ *       must not reveal it ever existed, so the response is identical to not-found.</li>
+ * </ul>
+ *
+ * Null fields are omitted from the JSON so the legacy {@code {valid}}-only shape is preserved
+ * for the not-found / suspended cases and the frontend stays backward-compatible.
+ */
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record VerifyResponse(
+        boolean valid,
+        RnStatus status,
+        String registrationNumber,
+        String accommodationName,
+        String category,
+        String address,
+        String group,
+        String type
+) {
+
+    /** Withdrawn or non-existent — intentionally indistinguishable. */
+    public static VerifyResponse invalid() {
+        return new VerifyResponse(false, null, null, null, null, null, null, null);
+    }
+
+    /** Suspended — valid but invalid for advertising; no object data exposed. */
+    public static VerifyResponse suspended() {
+        return new VerifyResponse(true, RnStatus.SUSPENDED, null, null, null, null, null, null);
+    }
+
+    /** Active — full advertise-safe object data. */
+    public static VerifyResponse active(String registrationNumber, String accommodationName,
+                                        String category, String address, String group, String type) {
+        return new VerifyResponse(true, RnStatus.ACTIVE, registrationNumber,
+                accommodationName, category, address, group, type);
+    }
+}
