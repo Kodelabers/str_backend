@@ -9,7 +9,11 @@ public enum RnRegistryView {
 
     ALL(List.of(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnStatus.WITHDRAWN)),
     ACTIVE(List.of(RnStatus.ACTIVE)),
-    SUSPENDED(List.of(RnStatus.SUSPENDED));
+    SUSPENDED(List.of(RnStatus.SUSPENDED)),
+    /** STR-1.5: povučeni/opozvani RB-ovi. */
+    WITHDRAWN(List.of(RnStatus.WITHDRAWN)),
+    /** STR-1.5: svi za oglašavanje nevažeći RB-ovi (suspendirani + povučeni). */
+    INVALID(List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
 
     private final List<RnStatus> statuses;
 

@@ -11,7 +11,7 @@
       (soft warn, confirmable). Nullable because legacy accommodation rows
       and the external (B2B) flow may not carry it.
     -->
-    <changeSet id="046-accommodation-house-number-code" author="str-backend">
+    <changeSet id="047-accommodation-house-number-code" author="str-backend">
         <addColumn schemaName="str_rn" tableName="accommodation">
             <column name="house_number_code" type="VARCHAR(64)"/>
         </addColumn>

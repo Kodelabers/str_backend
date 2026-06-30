@@ -7,6 +7,7 @@ import com.str.backend.admin.dto.PendingRegistrationDetailDto;
 import com.str.backend.admin.dto.PendingRegistrationStatsDto;
 import com.str.backend.admin.dto.PendingRegistrationSummaryDto;
 import com.str.backend.common.SearchTokens;
+import com.str.backend.common.Strings;
 import com.str.backend.domain.LessorApplicationStatus;
 import com.str.backend.email.event.RegistrationApprovedEvent;
 import com.str.backend.email.event.RegistrationRejectedEvent;
@@ -44,15 +45,18 @@ public class AdminPendingRegistrationService {
     private final LessorDocumentRepository documentRepository;
     private final CountryRepository countryRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final AdminAuditService auditService;
 
     public AdminPendingRegistrationService(LessorRepository lessorRepository,
                                            LessorDocumentRepository documentRepository,
                                            CountryRepository countryRepository,
-                                           ApplicationEventPublisher eventPublisher) {
+                                           ApplicationEventPublisher eventPublisher,
+                                           AdminAuditService auditService) {
         this.lessorRepository = lessorRepository;
         this.documentRepository = documentRepository;
         this.countryRepository = countryRepository;
         this.eventPublisher = eventPublisher;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -90,8 +94,9 @@ public class AdminPendingRegistrationService {
         String[] t = SearchTokens.slots(q);
         return lessorRepository.searchRegistrations(effectiveStatus,
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
-                blankToNull(country), blankToNull(documentType),
-                blankToNull(name), blankToNull(email), blankToNull(taxNumber), blankToNull(documentNumber),
+                Strings.blankToNull(country), Strings.blankToNull(documentType),
+                Strings.blankToNull(name), Strings.blankToNull(email),
+                Strings.blankToNull(taxNumber), Strings.blankToNull(documentNumber),
                 pageable);
     }
 
@@ -124,6 +129,7 @@ public class AdminPendingRegistrationService {
     public void approve(UUID lessorId, String actorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
         lessor.approveRegistration(actorId);
+        auditService.record(actorId, "LESSOR_APPROVE", "LESSOR", lessorId.toString(), null);
         eventPublisher.publishEvent(new RegistrationApprovedEvent(
                 lessor.getLessorId(),
                 lessor.getEmail(),
@@ -137,6 +143,7 @@ public class AdminPendingRegistrationService {
     public void reject(UUID lessorId, String actorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
         lessor.rejectRegistration(actorId);
+        auditService.record(actorId, "LESSOR_REJECT", "LESSOR", lessorId.toString(), null);
         eventPublisher.publishEvent(new RegistrationRejectedEvent(
                 lessor.getLessorId(),
                 lessor.getEmail(),
@@ -265,9 +272,5 @@ public class AdminPendingRegistrationService {
 
     private static String nullToEmpty(String s) {
         return s == null ? "" : s;
-    }
-
-    private static String blankToNull(String value) {
-        return (value != null && !value.isBlank()) ? value.trim() : null;
     }
 }

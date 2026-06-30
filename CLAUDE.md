@@ -74,8 +74,8 @@ PENDING → REJECTED (admin rejects)
 `RnStatus` (registration number lifecycle):
 ```
 IN_PROCESSING → ACTIVE (ISSUE)
-ACTIVE → SUSPENDED (CONSENT_EXPIRY / INSPECTION) → ACTIVE (REACTIVATE)
-ACTIVE / SUSPENDED → WITHDRAWN (WITHDRAWAL) → ACTIVE (REACTIVATE)
+ACTIVE → SUSPENDED (CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION) → ACTIVE (REACTIVATE)
+ACTIVE / SUSPENDED → WITHDRAWN (WITHDRAWAL)   [terminal — withdrawal is permanent, no reactivation]
 ```
 
 All status changes go exclusively through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. Each validates the transition against `canTransitionTo()` and immediately writes a `submission_log` / `registration_number_log` row — these two operations are inseparable. Never mutate the status field directly from service code.

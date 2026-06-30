@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="046-create-admin-audit-log" author="str-backend">
+        <createTable schemaName="str_rn" tableName="admin_audit_log"
+                     remarks="Revizijski log administrativnih akcija (brisanje aktivnosti, odobravanje/odbijanje iznajmljivača, retencija) — STR-3.3 + sigurnosno/GDPR testiranje">
+            <column name="audit_id" type="UUID"
+                    remarks="UUID zapisa (PK)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="actor" type="VARCHAR(128)"
+                    remarks="Tko je inicirao akciju (korisnik ili SYSTEM; pouzdan identitet dolazi s NIAS rolama)"/>
+            <column name="action" type="VARCHAR(64)"
+                    remarks="Vrsta akcije (ACTIVITY_PURGE, LESSOR_APPROVE, LESSOR_REJECT, RETENTION_DUE, ...)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="entity_type" type="VARCHAR(64)"
+                    remarks="Vrsta entiteta na koji se akcija odnosi (LESSOR, ACTIVITY, RN, ...)"/>
+            <column name="entity_id" type="VARCHAR(64)"
+                    remarks="Identifikator entiteta (npr. lessorId, rn); null za skupne akcije"/>
+            <column name="details" type="VARCHAR(1024)"
+                    remarks="Slobodan opis/detalj akcije (npr. removed=N)"/>
+            <column name="occurred_at" type="TIMESTAMPTZ"
+                    remarks="Vrijeme akcije">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="admin_audit_log" indexName="idx_admin_audit_action">
+            <column name="action"/>
+            <column name="occurred_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="admin_audit_log"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

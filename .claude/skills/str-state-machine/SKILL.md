@@ -29,10 +29,10 @@ Defines legal transitions for `submission.status` (SubmissionStatus) and `regist
 | :--- | :--- | :--- |
 | — | RN issued when submission ACCEPTED | `IN_PROCESSING` |
 | `IN_PROCESSING` | `ISSUE` | `ACTIVE` |
-| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` | `SUSPENDED` |
+| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` / `INCOMPLETE_DOCUMENTATION` | `SUSPENDED` |
 | `SUSPENDED` | `REACTIVATE` | `ACTIVE` |
 | `ACTIVE` / `SUSPENDED` | `WITHDRAWAL` | `WITHDRAWN` |
-| `WITHDRAWN` | `REACTIVATE` | `ACTIVE` |
+| `WITHDRAWN` | — (terminal) | — |
 
 ## Rules
 

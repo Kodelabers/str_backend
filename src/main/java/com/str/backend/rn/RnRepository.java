@@ -3,6 +3,7 @@ package com.str.backend.rn;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnPublicView;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,9 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     Optional<RnEntity> findTopByAccommodationIdAndStatusOrderByCreatedAtDesc(UUID accommodationId, RnStatus status);
 
     List<RnEntity> findByStatusInOrderByUpdatedAtDesc(List<RnStatus> statuses);
+
+    /** STR-1.3 retencija: opozvani RB-ovi kojima je valid_to (dan povlačenja) stariji od praga. */
+    List<RnEntity> findByStatusAndValidToBefore(RnStatus status, java.time.LocalDate cutoff);
 
     /** STR statistics: counts of RNs grouped by accommodation county + RN status. */
     @Transactional(readOnly = true)
@@ -137,6 +141,18 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             WHERE r.rn = :rn
             """)
     Optional<RnDetailDto> findDetail(@Param("rn") String rn);
+
+    /** STR-1.4-001: advertise-safe public projection for a single RN (no lessor identity). */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.str.backend.rn.dto.RnPublicView(
+                r.rn, a.name, a.category, a.street, a.streetNumber, a.city, t.group, t.name)
+            FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
+            WHERE r.rn = :rn
+            """)
+    Optional<RnPublicView> findPublicView(@Param("rn") String rn);
 
     @Transactional(readOnly = true)
     @Query("""

@@ -12,7 +12,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -33,17 +35,20 @@ public class LessorController {
     private final LessorDocumentRepository lessorDocumentRepository;
     private final CountryRepository countryRepository;
     private final RnRepository rnRepository;
+    private final LessorRnActionService rnActionService;
 
     public LessorController(LessorRegistrationService registrationService,
                             LessorRepository lessorRepository,
                             LessorDocumentRepository lessorDocumentRepository,
                             CountryRepository countryRepository,
-                            RnRepository rnRepository) {
+                            RnRepository rnRepository,
+                            LessorRnActionService rnActionService) {
         this.registrationService = registrationService;
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
         this.countryRepository = countryRepository;
         this.rnRepository = rnRepository;
+        this.rnActionService = rnActionService;
     }
 
     @PostMapping(value = "/registerLessor", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -91,6 +96,17 @@ public class LessorController {
     public List<LessorRnSummaryDto> getRegistrations(Authentication authentication) {
         UUID lessorId = extractLessorId(authentication);
         return rnRepository.findByLessorId(lessorId);
+    }
+
+    /** STR-1.3-001: lessor revokes (opoziv) their own RN → WITHDRAWN. Owner-only. */
+    @PostMapping("/lessor/registrations/{rn}/withdraw")
+    public LessorRnActionResponse withdrawOwnRegistration(
+            @PathVariable String rn,
+            @Valid @RequestBody(required = false) LessorWithdrawRequest body,
+            Authentication authentication) {
+        UUID lessorId = extractLessorId(authentication);
+        String reason = body != null ? body.reason() : null;
+        return rnActionService.withdrawOwn(rn, lessorId, reason);
     }
 
     private UUID extractLessorId(Authentication authentication) {
