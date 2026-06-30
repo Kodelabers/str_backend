@@ -113,4 +113,8 @@
          umjesto null-ova — gated context="local". -->
     <include file="db/changelog/changes/045-seed-mock-submissions-local.xml"/>
 
+    <!-- accommodation.house_number_code stores eturizam_test.ar_address.kc_broj
+         šifra za detekciju duplikata lokacije po iznajmljivaču. -->
+    <include file="db/changelog/changes/046-accommodation-house-number-code.xml"/>
+
 </databaseChangeLog>

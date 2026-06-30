@@ -71,9 +71,9 @@ class RegistrationControllerSecurityTest {
     @Test
     void external_authenticated_invalid_payload_returns_400() throws Exception {
         RegistrationExternalRequest invalid = new RegistrationExternalRequest(
-                "", null, 2L, "Split", null, "Ulica", "14a", null,
+                "", null, 2L, "Split", null, "Ulica", "14a", null, null,
                 0, 6, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
-                false, null, false, true, null, null, null, null, null);
+                false, null, false, true, null, null, null, null, null, null);
 
         mvc.perform(post("/api/generateRegistrationNumberExternal")
                         .with(authentication(principalAuth(UUID.randomUUID())))
@@ -86,11 +86,11 @@ class RegistrationControllerSecurityTest {
         return new RegistrationExternalRequest(
                 "Apartman More", null,
                 2L, "Split", null,
-                "Ulica kralja Tomislava", "14a", null,
+                "Ulica kralja Tomislava", "14a", null, null,
                 4, 6,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     private UsernamePasswordAuthenticationToken principalAuth(UUID lessorId) {

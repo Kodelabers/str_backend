@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Stable šifra (kc_broj) from eturizam_test.ar_address. Used to detect
+      "lessor already has an RN at this location" before issuing a new one
+      (soft warn, confirmable). Nullable because legacy accommodation rows
+      and the external (B2B) flow may not carry it.
+    -->
+    <changeSet id="046-accommodation-house-number-code" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="accommodation">
+            <column name="house_number_code" type="VARCHAR(64)"/>
+        </addColumn>
+        <createIndex schemaName="str_rn"
+                     tableName="accommodation"
+                     indexName="idx_accommodation_house_number_code">
+            <column name="house_number_code"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

@@ -116,11 +116,11 @@ class PdfLocalExportTest {
         return new RegistrationRequest(
                 "12312312316", "AP1 Dugi Rat", "1",
                 7L, "Dugi Rat", "Dugi Rat",
-                "Drage Ivaniševića", "3", "21315",
+                "Drage Ivaniševića", "3", null, "21315",
                 4, 6,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     private CountyEntity buildCounty(Long id, String name) {
