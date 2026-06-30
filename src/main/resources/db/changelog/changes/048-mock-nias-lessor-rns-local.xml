@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Mock NIAS demo korisnik: jedan lessor s fiksnim OIB-om '99999999990' koji već
+        ima 3 izdana RB-a na adresama koje se pojavljuju u FE Postojeći objekti
+        picker-u (postojeciObjektiMock.ts). Koristi se na local/mock profilima da
+        /api/nias/registrations vraća sadržajnu listu kad NIAS sesija prijavi
+        ovaj fiksni OIB (configured via nias.mock.fixed-oib).
+
+        Aktivira se isključivo Liquibase context="local".
+        Idempotentno preko sqlCheck preCondition na fiksnom lessor_id-u.
+    -->
+
+    <changeSet id="048-mock-nias-lessor" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str_rn.lessor WHERE lessor_id = '99999999-9999-9999-9999-999999999999'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.lessor (
+                lessor_id, lessor_oib, first_name, last_name, street, street_number, place, county,
+                mobile_number, email, application_status, created_at, updated_at
+            ) VALUES
+            ('99999999-9999-9999-9999-999999999999', '99999999990', 'NIAS', 'Demo', 'Ilica', '1', 'Zagreb', 'Grad Zagreb',
+             '+385 91 999 0000', 'nias.demo@example.hr', 'ACCEPTED', NOW(), NOW());
+        </sql>
+        <rollback>
+            <sql>DELETE FROM str_rn.lessor WHERE lessor_id = '99999999-9999-9999-9999-999999999999'</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="048-mock-nias-accommodations" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str_rn.accommodation WHERE accommodation_id = '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.accommodation (
+                accommodation_id, accommodation_type_id, county, city, street, street_number,
+                max_beds, max_guests, offer_type, building, apartments, legalized,
+                name, offering, created_at, updated_at
+            )
+            SELECT v.accommodation_id::uuid, t.type_id, v.county, v.city, v.street, v.street_number,
+                   v.max_beds, v.max_guests, v.offer_type, v.building, v.apartments, v.legalized,
+                   v.name, v.offering, NOW(), NOW()
+            FROM (VALUES
+                ('99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Apartman',       'Grad Zagreb',            'Zagreb',    'Ilica',            '1', 4, 4, 'RESIDENCE', true,  false, true, 'Apartman Ilica',  'WHOLE'),
+                ('99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'Studio apartman','Splitsko-dalmatinska',   'Split',     'Marmontova ulica', '4', 2, 2, 'OTHER',     true,  false, true, 'Studio Tomislav', 'WHOLE'),
+                ('99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'Kuća za odmor',  'Dubrovačko-neretvanska', 'Dubrovnik', 'Stradun',          '5', 3, 3, 'OTHER',     false, false, true, 'Kuća Stradun',    'WHOLE')
+            ) AS v(accommodation_id, type_name, county, city, street, street_number, max_beds, max_guests, offer_type, building, apartments, legalized, name, offering)
+            JOIN str_rn.accommodation_type t ON t.name = v.type_name;
+        </sql>
+        <rollback>
+            <sql>DELETE FROM str_rn.accommodation WHERE accommodation_id IN (
+                '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+                '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
+                '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa3'
+            )</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="048-mock-nias-submissions" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM str_rn.lessor WHERE lessor_id = '99999999-9999-9999-9999-999999999999'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM str_rn.submission WHERE submission_id = '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb1'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.submission (
+                submission_id, lessor_id, status, channel, created_at, updated_at
+            ) VALUES
+            ('99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '99999999-9999-9999-9999-999999999999', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb2', '99999999-9999-9999-9999-999999999999', 'ACCEPTED', 'NIAS', NOW(), NOW()),
+            ('99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb3', '99999999-9999-9999-9999-999999999999', 'ACCEPTED', 'NIAS', NOW(), NOW());
+        </sql>
+        <rollback>
+            <sql>DELETE FROM str_rn.submission WHERE submission_id IN (
+                '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
+                '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb2',
+                '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb3'
+            )</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="048-mock-nias-registration-numbers" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str_rn.registration_number WHERE rn = 'HR210000000000000001'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.registration_number (
+                rn, accommodation_id, submission_id, status, issue_date, valid_from, created_at, updated_at
+            ) VALUES
+            ('HR210000000000000001', '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1', '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb1', 'ACTIVE', '2025-03-12', '2025-03-12', NOW(), NOW()),
+            ('HR210000000000000002', '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa2', '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb2', 'ACTIVE', '2025-05-20', '2025-05-20', NOW(), NOW()),
+            ('HR210000000000000003', '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa3', '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb3', 'ACTIVE', '2025-09-04', '2025-09-04', NOW(), NOW());
+        </sql>
+        <rollback>
+            <sql>DELETE FROM str_rn.registration_number WHERE rn IN (
+                'HR210000000000000001','HR210000000000000002','HR210000000000000003'
+            )</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="048-mock-nias-accommodations-link-submissions" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM str_rn.submission WHERE submission_id = '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb1'
+                </sqlCheck>
+                <columnExists schemaName="str_rn" tableName="accommodation" columnName="submission_id"/>
+            </and>
+        </preConditions>
+        <sql>
+            UPDATE str_rn.accommodation SET submission_id = '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb1' WHERE accommodation_id = '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1';
+            UPDATE str_rn.accommodation SET submission_id = '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb2' WHERE accommodation_id = '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa2';
+            UPDATE str_rn.accommodation SET submission_id = '99999999-bbbb-bbbb-bbbb-bbbbbbbbbbb3' WHERE accommodation_id = '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa3';
+        </sql>
+        <rollback>
+            <sql>UPDATE str_rn.accommodation SET submission_id = NULL WHERE accommodation_id IN (
+                '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1',
+                '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa2',
+                '99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa3'
+            )</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
