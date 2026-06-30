@@ -171,6 +171,26 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     List<LessorRnSummaryDto> findByLessorId(@Param("lessorId") UUID lessorId);
 
+    /** NIAS flow: lessorId is not stable across submissions by the same person
+     *  (each NIAS registration creates a new LessorEntity snapshot), so the
+     *  "Moji registracijski brojevi" view for NIAS users matches by OIB. */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.str.backend.lessor.LessorRnSummaryDto(
+                r.rn, r.status, r.issueDate,
+                a.name, a.street, a.streetNumber, a.city,
+                t.name
+            )
+            FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
+            JOIN SubmissionEntity s ON s.submissionId = r.submissionId
+            JOIN LessorEntity l ON l.lessorId = s.lessorId
+            WHERE l.lessorOib = :oib
+            ORDER BY r.issueDate DESC
+            """)
+    List<LessorRnSummaryDto> findByLessorOib(@Param("oib") String oib);
+
     /** Duplicate-location check: does this OIB already hold an ACTIVE or SUSPENDED RN
      *  for an accommodation with this house_number_code (kc_broj šifra)?
      *  Match is by OIB (and not lessorId) because the NIAS flow creates a new
