@@ -51,7 +51,7 @@
                    v.max_beds, v.max_guests, v.offer_type, v.building, v.apartments, v.legalized,
                    v.name, v.offering, NOW(), NOW()
             FROM (VALUES
-                ('99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Apartman',       'Grad Zagreb',            'Zagreb',    'Ilica',            '1', 4, 4, 'RESIDENCE', true,  false, true, 'Apartman Ilica',  'WHOLE'),
+                ('99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Apartman',       'Grad Zagreb',            'Zagreb',    'Ilica',            '1', 4, 4, 'PRIMARY_RESIDENCE', true,  false, true, 'Apartman Ilica',  'WHOLE'),
                 ('99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa2', 'Studio apartman','Splitsko-dalmatinska',   'Split',     'Marmontova ulica', '4', 2, 2, 'OTHER',     true,  false, true, 'Studio Tomislav', 'WHOLE'),
                 ('99999999-aaaa-aaaa-aaaa-aaaaaaaaaaa3', 'Kuća za odmor',  'Dubrovačko-neretvanska', 'Dubrovnik', 'Stradun',          '5', 3, 3, 'OTHER',     false, false, true, 'Kuća Stradun',    'WHOLE')
             ) AS v(accommodation_id, type_name, county, city, street, street_number, max_beds, max_guests, offer_type, building, apartments, legalized, name, offering)
