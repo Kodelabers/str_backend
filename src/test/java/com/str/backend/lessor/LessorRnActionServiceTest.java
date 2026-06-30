@@ -30,6 +30,7 @@ class LessorRnActionServiceTest {
 
     private RnRepository rnRepository;
     private SubmissionRepository submissionRepository;
+    private LessorRepository lessorRepository;
     private RnStatusTransitionService transitionService;
 
     private LessorRnActionService service;
@@ -38,8 +39,9 @@ class LessorRnActionServiceTest {
     void setUp() {
         rnRepository = mock(RnRepository.class);
         submissionRepository = mock(SubmissionRepository.class);
+        lessorRepository = mock(LessorRepository.class);
         transitionService = mock(RnStatusTransitionService.class);
-        service = new LessorRnActionService(rnRepository, submissionRepository, transitionService);
+        service = new LessorRnActionService(rnRepository, submissionRepository, lessorRepository, transitionService);
     }
 
     @Test
