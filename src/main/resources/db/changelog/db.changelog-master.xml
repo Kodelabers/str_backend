@@ -116,4 +116,8 @@
     <!-- Revizijski log administrativnih akcija (STR-3.3 + GDPR). -->
     <include file="db/changelog/changes/046-admin-audit-log.xml"/>
 
+    <!-- accommodation.house_number_code stores eturizam_test.ar_address.kc_broj
+         šifra za detekciju duplikata lokacije po iznajmljivaču. -->
+    <include file="db/changelog/changes/047-accommodation-house-number-code.xml"/>
+
 </databaseChangeLog>

@@ -11,6 +11,7 @@ import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
@@ -31,6 +32,7 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(SubmissionRepository.class),
                 mock(ParallelValidationOrchestrator.class),
                 mock(RnService.class),
+                mock(RnRepository.class),
                 mock(StrLessorLookupService.class),
                 mock(CountyRepository.class),
                 mock(MunicipalityRepository.class),
@@ -43,13 +45,13 @@ class RegistrationServiceBuildAccommodationTest {
         return new RegistrationRequest(
                 "12312312316", "AP1", "1",
                 7L, "Split", "Meje",
-                "Marulićeva", "5", "21000",
+                "Marulićeva", "5", null, "21000",
                 4, 6,
                 OfferType.PRIMARY_RESIDENCE, Offering.PART,
                 true, "3", false, true,
                 Boolean.TRUE, Boolean.TRUE,
                 LocalDate.of(2026, 1, 15), LocalDate.of(2027, 1, 15),
-                host);
+                host, null);
     }
 
     @Test

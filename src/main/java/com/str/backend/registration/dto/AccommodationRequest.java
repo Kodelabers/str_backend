@@ -13,6 +13,7 @@ public interface AccommodationRequest {
     String settlementId();
     String street();
     String streetNumber();
+    String houseNumberCode();
     String postalCode();
     int maxBeds();
     int maxGuests();

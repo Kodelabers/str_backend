@@ -17,6 +17,7 @@ public record RegistrationExternalRequest(
         String settlementId,
         @NotBlank String street,
         @NotBlank String streetNumber,
+        String houseNumberCode,
         String postalCode,
         @Min(1) int maxBeds,
         @Min(1) int maxGuests,
@@ -30,5 +31,6 @@ public record RegistrationExternalRequest(
         Boolean coOwnerConsent,
         LocalDate consentDate,
         LocalDate consentWithdrawalDate,
-        Boolean host
+        Boolean host,
+        Boolean confirmDuplicateLocation
 ) implements AccommodationRequest {}

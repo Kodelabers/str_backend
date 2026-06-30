@@ -53,6 +53,9 @@ public class AccommodationEntity {
     @Column(name = "street_number", length = 16, nullable = false, updatable = false)
     private String streetNumber;
 
+    @Column(name = "house_number_code", length = 64)
+    @Setter private String houseNumberCode;
+
     @Column(name = "cadastral_municipality", length = 128)
     @Setter private String cadastralMunicipality;
 

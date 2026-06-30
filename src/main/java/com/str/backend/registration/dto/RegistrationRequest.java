@@ -19,6 +19,7 @@ public record RegistrationRequest(
         String settlementId,
         @NotBlank String street,
         @NotBlank String streetNumber,
+        String houseNumberCode,
         String postalCode,
         @Min(1) int maxBeds,
         @Min(1) int maxGuests,
@@ -32,15 +33,17 @@ public record RegistrationRequest(
         Boolean coOwnerConsent,
         LocalDate consentDate,
         LocalDate consentWithdrawalDate,
-        Boolean host
+        Boolean host,
+        Boolean confirmDuplicateLocation
 ) implements AccommodationRequest {
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {
         return new RegistrationRequest(oib, orig.name(), orig.typeId(), orig.countyId(),
                 orig.cityId(), orig.settlementId(), orig.street(), orig.streetNumber(),
-                orig.postalCode(), orig.maxBeds(), orig.maxGuests(), orig.offerType(),
-                orig.offering(), orig.building(), orig.floor(), orig.apartments(),
-                orig.legalized(), orig.lessorResidence(), orig.coOwnerConsent(),
-                orig.consentDate(), orig.consentWithdrawalDate(), orig.host());
+                orig.houseNumberCode(), orig.postalCode(), orig.maxBeds(), orig.maxGuests(),
+                orig.offerType(), orig.offering(), orig.building(), orig.floor(),
+                orig.apartments(), orig.legalized(), orig.lessorResidence(), orig.coOwnerConsent(),
+                orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),
+                orig.confirmDuplicateLocation());
     }
 }

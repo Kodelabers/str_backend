@@ -170,4 +170,25 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             ORDER BY r.issueDate DESC
             """)
     List<LessorRnSummaryDto> findByLessorId(@Param("lessorId") UUID lessorId);
+
+    /** Duplicate-location check: does this OIB already hold an ACTIVE or SUSPENDED RN
+     *  for an accommodation with this house_number_code (kc_broj šifra)?
+     *  Match is by OIB (and not lessorId) because the NIAS flow creates a new
+     *  LessorEntity per registration, so lessorId is not stable across submissions
+     *  by the same person. */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT r.rn FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            JOIN SubmissionEntity s ON s.submissionId = r.submissionId
+            JOIN LessorEntity l ON l.lessorId = s.lessorId
+            WHERE r.status IN (com.str.backend.domain.RnStatus.ACTIVE,
+                               com.str.backend.domain.RnStatus.SUSPENDED)
+              AND a.houseNumberCode = :houseNumberCode
+              AND l.lessorOib = :oib
+            ORDER BY r.issueDate DESC
+            """)
+    List<String> findActiveOrSuspendedRnByOibAndHouseNumberCode(
+            @Param("oib") String oib,
+            @Param("houseNumberCode") String houseNumberCode);
 }
