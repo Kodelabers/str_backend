@@ -21,6 +21,12 @@ public interface LessorRepository extends JpaRepository<LessorEntity, UUID> {
     @Transactional(readOnly = true)
     Optional<LessorEntity> findByEmail(String email);
 
+    /** NIAS lookup: profile/akcije za prijavljenog NIAS korisnika idu po OIB-u iz
+     *  SAML principala (vidi {@link com.str.backend.auth.nias.NiasOibResolver}).
+     *  Vraća najnoviji snapshot ako postoji više zapisa s istim OIB-om. */
+    @Transactional(readOnly = true)
+    Optional<LessorEntity> findFirstByLessorOibOrderByCreatedAtDesc(String lessorOib);
+
     // --- Pending-registration megasearch (token-AND) building blocks. Shared between data + count
     // queries so the WHERE clause cannot drift between them. @Query accepts constant concatenation.
 

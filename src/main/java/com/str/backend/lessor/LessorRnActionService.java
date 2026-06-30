@@ -4,6 +4,7 @@ import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
@@ -28,13 +29,16 @@ public class LessorRnActionService {
 
     private final RnRepository rnRepository;
     private final SubmissionRepository submissionRepository;
+    private final LessorRepository lessorRepository;
     private final RnStatusTransitionService transitionService;
 
     public LessorRnActionService(RnRepository rnRepository,
                                  SubmissionRepository submissionRepository,
+                                 LessorRepository lessorRepository,
                                  RnStatusTransitionService transitionService) {
         this.rnRepository = rnRepository;
         this.submissionRepository = submissionRepository;
+        this.lessorRepository = lessorRepository;
         this.transitionService = transitionService;
     }
 
@@ -48,21 +52,52 @@ public class LessorRnActionService {
      */
     @Transactional
     public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason) {
-        RnEntity entity = loadOwned(rn, lessorId);
+        RnEntity entity = loadOwnedByLessorId(rn, lessorId);
         transitionService.transition(entity, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
                 "LESSOR:" + lessorId, Strings.blankToNull(reason));
         log.info("rn_withdraw_by_lessor rn={} lessor={}", rn, lessorId);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
     }
 
+    /**
+     * NIAS varijanta: vlasništvo se provjerava po OIB-u jer svaki NIAS submission
+     * kreira novi LessorEntity snapshot — fiksan lessorId ne pokriva starije RB-ove
+     * istog korisnika. Provjera: submission.lessorId → LessorEntity.lessorOib == oib.
+     */
+    @Transactional
+    public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason) {
+        RnEntity entity = loadOwnedByOib(rn, oib);
+        transitionService.transition(entity, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
+                "NIAS:" + oib, Strings.blankToNull(reason));
+        log.info("rn_withdraw_by_nias rn={} oib={}", rn, oib);
+        return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
+    }
+
     /** Loads the RN and verifies it belongs to the lessor; 404 otherwise (no existence leak). */
-    private RnEntity loadOwned(String rn, UUID lessorId) {
+    private RnEntity loadOwnedByLessorId(String rn, UUID lessorId) {
         RnEntity entity = rnRepository.findById(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
         UUID submissionId = entity.getSubmissionId();
         boolean owned = submissionId != null
                 && submissionRepository.findById(submissionId)
                         .map(s -> lessorId.equals(s.getLessorId()))
+                        .orElse(false);
+        if (!owned) {
+            throw new ResourceNotFoundException("rn not found: " + rn);
+        }
+        return entity;
+    }
+
+    /** OIB-based ownership: RN → submission → LessorEntity.lessorOib must match. */
+    private RnEntity loadOwnedByOib(String rn, String oib) {
+        RnEntity entity = rnRepository.findById(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
+        UUID submissionId = entity.getSubmissionId();
+        boolean owned = submissionId != null
+                && submissionRepository.findById(submissionId)
+                        .map(SubmissionEntity::getLessorId)
+                        .flatMap(lessorRepository::findById)
+                        .map(l -> oib.equals(l.getLessorOib()))
                         .orElse(false);
         if (!owned) {
             throw new ResourceNotFoundException("rn not found: " + rn);
