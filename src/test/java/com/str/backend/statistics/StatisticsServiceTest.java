@@ -12,10 +12,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class StatisticsServiceTest {
@@ -154,6 +157,57 @@ class StatisticsServiceTest {
             @Override public RnStatus getStatus() { return status; }
             @Override public long getCount() { return count; }
         };
+    }
+
+    private static RnRepository.CountyCount rnAccCount(String county, long count) {
+        return new RnRepository.CountyCount() {
+            @Override public String getCounty() { return county; }
+            @Override public long getCount() { return count; }
+        };
+    }
+
+    @Test
+    void str_withDateFilter_usesRnScopedAccommodationsAndTotalObjects() {
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
+                county(1L, "Splitsko-dalmatinska županija")
+        ));
+        when(rnRepository.countDistinctAccommodationsByCountyBetween(
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30)))
+                .thenReturn(List.of(rnAccCount("Splitsko-dalmatinska županija", 3L)));
+        when(rnRepository.countByCountyAndStatusBetween(
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30)))
+                .thenReturn(List.of(rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 3L)));
+
+        StrResponse res = service.str(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
+
+        assertThat(res.counties()).hasSize(1);
+        assertThat(res.counties().get(0).accommodations()).isEqualTo(3L);
+        assertThat(res.totals().totalObjects()).isEqualTo(3L);
+        assertThat(res.totals().totalRn()).isEqualTo(3L);
+        // Unfiltered queries must not be hit when the filter is active.
+        verify(accommodationRepository, never()).countByCounty();
+        verify(facilityRepository, never()).countByActiveTrue();
+        verify(rnRepository, never()).countByCountyAndStatus();
+    }
+
+    @Test
+    void str_withDateFilter_emptyPeriodReportsZeros() {
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
+                county(1L, "Splitsko-dalmatinska županija")
+        ));
+        when(rnRepository.countDistinctAccommodationsByCountyBetween(
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30)))
+                .thenReturn(List.of());
+        when(rnRepository.countByCountyAndStatusBetween(
+                LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30)))
+                .thenReturn(List.of());
+
+        StrResponse res = service.str(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
+
+        assertThat(res.counties()).hasSize(1);
+        assertThat(res.counties().get(0).accommodations()).isZero();
+        assertThat(res.totals().totalObjects()).isZero();
+        assertThat(res.totals().totalRn()).isZero();
     }
 
 }

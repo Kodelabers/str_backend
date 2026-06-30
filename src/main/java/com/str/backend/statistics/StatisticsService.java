@@ -49,13 +49,25 @@ public class StatisticsService {
         Set<String> activeNames = new HashSet<>(activeCounties.size());
         for (CountyEntity c : activeCounties) activeNames.add(c.getName());
 
+        // When a date range is set, "accommodations" + totalObjects must be scoped to the
+        // same period as the RN counts — otherwise empty periods report inflated denominators
+        // and the coverage rate is meaningless. With no filter we fall back to the full
+        // accommodation population and the eTurizam facility headcount (real coverage view).
+        boolean filtered = from != null && to != null;
+
         Map<String, Long> accByCounty = new HashMap<>();
-        for (var row : accommodationRepository.countByCounty()) {
-            accByCounty.merge(row.getCounty(), row.getCount(), Long::sum);
+        if (filtered) {
+            for (var row : rnRepository.countDistinctAccommodationsByCountyBetween(from, to)) {
+                accByCounty.merge(row.getCounty(), row.getCount(), Long::sum);
+            }
+        } else {
+            for (var row : accommodationRepository.countByCounty()) {
+                accByCounty.merge(row.getCounty(), row.getCount(), Long::sum);
+            }
         }
 
         List<RnRepository.CountyStatusCount> rnCounts;
-        if (from != null && to != null) {
+        if (filtered) {
             rnCounts = rnRepository.countByCountyAndStatusBetween(from, to);
         } else {
             rnCounts = rnRepository.countByCountyAndStatus();
@@ -102,7 +114,9 @@ public class StatisticsService {
             totalWithdrawn += r.withdrawnRn();
         }
 
-        long totalObjects = facilityRepository.countByActiveTrue();
+        long totalObjects = filtered
+                ? rows.stream().mapToLong(CountyStrDto::accommodations).sum()
+                : facilityRepository.countByActiveTrue();
         long totalRn = totalActive + totalSuspended + totalWithdrawn;
         StrTotalsDto totals = new StrTotalsDto(totalObjects, totalRn, rate(totalRn, totalObjects));
         return new StrResponse(totals, rows);

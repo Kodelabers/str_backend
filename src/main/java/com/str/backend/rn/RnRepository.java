@@ -51,9 +51,27 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     List<CountyStatusCount> countByCountyAndStatusBetween(@Param("from") java.time.LocalDate from,
                                                           @Param("to") java.time.LocalDate to);
 
+    /** STR statistics: distinct accommodations per county that had at least one RN issued in [from, to].
+     *  Drives the "accommodations" column + totalObjects KPI when a date filter is active, so empty
+     *  periods report empty values just as they would with real data. */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT a.county AS county, COUNT(DISTINCT a.accommodationId) AS count
+            FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE r.issueDate BETWEEN :from AND :to
+            GROUP BY a.county
+            """)
+    List<CountyCount> countDistinctAccommodationsByCountyBetween(@Param("from") java.time.LocalDate from,
+                                                                 @Param("to") java.time.LocalDate to);
+
     interface CountyStatusCount {
         String getCounty();
         RnStatus getStatus();
+        long getCount();
+    }
+
+    interface CountyCount {
+        String getCounty();
         long getCount();
     }
 
