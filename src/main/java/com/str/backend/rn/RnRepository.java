@@ -209,24 +209,31 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     List<LessorRnSummaryDto> findByLessorOib(@Param("oib") String oib);
 
-    /** Duplicate-location check: does this OIB already hold an ACTIVE or SUSPENDED RN
-     *  for an accommodation with this house_number_code (kc_broj šifra)?
-     *  Match is by OIB (and not lessorId) because the NIAS flow creates a new
-     *  LessorEntity per registration, so lessorId is not stable across submissions
-     *  by the same person. */
+    /** Duplicate-location check: is there an ACTIVE or SUSPENDED RN for an accommodation
+     *  on this exact address (county + city + street + streetNumber, case- and whitespace-
+     *  insensitive), optionally filtered to a specific lessor by OIB? When {@code oib} is
+     *  null the address match alone is enough to surface a conflict; when set, the lessor
+     *  must also match. OIB-based match (rather than lessorId) — the NIAS flow creates a
+     *  new LessorEntity per registration, so lessorId is not stable for the same person. */
     @Transactional(readOnly = true)
     @Query("""
             SELECT r.rn FROM RnEntity r
             JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
-            JOIN SubmissionEntity s ON s.submissionId = r.submissionId
-            JOIN LessorEntity l ON l.lessorId = s.lessorId
+            LEFT JOIN SubmissionEntity s ON s.submissionId = r.submissionId
+            LEFT JOIN LessorEntity l ON l.lessorId = s.lessorId
             WHERE r.status IN (com.str.backend.domain.RnStatus.ACTIVE,
                                com.str.backend.domain.RnStatus.SUSPENDED)
-              AND a.houseNumberCode = :houseNumberCode
-              AND l.lessorOib = :oib
+              AND LOWER(TRIM(a.county)) = LOWER(TRIM(:county))
+              AND LOWER(TRIM(a.city)) = LOWER(TRIM(:city))
+              AND LOWER(TRIM(a.street)) = LOWER(TRIM(:street))
+              AND LOWER(TRIM(a.streetNumber)) = LOWER(TRIM(:streetNumber))
+              AND (CAST(:oib AS string) IS NULL OR l.lessorOib = CAST(:oib AS string))
             ORDER BY r.issueDate DESC
             """)
-    List<String> findActiveOrSuspendedRnByOibAndHouseNumberCode(
-            @Param("oib") String oib,
-            @Param("houseNumberCode") String houseNumberCode);
+    List<String> findActiveOrSuspendedRnByAddressAndOib(
+            @Param("county") String county,
+            @Param("city") String city,
+            @Param("street") String street,
+            @Param("streetNumber") String streetNumber,
+            @Param("oib") String oib);
 }
