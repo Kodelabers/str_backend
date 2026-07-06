@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        STR-1.4 (#44): RB detail pravna osoba + zastupnik sekcije već su pokrivene
+        u RnDetailDto + RnDetailPage, ali se prikazuju samo ako lessor ima legal
+        entity podatke. U 036 mock seedu svi su mock iznajmljivači fizičke osobe
+        pa te sekcije nikad ne dobiju mock vrijednost.
+
+        Ovaj changeset promovira jednog postojećeg mock iznajmljivača (Marko
+        Horvat, Split) u ovlaštenu osobu pravne osobe "Marina Tours d.o.o." i
+        pridružuje mu zastupnika, tako da pripadni RB (HR170001A1B1C1D1E1F1) na
+        detalju prikaže obje sekcije.
+
+        Aktivira se samo Liquibase context="local"; idempotentno gated preCondition-om
+        na is_legal_entity_owner = FALSE (sigurno preskoči ako changeset već radio).
+    -->
+
+    <changeSet id="049-mock-lessor-legal-entity" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT COUNT(*) FROM str_rn.lessor
+                 WHERE lessor_id = '11111111-1111-1111-1111-111111111112'
+                   AND is_legal_entity_owner = FALSE
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE str_rn.lessor
+               SET is_legal_entity_owner = TRUE,
+                   legal_entity_name = 'Marina Tours d.o.o.',
+                   legal_entity_country_id = 7,
+                   legal_entity_city = 'Split',
+                   legal_entity_registration_number = '060123456',
+                   representative_oib = '11223344556',
+                   legal_representative_name = 'Marko Horvat',
+                   representative_email = 'marko.horvat@marinatours.hr',
+                   representative_phone = '+385 21 123 456',
+                   representative_address = 'Vukovarska 11, 21000 Split',
+                   updated_at = NOW()
+             WHERE lessor_id = '11111111-1111-1111-1111-111111111112';
+        </sql>
+        <rollback>
+            <sql>
+                UPDATE str_rn.lessor
+                   SET is_legal_entity_owner = FALSE,
+                       legal_entity_name = NULL,
+                       legal_entity_country_id = NULL,
+                       legal_entity_city = NULL,
+                       legal_entity_registration_number = NULL,
+                       representative_oib = NULL,
+                       legal_representative_name = NULL,
+                       representative_email = NULL,
+                       representative_phone = NULL,
+                       representative_address = NULL
+                 WHERE lessor_id = '11111111-1111-1111-1111-111111111112';
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -44,6 +44,10 @@ class RegistrationServiceDuplicateLocationTest {
     private static final String OIB = "12312312316";
     private static final String HOUSE_NUMBER_CODE = "KC-001";
     private static final String EXISTING_RN = "HR120001000000000001";
+    private static final String COUNTY = "Splitsko-dalmatinska županija";
+    private static final String CITY = "Split";
+    private static final String STREET = "Marulićeva";
+    private static final String STREET_NUMBER = "5";
 
     private LessorRepository lessorRepository;
     private AccommodationRepository accommodationRepository;
@@ -95,7 +99,8 @@ class RegistrationServiceDuplicateLocationTest {
 
     @Test
     void throws_duplicate_location_when_existing_rn_present_and_no_confirmation() {
-        when(rnRepository.findActiveOrSuspendedRnByOibAndHouseNumberCode(eq(OIB), eq(HOUSE_NUMBER_CODE)))
+        when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(
+                eq(COUNTY), eq(CITY), eq(STREET), eq(STREET_NUMBER), eq(OIB)))
                 .thenReturn(List.of(EXISTING_RN));
 
         assertThatThrownBy(() -> service.generateRegistrationNumber(buildRequest(null)))
@@ -108,7 +113,8 @@ class RegistrationServiceDuplicateLocationTest {
 
     @Test
     void proceeds_when_existing_rn_present_but_confirmation_provided() {
-        when(rnRepository.findActiveOrSuspendedRnByOibAndHouseNumberCode(eq(OIB), eq(HOUSE_NUMBER_CODE)))
+        when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(
+                eq(COUNTY), eq(CITY), eq(STREET), eq(STREET_NUMBER), eq(OIB)))
                 .thenReturn(List.of(EXISTING_RN));
 
         RnEntity issued = mock(RnEntity.class);
@@ -123,7 +129,8 @@ class RegistrationServiceDuplicateLocationTest {
 
     @Test
     void proceeds_when_no_existing_rn_at_location() {
-        when(rnRepository.findActiveOrSuspendedRnByOibAndHouseNumberCode(eq(OIB), eq(HOUSE_NUMBER_CODE)))
+        when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(
+                eq(COUNTY), eq(CITY), eq(STREET), eq(STREET_NUMBER), eq(OIB)))
                 .thenReturn(List.of());
 
         RnEntity issued = mock(RnEntity.class);
@@ -136,8 +143,8 @@ class RegistrationServiceDuplicateLocationTest {
     }
 
     @Test
-    void check_skipped_when_house_number_code_blank() {
-        var resp_request = new RegistrationRequest(
+    void check_fires_even_when_house_number_code_blank_address_alone_is_enough() {
+        var requestWithBlankKc = new RegistrationRequest(
                 OIB, "AP1", "1",
                 7L, "Split", "Meje",
                 "Marulićeva", "5", "  ", "21000",
@@ -145,15 +152,13 @@ class RegistrationServiceDuplicateLocationTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
                 null, null, null, null, null, null);
+        when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(
+                eq(COUNTY), eq(CITY), eq(STREET), eq(STREET_NUMBER), eq(OIB)))
+                .thenReturn(List.of(EXISTING_RN));
 
-        RnEntity issued = mock(RnEntity.class);
-        when(issued.getRn()).thenReturn("HR120001000000000555");
-        when(rnService.issue(any(UUID.class), any(UUID.class))).thenReturn(issued);
-
-        service.generateRegistrationNumber(resp_request);
-
-        verify(rnRepository, never())
-                .findActiveOrSuspendedRnByOibAndHouseNumberCode(anyString(), anyString());
+        assertThatThrownBy(() -> service.generateRegistrationNumber(requestWithBlankKc))
+                .isInstanceOf(DuplicateLocationException.class)
+                .extracting("existingRegistrationNumber").isEqualTo(EXISTING_RN);
     }
 
     private RegistrationRequest buildRequest(Boolean confirm) {

@@ -88,10 +88,10 @@ public class RegistrationService {
         CountyEntity county = countyRepository.findById(req.countyId())
                 .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
 
-        checkDuplicateLocation(req.oib(), req.houseNumberCode(), req.confirmDuplicateLocation());
+        AccommodationEntity accommodation = buildAccommodation(req, county.getName());
+        checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
         LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
-        AccommodationEntity accommodation = buildAccommodation(req, county.getName());
         runValidation(accommodation, lessor);
 
         return commitRegistration(lessor, accommodation, county.getName(),
@@ -105,21 +105,41 @@ public class RegistrationService {
 
         LessorEntity lessor = lessorRepository.findById(lessorId)
                 .orElseThrow(() -> new ResourceNotFoundException("lessor not found: " + lessorId));
-        checkDuplicateLocation(lessor.getLessorOib(), req.houseNumberCode(), req.confirmDuplicateLocation());
 
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
+        checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
+
         runValidation(accommodation, lessor);
 
         return commitRegistration(lessor, accommodation, county.getName(),
                 resolveTypeName(req.typeId()), req.postalCode());
     }
 
-    private void checkDuplicateLocation(String oib, String houseNumberCode, Boolean confirmed) {
-        if (oib == null || houseNumberCode == null || houseNumberCode.isBlank()) return;
+    /**
+     * Surfaces an ACTIVE/SUSPENDED RN that already covers this address so the FE can prompt
+     * for explicit confirmation (and only then proceed). Match is on the full address tuple
+     * (county + city + street + streetNumber); when OIB is known it additionally narrows to
+     * the same lessor, which is the common case. The house-number šifra used to be the sole
+     * key but doesn't survive flows where it's missing — the address tuple does.
+     */
+    private void checkDuplicateLocation(String oib, AccommodationEntity accommodation, Boolean confirmed) {
         if (Boolean.TRUE.equals(confirmed)) return;
-        rnRepository.findActiveOrSuspendedRnByOibAndHouseNumberCode(oib, houseNumberCode)
+        if (isBlank(accommodation.getStreet()) || isBlank(accommodation.getStreetNumber())
+                || isBlank(accommodation.getCity()) || isBlank(accommodation.getCounty())) {
+            return;
+        }
+        rnRepository.findActiveOrSuspendedRnByAddressAndOib(
+                        accommodation.getCounty(),
+                        accommodation.getCity(),
+                        accommodation.getStreet(),
+                        accommodation.getStreetNumber(),
+                        isBlank(oib) ? null : oib)
                 .stream().findFirst()
                 .ifPresent(rn -> { throw new DuplicateLocationException(rn); });
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     @Transactional(readOnly = true)
