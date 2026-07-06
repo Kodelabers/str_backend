@@ -124,35 +124,35 @@ class RegistrationControllerTest {
         return new RegistrationRequest(
                 "12312312316", "Apartman Sunce", null,
                 2L, "Split", null,
-                "Ulica kralja Tomislava", "14a", null,
+                "Ulica kralja Tomislava", "14a", null, null,
                 4, 6,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null);
+                null, null, null, null, null, null);
     }
 
     private RegistrationRequest withMaxBeds(RegistrationRequest r, int maxBeds) {
         return new RegistrationRequest(
                 r.oib(), r.name(), r.typeId(),
                 r.countyId(), r.cityId(), r.settlementId(),
-                r.street(), r.streetNumber(), r.postalCode(),
+                r.street(), r.streetNumber(), r.houseNumberCode(), r.postalCode(),
                 maxBeds, r.maxGuests(),
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation());
     }
 
     private RegistrationRequest withOib(RegistrationRequest r, String oib) {
         return new RegistrationRequest(
                 oib, r.name(), r.typeId(),
                 r.countyId(), r.cityId(), r.settlementId(),
-                r.street(), r.streetNumber(), r.postalCode(),
+                r.street(), r.streetNumber(), r.houseNumberCode(), r.postalCode(),
                 r.maxBeds(), r.maxGuests(),
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation());
     }
 
     private SubmissionEntity submissionWithPdf(UUID id, String filingNumber, byte[] pdf) {

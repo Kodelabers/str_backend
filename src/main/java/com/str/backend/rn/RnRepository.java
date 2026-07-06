@@ -3,6 +3,7 @@ package com.str.backend.rn;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnPublicView;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,9 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     Optional<RnEntity> findTopByAccommodationIdAndStatusOrderByCreatedAtDesc(UUID accommodationId, RnStatus status);
 
     List<RnEntity> findByStatusInOrderByUpdatedAtDesc(List<RnStatus> statuses);
+
+    /** STR-1.3 retencija: opozvani RB-ovi kojima je valid_to (dan povlačenja) stariji od praga. */
+    List<RnEntity> findByStatusAndValidToBefore(RnStatus status, java.time.LocalDate cutoff);
 
     /** STR statistics: counts of RNs grouped by accommodation county + RN status. */
     @Transactional(readOnly = true)
@@ -138,6 +142,18 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     Optional<RnDetailDto> findDetail(@Param("rn") String rn);
 
+    /** STR-1.4-001: advertise-safe public projection for a single RN (no lessor identity). */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.str.backend.rn.dto.RnPublicView(
+                r.rn, a.name, a.category, a.street, a.streetNumber, a.city, t.group, t.name)
+            FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
+            WHERE r.rn = :rn
+            """)
+    Optional<RnPublicView> findPublicView(@Param("rn") String rn);
+
     @Transactional(readOnly = true)
     @Query("""
             SELECT new com.str.backend.lessor.LessorRnSummaryDto(
@@ -154,4 +170,45 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             ORDER BY r.issueDate DESC
             """)
     List<LessorRnSummaryDto> findByLessorId(@Param("lessorId") UUID lessorId);
+
+    /** NIAS flow: lessorId is not stable across submissions by the same person
+     *  (each NIAS registration creates a new LessorEntity snapshot), so the
+     *  "Moji registracijski brojevi" view for NIAS users matches by OIB. */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.str.backend.lessor.LessorRnSummaryDto(
+                r.rn, r.status, r.issueDate,
+                a.name, a.street, a.streetNumber, a.city,
+                t.name
+            )
+            FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
+            JOIN SubmissionEntity s ON s.submissionId = r.submissionId
+            JOIN LessorEntity l ON l.lessorId = s.lessorId
+            WHERE l.lessorOib = :oib
+            ORDER BY r.issueDate DESC
+            """)
+    List<LessorRnSummaryDto> findByLessorOib(@Param("oib") String oib);
+
+    /** Duplicate-location check: does this OIB already hold an ACTIVE or SUSPENDED RN
+     *  for an accommodation with this house_number_code (kc_broj šifra)?
+     *  Match is by OIB (and not lessorId) because the NIAS flow creates a new
+     *  LessorEntity per registration, so lessorId is not stable across submissions
+     *  by the same person. */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT r.rn FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            JOIN SubmissionEntity s ON s.submissionId = r.submissionId
+            JOIN LessorEntity l ON l.lessorId = s.lessorId
+            WHERE r.status IN (com.str.backend.domain.RnStatus.ACTIVE,
+                               com.str.backend.domain.RnStatus.SUSPENDED)
+              AND a.houseNumberCode = :houseNumberCode
+              AND l.lessorOib = :oib
+            ORDER BY r.issueDate DESC
+            """)
+    List<String> findActiveOrSuspendedRnByOibAndHouseNumberCode(
+            @Param("oib") String oib,
+            @Param("houseNumberCode") String houseNumberCode);
 }

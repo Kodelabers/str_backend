@@ -86,6 +86,46 @@ public class StatisticsController {
         return platformActivityQuery.query(platformId, od, toDate, county, status, q, rn, page, clampedSize);
     }
 
+    // TODO(auth/BX0): role-gate platform-activities export (voditelj/admin) kad stignu NIAS role —
+    // izvoz sadrži imena vlasnika i adrese, a endpointi su trenutno permitAll.
+
+    /** STR-3.2: platform activity report → Excel (obavezni izvoz). Same filters as the list. */
+    @GetMapping("/platform-activities/xlsx")
+    public ResponseEntity<byte[]> platformActivitiesXlsx(
+            @RequestParam(required = false) Long platformId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate od,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) String county,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String rn) {
+        byte[] xlsx = exportService.generatePlatformActivitiesXlsx(platformId, od, toDate, county, status, q, rn);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"aktivnosti-platformi.xlsx\"")
+                .body(xlsx);
+    }
+
+    /** STR-3.2: platform activity report → CSV. Same filters as the list. */
+    @GetMapping("/platform-activities/csv")
+    public ResponseEntity<byte[]> platformActivitiesCsv(
+            @RequestParam(required = false) Long platformId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate od,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
+            @RequestParam(required = false) String county,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String rn) {
+        byte[] csv = exportService.generatePlatformActivitiesCsv(platformId, od, toDate, county, status, q, rn);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "text/csv;charset=UTF-8")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"aktivnosti-platformi.csv\"")
+                .body(csv);
+    }
+
     /** Accordion: per-platform per-country breakdown for a single (RN × period) row. */
     @GetMapping("/platform-activities/breakdown")
     public PlatformBreakdownDto platformActivityBreakdown(

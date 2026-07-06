@@ -14,6 +14,8 @@ import com.str.backend.pdf.PdfFonts;
 import com.str.backend.statistics.StatisticsRepository.DetailRowProjection;
 import com.str.backend.statistics.dto.StrResponse;
 import com.str.backend.statistics.dto.CountyStrDto;
+import com.str.backend.statistics.dto.PlatformActivityRowDto;
+import com.str.backend.statistics.dto.PlatformChipDto;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -26,9 +28,11 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 @Service
 public class StatisticsExportService {
@@ -57,13 +61,19 @@ public class StatisticsExportService {
         FNT_DATE  = new Font(bf,  9, Font.NORMAL, new Color(100, 100, 100));
     }
 
+    private static final DateTimeFormatter REPORTED_FMT =
+            DateTimeFormatter.ofPattern("dd.MM.yyyy.").withZone(ZoneId.of("Europe/Zagreb"));
+
     private final StatisticsService    statisticsService;
     private final StatisticsRepository statisticsRepository;
+    private final PlatformActivityQuery platformActivityQuery;
 
     public StatisticsExportService(StatisticsService statisticsService,
-                                   StatisticsRepository statisticsRepository) {
-        this.statisticsService    = statisticsService;
-        this.statisticsRepository = statisticsRepository;
+                                   StatisticsRepository statisticsRepository,
+                                   PlatformActivityQuery platformActivityQuery) {
+        this.statisticsService     = statisticsService;
+        this.statisticsRepository  = statisticsRepository;
+        this.platformActivityQuery = platformActivityQuery;
     }
 
     // ── PDF ──────────────────────────────────────────────────────────────────
@@ -218,6 +228,108 @@ public class StatisticsExportService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate STR Excel", e);
         }
+    }
+
+    // ── Platform activities export (STR-3.2) ───────────────────────────────────
+
+    private static final String[] PA_HEADERS = {
+            "Registracijski broj", "Vlasnik", "Adresa", "Grad", "Županija", "Platforme",
+            "Period od", "Period do", "Noćenja", "Gosti", "Status RB", "Prijavljeno"
+    };
+
+    @Transactional(readOnly = true)
+    public byte[] generatePlatformActivitiesXlsx(Long platformId, LocalDate od, LocalDate toDate,
+                                                 String county, String status, String q, String rn) {
+        List<PlatformActivityRowDto> rows =
+                platformActivityQuery.queryAll(platformId, od, toDate, county, status, q, rn);
+        try (XSSFWorkbook wb = new XSSFWorkbook();
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+
+            Sheet sheet = wb.createSheet("Aktivnosti platformi");
+
+            XSSFFont boldFont = wb.createFont();
+            boldFont.setBold(true);
+            CellStyle headerStyle = wb.createCellStyle();
+            headerStyle.setFont(boldFont);
+
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < PA_HEADERS.length; i++) {
+                var cell = headerRow.createCell(i);
+                cell.setCellValue(PA_HEADERS[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int rowIdx = 1;
+            for (PlatformActivityRowDto row : rows) {
+                Row r = sheet.createRow(rowIdx++);
+                r.createCell(0).setCellValue(nullToEmpty(row.rb()));
+                r.createCell(1).setCellValue(nullToEmpty(row.ownerName()));
+                r.createCell(2).setCellValue(nullToEmpty(row.address()));
+                r.createCell(3).setCellValue(nullToEmpty(row.city()));
+                r.createCell(4).setCellValue(nullToEmpty(row.countyName()));
+                r.createCell(5).setCellValue(platforms(row));
+                r.createCell(6).setCellValue(formatDate(row.periodFrom()));
+                r.createCell(7).setCellValue(formatDate(row.periodTo()));
+                r.createCell(8).setCellValue(row.nights());
+                r.createCell(9).setCellValue(row.guestsTotal());
+                r.createCell(10).setCellValue(translateActivityStatus(row.rnStatus()));
+                r.createCell(11).setCellValue(formatReported(row));
+            }
+
+            wb.write(baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate platform activities Excel", e);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generatePlatformActivitiesCsv(Long platformId, LocalDate od, LocalDate toDate,
+                                                String county, String status, String q, String rn) {
+        List<PlatformActivityRowDto> rows =
+                platformActivityQuery.queryAll(platformId, od, toDate, county, status, q, rn);
+        StringBuilder sb = new StringBuilder();
+        sb.append('﻿'); // BOM for Excel-compatible UTF-8
+        sb.append(String.join(",", PA_HEADERS)).append("\r\n");
+        for (PlatformActivityRowDto row : rows) {
+            sb.append(csvEscape(row.rb())).append(',')
+              .append(csvEscape(row.ownerName())).append(',')
+              .append(csvEscape(row.address())).append(',')
+              .append(csvEscape(row.city())).append(',')
+              .append(csvEscape(row.countyName())).append(',')
+              .append(csvEscape(platforms(row))).append(',')
+              .append(csvEscape(formatDate(row.periodFrom()))).append(',')
+              .append(csvEscape(formatDate(row.periodTo()))).append(',')
+              .append(csvEscape(row.nights())).append(',')
+              .append(csvEscape(row.guestsTotal())).append(',')
+              .append(csvEscape(translateActivityStatus(row.rnStatus()))).append(',')
+              .append(csvEscape(formatReported(row))).append("\r\n");
+        }
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static String platforms(PlatformActivityRowDto row) {
+        if (row.platforms() == null) return "";
+        return row.platforms().stream()
+                .map(PlatformChipDto::name)
+                .filter(n -> n != null && !n.isBlank())
+                .collect(Collectors.joining(", "));
+    }
+
+    private static String formatReported(PlatformActivityRowDto row) {
+        return row.reportedAt() == null ? "" : REPORTED_FMT.format(row.reportedAt());
+    }
+
+    /** Row status arrives already mapped to the frontend lowercase form. */
+    private static String translateActivityStatus(String status) {
+        if (status == null) return "";
+        return switch (status) {
+            case "aktivan"     -> "Aktivan";
+            case "suspendiran" -> "Suspendiran";
+            case "povucen"     -> "Povučen";
+            case "bez_rb"      -> "Bez RB";
+            default            -> status;
+        };
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

@@ -51,6 +51,13 @@ public class GlobalExceptionHandler {
                 Map.of("step", ex.getStep()));
     }
 
+    @ExceptionHandler(DuplicateLocationException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateLocation(DuplicateLocationException ex) {
+        return build(HttpStatus.CONFLICT, resolve(ex.getMessage()), Map.of(
+                "code", "DUPLICATE_LOCATION",
+                "existingRegistrationNumber", ex.getExistingRegistrationNumber()));
+    }
+
     @ExceptionHandler(ExternalRegistryException.class)
     public ResponseEntity<ErrorResponse> handleRegistry(ExternalRegistryException ex) {
         log.error("external_registry_error registry={} message={}", ex.getRegistry(), ex.getMessage(), ex);

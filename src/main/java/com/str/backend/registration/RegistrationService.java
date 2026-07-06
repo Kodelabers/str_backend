@@ -8,6 +8,7 @@ import com.str.backend.address.MunicipalityEntity;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementEntity;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
@@ -18,6 +19,7 @@ import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
 import com.str.backend.registration.event.RnIssuedEvent;
 import com.str.backend.rn.RnEntity;
+import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
@@ -47,6 +49,7 @@ public class RegistrationService {
     private final SubmissionRepository submissionRepository;
     private final ParallelValidationOrchestrator orchestrator;
     private final RnService rnService;
+    private final RnRepository rnRepository;
     private final StrLessorLookupService strLessorLookupService;
     private final CountyRepository countyRepository;
     private final MunicipalityRepository municipalityRepository;
@@ -59,6 +62,7 @@ public class RegistrationService {
                                SubmissionRepository submissionRepository,
                                ParallelValidationOrchestrator orchestrator,
                                RnService rnService,
+                               RnRepository rnRepository,
                                StrLessorLookupService strLessorLookupService,
                                CountyRepository countyRepository,
                                MunicipalityRepository municipalityRepository,
@@ -70,6 +74,7 @@ public class RegistrationService {
         this.submissionRepository = submissionRepository;
         this.orchestrator = orchestrator;
         this.rnService = rnService;
+        this.rnRepository = rnRepository;
         this.strLessorLookupService = strLessorLookupService;
         this.countyRepository = countyRepository;
         this.municipalityRepository = municipalityRepository;
@@ -82,6 +87,8 @@ public class RegistrationService {
     public RegistrationResponse generateRegistrationNumber(RegistrationRequest req) {
         CountyEntity county = countyRepository.findById(req.countyId())
                 .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
+
+        checkDuplicateLocation(req.oib(), req.houseNumberCode(), req.confirmDuplicateLocation());
 
         LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
@@ -98,11 +105,21 @@ public class RegistrationService {
 
         LessorEntity lessor = lessorRepository.findById(lessorId)
                 .orElseThrow(() -> new ResourceNotFoundException("lessor not found: " + lessorId));
+        checkDuplicateLocation(lessor.getLessorOib(), req.houseNumberCode(), req.confirmDuplicateLocation());
+
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
         runValidation(accommodation, lessor);
 
         return commitRegistration(lessor, accommodation, county.getName(),
                 resolveTypeName(req.typeId()), req.postalCode());
+    }
+
+    private void checkDuplicateLocation(String oib, String houseNumberCode, Boolean confirmed) {
+        if (oib == null || houseNumberCode == null || houseNumberCode.isBlank()) return;
+        if (Boolean.TRUE.equals(confirmed)) return;
+        rnRepository.findActiveOrSuspendedRnByOibAndHouseNumberCode(oib, houseNumberCode)
+                .stream().findFirst()
+                .ifPresent(rn -> { throw new DuplicateLocationException(rn); });
     }
 
     @Transactional(readOnly = true)
@@ -124,6 +141,7 @@ public class RegistrationService {
                 req.building(), req.apartments(), req.legalized());
         entity.setName(req.name());
         entity.setSettlement(settlementName);
+        entity.setHouseNumberCode(req.houseNumberCode());
         entity.setFloor(req.floor());
         entity.setLessorResidence(req.lessorResidence());
         entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());

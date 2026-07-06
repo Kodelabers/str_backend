@@ -1,6 +1,7 @@
 package com.str.backend.rn;
 
 import com.str.backend.domain.RnStatus;
+import com.str.backend.rn.dto.RnPublicView;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -33,24 +34,50 @@ class VerifyControllerTest {
     private RnRepository rnRepository;
 
     @Test
-    void returns_valid_true_when_rn_exists_and_is_active() throws Exception {
+    void returns_active_with_public_data_when_active() throws Exception {
         RnEntity entity = rnWithStatus(RnStatus.ACTIVE);
+        when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.of(entity));
+        when(rnRepository.findPublicView(WELL_FORMED_RN)).thenReturn(Optional.of(new RnPublicView(
+                WELL_FORMED_RN, "Apartman More", "3 zvjezdice", "Korzo", "2", "Rijeka",
+                "Objekti u domaćinstvu", "Apartman")));
+
+        mvc.perform(get("/api/verify/{rn}", WELL_FORMED_RN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.registrationNumber").value(WELL_FORMED_RN))
+                .andExpect(jsonPath("$.accommodationName").value("Apartman More"))
+                .andExpect(jsonPath("$.category").value("3 zvjezdice"))
+                .andExpect(jsonPath("$.address").value("Korzo 2, Rijeka"))
+                .andExpect(jsonPath("$.group").value("Objekti u domaćinstvu"))
+                .andExpect(jsonPath("$.type").value("Apartman"));
+    }
+
+    @Test
+    void returns_suspended_status_without_object_data() throws Exception {
+        RnEntity entity = rnWithStatus(RnStatus.SUSPENDED);
         when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.of(entity));
 
         mvc.perform(get("/api/verify/{rn}", WELL_FORMED_RN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.valid").value(true));
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.status").value("SUSPENDED"))
+                .andExpect(jsonPath("$.registrationNumber").doesNotExist())
+                .andExpect(jsonPath("$.accommodationName").doesNotExist());
     }
 
     @ParameterizedTest
-    @EnumSource(value = RnStatus.class, mode = EnumSource.Mode.EXCLUDE, names = {"ACTIVE"})
-    void returns_valid_false_when_rn_exists_but_status_is_not_active(RnStatus status) throws Exception {
+    @EnumSource(value = RnStatus.class, names = {"WITHDRAWN", "IN_PROCESSING"})
+    void returns_valid_false_for_withdrawn_or_in_processing(RnStatus status) throws Exception {
         RnEntity entity = rnWithStatus(status);
         when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.of(entity));
 
+        // A withdrawn RN must be indistinguishable from a non-existent one (čl. 4. st. 5.):
+        // valid=false and no status field leaked.
         mvc.perform(get("/api/verify/{rn}", WELL_FORMED_RN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.valid").value(false));
+                .andExpect(jsonPath("$.valid").value(false))
+                .andExpect(jsonPath("$.status").doesNotExist());
     }
 
     @Test
@@ -59,7 +86,8 @@ class VerifyControllerTest {
 
         mvc.perform(get("/api/verify/{rn}", WELL_FORMED_RN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.valid").value(false));
+                .andExpect(jsonPath("$.valid").value(false))
+                .andExpect(jsonPath("$.status").doesNotExist());
     }
 
     @Test

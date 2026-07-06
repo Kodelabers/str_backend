@@ -113,4 +113,14 @@
          umjesto null-ova — gated context="local". -->
     <include file="db/changelog/changes/045-seed-mock-submissions-local.xml"/>
 
+    <!-- Revizijski log administrativnih akcija (STR-3.3 + GDPR). -->
+    <include file="db/changelog/changes/046-admin-audit-log.xml"/>
+
+    <!-- accommodation.house_number_code stores eturizam_test.ar_address.kc_broj
+         šifra za detekciju duplikata lokacije po iznajmljivaču. -->
+    <include file="db/changelog/changes/047-accommodation-house-number-code.xml"/>
+
+    <!-- Mock NIAS demo korisnik (fiksni OIB 99999999990) s 3 izdana RB-a — gated context="local". -->
+    <include file="db/changelog/changes/048-mock-nias-lessor-rns-local.xml"/>
+
 </databaseChangeLog>
