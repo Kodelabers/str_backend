@@ -50,7 +50,7 @@ public class NiasSamlConfig {
 
     @Bean
     public Saml2X509Credential spSigningCredential(NiasSamlProperties props) throws Exception {
-        KeyStore ks = KeyStore.getInstance("JKS");
+        KeyStore ks = KeyStore.getInstance("PKCS12");
         try (FileInputStream fis = new FileInputStream(props.keystorePath())) {
             ks.load(fis, props.keystorePassword().toCharArray());
         }
