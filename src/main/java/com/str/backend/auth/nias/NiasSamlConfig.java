@@ -30,6 +30,7 @@ import org.springframework.security.saml2.provider.service.web.RelyingPartyRegis
 import org.springframework.security.saml2.provider.service.web.authentication.OpenSaml4AuthenticationRequestResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.logout.OpenSaml4LogoutRequestResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.logout.Saml2RelyingPartyInitiatedLogoutSuccessHandler;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 
@@ -74,7 +75,7 @@ public class NiasSamlConfig {
                 .singleLogoutServiceLocation(props.sloUrl())
                 .signingX509Credentials(c -> c.add(spSigningCredential))
                 .decryptionX509Credentials(c -> c.add(spSigningCredential))
-                .assertingPartyDetails(p -> p.singleSignOnServiceBinding(Saml2MessageBinding.REDIRECT))
+                .assertingPartyDetails(p -> p.singleSignOnServiceBinding(Saml2MessageBinding.POST))
                 .build();
 
         return new InMemoryRelyingPartyRegistrationRepository(registration);
@@ -132,6 +133,11 @@ public class NiasSamlConfig {
             }
             response.sendRedirect(props.successRedirectUrl());
         };
+    }
+
+    @Bean
+    public AuthenticationFailureHandler niasAuthenticationFailureHandler(NiasSamlProperties props) {
+        return (request, response, exception) -> response.sendRedirect(props.failureRedirectUrl());
     }
 
     @Bean

@@ -12,5 +12,6 @@ public record NiasSamlProperties(
         String keystorePath,
         String keystorePassword,
         String keyAlias,
-        String successRedirectUrl
+        String successRedirectUrl,
+        String failureRedirectUrl
 ) {}

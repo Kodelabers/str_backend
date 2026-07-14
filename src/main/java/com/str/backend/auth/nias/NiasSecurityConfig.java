@@ -10,6 +10,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
 import org.springframework.security.saml2.provider.service.web.authentication.OpenSaml4AuthenticationRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 
@@ -26,6 +27,7 @@ public class NiasSecurityConfig {
             HttpSecurity http,
             OpenSaml4AuthenticationRequestResolver authenticationRequestResolver,
             AuthenticationSuccessHandler authenticationSuccessHandler,
+            AuthenticationFailureHandler niasAuthenticationFailureHandler,
             RelyingPartyRegistrationRepository registrations,
             LogoutSuccessHandler saml2LogoutSuccessHandler,
             NiasSamlProperties props) throws Exception {
@@ -51,7 +53,8 @@ public class NiasSecurityConfig {
                 .saml2Login(saml -> saml
                         .relyingPartyRegistrationRepository(registrations)
                         .authenticationRequestResolver(authenticationRequestResolver)
-                        .successHandler(authenticationSuccessHandler))
+                        .successHandler(authenticationSuccessHandler)
+                        .failureHandler(niasAuthenticationFailureHandler))
                 .logout(logout -> logout.logoutSuccessHandler(saml2LogoutSuccessHandler))
                 .saml2Logout(logout -> logout.logoutUrl(logoutPath));
 
