@@ -26,31 +26,29 @@ class NiasOibExtractorTest {
     }
 
     @Test
-    void extractIdentity_readsAllAttributes() {
+    void extractIdentity_readsAssertionAttributes() {
         Optional<NiasIdentity> id = NiasOibExtractor.extractIdentity(samlAuth(
                 "oib", "12345678901",
                 "ime", "Ana",
                 "prezime", "Anić",
-                "rola", "NAJMODAVAC",
-                "email", "ana@example.hr"));
+                "oznaka_drzave_eid", "HR",
+                "tid", "abc",
+                "nav_token", "xyz"));
 
         assertThat(id).isPresent();
         assertThat(id.get().oib()).isEqualTo("12345678901");
         assertThat(id.get().firstName()).isEqualTo("Ana");
         assertThat(id.get().lastName()).isEqualTo("Anić");
-        assertThat(id.get().role()).isEqualTo("NAJMODAVAC");
-        assertThat(id.get().email()).isEqualTo("ana@example.hr");
     }
 
     @Test
-    void extractIdentity_missingOptionalAttributes_areNull_butOibPresent() {
+    void extractIdentity_missingNameAttributes_areNull_butOibPresent() {
         Optional<NiasIdentity> id = NiasOibExtractor.extractIdentity(samlAuth("oib", "12345678901"));
 
         assertThat(id).isPresent();
         assertThat(id.get().oib()).isEqualTo("12345678901");
         assertThat(id.get().firstName()).isNull();
         assertThat(id.get().lastName()).isNull();
-        assertThat(id.get().role()).isNull();
     }
 
     @Test

@@ -64,8 +64,21 @@ class SessionIdentityResolverTest {
     }
 
     @Test
+    void localPrincipal_missingLessor_throws401() {
+        UUID id = UUID.randomUUID();
+        LessorEntity entity = mock(LessorEntity.class);
+        when(entity.getLessorId()).thenReturn(id);
+        LessorPrincipal principal = new LessorPrincipal(entity);
+        Authentication auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+        when(lessorRepository.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> resolver.resolve(auth))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
     void niasPrincipal_resolvesFromSamlAttributes_withoutDbLookup() {
-        Authentication auth = niasAuth("12345678901", "Ivan", "Horvat", "NAJMODAVAC");
+        Authentication auth = niasAuth("12345678901", "Ivan", "Horvat");
 
         MeResponse me = resolver.resolve(auth);
 
@@ -73,9 +86,11 @@ class SessionIdentityResolverTest {
         assertThat(me.oib()).isEqualTo("12345678901");
         assertThat(me.firstName()).isEqualTo("Ivan");
         assertThat(me.lastName()).isEqualTo("Horvat");
-        assertThat(me.role()).isEqualTo("NAJMODAVAC");
         assertThat(me.lessorId()).isNull();
         assertThat(me.username()).isNull();
+        // NIAS assertion ne nosi rolu ni email
+        assertThat(me.role()).isNull();
+        assertThat(me.email()).isNull();
     }
 
     @Test
@@ -99,12 +114,11 @@ class SessionIdentityResolverTest {
                 .isInstanceOf(ResponseStatusException.class);
     }
 
-    private static Authentication niasAuth(String oib, String first, String last, String role) {
+    private static Authentication niasAuth(String oib, String first, String last) {
         Map<String, List<Object>> attrs = new HashMap<>();
         attrs.put("oib", List.<Object>of(oib));
         attrs.put("ime", List.<Object>of(first));
         attrs.put("prezime", List.<Object>of(last));
-        attrs.put("rola", List.<Object>of(role));
         DefaultSaml2AuthenticatedPrincipal p = new DefaultSaml2AuthenticatedPrincipal("nameid", attrs);
         return new Saml2Authentication(p, "<r/>", List.of());
     }
