@@ -87,9 +87,11 @@ docker-compose --env-file .env.cdu -f docker-compose.cdu.yml up -d
 ## 7. Server — provjera
 
 ```bash
-docker ps                      # str-backend-cdu + str-frontend-cdu moraju biti Up
-curl -I http://localhost:8085  # očekivan 200 OK
-docker logs -f str-backend-cdu
+docker ps                                        # str-backend-cdu + str-frontend-cdu moraju biti Up
+curl -I http://localhost:8085                    # očekivan 200 OK
+docker logs str-backend-cdu 2>&1 | tail -30     # brza provjera — očekuj "Started StrBackendApplication"
+docker logs str-frontend-cdu 2>&1 | tail -10    # brza provjera nginx starta
+docker logs -f str-backend-cdu                  # live praćenje (Ctrl+C za izlaz)
 ```
 
 ## 8. Iz browsera
