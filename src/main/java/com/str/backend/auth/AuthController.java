@@ -2,8 +2,6 @@ package com.str.backend.auth;
 
 import com.str.backend.auth.dto.LoginRequest;
 import com.str.backend.auth.dto.MeResponse;
-import com.str.backend.lessor.LessorEntity;
-import com.str.backend.lessor.LessorRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -26,19 +24,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;
-    private final LessorRepository lessorRepository;
+    private final SessionIdentityResolver identityResolver;
     private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
 
-    public AuthController(AuthenticationManager authenticationManager, LessorRepository lessorRepository) {
+    public AuthController(AuthenticationManager authenticationManager, SessionIdentityResolver identityResolver) {
         this.authenticationManager = authenticationManager;
-        this.lessorRepository = lessorRepository;
+        this.identityResolver = identityResolver;
     }
 
     @PostMapping("/login")
@@ -60,8 +56,7 @@ public class AuthController {
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, request, response);
 
-        LessorPrincipal principal = (LessorPrincipal) auth.getPrincipal();
-        return ResponseEntity.ok(buildMe(principal.getLessorId()));
+        return ResponseEntity.ok(identityResolver.resolve(auth));
     }
 
     @PostMapping("/logout")
@@ -76,13 +71,6 @@ public class AuthController {
 
     @GetMapping("/me")
     public ResponseEntity<MeResponse> me(Authentication authentication) {
-        LessorPrincipal principal = (LessorPrincipal) authentication.getPrincipal();
-        return ResponseEntity.ok(buildMe(principal.getLessorId()));
-    }
-
-    private MeResponse buildMe(UUID lessorId) {
-        LessorEntity e = lessorRepository.findById(lessorId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Korisnik nije pronađen."));
-        return new MeResponse(e.getLessorId(), e.getUsername(), e.getFirstName(), e.getLastName(), e.getEmail());
+        return ResponseEntity.ok(identityResolver.resolve(authentication));
     }
 }

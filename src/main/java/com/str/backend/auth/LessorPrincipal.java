@@ -16,7 +16,9 @@ public final class LessorPrincipal implements UserDetails, Serializable {
     @Serial
     private static final long serialVersionUID = 7442011415242053533L;
 
-    private static final List<GrantedAuthority> AUTHORITIES = List.of(new SimpleGrantedAuthority("ROLE_LESSOR"));
+    public static final String ROLE = "ROLE_LESSOR";
+
+    private static final List<GrantedAuthority> AUTHORITIES = List.of(new SimpleGrantedAuthority(ROLE));
 
     private final UUID lessorId;
     private final String username;

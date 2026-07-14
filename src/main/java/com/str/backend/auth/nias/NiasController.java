@@ -2,6 +2,8 @@ package com.str.backend.auth.nias;
 
 import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
+import com.str.backend.auth.SessionIdentityResolver;
+import com.str.backend.auth.dto.MeResponse;
 import com.str.backend.lessor.LessorDocumentEntity;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
@@ -14,7 +16,6 @@ import com.str.backend.lessor.LessorWithdrawRequest;
 import com.str.backend.rn.RnRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,26 +37,31 @@ public class NiasController {
     private final LessorDocumentRepository lessorDocumentRepository;
     private final CountryRepository countryRepository;
     private final LessorRnActionService rnActionService;
+    private final SessionIdentityResolver identityResolver;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
                           LessorRepository lessorRepository,
                           LessorDocumentRepository lessorDocumentRepository,
                           CountryRepository countryRepository,
-                          LessorRnActionService rnActionService) {
+                          LessorRnActionService rnActionService,
+                          SessionIdentityResolver identityResolver) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
         this.countryRepository = countryRepository;
         this.rnActionService = rnActionService;
+        this.identityResolver = identityResolver;
     }
 
+    /**
+     * Isti unificirani oblik kao {@code /api/auth/me} (delegira na {@link SessionIdentityResolver}).
+     * Zadržano radi kompatibilnosti dok se fronta ne prebaci na jedinstveni {@code /api/auth/me}.
+     */
     @GetMapping("/me")
-    public ResponseEntity<NiasMeResponse> me(Authentication authentication) {
-        return oibResolver.resolve(authentication)
-                .map(oib -> ResponseEntity.ok(new NiasMeResponse(oib)))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
+    public MeResponse me(Authentication authentication) {
+        return identityResolver.resolve(authentication);
     }
 
     /**
