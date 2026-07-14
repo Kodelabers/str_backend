@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.io.Serializable;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -47,7 +48,7 @@ public class NiasSessionRegistry implements HttpSessionListener {
         }
     }
 
-    public record Key(String nameId, String sessionIndex) {
+    public record Key(String nameId, String sessionIndex) implements Serializable {
         public Key {
             Objects.requireNonNull(nameId);
             Objects.requireNonNull(sessionIndex);

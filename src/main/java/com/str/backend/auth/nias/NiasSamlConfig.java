@@ -137,7 +137,13 @@ public class NiasSamlConfig {
 
     @Bean
     public AuthenticationFailureHandler niasAuthenticationFailureHandler(NiasSamlProperties props) {
-        return (request, response, exception) -> response.sendRedirect(props.failureRedirectUrl());
+        return (request, response, exception) -> {
+            jakarta.servlet.http.HttpSession session = request.getSession(false);
+            if (session != null) {
+                session.invalidate();
+            }
+            response.sendRedirect(props.failureRedirectUrl());
+        };
     }
 
     @Bean
