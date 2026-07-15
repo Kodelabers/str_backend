@@ -7,9 +7,12 @@ import org.opensaml.saml.saml2.core.NameID;
 import org.opensaml.saml.saml2.core.NameIDPolicy;
 import org.opensaml.saml.saml2.core.NameIDType;
 import org.opensaml.saml.saml2.core.OneTimeUse;
+import org.opensaml.saml.saml2.core.SessionIndex;
 import org.opensaml.saml.saml2.core.impl.ConditionsBuilder;
 import org.opensaml.saml.saml2.core.impl.NameIDPolicyBuilder;
 import org.opensaml.saml.saml2.core.impl.OneTimeUseBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -48,6 +51,8 @@ import java.util.List;
 public class NiasSamlConfig {
 
     static final String REGISTRATION_ID = "nias";
+
+    private static final Logger log = LoggerFactory.getLogger(NiasSamlConfig.class);
 
     @Bean
     public Saml2X509Credential spSigningCredential(NiasSamlProperties props) throws Exception {
@@ -155,6 +160,13 @@ public class NiasSamlConfig {
             if (nameId != null) {
                 nameId.setFormat(NameIDType.PERSISTENT);
             }
+            // TODO(SLO-debug): PRIVREMENI capture — dijagnostika "Sjednica nije pronađena".
+            // Provjerava nosi li odlazni LogoutRequest NameID + SessionIndex. NE loga pseudonim-vrijednost.
+            // Ukloniti nakon dijagnostike.
+            log.info("NIAS SLO LogoutRequest: nameIdPresent={}, nameIdFormat={}, sessionIndexes={}",
+                    nameId != null,
+                    nameId != null ? nameId.getFormat() : null,
+                    req.getSessionIndexes().stream().map(SessionIndex::getSessionIndex).toList());
         });
         return new Saml2RelyingPartyInitiatedLogoutSuccessHandler(logoutRequestResolver);
     }
