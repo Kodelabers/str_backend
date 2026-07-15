@@ -47,13 +47,13 @@ public class SessionIdentityResolver {
         Optional<NiasIdentity> identity = NiasOibExtractor.extractIdentity(authentication);
         if (identity.isPresent()) {
             NiasIdentity id = identity.get();
-            return nias(id.oib(), id.firstName(), id.lastName(), id.role(), id.email());
+            return nias(id.oib(), id.firstName(), id.lastName());
         }
 
         // local/mock: nema pravog SAML principala, ali nias.mock.fixed-oib daje OIB
         Optional<String> mockOib = niasOibResolver.resolve(authentication);
         if (mockOib.isPresent()) {
-            return nias(mockOib.get(), null, null, null, null);
+            return nias(mockOib.get(), null, null);
         }
 
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
@@ -66,7 +66,8 @@ public class SessionIdentityResolver {
                 e.getUsername(), e.getFirstName(), e.getLastName(), LessorPrincipal.ROLE, e.getEmail());
     }
 
-    private static MeResponse nias(String oib, String firstName, String lastName, String role, String email) {
-        return new MeResponse(AUTH_TYPE_NIAS, oib, null, null, firstName, lastName, role, email);
+    // NIAS assertion ne nosi rolu ni email → oba null (do razrješenja izvora role).
+    private static MeResponse nias(String oib, String firstName, String lastName) {
+        return new MeResponse(AUTH_TYPE_NIAS, oib, null, null, firstName, lastName, null, null);
     }
 }
