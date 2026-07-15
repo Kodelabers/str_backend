@@ -9,10 +9,10 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
 import org.springframework.security.saml2.provider.service.web.authentication.OpenSaml4AuthenticationRequestResolver;
+import org.springframework.security.saml2.provider.service.web.authentication.logout.Saml2LogoutRequestResolver;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
-import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 
 import java.net.URI;
 
@@ -29,7 +29,7 @@ public class NiasSecurityConfig {
             AuthenticationSuccessHandler authenticationSuccessHandler,
             AuthenticationFailureHandler niasAuthenticationFailureHandler,
             RelyingPartyRegistrationRepository registrations,
-            LogoutSuccessHandler saml2LogoutSuccessHandler,
+            Saml2LogoutRequestResolver niasLogoutRequestResolver,
             NiasSamlProperties props) throws Exception {
 
         String logoutPath = URI.create(props.sloUrl()).getPath();
@@ -55,8 +55,9 @@ public class NiasSecurityConfig {
                         .authenticationRequestResolver(authenticationRequestResolver)
                         .successHandler(authenticationSuccessHandler)
                         .failureHandler(niasAuthenticationFailureHandler))
-                .logout(logout -> logout.logoutSuccessHandler(saml2LogoutSuccessHandler))
-                .saml2Logout(logout -> logout.logoutUrl(logoutPath));
+                .saml2Logout(logout -> logout
+                        .logoutUrl(logoutPath)
+                        .logoutRequest(request -> request.logoutRequestResolver(niasLogoutRequestResolver)));
 
         return http.build();
     }
