@@ -32,10 +32,9 @@ import org.springframework.security.saml2.provider.service.web.DefaultRelyingPar
 import org.springframework.security.saml2.provider.service.web.RelyingPartyRegistrationResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.OpenSaml4AuthenticationRequestResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.logout.OpenSaml4LogoutRequestResolver;
-import org.springframework.security.saml2.provider.service.web.authentication.logout.Saml2RelyingPartyInitiatedLogoutSuccessHandler;
+import org.springframework.security.saml2.provider.service.web.authentication.logout.Saml2LogoutRequestResolver;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
-import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 
 import java.io.FileInputStream;
 import java.security.KeyStore;
@@ -151,8 +150,13 @@ public class NiasSamlConfig {
         };
     }
 
+    /**
+     * Resolver za odlazni SP-initiated LogoutRequest. Mora biti ožičen u {@code .saml2Logout()}
+     * (a NE samo u {@code .logout()}), jer fronta gađa saml2Logout URL — inače se koristi defaultni
+     * resolver i customizacija (NameID PERSISTENT) se ne primijeni.
+     */
     @Bean
-    public LogoutSuccessHandler saml2LogoutSuccessHandler(RelyingPartyRegistrationResolver resolver) {
+    public Saml2LogoutRequestResolver niasLogoutRequestResolver(RelyingPartyRegistrationResolver resolver) {
         OpenSaml4LogoutRequestResolver logoutRequestResolver = new OpenSaml4LogoutRequestResolver(resolver);
         logoutRequestResolver.setParametersConsumer(params -> {
             LogoutRequest req = params.getLogoutRequest();
@@ -168,6 +172,6 @@ public class NiasSamlConfig {
                     nameId != null ? nameId.getFormat() : null,
                     req.getSessionIndexes().stream().map(SessionIndex::getSessionIndex).toList());
         });
-        return new Saml2RelyingPartyInitiatedLogoutSuccessHandler(logoutRequestResolver);
+        return logoutRequestResolver;
     }
 }
