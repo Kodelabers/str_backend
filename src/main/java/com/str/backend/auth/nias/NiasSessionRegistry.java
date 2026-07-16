@@ -26,11 +26,17 @@ public class NiasSessionRegistry implements HttpSessionListener {
         Key key = new Key(nameId, sessionIndex);
         session.setAttribute(KEY_ATTR, key);
         sessions.put(key, session);
+        // TODO(SLO-debug): PRIVREMENO — ukloniti nakon dijagnostike.
+        log.info("SLO-TRACE registry: zapamćen sessionIndex={} (ukupno praćenih sjednica={})",
+                sessionIndex, sessions.size());
     }
 
     public boolean invalidate(String nameId, String sessionIndex) {
         if (nameId == null || sessionIndex == null) return false;
         HttpSession session = sessions.remove(new Key(nameId, sessionIndex));
+        // TODO(SLO-debug): PRIVREMENO — ukloniti nakon dijagnostike.
+        log.info("SLO-TRACE registry: invalidate sessionIndex={} -> lokalna sjednica {}",
+                sessionIndex, session != null ? "PRONAĐENA (gasim)" : "nije pronađena");
         if (session == null) return false;
         try {
             session.invalidate();

@@ -78,6 +78,9 @@ public class NiasSoapLogoutController {
             consumes = { MediaType.TEXT_XML_VALUE, "application/soap+xml" },
             produces = MediaType.TEXT_XML_VALUE)
     public ResponseEntity<String> handle(@RequestBody String soapEnvelope) throws Exception {
+        // TODO(SLO-debug): PRIVREMENO — potvrda da NIAS zove SOAP back-channel (spec korak 5). Ukloniti nakon dijagnostike.
+        log.info("SLO-TRACE SOAP: NIAS je pozvao back-channel LogoutRequest (duljina envelope={} znakova)",
+                soapEnvelope != null ? soapEnvelope.length() : 0);
         DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         dbf.setNamespaceAware(true);
         dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
