@@ -13,5 +13,10 @@ public record NiasSamlProperties(
         String keystorePassword,
         String keyAlias,
         String successRedirectUrl,
-        String failureRedirectUrl
+        String failureRedirectUrl,
+        /**
+         * Kamo preusmjeriti korisnika nakon što zaprimimo NIAS LogoutResponse (spec korak 11→12).
+         * Bez ovoga Spring vodi na default /login?logout — ruta koja u SPA-u ne postoji.
+         */
+        String logoutRedirectUrl
 ) {}

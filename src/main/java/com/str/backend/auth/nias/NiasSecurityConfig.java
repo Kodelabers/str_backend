@@ -55,6 +55,12 @@ public class NiasSecurityConfig {
                         .authenticationRequestResolver(authenticationRequestResolver)
                         .successHandler(authenticationSuccessHandler)
                         .failureHandler(niasAuthenticationFailureHandler))
+                // Spec korak 12: nakon što Saml2LogoutResponseFilter obradi NIAS-ov LogoutResponse
+                // (korak 11), korisnik završi ovdje. Bez ovoga bi Spring vodio na default
+                // /login?logout — ruta koja u SPA-u ne postoji.
+                // NAPOMENA: SP-initiated slanje LogoutRequesta obavlja Saml2RelyingPartyInitiatedLogoutFilter
+                // (zaseban filter, koristi niasLogoutRequestResolver) pa ga ovo ne dira.
+                .logout(logout -> logout.logoutSuccessUrl(props.logoutRedirectUrl()))
                 .saml2Logout(logout -> logout
                         .logoutUrl(logoutPath)
                         .logoutRequest(request -> request.logoutRequestResolver(niasLogoutRequestResolver)));
