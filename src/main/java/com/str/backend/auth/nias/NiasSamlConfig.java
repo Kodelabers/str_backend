@@ -165,14 +165,31 @@ public class NiasSamlConfig {
         OpenSaml4LogoutRequestResolver delegate = new OpenSaml4LogoutRequestResolver(resolver);
         delegate.setParametersConsumer(params -> {
             LogoutRequest req = params.getLogoutRequest();
+
+            // Spec §5.3 — Spring po defaultu NE postavlja ova tri; NIAS ih specifikacijom traži.
+            // Issuer/@Format: spec izričito kaže "NIAS dopušta samo sljedeći format".
+            if (req.getIssuer() != null) {
+                req.getIssuer().setFormat(NameIDType.X509_SUBJECT);
+            }
+            // Reason: razlog odjave — korisnik je zatražio odjavu.
+            req.setReason(LogoutRequest.USER_REASON);
+            // NotOnOrAfter: vrijeme nakon kojeg poruka ne vrijedi (+5 min, kao u spec primjeru).
+            Instant issued = req.getIssueInstant() != null ? req.getIssueInstant() : Instant.now();
+            req.setNotOnOrAfter(issued.plus(5, ChronoUnit.MINUTES));
+
+            // Spec §6.2 — NameID Format mora biti isti kao pri prijavi (persistent).
             NameID nameId = req.getNameID();
             if (nameId != null) {
                 nameId.setFormat(NameIDType.PERSISTENT);
             }
+
             // TODO(SLO-debug): PRIVREMENO — sažetak polja. Ukloniti nakon dijagnostike.
-            log.info("NIAS SLO LogoutRequest: nameIdPresent={}, nameIdFormat={}, sessionIndexes={}",
+            log.info("NIAS SLO LogoutRequest: nameIdPresent={}, nameIdFormat={}, issuerFormat={}, reason={}, notOnOrAfter={}, sessionIndexes={}",
                     nameId != null,
                     nameId != null ? nameId.getFormat() : null,
+                    req.getIssuer() != null ? req.getIssuer().getFormat() : null,
+                    req.getReason(),
+                    req.getNotOnOrAfter(),
                     req.getSessionIndexes().stream().map(SessionIndex::getValue).toList());
         });
 
