@@ -23,6 +23,7 @@ import org.springframework.security.saml2.core.Saml2X509Credential.Saml2X509Cred
 import org.springframework.security.saml2.provider.service.authentication.DefaultSaml2AuthenticatedPrincipal;
 import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticatedPrincipal;
+import org.springframework.security.saml2.provider.service.authentication.logout.Saml2LogoutRequest;
 import org.springframework.security.saml2.provider.service.registration.InMemoryRelyingPartyRegistrationRepository;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistration;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
@@ -36,13 +37,17 @@ import org.springframework.security.saml2.provider.service.web.authentication.lo
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.List;
+import java.util.zip.Inflater;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "nias.saml.enabled", havingValue = "true")
@@ -157,21 +162,58 @@ public class NiasSamlConfig {
      */
     @Bean
     public Saml2LogoutRequestResolver niasLogoutRequestResolver(RelyingPartyRegistrationResolver resolver) {
-        OpenSaml4LogoutRequestResolver logoutRequestResolver = new OpenSaml4LogoutRequestResolver(resolver);
-        logoutRequestResolver.setParametersConsumer(params -> {
+        OpenSaml4LogoutRequestResolver delegate = new OpenSaml4LogoutRequestResolver(resolver);
+        delegate.setParametersConsumer(params -> {
             LogoutRequest req = params.getLogoutRequest();
             NameID nameId = req.getNameID();
             if (nameId != null) {
                 nameId.setFormat(NameIDType.PERSISTENT);
             }
-            // TODO(SLO-debug): PRIVREMENI capture — dijagnostika "Sjednica nije pronađena".
-            // Provjerava nosi li odlazni LogoutRequest NameID + SessionIndex. NE loga pseudonim-vrijednost.
-            // Ukloniti nakon dijagnostike.
+            // TODO(SLO-debug): PRIVREMENO — sažetak polja. Ukloniti nakon dijagnostike.
             log.info("NIAS SLO LogoutRequest: nameIdPresent={}, nameIdFormat={}, sessionIndexes={}",
                     nameId != null,
                     nameId != null ? nameId.getFormat() : null,
                     req.getSessionIndexes().stream().map(SessionIndex::getValue).toList());
         });
-        return logoutRequestResolver;
+
+        // TODO(SLO-debug): PRIVREMENI wrapper — loga FINALNI (već potpisani) LogoutRequest XML,
+        // točno onakav kakav odlazi NIAS-u, radi usporedbe sa spec §5.3. Namjerno se NE marshala
+        // unutar parametersConsumera: keširanje DOM-a prije potpisivanja moglo bi razbiti potpis.
+        // Ukloniti nakon verifikacije.
+        return (request, authentication) -> {
+            Saml2LogoutRequest logoutRequest = delegate.resolve(request, authentication);
+            if (logoutRequest != null) {
+                log.info("NIAS SLO LogoutRequest [binding={}, destination={}] XML:\n{}",
+                        logoutRequest.getBinding(),
+                        logoutRequest.getLocation(),
+                        decodeSamlRequest(logoutRequest));
+            }
+            return logoutRequest;
+        };
+    }
+
+    /** TODO(SLO-debug): PRIVREMENO — dekodira odlazni SAMLRequest u čitljiv XML. Ukloniti nakon verifikacije. */
+    private static String decodeSamlRequest(Saml2LogoutRequest logoutRequest) {
+        try {
+            byte[] decoded = Base64.getDecoder().decode(logoutRequest.getSamlRequest());
+            if (logoutRequest.getBinding() == Saml2MessageBinding.REDIRECT) {
+                Inflater inflater = new Inflater(true);
+                inflater.setInput(decoded);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[2048];
+                while (!inflater.finished()) {
+                    int n = inflater.inflate(buf);
+                    if (n == 0) {
+                        break;
+                    }
+                    out.write(buf, 0, n);
+                }
+                inflater.end();
+                return out.toString(StandardCharsets.UTF_8);
+            }
+            return new String(decoded, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "[decode error: " + e + "]";
+        }
     }
 }
