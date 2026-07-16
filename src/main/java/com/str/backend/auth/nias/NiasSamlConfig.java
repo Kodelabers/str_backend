@@ -170,7 +170,7 @@ public class NiasSamlConfig {
             log.info("NIAS SLO LogoutRequest: nameIdPresent={}, nameIdFormat={}, sessionIndexes={}",
                     nameId != null,
                     nameId != null ? nameId.getFormat() : null,
-                    req.getSessionIndexes().stream().map(SessionIndex::getSessionIndex).toList());
+                    req.getSessionIndexes().stream().map(SessionIndex::getValue).toList());
         });
         return logoutRequestResolver;
     }
