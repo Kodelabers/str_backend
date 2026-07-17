@@ -62,7 +62,7 @@ class RnDocumentServiceTest {
 
     private RnDetailDto detail() {
         return new RnDetailDto(
-                RN, RnStatus.ACTIVE, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1), null,
+                RN, RnStatus.ACTIVE, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 1), null, null,
                 Instant.now(), Instant.now(), UUID.randomUUID(),
                 UUID.randomUUID(), "Primorsko-goranska županija", "Rijeka", "Rijeka", "Korzo", "2",
                 "Apartman More", "Apartman", 4, 8, "3 zvjezdice",
