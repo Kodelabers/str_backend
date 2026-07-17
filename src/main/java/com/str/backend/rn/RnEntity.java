@@ -43,6 +43,9 @@ public class RnEntity {
     @Column(name = "valid_to")
     private LocalDate validTo;
 
+    @Column(name = "suspension_deadline")
+    private LocalDate suspensionDeadline;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -72,5 +75,12 @@ public class RnEntity {
         if (next == RnStatus.ACTIVE && this.validTo != null) {
             this.validTo = null;
         }
+        if (next != RnStatus.SUSPENDED) {
+            this.suspensionDeadline = null;
+        }
+    }
+
+    void setSuspensionDeadline(LocalDate deadline) {
+        this.suspensionDeadline = deadline;
     }
 }

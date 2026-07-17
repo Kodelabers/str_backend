@@ -141,7 +141,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     @Transactional(readOnly = true)
     @Query("""
             SELECT new com.str.backend.rn.dto.RnDetailDto(
-                r.rn, r.status, r.issueDate, r.validFrom, r.validTo,
+                r.rn, r.status, r.issueDate, r.validFrom, r.validTo, r.suspensionDeadline,
                 r.createdAt, r.updatedAt, r.submissionId,
                 a.accommodationId, a.county, a.city, a.settlement, a.street, a.streetNumber,
                 a.name, t.name, a.maxBeds, a.maxGuests, a.category,

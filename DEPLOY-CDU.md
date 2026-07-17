@@ -106,6 +106,24 @@ Bez porta — gateway radi SSL offload i rutira 443 → 172.20.8.158:8085. Ako t
 - `nslookup str-test-eturizam.gov.hr` — resolva li DNS?
 - `Test-NetConnection str-test-eturizam.gov.hr -Port 443`
 
+## Višekorisnički deploy (tim pristup)
+
+Ako kolega dobiva `Permission denied` na `scp`, problem je što `target/` i `build/` imaju grupu `vviskov` umjesto `kodelab-d`. Vlasnik (`vviskov`) mora jednom pokrenuti:
+
+```bash
+chgrp -R kodelab-d /home/vviskov/str-rn/str_backend/target /home/vviskov/str-rn/str_frontend/build
+chmod -R g+w       /home/vviskov/str-rn/str_backend/target /home/vviskov/str-rn/str_frontend/build
+chmod g+s          /home/vviskov/str-rn/str_backend/target /home/vviskov/str-rn/str_frontend/build
+```
+
+`g+s` (setgid) sprečava da se problem vrati na idući deploy. Ako kolega treba i pokretati `docker-compose` (čitati `.env.cdu`):
+
+```bash
+chgrp -R kodelab-d /home/vviskov/str-rn
+chmod -R g+rwX /home/vviskov/str-rn
+find /home/vviskov/str-rn -type d -exec chmod g+s {} \;
+```
+
 ## Update-only (drugi put nadalje)
 
 Ponoviti korake 1–4 pa na serveru:

@@ -6,6 +6,7 @@ import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
 import jakarta.validation.constraints.Pattern;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Validated
@@ -73,8 +75,11 @@ public class RnController {
     }
 
     @PostMapping("/{rn}/suspend")
-    public RnResponse suspend(@PathVariable String rn, @RequestParam RnTrigger reason) {
-        return mapper.toResponse(service.suspend(rn, reason));
+    public RnResponse suspend(
+            @PathVariable String rn,
+            @RequestParam RnTrigger reason,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate suspensionDeadline) {
+        return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline));
     }
 
     @PostMapping("/{rn}/reactivate")

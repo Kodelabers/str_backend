@@ -18,4 +18,5 @@ public class RnResponse {
     private LocalDate issueDate;
     private LocalDate validFrom;
     private LocalDate validTo;
+    private LocalDate suspensionDeadline;
 }

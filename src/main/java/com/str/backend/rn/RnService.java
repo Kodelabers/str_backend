@@ -102,7 +102,7 @@ public class RnService {
     }
 
     @Transactional
-    public RnEntity suspend(String rn, RnTrigger trigger) {
+    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline) {
         if (trigger != RnTrigger.CONSENT_EXPIRY
                 && trigger != RnTrigger.INSPECTION
                 && trigger != RnTrigger.INCOMPLETE_DOCUMENTATION) {
@@ -110,6 +110,7 @@ public class RnService {
         }
         RnEntity e = load(rn);
         transitionService.transition(e, RnStatus.SUSPENDED, trigger);
+        e.setSuspensionDeadline(suspensionDeadline);
         return e;
     }
 

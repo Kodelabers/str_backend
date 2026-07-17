@@ -123,4 +123,7 @@
     <!-- Mock NIAS demo korisnik (fiksni OIB 99999999990) s 3 izdana RB-a — gated context="local". -->
     <include file="db/changelog/changes/048-mock-nias-lessor-rns-local.xml"/>
 
+    <!-- Opcionalni rok za ispravak nepravilnosti kod suspenzije RB-a (manualno — bez automatike). -->
+    <include file="db/changelog/changes/050-rn-suspension-deadline.xml"/>
+
 </databaseChangeLog>

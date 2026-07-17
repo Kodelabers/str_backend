@@ -12,6 +12,7 @@ public record RnDetailDto(
         LocalDate issueDate,
         LocalDate validFrom,
         LocalDate validTo,
+        LocalDate suspensionDeadline,
         Instant createdAt,
         Instant updatedAt,
         UUID submissionId,
