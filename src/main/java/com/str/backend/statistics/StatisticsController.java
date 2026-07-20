@@ -70,20 +70,20 @@ public class StatisticsController {
                 .body(xlsx);
     }
 
-    /** Wireframe §12: SDIP dashboard — platform activity report, grouped by (RN × period). */
+    /**
+     * Wireframe §12: SDIP dashboard — platform activity report, grouped by (RN × period).
+     *
+     * <p>STR-3.2 / spec §2.10: {@code anomaliesOnly} backs the clickable anomaly counter in the
+     * header, and {@code guestCountry} filters by the guest's country of residence. Both combine
+     * with every other criterion, including the platform filter.
+     */
     @GetMapping("/platform-activities")
     public PlatformActivitiesPageDto platformActivities(
-            @RequestParam(required = false) Long platformId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate od,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
-            @RequestParam(required = false) String county,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String rn,
+            PlatformActivityFilter filter,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         int clampedSize = Math.min(Math.max(1, size), 100);
-        return platformActivityQuery.query(platformId, od, toDate, county, status, q, rn, page, clampedSize);
+        return platformActivityQuery.query(filter, page, clampedSize);
     }
 
     // TODO(auth/BX0): role-gate platform-activities export (voditelj/admin) kad stignu NIAS role —
@@ -91,15 +91,8 @@ public class StatisticsController {
 
     /** STR-3.2: platform activity report → Excel (obavezni izvoz). Same filters as the list. */
     @GetMapping("/platform-activities/xlsx")
-    public ResponseEntity<byte[]> platformActivitiesXlsx(
-            @RequestParam(required = false) Long platformId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate od,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
-            @RequestParam(required = false) String county,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String rn) {
-        byte[] xlsx = exportService.generatePlatformActivitiesXlsx(platformId, od, toDate, county, status, q, rn);
+    public ResponseEntity<byte[]> platformActivitiesXlsx(PlatformActivityFilter filter) {
+        byte[] xlsx = exportService.generatePlatformActivitiesXlsx(filter);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE,
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -110,15 +103,8 @@ public class StatisticsController {
 
     /** STR-3.2: platform activity report → CSV. Same filters as the list. */
     @GetMapping("/platform-activities/csv")
-    public ResponseEntity<byte[]> platformActivitiesCsv(
-            @RequestParam(required = false) Long platformId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate od,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
-            @RequestParam(required = false) String county,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) String rn) {
-        byte[] csv = exportService.generatePlatformActivitiesCsv(platformId, od, toDate, county, status, q, rn);
+    public ResponseEntity<byte[]> platformActivitiesCsv(PlatformActivityFilter filter) {
+        byte[] csv = exportService.generatePlatformActivitiesCsv(filter);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/csv;charset=UTF-8")
                 .header(HttpHeaders.CONTENT_DISPOSITION,
