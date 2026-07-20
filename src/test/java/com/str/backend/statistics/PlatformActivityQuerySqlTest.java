@@ -29,6 +29,9 @@ import static org.mockito.Mockito.when;
  */
 class PlatformActivityQuerySqlTest {
 
+    /** Row bound for cases that are not about the export cap itself. */
+    private static final int ANY_LIMIT = 1_000;
+
     private NamedParameterJdbcTemplate jdbc;
     private PlatformActivityQuery query;
 
@@ -42,7 +45,7 @@ class PlatformActivityQuerySqlTest {
 
     @Test
     void rowSql_joinsFragmentsWithoutMashingTokens() {
-        query.queryAll(PlatformActivityFilter.none());
+        query.queryAll(PlatformActivityFilter.none(), ANY_LIMIT);
 
         String sql = captureRowSql();
         assertThat(sql)
@@ -67,9 +70,39 @@ class PlatformActivityQuerySqlTest {
         assertThat(captureRowSql()).contains("AND (:anomaliesOnly = FALSE OR rn.status <> 'ACTIVE')");
     }
 
+    /** Registry and activity screens must treat a registration number the same way. */
+    @Test
+    void registrationNumberIsMatchedPartially() {
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, null, null, null, "HR0100", false, null), ANY_LIMIT);
+
+        assertThat(captureRowSql()).contains("AND (:rn IS NULL OR aa.rn ILIKE :rnLike)");
+        assertThat(captureParams().getValue("rnLike")).isEqualTo("%HR0100%");
+    }
+
+    /** The megasearch has to reach the owner and county it already selects and displays. */
+    @Test
+    void megasearchCoversOwnerAndCounty() {
+        query.queryAll(PlatformActivityFilter.none(), ANY_LIMIT);
+
+        assertThat(captureRowSql())
+                .contains("a.county ILIKE :qLike")
+                .contains("COALESCE(l.first_name,'') || ' ' || COALESCE(l.last_name,'')")
+                .contains("COALESCE(l.legal_entity_name,'') ILIKE :qLike");
+    }
+
+    /** The export bound belongs in SQL — capping only while writing still fetches everything. */
+    @Test
+    void exportFetchIsBoundedInSqlAndAsksForOneExtraRow() {
+        query.queryAll(PlatformActivityFilter.none(), 50_000);
+
+        assertThat(captureRowSql()).endsWith(" LIMIT :limit");
+        assertThat(captureParams().getValue("limit")).isEqualTo(50_001);
+    }
+
     @Test
     void guestCountryFilterMatchesAgainstGuestTable() {
-        query.queryAll(PlatformActivityFilter.none());
+        query.queryAll(PlatformActivityFilter.none(), ANY_LIMIT);
 
         assertThat(captureRowSql())
                 .contains("SELECT 1 FROM str_rn.guest g")
@@ -80,7 +113,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void filterValuesAreBoundAsParameters() {
         query.queryAll(new PlatformActivityFilter(
-                7L, null, null, "  ", "suspendiran", null, null, true, "  Njemačka  "));
+                7L, null, null, "  ", "suspendiran", null, null, true, "  Njemačka  "), ANY_LIMIT);
 
         MapSqlParameterSource params = captureParams();
         assertThat(params.getValue("platformId")).isEqualTo(7L);
@@ -99,7 +132,7 @@ class PlatformActivityQuerySqlTest {
     void unknownStatusTokenIsRejected() {
         for (String bad : new String[]{"blabla", "ACTIVE", "Aktivan", "active"}) {
             assertThatThrownBy(() -> query.queryAll(new PlatformActivityFilter(
-                    null, null, null, null, bad, null, null, false, null)))
+                    null, null, null, null, bad, null, null, false, null), ANY_LIMIT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("error.activity.status.invalid");
         }
@@ -112,14 +145,15 @@ class PlatformActivityQuerySqlTest {
     @Test
     void absentAnomalyFlagBindsAsFalseNotNull() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null), ANY_LIMIT);
 
         assertThat(captureParams().getValue("anomaliesOnly")).isEqualTo(false);
     }
 
     @Test
     void blankStatusLeavesTheFilterOff() {
-        query.queryAll(new PlatformActivityFilter(null, null, null, null, "  ", null, null, false, null));
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, null, "  ", null, null, false, null), ANY_LIMIT);
 
         assertThat(captureParams().getValue("rnStatus")).isNull();
     }

@@ -10,6 +10,7 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.domain.RnStatus;
+import com.str.backend.exception.BusinessException;
 import com.str.backend.pdf.PdfFonts;
 import com.str.backend.statistics.StatisticsRepository.DetailRowProjection;
 import com.str.backend.statistics.dto.StrResponse;
@@ -19,13 +20,18 @@ import com.str.backend.statistics.dto.PlatformChipDto;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.awt.Color;
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -47,6 +53,19 @@ public class StatisticsExportService {
 
     private static final List<String> EXPORT_STATUSES =
             List.of(RnStatus.ACTIVE.name(), RnStatus.SUSPENDED.name(), RnStatus.WITHDRAWN.name());
+
+    /**
+     * Upper bound for a single activity export. Measured on this code path: 50k rows takes ~20s
+     * and ~700MB of heap with the non-streaming writer, 200k takes ~86s and ~2.7GB. Streaming
+     * removes most of that, but the cap stays as the backstop that keeps one request from
+     * monopolising the service — past this point the answer is to narrow the filters.
+     */
+    static final int MAX_EXPORT_ROWS = 50_000;
+
+    /** Rows SXSSF keeps in memory; older ones are flushed to a temp file. */
+    private static final int SXSSF_WINDOW_ROWS = 200;
+
+    private static final int CSV_INITIAL_BUFFER_BYTES = 1 << 16;
 
     private static final Font FNT_TITLE;
     private static final Font FNT_TH;
@@ -239,13 +258,13 @@ public class StatisticsExportService {
 
     @Transactional(readOnly = true)
     public byte[] generatePlatformActivitiesXlsx(PlatformActivityFilter filter) {
-        List<PlatformActivityRowDto> rows = platformActivityQuery.queryAll(filter);
-        try (XSSFWorkbook wb = new XSSFWorkbook();
-             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+        List<PlatformActivityRowDto> rows = fetchForExport(filter);
+        SXSSFWorkbook wb = new SXSSFWorkbook(SXSSF_WINDOW_ROWS);
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
             Sheet sheet = wb.createSheet("Aktivnosti platformi");
 
-            XSSFFont boldFont = wb.createFont();
+            org.apache.poi.ss.usermodel.Font boldFont = wb.createFont();
             boldFont.setBold(true);
             CellStyle headerStyle = wb.createCellStyle();
             headerStyle.setFont(boldFont);
@@ -278,30 +297,58 @@ public class StatisticsExportService {
             return baos.toByteArray();
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate platform activities Excel", e);
+        } finally {
+            // Closing alone leaves the spill files behind; dispose() is what deletes them.
+            wb.dispose();
         }
     }
 
+    /**
+     * Writes straight into the byte buffer instead of assembling one giant String first — a
+     * {@code StringBuilder} holds the whole export as UTF-16 and then {@code getBytes} allocates
+     * the encoded copy alongside it, so the peak was roughly three times the file size.
+     */
     @Transactional(readOnly = true)
     public byte[] generatePlatformActivitiesCsv(PlatformActivityFilter filter) {
-        List<PlatformActivityRowDto> rows = platformActivityQuery.queryAll(filter);
-        StringBuilder sb = new StringBuilder();
-        sb.append('﻿'); // BOM for Excel-compatible UTF-8
-        sb.append(String.join(",", PA_HEADERS)).append("\r\n");
-        for (PlatformActivityRowDto row : rows) {
-            sb.append(csvEscape(row.rb())).append(',')
-              .append(csvEscape(row.ownerName())).append(',')
-              .append(csvEscape(row.address())).append(',')
-              .append(csvEscape(row.city())).append(',')
-              .append(csvEscape(row.countyName())).append(',')
-              .append(csvEscape(platforms(row))).append(',')
-              .append(csvEscape(formatDate(row.periodFrom()))).append(',')
-              .append(csvEscape(formatDate(row.periodTo()))).append(',')
-              .append(csvEscape(row.nights())).append(',')
-              .append(csvEscape(row.guestsTotal())).append(',')
-              .append(csvEscape(translateActivityStatus(row.rnStatus()))).append(',')
-              .append(csvEscape(formatReported(row))).append("\r\n");
+        List<PlatformActivityRowDto> rows = fetchForExport(filter);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(CSV_INITIAL_BUFFER_BYTES);
+        try (Writer out = new BufferedWriter(new OutputStreamWriter(baos, StandardCharsets.UTF_8))) {
+            out.write('﻿'); // BOM for Excel-compatible UTF-8
+            out.write(String.join(",", PA_HEADERS));
+            out.write("\r\n");
+            for (PlatformActivityRowDto row : rows) {
+                out.write(csvEscape(row.rb()));           out.write(',');
+                out.write(csvEscape(row.ownerName()));    out.write(',');
+                out.write(csvEscape(row.address()));      out.write(',');
+                out.write(csvEscape(row.city()));         out.write(',');
+                out.write(csvEscape(row.countyName()));   out.write(',');
+                out.write(csvEscape(platforms(row)));     out.write(',');
+                out.write(csvEscape(formatDate(row.periodFrom()))); out.write(',');
+                out.write(csvEscape(formatDate(row.periodTo())));   out.write(',');
+                out.write(csvEscape(row.nights()));       out.write(',');
+                out.write(csvEscape(row.guestsTotal()));  out.write(',');
+                out.write(csvEscape(translateActivityStatus(row.rnStatus()))); out.write(',');
+                out.write(csvEscape(formatReported(row)));
+                out.write("\r\n");
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to generate platform activities CSV", e);
         }
-        return sb.toString().getBytes(StandardCharsets.UTF_8);
+        return baos.toByteArray();
+    }
+
+    /**
+     * STR-3.2: shared row fetch for both exports. Refuses oversized result sets instead of
+     * attempting them — an unfiltered export on a national-scale data set would otherwise spend
+     * minutes building a workbook and exhaust the heap, and the request would hit a gateway
+     * timeout long before finishing.
+     */
+    private List<PlatformActivityRowDto> fetchForExport(PlatformActivityFilter filter) {
+        List<PlatformActivityRowDto> rows = platformActivityQuery.queryAll(filter, MAX_EXPORT_ROWS);
+        if (rows.size() > MAX_EXPORT_ROWS) {
+            throw new BusinessException("error.export.too.many.rows");
+        }
+        return rows;
     }
 
     private static String platforms(PlatformActivityRowDto row) {

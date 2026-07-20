@@ -63,8 +63,18 @@ class PlatformActivityQuery {
           + "  AND (:toDate IS NULL OR aa.period_from <= :toDate)\n"
           + "  AND (:county IS NULL OR a.county = :county)\n"
           + "  AND (:rnStatus IS NULL OR rn.status = :rnStatus)\n"
-          + "  AND (:rn IS NULL OR aa.rn = :rn)\n"
-          + "  AND (:q IS NULL OR aa.rn ILIKE :qLike OR a.street ILIKE :qLike OR a.city ILIKE :qLike)\n"
+          // Partial match, matching the public registry's `rb` filter — the same field behaving
+          // differently on two screens was an accident, not a design decision.
+          + "  AND (:rn IS NULL OR aa.rn ILIKE :rnLike)\n"
+          // Owner and county are searchable here too, for parity with the registry haystack.
+          // COALESCE per part: concatenating a NULL name would null the whole expression and
+          // silently drop the row from the search.
+          + "  AND (:q IS NULL OR aa.rn ILIKE :qLike\n"
+          + "       OR a.street ILIKE :qLike\n"
+          + "       OR a.city ILIKE :qLike\n"
+          + "       OR a.county ILIKE :qLike\n"
+          + "       OR (COALESCE(l.first_name,'') || ' ' || COALESCE(l.last_name,'')) ILIKE :qLike\n"
+          + "       OR COALESCE(l.legal_entity_name,'') ILIKE :qLike)\n"
           + "  AND (:anomaliesOnly = FALSE OR " + ANOMALY_PREDICATE + ")\n"
           + "  AND (:guestCountry IS NULL OR EXISTS (\n"
           + "          SELECT 1 FROM str_rn.guest g\n"
@@ -148,11 +158,18 @@ class PlatformActivityQuery {
 
     /**
      * STR-3.2: all matching rows (no paging) for Excel/CSV export. Same filters as {@link #query}.
-     * TODO: nije ograničeno LIMIT-om — prihvatljivo za očekivani volumen; razmotriti streaming/cap
-     * ako broj redaka naraste.
+     *
+     * <p>Fetches at most {@code limit + 1} rows so the caller can tell "exactly at the cap" from
+     * "over the cap" without a second COUNT round-trip. The bound is applied in SQL on purpose:
+     * capping only while writing the file would still materialise the whole result set here, which
+     * is the expensive half. Rows are grouped by registration number × reporting period and the
+     * retention window is 18 months, so a few thousand registration numbers already produce tens
+     * of thousands of rows.
      */
-    List<PlatformActivityRowDto> queryAll(PlatformActivityFilter filter) {
-        return jdbc.query(BASE_SQL, buildParams(filter), this::mapRow);
+    List<PlatformActivityRowDto> queryAll(PlatformActivityFilter filter, int limit) {
+        MapSqlParameterSource params = buildParams(filter);
+        params.addValue("limit", limit + 1);
+        return jdbc.query(BASE_SQL + " LIMIT :limit", params, this::mapRow);
     }
 
     private PlatformActivityRowDto mapRow(ResultSet rs, int rowNum) throws SQLException {
@@ -184,7 +201,9 @@ class PlatformActivityQuery {
         p.addValue("toDate", f.toDate(), Types.DATE);
         p.addValue("county", Strings.blankToNull(f.county()), Types.VARCHAR);
         p.addValue("rnStatus", mapToDbStatus(f.status()), Types.VARCHAR);
-        p.addValue("rn", Strings.blankToNull(f.rn()), Types.VARCHAR);
+        String rn = Strings.blankToNull(f.rn());
+        p.addValue("rn", rn, Types.VARCHAR);
+        p.addValue("rnLike", rn != null ? "%" + rn + "%" : null, Types.VARCHAR);
         p.addValue("q", Strings.blankToNull(q), Types.VARCHAR);
         p.addValue("qLike", q != null && !q.isBlank() ? "%" + q.trim() + "%" : null, Types.VARCHAR);
         p.addValue("anomaliesOnly", f.anomaliesOnly(), Types.BOOLEAN);
