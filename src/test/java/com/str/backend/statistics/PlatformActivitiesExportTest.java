@@ -36,13 +36,12 @@ class PlatformActivitiesExportTest {
                 List.of(new PlatformChipDto("1", "Booking"), new PlatformChipDto("2", "Airbnb")),
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), 10L, 4L,
                 "aktivan", Instant.parse("2026-04-01T10:00:00Z"));
-        when(query.queryAll(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(List.of(row));
+        when(query.queryAll(any())).thenReturn(List.of(row));
     }
 
     @Test
     void csv_containsRowData() {
-        byte[] csv = service.generatePlatformActivitiesCsv(null, null, null, null, null, null, null);
+        byte[] csv = service.generatePlatformActivitiesCsv(PlatformActivityFilter.none());
         String text = new String(csv, StandardCharsets.UTF_8);
 
         assertThat(text).contains("HR120001000000000001");
@@ -53,7 +52,7 @@ class PlatformActivitiesExportTest {
 
     @Test
     void xlsx_isNonEmptyZip() {
-        byte[] xlsx = service.generatePlatformActivitiesXlsx(null, null, null, null, null, null, null);
+        byte[] xlsx = service.generatePlatformActivitiesXlsx(PlatformActivityFilter.none());
 
         assertThat(xlsx).isNotEmpty();
         // XLSX is a ZIP container — starts with the "PK" local-file-header signature.

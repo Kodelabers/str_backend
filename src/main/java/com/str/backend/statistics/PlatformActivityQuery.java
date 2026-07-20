@@ -3,6 +3,7 @@ package com.str.backend.statistics;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.common.Strings;
+import com.str.backend.exception.BusinessException;
 import com.str.backend.statistics.dto.CountryBreakdownDto;
 import com.str.backend.statistics.dto.PlatformActivitiesPageDto;
 import com.str.backend.statistics.dto.PlatformActivityRowDto;
@@ -35,6 +36,41 @@ class PlatformActivityQuery {
 
     private static final TypeReference<List<PlatformChipDto>> CHIPS_TYPE = new TypeReference<>() {};
 
+    /**
+     * Spec §2.10: what counts as an anomaly ("suspektan" RB). Shared by the header count and the
+     * "anomalies only" filter — the spec requires the number in the header to equal the number of
+     * registration numbers left after applying the filter, so the two must never drift apart.
+     */
+    private static final String ANOMALY_PREDICATE = "rn.status <> 'ACTIVE'";
+
+    private static final String FROM_JOINS = """
+            FROM str_rn.accommodation_activity aa
+            JOIN str_rn.online_platform p ON p.platform_id = aa.platform_id
+            JOIN str_rn.registration_number rn ON rn.rn = aa.rn
+            JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id
+            LEFT JOIN str_rn.submission s ON s.submission_id = rn.submission_id
+            LEFT JOIN str_rn.lessor l ON l.lessor_id = s.lessor_id
+            """;
+
+    /**
+     * Shared by the page, count and summary queries. The guest-country criterion keeps an activity
+     * whenever at least one of its guests came from that country; the aggregated nights/guests then
+     * still cover the whole activity, not just that country's share.
+     */
+    private static final String WHERE_FILTERS =
+            "WHERE (:platformId IS NULL OR aa.platform_id = :platformId)\n"
+          + "  AND (:od IS NULL OR aa.period_to >= :od)\n"
+          + "  AND (:toDate IS NULL OR aa.period_from <= :toDate)\n"
+          + "  AND (:county IS NULL OR a.county = :county)\n"
+          + "  AND (:rnStatus IS NULL OR rn.status = :rnStatus)\n"
+          + "  AND (:rn IS NULL OR aa.rn = :rn)\n"
+          + "  AND (:q IS NULL OR aa.rn ILIKE :qLike OR a.street ILIKE :qLike OR a.city ILIKE :qLike)\n"
+          + "  AND (:anomaliesOnly = FALSE OR " + ANOMALY_PREDICATE + ")\n"
+          + "  AND (:guestCountry IS NULL OR EXISTS (\n"
+          + "          SELECT 1 FROM str_rn.guest g\n"
+          + "          WHERE g.activity_id = aa.activity_id\n"
+          + "            AND LOWER(g.country) = LOWER(:guestCountry)))\n";
+
     private static final String BASE_SQL = """
             SELECT
                 aa.rn || '|' || aa.period_from::text || '|' || aa.period_to::text AS id,
@@ -54,19 +90,10 @@ class PlatformActivityQuery {
                     'id', p.platform_id::text,
                     'name', p.name
                 )) AS platforms
-            FROM str_rn.accommodation_activity aa
-            JOIN str_rn.online_platform p ON p.platform_id = aa.platform_id
-            JOIN str_rn.registration_number rn ON rn.rn = aa.rn
-            JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id
-            LEFT JOIN str_rn.submission s ON s.submission_id = rn.submission_id
-            LEFT JOIN str_rn.lessor l ON l.lessor_id = s.lessor_id
-            WHERE (:platformId IS NULL OR aa.platform_id = :platformId)
-              AND (:od IS NULL OR aa.period_to >= :od)
-              AND (:toDate IS NULL OR aa.period_from <= :toDate)
-              AND (:county IS NULL OR a.county = :county)
-              AND (:rnStatus IS NULL OR rn.status = :rnStatus)
-              AND (:rn IS NULL OR aa.rn = :rn)
-              AND (:q IS NULL OR aa.rn ILIKE :qLike OR a.street ILIKE :qLike OR a.city ILIKE :qLike)
+            """
+            + FROM_JOINS
+            + WHERE_FILTERS
+            + """
             GROUP BY aa.rn, a.street, a.street_number, a.city, a.county,
                      rn.status, l.first_name, l.last_name, aa.period_from, aa.period_to
             ORDER BY aa.period_from DESC, aa.rn
@@ -74,27 +101,15 @@ class PlatformActivityQuery {
 
     private static final String COUNT_SQL = "SELECT COUNT(*) FROM (" + BASE_SQL + ") AS sub";
 
-    private static final String SUMMARY_SQL = """
-            SELECT
-                COUNT(DISTINCT aa.rn) AS accommodations_with_activities,
-                COUNT(DISTINCT aa.platform_id) AS platforms_reporting,
-                COALESCE(SUM(aa.overnight_stays), 0) AS total_nights,
-                COALESCE(SUM(aa.guest_count), 0) AS total_guests,
-                COUNT(DISTINCT CASE WHEN rn.status != 'ACTIVE' THEN aa.rn END) AS anomalies
-            FROM str_rn.accommodation_activity aa
-            JOIN str_rn.online_platform p ON p.platform_id = aa.platform_id
-            JOIN str_rn.registration_number rn ON rn.rn = aa.rn
-            JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id
-            LEFT JOIN str_rn.submission s ON s.submission_id = rn.submission_id
-            LEFT JOIN str_rn.lessor l ON l.lessor_id = s.lessor_id
-            WHERE (:platformId IS NULL OR aa.platform_id = :platformId)
-              AND (:od IS NULL OR aa.period_to >= :od)
-              AND (:toDate IS NULL OR aa.period_from <= :toDate)
-              AND (:county IS NULL OR a.county = :county)
-              AND (:rnStatus IS NULL OR rn.status = :rnStatus)
-              AND (:rn IS NULL OR aa.rn = :rn)
-              AND (:q IS NULL OR aa.rn ILIKE :qLike OR a.street ILIKE :qLike OR a.city ILIKE :qLike)
-            """;
+    private static final String SUMMARY_SQL =
+            "SELECT\n"
+          + "    COUNT(DISTINCT aa.rn) AS accommodations_with_activities,\n"
+          + "    COUNT(DISTINCT aa.platform_id) AS platforms_reporting,\n"
+          + "    COALESCE(SUM(aa.overnight_stays), 0) AS total_nights,\n"
+          + "    COALESCE(SUM(aa.guest_count), 0) AS total_guests,\n"
+          + "    COUNT(DISTINCT CASE WHEN " + ANOMALY_PREDICATE + " THEN aa.rn END) AS anomalies\n"
+          + FROM_JOINS
+          + WHERE_FILTERS;
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
@@ -104,10 +119,8 @@ class PlatformActivityQuery {
         this.objectMapper = objectMapper;
     }
 
-    PlatformActivitiesPageDto query(Long platformId, LocalDate od, LocalDate toDate,
-                                    String county, String rnStatus, String q, String rn,
-                                    int page, int size) {
-        MapSqlParameterSource params = buildParams(platformId, od, toDate, county, rnStatus, q, rn);
+    PlatformActivitiesPageDto query(PlatformActivityFilter filter, int page, int size) {
+        MapSqlParameterSource params = buildParams(filter);
 
         Long total = jdbc.queryForObject(COUNT_SQL, params, Long.class);
         long totalElements = total == null ? 0 : total;
@@ -138,10 +151,8 @@ class PlatformActivityQuery {
      * TODO: nije ograničeno LIMIT-om — prihvatljivo za očekivani volumen; razmotriti streaming/cap
      * ako broj redaka naraste.
      */
-    List<PlatformActivityRowDto> queryAll(Long platformId, LocalDate od, LocalDate toDate,
-                                          String county, String rnStatus, String q, String rn) {
-        MapSqlParameterSource params = buildParams(platformId, od, toDate, county, rnStatus, q, rn);
-        return jdbc.query(BASE_SQL, params, this::mapRow);
+    List<PlatformActivityRowDto> queryAll(PlatformActivityFilter filter) {
+        return jdbc.query(BASE_SQL, buildParams(filter), this::mapRow);
     }
 
     private PlatformActivityRowDto mapRow(ResultSet rs, int rowNum) throws SQLException {
@@ -165,17 +176,19 @@ class PlatformActivityQuery {
         );
     }
 
-    private MapSqlParameterSource buildParams(Long platformId, LocalDate od, LocalDate toDate,
-                                              String county, String rnStatus, String q, String rn) {
+    private MapSqlParameterSource buildParams(PlatformActivityFilter f) {
+        String q = f.q();
         MapSqlParameterSource p = new MapSqlParameterSource();
-        p.addValue("platformId", platformId, Types.BIGINT);
-        p.addValue("od", od, Types.DATE);
-        p.addValue("toDate", toDate, Types.DATE);
-        p.addValue("county", Strings.blankToNull(county), Types.VARCHAR);
-        p.addValue("rnStatus", mapToDbStatus(rnStatus), Types.VARCHAR);
-        p.addValue("rn", Strings.blankToNull(rn), Types.VARCHAR);
+        p.addValue("platformId", f.platformId(), Types.BIGINT);
+        p.addValue("od", f.od(), Types.DATE);
+        p.addValue("toDate", f.toDate(), Types.DATE);
+        p.addValue("county", Strings.blankToNull(f.county()), Types.VARCHAR);
+        p.addValue("rnStatus", mapToDbStatus(f.status()), Types.VARCHAR);
+        p.addValue("rn", Strings.blankToNull(f.rn()), Types.VARCHAR);
         p.addValue("q", Strings.blankToNull(q), Types.VARCHAR);
         p.addValue("qLike", q != null && !q.isBlank() ? "%" + q.trim() + "%" : null, Types.VARCHAR);
+        p.addValue("anomaliesOnly", f.anomaliesOnly(), Types.BOOLEAN);
+        p.addValue("guestCountry", Strings.blankToNull(f.guestCountry()), Types.VARCHAR);
         return p;
     }
 
@@ -200,12 +213,16 @@ class PlatformActivityQuery {
 
     /** Frontend sends 'aktivan'/'suspendiran'/'povucen'; map to DB enum names. */
     private static String mapToDbStatus(String frontendStatus) {
-        if (frontendStatus == null || frontendStatus.isBlank()) return null;
-        return switch (frontendStatus) {
+        String token = Strings.blankToNull(frontendStatus);
+        if (token == null) return null;
+        return switch (token) {
             case "aktivan" -> "ACTIVE";
             case "suspendiran" -> "SUSPENDED";
             case "povucen" -> "WITHDRAWN";
-            default -> null;
+            // Rejecting the unknown token matters: it used to disable the filter silently, so a
+            // typo — or the DB enum name ("ACTIVE") instead of the UI token — returned every row,
+            // withdrawn ones included, on a screen whose whole purpose is to be filtered.
+            default -> throw new BusinessException("error.activity.status.invalid");
         };
     }
 

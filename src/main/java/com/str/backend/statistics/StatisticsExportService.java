@@ -238,10 +238,8 @@ public class StatisticsExportService {
     };
 
     @Transactional(readOnly = true)
-    public byte[] generatePlatformActivitiesXlsx(Long platformId, LocalDate od, LocalDate toDate,
-                                                 String county, String status, String q, String rn) {
-        List<PlatformActivityRowDto> rows =
-                platformActivityQuery.queryAll(platformId, od, toDate, county, status, q, rn);
+    public byte[] generatePlatformActivitiesXlsx(PlatformActivityFilter filter) {
+        List<PlatformActivityRowDto> rows = platformActivityQuery.queryAll(filter);
         try (XSSFWorkbook wb = new XSSFWorkbook();
              ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
@@ -284,10 +282,8 @@ public class StatisticsExportService {
     }
 
     @Transactional(readOnly = true)
-    public byte[] generatePlatformActivitiesCsv(Long platformId, LocalDate od, LocalDate toDate,
-                                                String county, String status, String q, String rn) {
-        List<PlatformActivityRowDto> rows =
-                platformActivityQuery.queryAll(platformId, od, toDate, county, status, q, rn);
+    public byte[] generatePlatformActivitiesCsv(PlatformActivityFilter filter) {
+        List<PlatformActivityRowDto> rows = platformActivityQuery.queryAll(filter);
         StringBuilder sb = new StringBuilder();
         sb.append('﻿'); // BOM for Excel-compatible UTF-8
         sb.append(String.join(",", PA_HEADERS)).append("\r\n");
