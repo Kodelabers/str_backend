@@ -157,8 +157,16 @@ public class EgopPismenoEntity {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Prilaganje dokumenta je zadnji korak — pismeno postoji u eGOP-u i ima svoj dokument,
+     * pa je time dovršeno. Status se postavlja ovdje, u istom upisu, da red ne ostane na
+     * {@code PISMENO_OK} iako je posao gotov.
+     */
     public void markDocumentAttached() {
         this.documentAttached = true;
+        this.status = EgopSyncStatus.SYNCED;
+        this.syncError = null;
+        this.nextAttemptAt = null;
         this.updatedAt = Instant.now();
     }
 
