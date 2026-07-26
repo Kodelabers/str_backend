@@ -67,8 +67,21 @@ class EgopClientMock implements EgopClient {
      */
     private static final String MOCK_PREFIX = "MOCK-";
 
-    private static final AtomicInteger PREDMET_SEQ = new AtomicInteger(100);
-    private static final AtomicInteger PISMENO_SEQ = new AtomicInteger(1000);
+    /**
+     * Sekvence kreću od vrijednosti izvedene iz vremena pokretanja, ne od fiksne konstante.
+     *
+     * <p>S fiksnim početkom svaki restart kontejnera davao je opet predmet 101 i pismeno 1001,
+     * pa je druga registracija na istoj bazi dobila isti {@code KLASA + URBROJ} kao ona iz
+     * prethodnog runa i pala na {@code uq_submission_filing_number} — dakle mock je rušio
+     * upravo ono ponovljeno testiranje zbog kojeg postoji. Pravi eGOP klasu nikad ne ponavlja.
+     *
+     * <p>Minute od epohe daju vrijednost koja raste kroz restarte i ostaje čitljivo mala.
+     */
+    private static final int SEQ_SEED = (int) (System.currentTimeMillis() / 60_000L % 1_000_000L);
+
+    private static final AtomicInteger PREDMET_SEQ = new AtomicInteger(SEQ_SEED);
+    /** Urudžbeni broj je redni broj pismena unutar predmeta, pa kreće od nule u svakom runu. */
+    private static final AtomicInteger PISMENO_SEQ = new AtomicInteger(0);
 
     private final boolean egopEnabled;
 
@@ -226,12 +239,12 @@ class EgopClientMock implements EgopClient {
     public PismenoBasicInfo2 kreirajPismeno2(KreirajPismeno2 request) {
         log.info("Mock eGOP kreirajPismeno2 called: vrsta={}, rbrSpisa={}, uredskaGodina={}",
                 request.getVrstaPismena(), request.getRbrSpisa(), request.getUredskaGodina());
-        int jop = PISMENO_SEQ.incrementAndGet();
+        int redni = PISMENO_SEQ.incrementAndGet();
         PismenoBasicInfo2 mockResponse = new PismenoBasicInfo2();
         mockResponse.setOperationSucceeded(true);
-        mockResponse.setJop(jop);
+        mockResponse.setJop(1000 + redni);
         mockResponse.setUrBroj(MOCK_PREFIX + "529-06/" + (LocalDateTime.now().getYear() % 100)
-                + "-" + (jop - 1000));
+                + "-" + redni);
         return mockResponse;
     }
 
