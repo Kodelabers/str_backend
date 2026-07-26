@@ -20,6 +20,18 @@ services:
     restart: unless-stopped
     expose:
       - "8080"
+    # Sve ostalo iz .env.cdu ulazi u kontejner odavde — identitet tijela na aktima
+    # (STR_TIJELO_*, STR_POTPISNIK_*), eGOP URL-ovi, NIAS URL-ovi, SMTP.
+    #
+    # Zašto env_file, a ne popis u `environment:`: ondje bi svaki ključ trebao
+    # `${VAR:-}`, što u kontejner šalje PRAZNU ali POSTAVLJENU varijablu. Spring
+    # default iz `${VAR:default}` uzima samo kad varijabla NE POSTOJI — prazna bi
+    # ga pregazila i obrisala npr. eGOP URL-ove i naziv tijela. Kroz env_file
+    # nepostavljen ključ jednostavno ne postoji i default vrijedi.
+    #
+    # `environment:` ispod ima prednost nad env_file i drži ono što je na CDU fiksno.
+    env_file:
+      - .env.cdu
     environment:
       SPRING_PROFILES_ACTIVE: cdu
       CDU_DB_URL: ${CDU_DB_URL:-jdbc:postgresql://172.20.8.196:5432/eturizam}
