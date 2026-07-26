@@ -30,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -288,6 +289,26 @@ class EgopFilingServiceTest {
         p.setJop(jop);
         p.setUrBroj(urBroj);
         return p;
+    }
+
+    /**
+     * Pismeno je dovršeno tek kad mu je priložen dokument — status tada mora biti SYNCED,
+     * inače red trajno ostaje na PISMENO_OK iako je posao gotov.
+     */
+    @Test
+    void fileRegistration_marksPismenaSyncedAfterAttachingDocument() throws Exception {
+        givenSubjektAndPredmetCreated();
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+
+        ArgumentCaptor<EgopPismenoEntity> captor = ArgumentCaptor.forClass(EgopPismenoEntity.class);
+        service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
+
+        verify(store, atLeastOnce()).savePismeno(captor.capture());
+        // Captor drži iste instance koje tok mutira, pa se provjerava konačno stanje.
+        assertTrue(captor.getAllValues().stream().allMatch(EgopPismenoEntity::isSynced),
+                "nakon prilaganja dokumenta pismeno mora biti SYNCED, ne ostati na PISMENO_OK");
+        assertTrue(captor.getAllValues().stream().allMatch(EgopPismenoEntity::isDocumentAttached),
+                "dokument mora biti označen kao priložen");
     }
 
     /** Isti PDF za oba pismena — testovima koji ne provjeravaju sadržaj dokumenta. */
