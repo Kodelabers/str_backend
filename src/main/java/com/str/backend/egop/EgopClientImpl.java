@@ -84,6 +84,9 @@ class EgopClientImpl implements EgopClient {
             .map(EgopNotErrorCodes::getCode)
             .collect(Collectors.toSet());
 
+    /** Iznad ovoga poziv se logira kao WARN — kandidat za dizanje read timeouta. */
+    private static final long SPORO_MS = 3_000L;
+
     private final EgopCodebooks egopCodebooks;
     private final WebServiceTemplate egopMDMWebServiceTemplate;
     private final WebServiceTemplate egopPismenoWebServiceTemplate;
@@ -429,14 +432,42 @@ class EgopClientImpl implements EgopClient {
                         hr.infodom.egov.subjekt.ErrorStatus::getErrorMessage)));
     }
 
+    /**
+     * Jedina točka kroz koju idu svi SOAP pozivi, pa je i jedino mjesto gdje se mjeri vrijeme.
+     *
+     * <p>Trajanje je ovdje najvažniji podatak: jedno urudžbiranje radi do sedam poziva sa
+     * 15 s read timeoutom, a bez ovog retka iz loga se vidi samo da je cijeli tok pao —
+     * ne i koji je poziv visio. Mock klijent logira svaki poziv, pa bi bez ovoga produkcija
+     * bila tiša od test okruženja.
+     *
+     * <p>Prag {@link #SPORO_MS} razdvaja normalan poziv (DEBUG) od onog koji vrijedi
+     * pogledati (WARN), da INFO ne postane šum pri normalnom radu.
+     */
     private Object call(WebServiceTemplate template, Object request, SoapActionCallback callback)
             throws EgopTransportException {
+        String operacija = request.getClass().getSimpleName();
+        long pocetak = System.nanoTime();
         try {
-            return template.marshalSendAndReceive(request, callback);
+            Object odgovor = template.marshalSendAndReceive(request, callback);
+            long ms = trajanjeMs(pocetak);
+            if (ms >= SPORO_MS) {
+                log.warn("egop_call operacija={} trajanje_ms={} ishod=ok — sporo", operacija, ms);
+            } else {
+                log.debug("egop_call operacija={} trajanje_ms={} ishod=ok", operacija, ms);
+            }
+            return odgovor;
         } catch (WebServiceTransportException e) {
+            log.error("egop_call operacija={} trajanje_ms={} ishod=transport_error: {}",
+                    operacija, trajanjeMs(pocetak), e.getMessage());
             throw new EgopTransportException("Greška u komunikaciji sa eGOP servisom: " + e.getMessage(), e);
         } catch (Exception e) {
+            log.error("egop_call operacija={} trajanje_ms={} ishod=error {}: {}",
+                    operacija, trajanjeMs(pocetak), e.getClass().getSimpleName(), e.getMessage());
             throw new EgopTransportException("Nepoznata greška u komunikaciji sa eGOP servisom: " + e.getMessage(), e);
         }
+    }
+
+    private static long trajanjeMs(long pocetakNano) {
+        return (System.nanoTime() - pocetakNano) / 1_000_000L;
     }
 }

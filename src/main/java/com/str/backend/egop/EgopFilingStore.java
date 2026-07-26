@@ -128,14 +128,6 @@ public class EgopFilingStore {
         });
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void markAktSynced(UUID aktId) {
-        egopPismenoRepository.findById(aktId).ifPresent(akt -> {
-            akt.markSynced();
-            egopPismenoRepository.save(akt);
-        });
-    }
-
     /** @return broj pokušaja nakon ovog neuspjeha */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int markAktFailed(UUID aktId, String error, Instant nextAttemptAt) {

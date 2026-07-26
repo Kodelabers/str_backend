@@ -365,9 +365,8 @@ public class EgopFilingService {
             store.applyPismeno(akt.getId(), pismeno.getJop(), pismeno.getUrBroj());
         }
 
+        // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
         attachPdfOnce(akt, akt.getPdfContent());
-        akt.markSynced();
-        store.markAktSynced(akt.getId());
 
         log.info("egop_akt_filed akt={} rn={} vrsta='{}' klasa={} urbroj={}",
                 akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(),

@@ -217,14 +217,21 @@ class EgopClientMock implements EgopClient {
         return true;
     }
 
+    /**
+     * URBROJ mora biti različit po pismenu — u eGOP-u je to redni broj unutar predmeta.
+     * Ranije je zadnji segment bio zakucan na {@code -1}, pa su ulazno i izlazno pismeno
+     * dobivali isti urudžbeni broj i mock je skrivao pogrešno vezanje dokumenta uz pismeno.
+     */
     @Override
     public PismenoBasicInfo2 kreirajPismeno2(KreirajPismeno2 request) {
         log.info("Mock eGOP kreirajPismeno2 called: vrsta={}, rbrSpisa={}, uredskaGodina={}",
                 request.getVrstaPismena(), request.getRbrSpisa(), request.getUredskaGodina());
+        int jop = PISMENO_SEQ.incrementAndGet();
         PismenoBasicInfo2 mockResponse = new PismenoBasicInfo2();
         mockResponse.setOperationSucceeded(true);
-        mockResponse.setJop(PISMENO_SEQ.incrementAndGet());
-        mockResponse.setUrBroj(MOCK_PREFIX + "529-06/" + (LocalDateTime.now().getYear() % 100) + "-1");
+        mockResponse.setJop(jop);
+        mockResponse.setUrBroj(MOCK_PREFIX + "529-06/" + (LocalDateTime.now().getYear() % 100)
+                + "-" + (jop - 1000));
         return mockResponse;
     }
 
