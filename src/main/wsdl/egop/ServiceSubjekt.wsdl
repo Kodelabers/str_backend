@@ -1,0 +1,1455 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/"
+                  xmlns:http="http://schemas.xmlsoap.org/wsdl/http/"
+                  xmlns:tns="http://www.infodom.hr/egov" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  targetNamespace="http://www.infodom.hr/egov">
+    <wsdl:types>
+        <s:schema elementFormDefault="qualified" targetNamespace="http://www.infodom.hr/egov">
+            <s:element name="KreirajSubjekta">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="kratkiNaziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="adresa" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="urBroj" nillable="true" type="s:int"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="KreirajSubjektaResult" type="tns:SubjektInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="SubjektInfo">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:SubjektBasicInfo">
+                        <s:sequence>
+                            <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="kratkiNaziv" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="oznakaVrste" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="OIB" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="adresa" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="nazivDrzave" type="s:string"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:complexType name="SubjektBasicInfo">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:BaseInfo">
+                        <s:sequence>
+                            <s:element minOccurs="1" maxOccurs="1" name="oznakaSubjekta" type="s:int"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:complexType name="BaseInfo">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="OperationSucceeded" type="s:boolean"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Errors" type="tns:ArrayOfErrorStatus"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfErrorStatus">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ErrorStatus" nillable="true"
+                               type="tns:ErrorStatus"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ErrorStatus">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="ErrorCode" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="ErrorMessage" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:element name="KreirajSubjektaProsireno">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="telefon" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ziroracun" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="kucnibroj" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naselje" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaProsirenoResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="KreirajSubjektaProsirenoResult"
+                                   type="tns:SubjektBasicInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaProsirenoStranci">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="vrstaIdDokumenta" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="brojIDDokumenta" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzaveIzdavanja" nillable="true"
+                                   type="s:short"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="telefon" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ziroracun" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="kucnibroj" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naselje" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaProsirenoStranciResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="KreirajSubjektaProsirenoStranciResult"
+                                   type="tns:SubjektBasicInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaProsirenoDrzave">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="telefon" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ziroracun" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="kucnibroj" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naselje" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="vrstaIdentitetaDokumenta" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="drzavaIdentitetaDokumenta" nillable="true"
+                                   type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="sifraIdentitetaDokumenta" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaProsirenoDrzaveResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="KreirajSubjektaProsirenoDrzaveResult"
+                                   type="tns:SubjektBasicInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="AzurirajPodatkeSubjekta">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="oznakaSubjekta" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="kratkiNaziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="adresa" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="AzurirajPodatkeSubjektaResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="AzurirajPodatkeSubjektaResult"
+                                   type="tns:SubjektBasicInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaPutemOIBa">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="vrstaSubjekta" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaPutemOIBaResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="KreirajSubjektaPutemOIBaResult"
+                                   type="tns:PoslovniSubjektiInfoOutlook"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="PoslovniSubjektiInfoOutlook">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:BaseAuditInfo">
+                        <s:sequence>
+                            <s:element minOccurs="1" maxOccurs="1" name="idsubjekta" type="s:int"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="OIB" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="nazivSubjekta" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="kratkiNazivSubjekta" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="kucniBroj" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="naselje" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="postanskiBrojiNaziv" type="s:string"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="pttBroj" type="s:int"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="mbjmbg" type="s:int"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="ISOBrojDrzave" type="s:int"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:complexType name="BaseAuditInfo">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:BaseInfo">
+                        <s:sequence>
+                            <s:element minOccurs="0" maxOccurs="1" name="CreatedBy" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="LastUpdateBy" type="s:string"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="CreationDate" type="s:dateTime"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="LastUpdateDate" type="s:dateTime"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="Status" type="s:int"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:element name="AzurirajPodatkeSubjektaProsireno">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="oznakaSubjekta" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="telefon" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ziroracun" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="kucnibroj" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naselje" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="AzurirajPodatkeSubjektaProsirenoResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="AzurirajPodatkeSubjektaProsirenoResult"
+                                   type="tns:SubjektBasicInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiSubjektIdZaUsername">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="username" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="usernameKorisnikaAplikacije" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiSubjektIdZaUsernameResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="1" maxOccurs="1" name="DohvatiSubjektIdZaUsernameResult" type="s:int"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjekta">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="oznakaSubjekta" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjektaResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="DohvatiPodatkeSubjektaResult"
+                                   type="tns:SubjektInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjektaSVrstomSubjekta">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="oznakaSubjekta" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="vrstaSubjektaId" nillable="true" type="s:int"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjektaSVrstomSubjektaResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="DohvatiPodatkeSubjektaSVrstomSubjektaResult"
+                                   type="tns:SubjektInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjektaStranci">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="oznakaSubjekta" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="vrstaIdDokumenta" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="brojIDDokumenta" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzaveIzdavanja" nillable="true"
+                                   type="s:int"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjektaStranciResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="DohvatiPodatkeSubjektaStranciResult"
+                                   type="tns:SubjektInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjektaEksterni">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="oznakaSubjekta" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeSubjektaEksterniResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="DohvatiPodatkeSubjektaEksterniResult"
+                                   type="tns:SubjektInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaNapredno">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="tipOsobe" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbJmbg" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="kucnibroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="mbr" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="postanskiBroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="idUrBroja" type="s:int"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="urBroj" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="slobodniunos" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="KreirajSubjektaNaprednoResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="KreirajSubjektaNaprednoResult"
+                                   type="tns:SubjektBasicInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="PretraziPoslovneSubjekte">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="brojZapisa" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="adresa" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="pttbroj" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="mbt" nillable="true" type="s:int"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="oznaka" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="PretraziPoslovneSubjekteResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="PretraziPoslovneSubjekteResult"
+                                   type="tns:ArrayOfPoslovniSubjektiInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="ArrayOfPoslovniSubjektiInfo">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="PoslovniSubjektiInfo" nillable="true"
+                               type="tns:PoslovniSubjektiInfo"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="PoslovniSubjektiInfo">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:BaseAuditInfo">
+                        <s:sequence>
+                            <s:element minOccurs="1" maxOccurs="1" name="idsubjekta" type="s:int"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="OIB" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="nazivSubjekta" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="kratkiNazivSubjekta" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="kucniBroj" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="naselje" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="postanskiBrojiNaziv" type="s:string"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="pttBroj" type="s:int"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="mbjmbg" type="s:int"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="ISOBrojDrzave" type="s:int"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:element name="PretraziPoslovneSubjekteDrzave">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="brojZapisa" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="naziv" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="adresa" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="pttbroj" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="email" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="tipOsobe" nillable="true" type="s:int"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="vrstaIdentitetaDokumenta" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="drzavaIdentitetaDokumenta" nillable="true"
+                                   type="s:int"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="sifraIdentitetaDokumenta" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="PretraziPoslovneSubjekteDrzaveResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="PretraziPoslovneSubjekteDrzaveResult"
+                                   type="tns:ArrayOfPoslovniSubjektDrzaveInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="ArrayOfPoslovniSubjektDrzaveInfo">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="PoslovniSubjektDrzaveInfo" nillable="true"
+                               type="tns:PoslovniSubjektDrzaveInfo"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="PoslovniSubjektDrzaveInfo">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:BaseInfo">
+                        <s:sequence>
+                            <s:element minOccurs="1" maxOccurs="1" name="idsubjekta" type="s:int"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="ulica" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="kucniBroj" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="naselje" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="mbjmbg" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="OIB" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="nazivSubjekta" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="oznakaVrste" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="postanskiBrojiNaziv" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="urBroj" type="s:string"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="pttBroj" nillable="true" type="s:int"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="tipOsobe" nillable="true" type="s:int"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="isoKodDrzave" nillable="true" type="s:int"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="vrstaIdentitetaDokumenta" type="s:string"/>
+                            <s:element minOccurs="1" maxOccurs="1" name="drzavaIdentitetaDokumenta" nillable="true"
+                                       type="s:int"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="sifraIdentitetaDokumenta" type="s:string"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:element name="DohvatiPodatkeIzObrtnogRegistraOIB">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="DohvatiPovijesnaStanja" type="s:boolean"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="ProvjeriVlasnikaUPasivi" type="s:boolean"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeIzObrtnogRegistraOIBResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="DohvatiPodatkeIzObrtnogRegistraOIBResult"
+                                   type="tns:ArrayOfObrtniServiceRegistarskiUlozak"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="ArrayOfObrtniServiceRegistarskiUlozak">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceRegistarskiUlozak" nillable="true"
+                               type="tns:ObrtniServiceRegistarskiUlozak"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceRegistarskiUlozak">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="1" name="AktivnoStanje" type="tns:ObrtniServiceAktivniUlozak"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="PovijesnaStanjaUloska"
+                               type="tns:ArrayOfObrtniServicePovijesniUlozak"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceAktivniUlozak">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="1" name="Ulozak" type="tns:ObrtniServiceUlozak"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="PregledniList"
+                               type="tns:ArrayOfObrtniServiceStavkaPreglednogLista"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceUlozak">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="MaticniBrojObrta" type="s:long"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="BrojObrtnice" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="TijeloDrzavneUpraveId" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="TijeloDrzavneUprave" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="BrojRegistarskogUloska" type="s:long"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumOsnivanjaUloska" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPocetkaObrta" nillable="true" type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPrestankaUloska" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPrestankaObrta" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="StanjeObrta" type="s:int"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="VrstaObrta" type="s:int"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="ObavljanjeObrta" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Clanstva" type="tns:ArrayOfObrtniServiceClanstvo"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Sjediste" type="tns:ObrtniServicePogon"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="IzdvojeniPogoni" type="tns:ArrayOfObrtniServicePogon"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Vlasnici" type="tns:ArrayOfObrtniServiceVlasnik"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="TerminiSezonskogObavljanja"
+                               type="tns:ArrayOfObrtniServiceSezonskoObavljanjeTermin"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServiceClanstvo">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceClanstvo" nillable="true"
+                               type="tns:ObrtniServiceClanstvo"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceClanstvo">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="1" name="NazivUdruzenja" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServicePogon">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="RedniBroj" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Naziv" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="KratkiNaziv" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="StanjePogona" nillable="true" type="s:int"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="ObavljanjeDjelatnosti" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Zupanija" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="OpcinaGrad" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="SifraNaselja" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Naselje" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Ulica" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="KucniBroj" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="BrojPoste" nillable="true" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="NazivPoste" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Telefon" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Mobitel1" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Mobitel2" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Fax" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="EmailAdresa" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="WebAdresa" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumUpisaUEvidenciju" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPocetkaRada" nillable="true" type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPrestankaObavljanja" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Djelatnosti2002"
+                               type="tns:ArrayOfObrtniServiceDjelatnostPogona"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Djelatnosti2007"
+                               type="tns:ArrayOfObrtniServiceDjelatnostPogona"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Poslovodja" type="tns:ObrtniServiceOsoba"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="PoslovodjaStrucneOsposobljenosti"
+                               type="tns:ArrayOfObrtniServiceStrucnaOsposobljenost"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="TerminiSezonskogObavljanjaPogona"
+                               type="tns:ArrayOfObrtniServiceSezonskoObavljanjeTermin"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServiceDjelatnostPogona">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceDjelatnostPogona" nillable="true"
+                               type="tns:ObrtniServiceDjelatnostPogona"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceDjelatnostPogona">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="RedniBroj" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="SifraDjelatnosti" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="NazivDjelatnosti" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="OpisDjelatnosti" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="PretezitaDjelatnost" type="s:int"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPromjene" type="s:dateTime"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="StrucnaOsoba" type="tns:ObrtniServiceOsoba"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="StrucnaOsobaOsposobljenosti"
+                               type="tns:ArrayOfObrtniServiceStrucnaOsposobljenost"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceOsoba">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumRodjenja" nillable="true" type="s:dateTime"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Ime" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Prezime" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="OIB" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="Spol" type="tns:ObrtniServiceSpolEnum"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Zupanija" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Opcina" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="SifraNaselja" nillable="true" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Naselje" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Ulica" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="KucniBroj" nillable="true" type="s:int"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="BrojPoste" nillable="true" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="NazivPoste" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="SifraDrzave" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Drzava" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="SifraMaticneDrzave" nillable="true" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="NazivMaticneDrzave" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="StranacNazivaNaselja" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="StranacBrojPoste" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:simpleType name="ObrtniServiceSpolEnum">
+                <s:restriction base="s:string">
+                    <s:enumeration value="F"/>
+                    <s:enumeration value="M"/>
+                </s:restriction>
+            </s:simpleType>
+            <s:complexType name="ArrayOfObrtniServiceStrucnaOsposobljenost">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceStrucnaOsposobljenost"
+                               nillable="true" type="tns:ObrtniServiceStrucnaOsposobljenost"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceStrucnaOsposobljenost">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="1" name="SifraZanimanja" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="NazivZanimanja" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServiceSezonskoObavljanjeTermin">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceSezonskoObavljanjeTermin"
+                               nillable="true" type="tns:ObrtniServiceSezonskoObavljanjeTermin"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceSezonskoObavljanjeTermin">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPocetkaSezonskog" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPrestankaSezonskog" nillable="true"
+                               type="s:dateTime"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServicePogon">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServicePogon" nillable="true"
+                               type="tns:ObrtniServicePogon"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServiceVlasnik">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceVlasnik" nillable="true"
+                               type="tns:ObrtniServiceVlasnik"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceVlasnik">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="RedniBroj" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Osoba" type="tns:ObrtniServiceOsoba"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="VrstaVlasnika" nillable="true" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="StrucneOsposobljenosti"
+                               type="tns:ArrayOfObrtniServiceStrucnaOsposobljenost"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServiceStavkaPreglednogLista">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceStavkaPreglednogLista"
+                               nillable="true" type="tns:ObrtniServiceStavkaPreglednogLista"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceStavkaPreglednogLista">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="PodbrojStavke" type="s:int"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPromjene" nillable="true" type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumRjesenja" nillable="true" type="s:dateTime"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="KlasifikacijskiBroj" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="UrudzbeniBroj" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Primjedba" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="VrstePromjena"
+                               type="tns:ArrayOfObrtniServiceVrstaPromjene"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServiceVrstaPromjene">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServiceVrstaPromjene" nillable="true"
+                               type="tns:ObrtniServiceVrstaPromjene"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServiceVrstaPromjene">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="SifraPromjene" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="NazivPromjene" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ArrayOfObrtniServicePovijesniUlozak">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="unbounded" name="ObrtniServicePovijesniUlozak" nillable="true"
+                               type="tns:ObrtniServicePovijesniUlozak"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="ObrtniServicePovijesniUlozak">
+                <s:sequence>
+                    <s:element minOccurs="1" maxOccurs="1" name="PodBroj" type="s:int"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Ulozak" type="tns:ObrtniServiceUlozak"/>
+                </s:sequence>
+            </s:complexType>
+            <s:element name="DohvatiPodatkeIzObrtnogRegistraMBO">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="mbo" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="DohvatiPovijesnaStanja" type="s:boolean"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeIzObrtnogRegistraMBOResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="DohvatiPodatkeIzObrtnogRegistraMBOResult"
+                                   type="tns:ArrayOfObrtniServiceRegistarskiUlozak"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeIzOibServisa">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="0" maxOccurs="1" name="oib" type="s:string"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="DohvatiPodatkeIzOibServisaResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="DohvatiPodatkeIzOibServisaResult"
+                                   type="tns:PodaciOibServisa"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:complexType name="PodaciOibServisa">
+                <s:complexContent mixed="false">
+                    <s:extension base="tns:BaseInfo">
+                        <s:sequence>
+                            <s:element minOccurs="0" maxOccurs="1" name="Oib" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="Naziv" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="Ulica" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="KucniBroj" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="Naselje" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="PostanskiBroj" type="s:string"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="FizickaOsoba" type="tns:FizickaOsobaResult"/>
+                            <s:element minOccurs="0" maxOccurs="1" name="PravnaOsoba" type="tns:PravnaOsobaResult"/>
+                        </s:sequence>
+                    </s:extension>
+                </s:complexContent>
+            </s:complexType>
+            <s:complexType name="FizickaOsobaResult">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="1" name="JedinstveniMaticniBrojGradjanina" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="Spol" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumStjecanjaDrzavljanstva" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumRodjenja" nillable="true" type="s:dateTime"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="MjestoRodjenja" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="DrzavaRodjenja" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="RodjenoPrezime" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="ImeOca" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="PrezimeOca" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="ImeMajke" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="PrezimeMajke" type="s:string"/>
+                </s:sequence>
+            </s:complexType>
+            <s:complexType name="PravnaOsobaResult">
+                <s:sequence>
+                    <s:element minOccurs="0" maxOccurs="1" name="MaticniBrojSubjekta" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumOsnivanja" type="s:dateTime"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="MjestoOsnivanja" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="DrzavaOsnivanja" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="TipLikvidacije" type="s:string"/>
+                    <s:element minOccurs="0" maxOccurs="1" name="OIBUpravitelja" type="s:string"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumPocetkaLikvidacije" nillable="true"
+                               type="s:dateTime"/>
+                    <s:element minOccurs="1" maxOccurs="1" name="DatumZavrsetkaLikvidacije" nillable="true"
+                               type="s:dateTime"/>
+                </s:sequence>
+            </s:complexType>
+            <s:element name="AktivirajPoslovnogSubjekta">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="userName" type="s:string"/>
+                        <s:element minOccurs="1" maxOccurs="1" name="id" type="s:int"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+            <s:element name="AktivirajPoslovnogSubjektaResponse">
+                <s:complexType>
+                    <s:sequence>
+                        <s:element minOccurs="0" maxOccurs="1" name="AktivirajPoslovnogSubjektaResult"
+                                   type="tns:SubjektBasicInfo"/>
+                    </s:sequence>
+                </s:complexType>
+            </s:element>
+        </s:schema>
+    </wsdl:types>
+    <wsdl:message name="KreirajSubjektaSoapIn">
+        <wsdl:part name="parameters" element="tns:KreirajSubjekta"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaSoapOut">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaResponse"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaProsirenoSoapIn">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaProsireno"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaProsirenoSoapOut">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaProsirenoResponse"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaProsirenoStranciSoapIn">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaProsirenoStranci"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaProsirenoStranciSoapOut">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaProsirenoStranciResponse"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaProsirenoDrzaveSoapIn">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaProsirenoDrzave"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaProsirenoDrzaveSoapOut">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaProsirenoDrzaveResponse"/>
+    </wsdl:message>
+    <wsdl:message name="AzurirajPodatkeSubjektaSoapIn">
+        <wsdl:part name="parameters" element="tns:AzurirajPodatkeSubjekta"/>
+    </wsdl:message>
+    <wsdl:message name="AzurirajPodatkeSubjektaSoapOut">
+        <wsdl:part name="parameters" element="tns:AzurirajPodatkeSubjektaResponse"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaPutemOIBaSoapIn">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaPutemOIBa"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaPutemOIBaSoapOut">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaPutemOIBaResponse"/>
+    </wsdl:message>
+    <wsdl:message name="AzurirajPodatkeSubjektaProsirenoSoapIn">
+        <wsdl:part name="parameters" element="tns:AzurirajPodatkeSubjektaProsireno"/>
+    </wsdl:message>
+    <wsdl:message name="AzurirajPodatkeSubjektaProsirenoSoapOut">
+        <wsdl:part name="parameters" element="tns:AzurirajPodatkeSubjektaProsirenoResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiSubjektIdZaUsernameSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiSubjektIdZaUsername"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiSubjektIdZaUsernameSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiSubjektIdZaUsernameResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjekta"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjektaResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaSVrstomSubjektaSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjektaSVrstomSubjekta"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaSVrstomSubjektaSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjektaSVrstomSubjektaResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaStranciSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjektaStranci"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaStranciSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjektaStranciResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaEksterniSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjektaEksterni"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeSubjektaEksterniSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeSubjektaEksterniResponse"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaNaprednoSoapIn">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaNapredno"/>
+    </wsdl:message>
+    <wsdl:message name="KreirajSubjektaNaprednoSoapOut">
+        <wsdl:part name="parameters" element="tns:KreirajSubjektaNaprednoResponse"/>
+    </wsdl:message>
+    <wsdl:message name="PretraziPoslovneSubjekteSoapIn">
+        <wsdl:part name="parameters" element="tns:PretraziPoslovneSubjekte"/>
+    </wsdl:message>
+    <wsdl:message name="PretraziPoslovneSubjekteSoapOut">
+        <wsdl:part name="parameters" element="tns:PretraziPoslovneSubjekteResponse"/>
+    </wsdl:message>
+    <wsdl:message name="PretraziPoslovneSubjekteDrzaveSoapIn">
+        <wsdl:part name="parameters" element="tns:PretraziPoslovneSubjekteDrzave"/>
+    </wsdl:message>
+    <wsdl:message name="PretraziPoslovneSubjekteDrzaveSoapOut">
+        <wsdl:part name="parameters" element="tns:PretraziPoslovneSubjekteDrzaveResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeIzObrtnogRegistraOIBSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeIzObrtnogRegistraOIB"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeIzObrtnogRegistraOIBSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeIzObrtnogRegistraOIBResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeIzObrtnogRegistraMBOSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeIzObrtnogRegistraMBO"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeIzObrtnogRegistraMBOSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeIzObrtnogRegistraMBOResponse"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeIzOibServisaSoapIn">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeIzOibServisa"/>
+    </wsdl:message>
+    <wsdl:message name="DohvatiPodatkeIzOibServisaSoapOut">
+        <wsdl:part name="parameters" element="tns:DohvatiPodatkeIzOibServisaResponse"/>
+    </wsdl:message>
+    <wsdl:message name="AktivirajPoslovnogSubjektaSoapIn">
+        <wsdl:part name="parameters" element="tns:AktivirajPoslovnogSubjekta"/>
+    </wsdl:message>
+    <wsdl:message name="AktivirajPoslovnogSubjektaSoapOut">
+        <wsdl:part name="parameters" element="tns:AktivirajPoslovnogSubjektaResponse"/>
+    </wsdl:message>
+    <wsdl:portType name="ServiceSubjektSoap">
+        <wsdl:operation name="KreirajSubjekta">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Kreiraj novog poslovnog subjekta.
+            </wsdl:documentation>
+            <wsdl:input message="tns:KreirajSubjektaSoapIn"/>
+            <wsdl:output message="tns:KreirajSubjektaSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsireno">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Kreiraj novog poslovnog subjekta sa
+                proširenim informacijama.
+            </wsdl:documentation>
+            <wsdl:input message="tns:KreirajSubjektaProsirenoSoapIn"/>
+            <wsdl:output message="tns:KreirajSubjektaProsirenoSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsirenoStranci">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Kreiraj novog poslovnog subjekta stranca
+                sa proširenim informacijama.
+            </wsdl:documentation>
+            <wsdl:input message="tns:KreirajSubjektaProsirenoStranciSoapIn"/>
+            <wsdl:output message="tns:KreirajSubjektaProsirenoStranciSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsirenoDrzave">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Kreiraj novog poslovnog subjekta sa
+                podacima o dokumentu identifikacije.
+            </wsdl:documentation>
+            <wsdl:input message="tns:KreirajSubjektaProsirenoDrzaveSoapIn"/>
+            <wsdl:output message="tns:KreirajSubjektaProsirenoDrzaveSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="AzurirajPodatkeSubjekta">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Ažuriraj podatke poslovnog subjekta.
+            </wsdl:documentation>
+            <wsdl:input message="tns:AzurirajPodatkeSubjektaSoapIn"/>
+            <wsdl:output message="tns:AzurirajPodatkeSubjektaSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaPutemOIBa">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Kreira novog poslovnog subjekti pomoću
+                OIBa.
+            </wsdl:documentation>
+            <wsdl:input message="tns:KreirajSubjektaPutemOIBaSoapIn"/>
+            <wsdl:output message="tns:KreirajSubjektaPutemOIBaSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="AzurirajPodatkeSubjektaProsireno">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Ažuriraj proširene podatke poslovnog
+                subjekta.
+            </wsdl:documentation>
+            <wsdl:input message="tns:AzurirajPodatkeSubjektaProsirenoSoapIn"/>
+            <wsdl:output message="tns:AzurirajPodatkeSubjektaProsirenoSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiSubjektIdZaUsername">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati oznaku poslovnog subjekta traženog
+                korisnika
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiSubjektIdZaUsernameSoapIn"/>
+            <wsdl:output message="tns:DohvatiSubjektIdZaUsernameSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjekta">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati podatke poslovnog subjekta.
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiPodatkeSubjektaSoapIn"/>
+            <wsdl:output message="tns:DohvatiPodatkeSubjektaSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaSVrstomSubjekta">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati podatke subjekta s vrstom
+                subjekta.
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiPodatkeSubjektaSVrstomSubjektaSoapIn"/>
+            <wsdl:output message="tns:DohvatiPodatkeSubjektaSVrstomSubjektaSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaStranci">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati podatke poslovnog subjekta
+                stranca.
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiPodatkeSubjektaStranciSoapIn"/>
+            <wsdl:output message="tns:DohvatiPodatkeSubjektaStranciSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaEksterni">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati podatke eksternog poslovnog
+                subjekta.
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiPodatkeSubjektaEksterniSoapIn"/>
+            <wsdl:output message="tns:DohvatiPodatkeSubjektaEksterniSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaNapredno">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Kreiraj novog poslovnog subjekta koristeći
+                detaljniji unos podataka .
+            </wsdl:documentation>
+            <wsdl:input message="tns:KreirajSubjektaNaprednoSoapIn"/>
+            <wsdl:output message="tns:KreirajSubjektaNaprednoSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="PretraziPoslovneSubjekte">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati detaljne informacije za sve
+                poslovne subjekte po traženim kriterijima.
+            </wsdl:documentation>
+            <wsdl:input message="tns:PretraziPoslovneSubjekteSoapIn"/>
+            <wsdl:output message="tns:PretraziPoslovneSubjekteSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="PretraziPoslovneSubjekteDrzave">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati informacije za sve poslovne
+                subjekte sa podacima o dokumentu identifikacije po traženim kriterijima.
+            </wsdl:documentation>
+            <wsdl:input message="tns:PretraziPoslovneSubjekteDrzaveSoapIn"/>
+            <wsdl:output message="tns:PretraziPoslovneSubjekteDrzaveSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzObrtnogRegistraOIB">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati podatke iz obrtnog registra preko
+                OIBa.
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiPodatkeIzObrtnogRegistraOIBSoapIn"/>
+            <wsdl:output message="tns:DohvatiPodatkeIzObrtnogRegistraOIBSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzObrtnogRegistraMBO">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati podatke iz obrtnog registra preko
+                MBOa.
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiPodatkeIzObrtnogRegistraMBOSoapIn"/>
+            <wsdl:output message="tns:DohvatiPodatkeIzObrtnogRegistraMBOSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzOibServisa">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Dohvati podatke iz OIB servisa.
+            </wsdl:documentation>
+            <wsdl:input message="tns:DohvatiPodatkeIzOibServisaSoapIn"/>
+            <wsdl:output message="tns:DohvatiPodatkeIzOibServisaSoapOut"/>
+        </wsdl:operation>
+        <wsdl:operation name="AktivirajPoslovnogSubjekta">
+            <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">Aktiviraj poslovnog subjekta.
+            </wsdl:documentation>
+            <wsdl:input message="tns:AktivirajPoslovnogSubjektaSoapIn"/>
+            <wsdl:output message="tns:AktivirajPoslovnogSubjektaSoapOut"/>
+        </wsdl:operation>
+    </wsdl:portType>
+    <wsdl:binding name="ServiceSubjektSoap" type="tns:ServiceSubjektSoap">
+        <soap:binding transport="http://schemas.xmlsoap.org/soap/http"/>
+        <wsdl:operation name="KreirajSubjekta">
+            <soap:operation soapAction="http://www.infodom.hr/egov/KreirajSubjekta" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsireno">
+            <soap:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaProsireno" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsirenoStranci">
+            <soap:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaProsirenoStranci" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsirenoDrzave">
+            <soap:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaProsirenoDrzave" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="AzurirajPodatkeSubjekta">
+            <soap:operation soapAction="http://www.infodom.hr/egov/AzurirajPodatkeSubjekta" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaPutemOIBa">
+            <soap:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaPutemOIBa" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="AzurirajPodatkeSubjektaProsireno">
+            <soap:operation soapAction="http://www.infodom.hr/egov/AzurirajPodatkeSubjektaProsireno" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiSubjektIdZaUsername">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiSubjektIdZaUsername" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjekta">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjekta" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaSVrstomSubjekta">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjektaSVrstomSubjekta"
+                            style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaStranci">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjektaStranci" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaEksterni">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjektaEksterni" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaNapredno">
+            <soap:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaNapredno" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="PretraziPoslovneSubjekte">
+            <soap:operation soapAction="http://www.infodom.hr/egov/PretraziPoslovneSubjekte" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="PretraziPoslovneSubjekteDrzave">
+            <soap:operation soapAction="http://www.infodom.hr/egov/PretraziPoslovneSubjekteDrzave" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzObrtnogRegistraOIB">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeIzObrtnogRegistraOIB"
+                            style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzObrtnogRegistraMBO">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeIzObrtnogRegistraMBO"
+                            style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzOibServisa">
+            <soap:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeIzOibServisa" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="AktivirajPoslovnogSubjekta">
+            <soap:operation soapAction="http://www.infodom.hr/egov/AktivirajPoslovnogSubjekta" style="document"/>
+            <wsdl:input>
+                <soap:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+    </wsdl:binding>
+    <wsdl:binding name="ServiceSubjektSoap12" type="tns:ServiceSubjektSoap">
+        <soap12:binding transport="http://schemas.xmlsoap.org/soap/http"/>
+        <wsdl:operation name="KreirajSubjekta">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/KreirajSubjekta" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsireno">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaProsireno" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsirenoStranci">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaProsirenoStranci" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaProsirenoDrzave">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaProsirenoDrzave" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="AzurirajPodatkeSubjekta">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/AzurirajPodatkeSubjekta" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaPutemOIBa">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaPutemOIBa" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="AzurirajPodatkeSubjektaProsireno">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/AzurirajPodatkeSubjektaProsireno"
+                              style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiSubjektIdZaUsername">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiSubjektIdZaUsername" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjekta">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjekta" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaSVrstomSubjekta">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjektaSVrstomSubjekta"
+                              style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaStranci">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjektaStranci" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeSubjektaEksterni">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeSubjektaEksterni" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="KreirajSubjektaNapredno">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/KreirajSubjektaNapredno" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="PretraziPoslovneSubjekte">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/PretraziPoslovneSubjekte" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="PretraziPoslovneSubjekteDrzave">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/PretraziPoslovneSubjekteDrzave" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzObrtnogRegistraOIB">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeIzObrtnogRegistraOIB"
+                              style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzObrtnogRegistraMBO">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeIzObrtnogRegistraMBO"
+                              style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="DohvatiPodatkeIzOibServisa">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/DohvatiPodatkeIzOibServisa" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+        <wsdl:operation name="AktivirajPoslovnogSubjekta">
+            <soap12:operation soapAction="http://www.infodom.hr/egov/AktivirajPoslovnogSubjekta" style="document"/>
+            <wsdl:input>
+                <soap12:body use="literal"/>
+            </wsdl:input>
+            <wsdl:output>
+                <soap12:body use="literal"/>
+            </wsdl:output>
+        </wsdl:operation>
+    </wsdl:binding>
+    <wsdl:service name="ServiceSubjekt">
+        <wsdl:port name="ServiceSubjektSoap" binding="tns:ServiceSubjektSoap">
+            <soap:address location="http://egop2builder/EAI_MINT/ServiceSubjekt.asmx"/>
+        </wsdl:port>
+        <wsdl:port name="ServiceSubjektSoap12" binding="tns:ServiceSubjektSoap12">
+            <soap12:address location="http://egop2builder/EAI_MINT/ServiceSubjekt.asmx"/>
+        </wsdl:port>
+    </wsdl:service>
+</wsdl:definitions>

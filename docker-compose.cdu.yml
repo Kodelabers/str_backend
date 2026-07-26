@@ -30,6 +30,15 @@ services:
       APP_FRONTEND_BASE_URL: https://str-test-eturizam.gov.hr
       APP_MAIL_LOGIN_URL: https://str-test-eturizam.gov.hr/login
       NIAS_KEYSTORE_PASSWORD: ${NIAS_KEYSTORE_PASSWORD:-niassp2024}
+      # eGOP (uredsko poslovanje MINT-a). Ostaje ugašen dok se ne potvrdi dohvatljivost
+      # egopeaitest.mint.hr s ove kutije; bez ovih varijabli radi EgopClientMock.
+      EGOP_ENABLED: ${EGOP_ENABLED:-false}
+      EGOP_USERNAME: ${EGOP_USERNAME:-}
+      EGOP_PASSWORD: ${EGOP_PASSWORD:-}
+      EGOP_APP_DOMAIN: ${EGOP_APP_DOMAIN:-INFODOM}
+      EGOP_APP_USERNAME: ${EGOP_APP_USERNAME:-strservis}
+      EGOP_RJESAVATELJ: ${EGOP_RJESAVATELJ:-}
+      EGOP_CODEBOOKS_FAIL_FAST: ${EGOP_CODEBOOKS_FAIL_FAST:-false}
     volumes:
       - ${CDU_SECRETS_DIR:-/home/vviskov/str-secrets}:/secrets:ro
 

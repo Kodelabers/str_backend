@@ -1,0 +1,28 @@
+# Obavijest o opozivu registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o opozivu registracijskog broja" — izlazno
+#
+# Opoziv pokreće sam iznajmljivač (LessorRnActionService), pa je ovo potvrda o upisanoj
+# promjeni po čl. 159. ZUP-a, a ne odluka protiv stranke — bez obrazloženja i bez upute
+# o pravnom lijeku.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${stranka.naziv}
+${stranka.zastupnik}
+${stranka.adresa}
+${stranka.postanskiBroj} ${stranka.mjesto}
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, u postupku pokrenutom na zahtjev stranke ${stranka.naziv}, ${stranka.identifikator}, u predmetu opoziva registracijskog broja ${rn.broj}, izdaje
+
+[IZREKA]
+1. Na zahtjev stranke opozvan je registracijski broj ${rn.broj}, dodijeljen smještajnoj jedinici „${objekt.naziv}" na adresi ${objekt.adresa}.
+
+2. Registracijski broj prestaje važiti danom opoziva i briše se iz javnog dijela registra.
+
+3. Opoziv je trajan. Za ponovno oglašavanje smještajne jedinice potrebno je podnijeti novi zahtjev za registracijski broj.
+
+[DOSTAVNA_LISTA]
+1. ${stranka.naziv} — u korisnički pretinac
+2. Pismohrana, ovdje

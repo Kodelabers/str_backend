@@ -26,14 +26,14 @@ Implementirano u backendu (prethodna sesija + tekuća), pa sljedeće stavke viš
 - ✅ **B5** — `AccommodationActivityPurgeJob` (`@Scheduled`) poziva postojeći `purgeExpired()`.
 - ✅ **B6** — `str_rn.admin_audit_log` + `AdminAuditService`; ožičeno u activity purge i lessor approve/reject. *Pouzdani identitet aktora i dalje čeka NIAS (BX0).*
 - ✅ **B9** — Excel/CSV export `platform-activities`.
-- ✅ **B11** — generiranje „Dopis o namjeri" / „Nalog" PDF (`RnDocumentService`); dostava (KP/platforme/urudžba) ostaje BX1/BX2/BX3.
+- ✅ **B11** — svih 7 vrsta pismena po strukturi čl. 98. ZUP-a (`document/StrDocumentService` + predlošci u `documents/hr/`); dostava (KP/platforme) ostaje BX1/BX2/BX3, urudžba radi za registraciju. Vidi `docs/ZUP-predlosci.md`.
 - 🟡 **B4** — 18-mj. retencijski scheduler za opozvane RB-ove: **faza 1 (detekcija + audit)** gotova; stvarno brisanje/anonimizacija (faza 2) čeka potvrdu opsega + KP (BX1).
 - ⏸️ **B2/B3** — privatnost internog registra (PII/404) **odgođeno do NIAS rola** (ide u BX0 paket).
 
 **Novi otvoreni TODO-i (iz koda; ne mogu se sad dovršiti):**
-- **BX0 (NIAS):** role-gate novih `permitAll` endpointa koji izlažu osobne podatke — `GET /api/rn/{rn}/documents/{tip}` (akti) i `GET /api/statistics/platform-activities/{xlsx,csv}` (imena/adrese). Inline `TODO(auth/BX0)`.
+- **BX0 (NIAS):** role-gate `permitAll` endpointa koji izlažu osobne podatke — preostaje `GET /api/statistics/platform-activities/{xlsx,csv}` (imena/adrese), inline `TODO(auth/BX0)`. *`GET /api/rn/{rn}/documents/{tip}` je zatvoren 26.07.2026.* — traži prijavu, a iznajmljivač je ograničen na vlastite RB-ove; akt po čl. 98. st. 2 ZUP-a nosi OIB stranke. Interna rola i dalje nedostaje, pa svaki prijavljeni ne-iznajmljivač prolazi.
 - **B4 faza 2:** stvarno brisanje/anonimizacija + KP potvrda; detekcija preskače opozvane RB-ove s `valid_to = NULL` (legacy) → prije faze 2 backfill `valid_to` iz revizijskog loga.
-- **B11 dostava:** `RnDocumentService` samo generira PDF; dostava u KP + obavijest platformama + urudžba (BX1/BX2/BX3) ostaju.
+- **B11 dostava:** `StrDocumentService` samo renderira PDF. Mail obavijest o životnom ciklusu sada postoji (`RnLifecycleEmailListener`), ali **mail nije dostava** — po čl. 94. ZUP-a dostava je u korisnički pretinac (BX1) i od nje teku rokovi. Obavijest platformama (BX2) ostaje.
 - **Perf (nizak prioritet):** `PlatformActivityQuery.queryAll` nema LIMIT — razmotriti cap/streaming ako volumen naraste.
 
 Ostalo (BX0–BX8, te FE stavke F1–F8) nepromijenjeno — vidi tablice ispod.
@@ -55,7 +55,7 @@ Ostalo (BX0–BX8, te FE stavke F1–F8) nepromijenjeno — vidi tablice ispod.
 | B8 | **`reactivate` ograničiti na SUSPENDED** — trenutno dopušta i `WITHDRAWN→ACTIVE`. | STR-2.2 | BE | `RnStatus.canTransitionTo` |
 | B9 | **Export `platform-activities` (Excel/CSV/JSON).** Ne postoji za taj endpoint (postoji samo za STR detail). | STR-3.x | BE | `StatisticsController.java:74-87` |
 | B10 | **GO-3 legalnost — priprema grananja** (sad stub koji uvijek vraća „legalizirano"). *Stvarni izvor podataka (GIS/registar) je bloker — vidi BX6; logiku grananja moguće pripremiti sad.* | STR-1.1/1.2 | BE | `Go3LegalityCheck` |
-| B11 | **Generiranje dokumenta „Dopis o namjeri" i „Nalog za suspenziju/povlačenje"** (PDF). Generator `SubmissionPdfGenerator` postoji, dodati nove predloške. *Urudžba/dostava je blokirana — vidi BX1/BX2.* | STR-2.1 | BE | `pdf/SubmissionPdfGenerator` |
+| B11 | ✅ **Gotovo (26.07.2026.)** — 7 predložaka po ZUP-u, `document/*`. Dva (`prijedlog-suspenzije`, `prigovor`) nemaju okidač dok ne postoje dvofazna suspenzija i prigovor. *Dostava u KP ostaje BX1/BX2.* | STR-2.1 | BE | `document/StrDocumentService` |
 | B12 | **Vidljivost voditelju + zaprimanje ispravljene dokumentacije** (prigovor → reaktivacija tok). *Sam tok/podaci su čisti; tko-vidi-što po roli ovisi o BX0.* | STR-2.2 | BE+FE | `RnService.reactivate` |
 
 ---

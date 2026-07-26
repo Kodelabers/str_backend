@@ -1,0 +1,39 @@
+# Obavijest o povlačenju registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o povlačenju registracijskog broja" — izlazno
+#
+# Povlačenje je trajno (RnStatus.WITHDRAWN je terminalan), pa je uputa o pravnom lijeku
+# obvezna i najvažnija sekcija ovog akta. Tekst dolazi iz str.documents.uputa.povlacenje.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${stranka.naziv}
+${stranka.zastupnik}
+${stranka.adresa}
+${stranka.postanskiBroj} ${stranka.mjesto}
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, u postupku pokrenutom po službenoj dužnosti protiv stranke ${stranka.naziv}, ${stranka.identifikator}, u predmetu povlačenja registracijskog broja ${rn.broj}, donosi
+
+[IZREKA]
+1. Povlači se registracijski broj ${rn.broj}, dodijeljen smještajnoj jedinici „${objekt.naziv}" na adresi ${objekt.adresa}, zbog sljedećeg razloga: ${rn.razlog}.
+
+2. Povlačenje stupa na snagu danom dostave ove Obavijesti. Od toga dana registracijski broj prestaje važiti i briše se iz javnog dijela registra, a smještajna jedinica ne smije se oglašavati na internetskim platformama za kratkoročni najam.
+
+3. Povlačenje je trajno. Registracijski broj ne može se reaktivirati; za ponovno oglašavanje smještajne jedinice potrebno je podnijeti novi zahtjev za registracijski broj.
+
+4. Troškovi postupka nisu nastali.
+
+[OBRAZLOZENJE]
+Postupak je pokrenut po službenoj dužnosti nakon što je utvrđen razlog za povlačenje registracijskog broja ${rn.broj}: ${rn.razlog}.
+
+Stranci je prethodno omogućeno izjašnjavanje sukladno članku 30. stavku 2. Zakona o općem upravnom postupku. Uvidom u spis predmeta i podatke registra utvrđeno je da razlog iz točke 1. izreke nije otklonjen ni nakon proteka ostavljenog roka, pa je odlučeno kao u izreci.
+
+Povlačenje registracijskog broja provodi se sukladno članku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća o prikupljanju i razmjeni podataka o uslugama kratkoročnog najma smještaja, te ${tijelo.propisNadleznosti}.
+
+[UPUTA_O_PRAVNOM_LIJEKU]
+Protiv ove Obavijesti ${uputa.tekst}
+
+[DOSTAVNA_LISTA]
+1. ${stranka.naziv} — u korisnički pretinac
+2. Pismohrana, ovdje

@@ -113,6 +113,9 @@ public class LessorEntity {
     @Column(name = "password_hash", length = 255)
     @Setter private String passwordHash;
 
+    @Column(name = "egop_subjekt_oznaka")
+    private Integer egopSubjektOznaka;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -207,6 +210,15 @@ public class LessorEntity {
 
     public void setRepresentativeAddress(String representativeAddress) {
         this.representativeAddress = representativeAddress;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Oznaka iznajmljivača u eGOP registru subjekata — popunjava se pri prvom
+     * uspješnom lookupu/kreiranju, nakon toga se više ne mijenja.
+     */
+    public void assignEgopSubjekt(Integer egopSubjektOznaka) {
+        this.egopSubjektOznaka = egopSubjektOznaka;
         this.updatedAt = Instant.now();
     }
 

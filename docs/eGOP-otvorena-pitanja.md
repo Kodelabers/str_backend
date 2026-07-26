@@ -1,5 +1,16 @@
 # eGOP integracija — otvorena pitanja
 
+> ## ⚠️ SUPERSEDED
+>
+> Ovaj dokument je nacrt **v0.1**, pisan isključivo iz PDF specifikacije, **bez uvida u WSDL-ove**.
+> Značajan dio pitanja s ove liste je u međuvremenu odgovoren analizom WSDL-a (npr. „što je
+> ServiceMDM" — 44 operacije, kompletan šifrarnik).
+>
+> **Aktualni izvor istine: [`docs/eGOP-endpoint-analiza.md`](./eGOP-endpoint-analiza.md)** —
+> §11 (što nam fali) i §12 (pitanja za MINT, formulirana za slanje).
+>
+> Zadržano kao trag razmišljanja; ne koristiti za implementaciju.
+
 > Pitanja koja se otvaraju nakon čitanja *eGOP10 — specifikacija integracijskih web servisa v1.11* iz perspektive senior backend developera koji planira implementirati klijenta u STR-u.
 > Spec opisuje *transport layer i payload shape*, ali ne nudi *šifre, codes, business policy* koji su nužni za stvarnu integraciju. Lista ide MUP-u / MINT-u / vlasniku eGOP platforme prije prve linije koda.
 

@@ -12,8 +12,9 @@ public class EmailConfig {
 
     @Bean
     @ConditionalOnProperty(name = "app.mail.enabled", havingValue = "true", matchIfMissing = true)
-    public EmailService smtpEmailService(JavaMailSender mailSender, MailProperties properties) {
-        return new SmtpEmailService(mailSender, properties);
+    public EmailService smtpEmailService(JavaMailSender mailSender, MailProperties properties,
+                                         EmailTemplates templates) {
+        return new SmtpEmailService(mailSender, properties, templates);
     }
 
     @Bean

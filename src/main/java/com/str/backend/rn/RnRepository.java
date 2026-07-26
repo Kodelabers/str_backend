@@ -189,6 +189,19 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     List<LessorRnSummaryDto> findByLessorId(@Param("lessorId") UUID lessorId);
 
+    /**
+     * Pripada li RB ovom iznajmljivaču. Koristi se za pristup aktima: stranka smije preuzeti
+     * akt koji se na nju odnosi (ona mu je i adresat), ali ne i tuđi.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT COUNT(r) > 0 FROM RnEntity r
+            WHERE r.rn = :rn AND r.submissionId IN (
+                SELECT s.submissionId FROM SubmissionEntity s WHERE s.lessorId = :lessorId
+            )
+            """)
+    boolean isOwnedByLessor(@Param("rn") String rn, @Param("lessorId") UUID lessorId);
+
     /** NIAS flow: lessorId is not stable across submissions by the same person
      *  (each NIAS registration creates a new LessorEntity snapshot), so the
      *  "Moji registracijski brojevi" view for NIAS users matches by OIB. */

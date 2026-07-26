@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      eGOP integracija (urudžbiranje u pisarnici MINT-a):
+      - lessor dobiva oznaku subjekta u eGOP registru (popunjava se pri prvom
+        uspješnom DohvatiPodatkeSubjekta/KreirajSubjekta pozivu),
+      - submission dobiva identitet eGOP predmeta (uredska godina + rbr + klasa)
+        i status sinkronizacije (state machine NEW → SUBJEKT_OK → PREDMET_OK →
+        PISMENO_OK → SYNCED | FAILED — retry nastavlja od zadnjeg koraka),
+      - egop_pismeno drži po jedan red za svaki akt urudžbiran u predmet
+        (ulazni zahtjev, izlazna obavijest o dodjeli; kasnije i akti životnog
+        ciklusa: opoziv, suspenzija, prigovor...).
+    -->
+    <changeSet id="051-egop-integration" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="lessor">
+            <column name="egop_subjekt_oznaka" type="INT"/>
+        </addColumn>
+
+        <addColumn schemaName="str_rn" tableName="submission">
+            <column name="egop_uredska_godina" type="SMALLINT"/>
+            <column name="egop_rbr_predmeta" type="INT"/>
+            <column name="egop_klasa" type="VARCHAR(64)"/>
+            <column name="egop_sync_status" type="VARCHAR(20)" defaultValue="NEW">
+                <constraints nullable="false"/>
+            </column>
+            <column name="egop_sync_error" type="TEXT"/>
+            <column name="egop_sync_attempts" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <createTable schemaName="str_rn" tableName="egop_pismeno">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_egop_pismeno" nullable="false"/>
+            </column>
+            <column name="submission_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_egop_pismeno_submission"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="submission"
+                             referencedColumnNames="submission_id"/>
+            </column>
+            <column name="vrsta_pismena_naziv" type="VARCHAR(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="smjer" type="VARCHAR(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="jop" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ur_broj" type="VARCHAR(64)"/>
+            <column name="document_attached" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="egop_pismeno" indexName="ix_egop_pismeno_submission">
+            <column name="submission_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

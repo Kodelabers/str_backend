@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Otvrdnjavanje eGOP toka nakon evaluacije:
+
+      - rn_email_sent_at: dostava RN-a non-EU iznajmljivaču slala se na kraju
+        SVAKOG dispatcha, a retry job dispatcha do 10 puta => do 10 identičnih
+        mailova. Oznaka se postavlja tek nakon uspješnog slanja, pa je slanje
+        idempotentno preko svih pokušaja.
+
+      - egop_next_attempt_at: retry se prozorovao po created_at, bez ikakvog
+        backoffa — 10 pokušaja izgorjelo bi za ~20 minuta i submission bi trajno
+        ostao FAILED. Sada se sprema izračunato vrijeme sljedećeg pokušaja
+        (eksponencijalni backoff s gornjom granicom).
+
+      - uq_egop_pismeno_submission_vrsta: ensurePismeno radi "SELECT pa insert",
+        a indeks je bio ne-unique — paralelni retry (dvije instance ili cron u
+        utrci s inline dispatchem) mogao je urudžbiriti isto pismeno dvaput.
+
+        NAPOMENA: ključ (submission_id, vrsta_pismena_naziv) vrijedi DOK po
+        submissionu postoje samo jednokratni akti (zahtjev + obavijest o
+        dodjeli). Kad stignu ponovljivi akti životnog ciklusa RB-a (suspenzija →
+        reaktivacija → suspenzija), ključ mora dobiti act_ref — to ide zasebnim,
+        višim changesetom uz izradu ZUP predložaka.
+    -->
+    <changeSet id="053-egop-hardening" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="submission">
+            <column name="rn_email_sent_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="egop_next_attempt_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </addColumn>
+
+        <addUniqueConstraint schemaName="str_rn"
+                             tableName="egop_pismeno"
+                             columnNames="submission_id, vrsta_pismena_naziv"
+                             constraintName="uq_egop_pismeno_submission_vrsta"/>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,42 @@
+# Obavijest o prijedlogu suspenzije registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o prijedlogu suspenzije registracijskog broja" — izlazno
+#
+# Ovo NIJE rješenje nego poziv stranci na izjašnjavanje prije nepovoljne odluke
+# (čl. 30. st. 2 ZUP-a: bez prethodnog izjašnjavanja postupak se smije provesti samo ako
+# se usvaja zahtjev stranke ili odluka nema negativan učinak). Zato nema upute o pravnom
+# lijeku — pobija se tek odluka koja iz njega proizađe.
+#
+# Rok za ispravak MORA biti u izreci (čl. 98. st. 3: „Kad odluka sadržava rok ... to treba
+# biti sadržano u izreci"). ${rok.ispravak} se puni iz RnEntity.suspensionDeadline.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${stranka.naziv}
+${stranka.zastupnik}
+${stranka.adresa}
+${stranka.postanskiBroj} ${stranka.mjesto}
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, u postupku pokrenutom po službenoj dužnosti protiv stranke ${stranka.naziv}, ${stranka.identifikator}, u predmetu suspenzije registracijskog broja ${rn.broj}, izdaje
+
+[IZREKA]
+1. Pokreće se postupak suspenzije registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}" na adresi ${objekt.adresa}, zbog sljedećeg razloga: ${rn.razlog}.
+
+2. Poziva se stranka da se o utvrđenim okolnostima izjasni te dostavi ispravak odnosno dopunu dokumentacije ${rok.ispravak}
+
+3. Ne postupi li stranka po točki 2. ove izreke, o suspenziji registracijskog broja odlučit će se prema stanju spisa.
+
+[OBRAZLOZENJE]
+U provedenom nadzoru nad podacima upisanima u registar utvrđen je razlog za suspenziju registracijskog broja ${rn.broj}: ${rn.razlog}.
+
+Prije donošenja odluke koja ima negativan učinak na pravne interese stranke, stranci se sukladno članku 30. stavku 2. Zakona o općem upravnom postupku mora omogućiti izjašnjavanje o svim činjenicama i okolnostima važnim za rješavanje stvari. Stranka svoje izjašnjenje i dokaze podnosi u roku iz točke 2. izreke.
+
+Suspenzija registracijskog broja provodi se sukladno članku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća o prikupljanju i razmjeni podataka o uslugama kratkoročnog najma smještaja.
+
+[PRILOZI]
+1. Izvadak iz registra za registracijski broj ${rn.broj}
+
+[DOSTAVNA_LISTA]
+1. ${stranka.naziv} — u korisnički pretinac
+2. Pismohrana, ovdje

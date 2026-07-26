@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Poštanski broj objekta — registracija ga ima (ulazi u PDF), ali se nije
+      pohranjivao pa ga eGOP retry job nije mogao rekonstruirati za ponovno
+      renderiranje PDF-a. Postojeći redovi ostaju NULL (PDF generator to podnosi).
+    -->
+    <changeSet id="052-accommodation-postal-code" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="accommodation">
+            <column name="postal_code" type="VARCHAR(16)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

@@ -11,6 +11,7 @@ import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
+import com.str.backend.document.DocumentProperties;
 import com.str.backend.lessor.LessorEntity;
 import org.springframework.stereotype.Component;
 
@@ -51,22 +52,32 @@ public class SubmissionPdfGenerator {
         FNT_IZJAVA    = new Font(bf,       8, Font.NORMAL, BLACK);
     }
 
+    private final DocumentProperties documentProperties;
+
+    public SubmissionPdfGenerator(DocumentProperties documentProperties) {
+        this.documentProperties = documentProperties;
+    }
+
     /**
-     * Renders the submission PDF. Called after the RN has been issued.
-     * <ul>
-     *   <li>{@code registrationNumber} — always present (issued before this call).</li>
-     *   <li>{@code filingNumber} (Urudžbeni broj) — only present when the request
-     *       is routed through eGOP; null on the non-EU e-mail path.</li>
-     * </ul>
+     * Renderira PDF zahtjeva. Zove se nakon dodjele registracijskog broja.
+     *
+     * <p>Zahtjev je <b>podnesak</b> po čl. 71. ZUP-a, ne akt po čl. 98., pa nema izreke ni
+     * upute o pravnom lijeku i zato ne ide kroz {@code ZupDocumentRenderer}. Čl. 71. st. 2
+     * traži naziv tijela kojem se podnesak upućuje, naznaku upravne stvari, ime i adresu te
+     * OIB stranke i osobe ovlaštene za zastupanje, te potpis podnositelja.
      */
-    public byte[] generate(String accommodationName, String street, String streetNumber,
-                           String postalCode, String cityName, int maxBeds,
-                           String countyName, LessorEntity lessor,
-                           String filingNumber, String registrationNumber, String typeName) {
+    public byte[] generate(SubmissionPdfContext ctx) {
+        LessorEntity lessor = ctx.lessor();
+        String filingNumber = ctx.filingNumber();
+        String registrationNumber = ctx.registrationNumber();
+
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4, 28, 28, 28, 28);
             PdfWriter.getInstance(doc, baos);
             doc.open();
+
+            // Čl. 71. st. 2 — naziv tijela kojem se podnesak upućuje.
+            addAuthorityHeader(doc);
 
             PdfPTable main = new PdfPTable(new float[]{2.4f, 7.6f});
             main.setWidthPercentage(100);
@@ -98,10 +109,18 @@ public class SubmissionPdfGenerator {
                     + ", " + safe(lessor.getPlace());
 
             PdfPTable maticni = innerTable();
-            addInnerRow(maticni, "OIB", oib);
+            // Čl. 71. st. 2 traži OIB „ako joj je dodijeljen" — non-EU iznajmljivač ga nema,
+            // pa se umjesto praznog retka ispisuje strani porezni broj kad postoji.
+            addInnerRow(maticni, "OIB", oib.isEmpty() ? poreznaOznaka(lessor) : oib);
             addInnerRow(maticni, "Naziv / Ime i prezime", naziv);
             addInnerRow(maticni, "Pravni oblik", pravniOblik);
             addInnerRow(maticni, "Adresa sjedišta / prebivališta", adresa);
+            // Osoba ovlaštena za zastupanje i njezin OIB — isti stavak ZUP-a; dosad se nije
+            // ispisivala ni kod pravnih osoba, gdje je zastupnik jedina fizička osoba na aktu.
+            String zastupnik = zastupnik(lessor);
+            if (!zastupnik.isEmpty()) {
+                addInnerRow(maticni, "Osoba ovlaštena za zastupanje", zastupnik);
+            }
             addGroupRow(main, "MATIČNI PODACI\nPODNOSITELJA", maticni);
 
             PdfPTable kontakt = innerTable();
@@ -115,8 +134,8 @@ public class SubmissionPdfGenerator {
             // ── OBJEKTI ───────────────────────────────────────────────────────
             addSectionHeader(main, "OBJEKTI");
 
-            String adresaObjekta = safe(street) + " " + safe(streetNumber)
-                    + ", " + safe(postalCode) + " " + safe(cityName).toUpperCase();
+            String adresaObjekta = safe(ctx.street()) + " " + safe(ctx.streetNumber())
+                    + ", " + safe(ctx.postalCode()) + " " + safe(ctx.cityName()).toUpperCase();
 
             PdfPTable objektiTop = innerTable();
             addInnerRow(objektiTop, "Skupina objekta",
@@ -125,7 +144,7 @@ public class SubmissionPdfGenerator {
             addGroupRow(main, "OBJEKTI", objektiTop);
 
             addGroupRow(main, "VRSTA BROJ I\nKAPACITET OBJEKATA\nZA SMJEŠTAJ",
-                    buildKapacitetTable(accommodationName, maxBeds, typeName));
+                    buildKapacitetTable(ctx.accommodationName(), ctx.maxBeds(), ctx.typeName()));
 
             addGroupRow(main, "OSTALI SADRŽAJI", singleValueTable("označeno"));
 
@@ -170,11 +189,85 @@ public class SubmissionPdfGenerator {
             addPrilogRow(priloziTable, "Ostali prilozi", "NE");
             doc.add(priloziTable);
 
+            // Čl. 71. st. 5 — podnesak potpisuje stranka odnosno osoba ovlaštena za zastupanje.
+            addSubmitterSignature(doc, lessor, isLegal);
+
             doc.close();
             return baos.toByteArray();
         } catch (DocumentException | IOException e) {
             throw new IllegalStateException("Failed to generate submission PDF", e);
         }
+    }
+
+    /** Adresat podneska — bez njega se ne vidi kojem je tijelu zahtjev upućen (čl. 71. st. 2). */
+    private void addAuthorityHeader(Document doc) throws DocumentException {
+        DocumentProperties.Tijelo tijelo = documentProperties.tijelo();
+        if (tijelo.naziv() == null || tijelo.naziv().isBlank()) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder(tijelo.naziv().strip());
+        appendLine(sb, tijelo.ustrojstvenaJedinica());
+        appendLine(sb, tijelo.adresa());
+        appendLine(sb, tijelo.mjesto());
+
+        Paragraph p = new Paragraph(sb.toString(), FNT_VALUE);
+        p.setAlignment(Element.ALIGN_LEFT);
+        p.setSpacingAfter(10);
+        doc.add(p);
+    }
+
+    /**
+     * Podnesak se predaje elektroničkim putem, pa se po čl. 75. st. 2 ZUP-a smatra
+     * vlastoručno potpisanim — potpisna crta bi ovdje bila neistinita. Ispisuje se tko je
+     * podnositelj i da je podnesen elektronički.
+     */
+    private void addSubmitterSignature(Document doc, LessorEntity lessor, boolean isLegal)
+            throws DocumentException {
+        String potpisnik = isLegal
+                ? firstNonBlank(lessor.getLegalRepresentativeName(), fullName(lessor))
+                : fullName(lessor);
+
+        Paragraph p = new Paragraph("Podnositelj: " + potpisnik, FNT_VALUE);
+        p.setAlignment(Element.ALIGN_RIGHT);
+        p.setSpacingBefore(14);
+        doc.add(p);
+
+        Paragraph note = new Paragraph(
+                "Podnesak je dostavljen elektroničkim putem te se sukladno članku 75. stavku 2."
+                        + " Zakona o općem upravnom postupku smatra vlastoručno potpisanim.",
+                FNT_SMALL);
+        note.setAlignment(Element.ALIGN_RIGHT);
+        note.setSpacingBefore(2);
+        doc.add(note);
+    }
+
+    /**
+     * Čl. 71. st. 2 traži OIB „ako joj je dodijeljen". Non-EU podnositelj ga nema, pa se
+     * umjesto praznog retka — koji izgleda kao propust u ispunjavanju — ispisuje strani
+     * porezni broj ili izričita napomena, isto kao na aktima.
+     */
+    private static String poreznaOznaka(LessorEntity lessor) {
+        String tax = safe(lessor.getTaxNumber());
+        return tax.isEmpty() ? "nije dodijeljen" : "strani porezni broj: " + tax;
+    }
+
+    private static String zastupnik(LessorEntity lessor) {
+        String ime = safe(lessor.getLegalRepresentativeName());
+        if (ime.isEmpty()) {
+            return "";
+        }
+        String oib = safe(lessor.getRepresentativeOib());
+        return oib.isEmpty() ? ime : ime + ", OIB: " + oib;
+    }
+
+    private static void appendLine(StringBuilder sb, String value) {
+        if (value != null && !value.isBlank()) {
+            sb.append('\n').append(value.strip());
+        }
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        return (a == null || a.isBlank()) ? b : a.strip();
     }
 
     // ── builders ─────────────────────────────────────────────────────────────

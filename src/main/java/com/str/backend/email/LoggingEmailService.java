@@ -22,4 +22,11 @@ public class LoggingEmailService implements EmailService {
         log.info("[mail/mock] RN_ISSUED → to={}, firstName={}, rn={}, pdf_bytes={}",
                 to, firstName, registrationNumber, pdf == null ? 0 : pdf.length);
     }
+
+    @Override
+    public void sendRnLifecycleNotification(RnLifecycleMail mail) {
+        log.info("[mail/mock] RN_LIFECYCLE {} → to={}, rn={}, razlog={}, pdf_bytes={}",
+                mail.template(), mail.to(), mail.rn(), mail.razlog(),
+                mail.pdf() == null ? 0 : mail.pdf().length);
+    }
 }

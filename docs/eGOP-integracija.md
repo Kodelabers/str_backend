@@ -1,5 +1,15 @@
 # eGOP integracija — tehnička dokumentacija
 
+> ## ⚠️ SUPERSEDED
+>
+> Ovaj dokument je nacrt **v0.1**, pisan isključivo iz PDF specifikacije, **bez uvida u WSDL-ove**.
+> Dio pretpostavki je u međuvremenu potvrđen, dio oboren (npr. nazivi i tipovi parametara odstupaju
+> od spec-a i srušit će prvi poziv ako se piše po ovom dokumentu).
+>
+> **Aktualni izvor istine: [`docs/eGOP-endpoint-analiza.md`](./eGOP-endpoint-analiza.md).**
+>
+> Zadržano kao trag razmišljanja; ne koristiti za implementaciju.
+
 > Izvor: *eGOP10 platforma — Specifikacija integracijskih web servisa, v1.11, listopad 2025., MINT.*
 > Verzija ovog dokumenta: 0.1 (prvi nacrt, namijenjen senior backend developerima koji rade integraciju iz STR-a).
 > Sve nejasnoće prema spec-u nalaze se u `docs/eGOP-otvorena-pitanja.md`.

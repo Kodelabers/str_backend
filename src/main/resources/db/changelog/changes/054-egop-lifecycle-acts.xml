@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Urudžbiranje akata životnog ciklusa RB-a (opoziv, suspenzija, povlačenje) u isti
+      neupravni predmet u kojem je registracija.
+
+      Tri promjene u modelu koje to zahtijeva:
+
+      1) egop_pismeno red od sada nastaje *prije* slanja u eGOP, u trenutku kad akt nastane
+         ("kreiramo lokalno pa šaljemo"). Zato jop i ur_broj postaju nullable — popunjavaju
+         se tek iz odgovora KreirajPismeno2 — a red dobiva vlastiti status/retry.
+
+      2) act_ref razrješava ponovljive akte. Ključ (submission_id, vrsta_pismena_naziv) iz
+         changeseta 053 vrijedio je dok su akti bili jednokratni; ciklus
+         ACTIVE → SUSPENDED → ACTIVE → SUSPENDED daje dvije "Obavijest o suspenziji" nad
+         istim submissionom i drugi upis bi puknuo. act_ref je log_id prijelaza iz
+         registration_number_log, a za registracijske akte konstanta 'REGISTRACIJA'.
+         NOT NULL je bitan: NULL u unique ključu se u Postgresu ne uspoređuje, pa bi
+         dva registracijska akta iste vrste opet prošla.
+
+      3) pdf_content drži dokument snimljen u trenutku nastanka akta. Bez toga bi retry
+         renderirao iznova iz tada aktualnog stanja — a RnEntity.applyStatus briše
+         suspension_deadline pri izlasku iz SUSPENDED, i zadnji zapis u revizijskom tragu
+         se u međuvremenu promijeni. Akt bi na drugom pokušaju dobio drugi sadržaj.
+    -->
+    <changeSet id="054-egop-lifecycle-acts" author="str-backend">
+
+        <dropUniqueConstraint schemaName="str_rn" tableName="egop_pismeno"
+                              constraintName="uq_egop_pismeno_submission_vrsta"/>
+
+        <dropNotNullConstraint schemaName="str_rn" tableName="egop_pismeno"
+                               columnName="jop" columnDataType="INT"/>
+
+        <addColumn schemaName="str_rn" tableName="egop_pismeno">
+            <column name="act_ref" type="VARCHAR(64)" defaultValue="REGISTRACIJA">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Registracijski akti prethode ovoj promjeni i vezani su samo na submission. -->
+            <column name="rn" type="VARCHAR(20)"/>
+            <column name="status" type="VARCHAR(20)" defaultValue="SYNCED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sync_error" type="TEXT"/>
+            <column name="sync_attempts" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="next_attempt_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="pdf_content" type="BYTEA"/>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </addColumn>
+
+        <!-- Postojeći redovi bez priloženog dokumenta nisu dovršeni, pa ne smiju ostati SYNCED. -->
+        <update schemaName="str_rn" tableName="egop_pismeno">
+            <column name="status" value="NEW"/>
+            <where>document_attached = FALSE</where>
+        </update>
+
+        <update schemaName="str_rn" tableName="egop_pismeno">
+            <column name="updated_at" valueComputed="created_at"/>
+        </update>
+
+        <addNotNullConstraint schemaName="str_rn" tableName="egop_pismeno"
+                              columnName="updated_at" columnDataType="TIMESTAMP WITH TIME ZONE"/>
+
+        <addUniqueConstraint schemaName="str_rn" tableName="egop_pismeno"
+                             columnNames="submission_id, vrsta_pismena_naziv, act_ref"
+                             constraintName="uq_egop_pismeno_submission_vrsta_act"/>
+
+        <!-- Retry job traži nedovršene akte kojima je došlo vrijeme sljedećeg pokušaja. -->
+        <createIndex schemaName="str_rn" tableName="egop_pismeno" indexName="ix_egop_pismeno_retry">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

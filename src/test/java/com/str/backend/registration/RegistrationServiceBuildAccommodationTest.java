@@ -8,7 +8,6 @@ import com.str.backend.address.SettlementRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorRepository;
-import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
@@ -37,7 +36,6 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(CountyRepository.class),
                 mock(MunicipalityRepository.class),
                 mock(SettlementRepository.class),
-                mock(AccommodationTypeRepository.class),
                 mock(ApplicationEventPublisher.class));
     }
 

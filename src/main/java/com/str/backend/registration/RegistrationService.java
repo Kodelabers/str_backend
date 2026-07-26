@@ -23,8 +23,6 @@ import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
-import com.str.backend.lookup.AccommodationTypeEntity;
-import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
@@ -54,7 +52,6 @@ public class RegistrationService {
     private final CountyRepository countyRepository;
     private final MunicipalityRepository municipalityRepository;
     private final SettlementRepository settlementRepository;
-    private final AccommodationTypeRepository accommodationTypeRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public RegistrationService(LessorRepository lessorRepository,
@@ -67,7 +64,6 @@ public class RegistrationService {
                                CountyRepository countyRepository,
                                MunicipalityRepository municipalityRepository,
                                SettlementRepository settlementRepository,
-                               AccommodationTypeRepository accommodationTypeRepository,
                                ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
@@ -79,7 +75,6 @@ public class RegistrationService {
         this.countyRepository = countyRepository;
         this.municipalityRepository = municipalityRepository;
         this.settlementRepository = settlementRepository;
-        this.accommodationTypeRepository = accommodationTypeRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -94,8 +89,7 @@ public class RegistrationService {
         LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
         runValidation(accommodation, lessor);
 
-        return commitRegistration(lessor, accommodation, county.getName(),
-                resolveTypeName(req.typeId()), req.postalCode());
+        return commitRegistration(lessor, accommodation);
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
@@ -111,8 +105,7 @@ public class RegistrationService {
 
         runValidation(accommodation, lessor);
 
-        return commitRegistration(lessor, accommodation, county.getName(),
-                resolveTypeName(req.typeId()), req.postalCode());
+        return commitRegistration(lessor, accommodation);
     }
 
     /**
@@ -162,6 +155,7 @@ public class RegistrationService {
         entity.setName(req.name());
         entity.setSettlement(settlementName);
         entity.setHouseNumberCode(req.houseNumberCode());
+        entity.setPostalCode(req.postalCode());
         entity.setFloor(req.floor());
         entity.setLessorResidence(req.lessorResidence());
         entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
@@ -186,8 +180,7 @@ public class RegistrationService {
         }
     }
 
-    private RegistrationResponse commitRegistration(LessorEntity lessor, AccommodationEntity accommodation,
-                                                    String countyName, String typeName, String postalCode) {
+    private RegistrationResponse commitRegistration(LessorEntity lessor, AccommodationEntity accommodation) {
         lessorRepository.save(lessor);
 
         // RN is issued before PDF/eGOP/e-mail. filing_number stays null — it
@@ -207,14 +200,7 @@ public class RegistrationService {
 
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
 
-        eventPublisher.publishEvent(new RnIssuedEvent(
-                submission.getSubmissionId(),
-                accommodation.getAccommodationId(),
-                lessor.getLessorId(),
-                rn.getRn(),
-                countyName,
-                typeName,
-                postalCode));
+        eventPublisher.publishEvent(new RnIssuedEvent(submission.getSubmissionId(), rn.getRn()));
 
         log.info("registration_success lessor={} submission={} rn={}",
                 lessor.getLessorId(), submission.getSubmissionId(), rn.getRn());
@@ -233,14 +219,4 @@ public class RegistrationService {
         }
     }
 
-    private String resolveTypeName(String typeId) {
-        if (typeId == null) return null;
-        try {
-            return accommodationTypeRepository.findById(Long.parseLong(typeId))
-                    .map(AccommodationTypeEntity::getName)
-                    .orElse(null);
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
 }
