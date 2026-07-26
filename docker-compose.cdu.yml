@@ -2,8 +2,14 @@
 # Public entry: https://str-test-eturizam.gov.hr (SSL offload at gateway → host :8085).
 # Backend is NOT exposed on the host — only reachable via the compose network.
 #
+# POZOR: ovo NIJE datoteka koja se izvršava na CDU. Server ima vlastitu kopiju u
+# ~/str-rn/str_backend/ koja nije u repou (build-on-box je zamijenjen scp-om jara —
+# vidi DEPLOY-CDU.md). Izmjena ovdje ne stiže na server dok se ne prenese ručno.
+# Ova datoteka je referenca i cilj buduće reconciliacije; DEPLOY-CDU.md §5b opisuje
+# što na serveru treba dodati.
+#
 # Prereqs on the server:
-#   1. Clone repos side-by-side: ~/str/str_backend and ~/str/str_frontend
+#   1. Repos u ~/str-rn/str_backend i ~/str-rn/str_frontend
 #   2. Copy .env.cdu.example → .env.cdu and fill in CDU_DB_PASSWORD, DRAFT_ENC_KEY
 #   3. Ensure schema `str_rn` exists in db `eturizam` (or that user shorttermrental
 #      has CREATE permission so Liquibase can create it)

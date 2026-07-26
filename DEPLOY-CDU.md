@@ -67,6 +67,77 @@ grep str-test ~/str-rn/str_backend/.env.cdu
 
 *NIAS SP registracija mora pratiti domenu — provjeri s NIAS timom prije zamjene `.env.cdu` NIAS URLova.*
 
+## 5b. Server — env varijable (jednokratno, uz eGOP/ZUP verziju)
+
+`.env.cdu` **živi samo na serveru**, u `~/str-rn/str_backend/`. Gitignoriran je i nikad ne
+dolazi iz repoa — uređuje se preko SSH-a. Nema UI-ja ni secret managera.
+
+Uz uredsko poslovanje dolaze novi ključevi kojih postojeći `.env.cdu` nema. Predložak s
+komentarima je u repou (`.env.cdu.example`), a na server ide ovako:
+
+```bash
+ssh cdu
+cd ~/str-rn/str_backend
+cp .env.cdu .env.cdu.bak.$(date +%F)      # uvijek prvo kopija — datoteka nije nigdje drugdje
+nano .env.cdu
+```
+
+Dopiši na kraj:
+
+```bash
+# --- uredsko poslovanje: identitet tijela na aktima (čl. 98. st. 2 ZUP-a) ---
+# Bez ovih vrijednosti svaki akt vidljivo ispisuje "[nije konfigurirano: ...]".
+STR_TIJELO_NAZIV=MINISTARSTVO TURIZMA I SPORTA
+STR_TIJELO_OIB=
+STR_TIJELO_ADRESA=Prisavlje 14
+STR_TIJELO_MJESTO=Zagreb
+STR_TIJELO_USTROJ=Uprava za turizam
+STR_TIJELO_PROPIS=
+STR_POTPISNIK_IME=
+STR_POTPISNIK_FUNKCIJA=Voditelj postupka
+STR_EPECAT_ENABLED=false
+STR_DOCUMENTS_RELOAD=false
+
+# --- eGOP ---
+EGOP_URUDZBIRAJ_REAKTIVACIJU=false
+
+# --- obavijesti e-poštom (ugašeno dok nema SMTP-a dohvatljivog s kutije) ---
+APP_MAIL_ENABLED=false
+```
+
+**Ključ koji ne postavljaš zakomentiraj, nemoj ostaviti prazan** — prazna vrijednost je
+postavljena vrijednost i pregazi default iz `application.properties`. Iznimka su ključevi
+čiji je default ionako prazan (`STR_TIJELO_OIB`, `STR_TIJELO_PROPIS`, `STR_POTPISNIK_IME`).
+
+### Serverski compose mora propustiti nove ključeve
+
+Server ima **vlastiti** `docker-compose.cdu.yml` (vidi napomenu u §Server layout). Njegov
+`environment:` blok je allowlist — ključ koji nije ondje ne ulazi u kontejner, koliko god
+puta ga upisao u `.env.cdu`. Umjesto nabrajanja svakog novog ključa, dodaj servisu jedan
+redak:
+
+```bash
+nano ~/str-rn/str_backend/docker-compose.cdu.yml
+```
+
+```yaml
+  backend:
+    ...
+    env_file:
+      - .env.cdu          # <— dodaj; sve iz .env.cdu ulazi u kontejner
+    environment:
+      ...                 # ostaje kako je; ima prednost nad env_file
+```
+
+Provjera da je stvarno stiglo, nakon `up`:
+
+```bash
+docker exec str-backend-cdu env | grep -E "STR_TIJELO|EGOP_" | sort
+```
+
+Ako `STR_TIJELO_NAZIV` nije na popisu, `env_file` nije primijenjen i akti će nositi oznaku
+„nije konfigurirano".
+
 ## 6. Server — down + rebuild + up
 
 ```bash
