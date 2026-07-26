@@ -1,0 +1,42 @@
+# Obavijest o suspenziji registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o suspenziji registracijskog broja" — izlazno
+#
+# Akt dira u prava stranke, pa nosi punu strukturu čl. 98. ZUP-a, uključujući uputu o
+# pravnom lijeku. Tekst upute dolazi iz str.documents.uputa.suspenzija — vidi napomenu
+# uz ${uputa.tekst} u docs/ZUP-predlosci.md (pravna narav postupka nije potvrđena s MINT-om).
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${stranka.naziv}
+${stranka.zastupnik}
+${stranka.adresa}
+${stranka.postanskiBroj} ${stranka.mjesto}
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, u postupku pokrenutom po službenoj dužnosti protiv stranke ${stranka.naziv}, ${stranka.identifikator}, u predmetu suspenzije registracijskog broja ${rn.broj}, donosi
+
+[IZREKA]
+1. Suspendira se registracijski broj ${rn.broj}, dodijeljen smještajnoj jedinici „${objekt.naziv}" na adresi ${objekt.adresa}, zbog sljedećeg razloga: ${rn.razlog}.
+
+2. Suspenzija stupa na snagu danom dostave ove Obavijesti. Od toga dana registracijski broj nije važeći i smještajna jedinica ne smije se oglašavati na internetskim platformama za kratkoročni najam.
+
+3. Suspenzija traje do otklanjanja razloga iz točke 1. ove izreke. Po dostavi ispravne odnosno potpune dokumentacije registracijski broj se reaktivira.
+
+4. Troškovi postupka nisu nastali.
+
+[OBRAZLOZENJE]
+Postupak je pokrenut po službenoj dužnosti nakon što je u nadzoru nad podacima upisanima u registar utvrđen razlog za suspenziju registracijskog broja ${rn.broj}: ${rn.razlog}.
+
+Stranci je prethodno omogućeno izjašnjavanje sukladno članku 30. stavku 2. Zakona o općem upravnom postupku. Uvidom u spis predmeta i podatke registra utvrđeno je da razlog iz točke 1. izreke nije otklonjen, pa je odlučeno kao u izreci.
+
+Suspenzija registracijskog broja provodi se sukladno članku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća o prikupljanju i razmjeni podataka o uslugama kratkoročnog najma smještaja, te ${tijelo.propisNadleznosti}.
+
+Suspenzija ne briše registracijski broj — podaci ostaju u registru, a broj se reaktivira čim se razlog suspenzije otkloni.
+
+[UPUTA_O_PRAVNOM_LIJEKU]
+Protiv ove Obavijesti ${uputa.tekst}
+
+[DOSTAVNA_LISTA]
+1. ${stranka.naziv} — u korisnički pretinac
+2. Pismohrana, ovdje

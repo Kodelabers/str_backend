@@ -1,0 +1,40 @@
+# Prigovor na prijedlog suspenzije
+# Vrsta pismena (eGOP): „Prigovor na prijedlog suspenzije" — ULAZNO
+#
+# Ovo je podnesak stranke, ne akt tijela: struktura je po čl. 71. st. 2 ZUP-a (naziv tijela
+# kojem se upućuje, naznaka upravne stvari, ime i adresa te OIB stranke, potpis), a sadržaj
+# po čl. 108. st. 1 u vezi s čl. 122. st. 2 (navesti akt koji se pobija i zbog čega je
+# stranka nezadovoljna). Nema izreke ni upute o pravnom lijeku.
+#
+# NAPOMENA: tok prigovora još ne postoji u sustavu (nema ni endpointa ni entiteta), pa se
+# ovaj predložak zasad renderira samo na zahtjev. Sadržaj prigovora dolazi iz ${rn.razlog}
+# dok se ne uvede polje za tekst prigovora.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${tijelo.naziv}
+${tijelo.ustrojstvenaJedinica}
+${tijelo.adresa}
+${tijelo.mjesto}
+
+[UVOD]
+Podnositelj: ${stranka.naziv}, ${stranka.identifikator}
+
+${stranka.zastupnik}
+
+Adresa: ${stranka.adresa}, ${stranka.postanskiBroj} ${stranka.mjesto}
+
+Predmet: prigovor na prijedlog suspenzije registracijskog broja ${rn.broj}
+
+Na Obavijest o prijedlogu suspenzije registracijskog broja ${rn.broj} podnositelj u ostavljenom roku podnosi
+
+[OBRAZLOZENJE]
+Podnositelj je nezadovoljan prijedlogom suspenzije registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}" na adresi ${objekt.adresa}, iz sljedećih razloga:
+
+${rn.razlog}
+
+Podnositelj predlaže da se postupak suspenzije obustavi i da registracijski broj ostane važeći.
+
+[PRILOZI]
+1. Ispravljena odnosno dopunjena dokumentacija

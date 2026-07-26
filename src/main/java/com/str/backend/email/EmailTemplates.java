@@ -1,77 +1,73 @@
 package com.str.backend.email;
 
-final class EmailTemplates {
+import org.springframework.stereotype.Component;
 
-    private EmailTemplates() {
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Sastavlja poruku e-pošte: tekst dolazi iz predloška ({@link MailTemplateLoader}), a okvir
+ * (omot, gumb, escapiranje) ostaje ovdje jer je izgled, ne tekst.
+ *
+ * <p>Vrijednosti se escapiraju <b>prije</b> vezanja u predložak — bez toga bi ime s
+ * {@code <} u sebi razbilo HTML poruke.
+ */
+@Component
+public class EmailTemplates {
+
+    /**
+     * Čl. 94. st. 5–6 ZUP-a: dostava u korisnički pretinac je osobna dostava i od nje teku
+     * rokovi. Poruka <b>ne smije tvrditi da je dostava obavljena</b> — KP klijent još ne
+     * postoji (BX1) — nego samo reći odakle rokovi teku.
+     */
+    private static final String KLAUZULA_PRETINAC = """
+            <p style="color:#6C757D;font-size:13px;margin-top:20px;">
+              Ovo je obavijest, a ne dostava akta. Akt se dostavlja u Vaš korisnički pretinac i
+              rokovi teku od te dostave, sukladno članku 94. Zakona o općem upravnom postupku.
+            </p>
+            """;
+
+    /**
+     * Non-EU iznajmljivač nema korisnički pretinac, pa je e-pošta kanal dostave — čl. 94.
+     * st. 4 to dopušta kad je stranka zahtjev podnijela elektronički. Za njega rokovi teku
+     * od ove poruke i to mu se mora reći.
+     */
+    private static final String KLAUZULA_EPOSTA = """
+            <p style="color:#6C757D;font-size:13px;margin-top:20px;">
+              Akt u privitku dostavlja se elektroničkom poštom sukladno članku 94. Zakona o općem
+              upravnom postupku; rokovi teku od dana zaprimanja ove poruke.
+            </p>
+            """;
+
+    private final MailTemplateLoader loader;
+    private final MailProperties properties;
+
+    public EmailTemplates(MailTemplateLoader loader, MailProperties properties) {
+        this.loader = loader;
+        this.properties = properties;
     }
 
-    static String approvalBody(String firstName, String username, String loginUrl) {
-        String safeName = escape(firstName);
-        String safeUsername = escape(username);
-        String safeLoginUrl = escape(loginUrl);
-        return wrap(
-                """
-                <h2 style="color:#168ABF;margin:0 0 12px;">Registracija je odobrena</h2>
-                <p>Poštovani/a %s,</p>
-                <p>Vaš zahtjev za registraciju u sustav eTurizam STR — Kratkoročni najam je <strong>odobren</strong>.
-                Sada se možete prijaviti svojim korisničkim imenom: <strong>%s</strong>.</p>
-                %s
-
-                <hr style="border:none;border-top:1px solid #DEE2E6;margin:24px 0;">
-
-                <h2 style="color:#168ABF;margin:0 0 12px;">Registration approved</h2>
-                <p>Dear %s,</p>
-                <p>Your registration request in the eTurizam STR — Short-term rental system has been
-                <strong>approved</strong>. You can now log in using your username: <strong>%s</strong>.</p>
-                %s
-                """.formatted(
-                        safeName, safeUsername, button("Prijava", safeLoginUrl),
-                        safeName, safeUsername, button("Log in", safeLoginUrl)
-                )
-        );
+    public String subject(MailTemplate template) {
+        return loader.subject(template);
     }
 
-    static String rnIssuedBody(String firstName, String registrationNumber) {
-        String safeName = escape(firstName);
-        String safeRn = escape(registrationNumber);
-        return wrap(
-                """
-                <h2 style="color:#168ABF;margin:0 0 12px;">Registracijski broj je izdan</h2>
-                <p>Poštovani/a %s,</p>
-                <p>Vaš zahtjev za registraciju smještajne jedinice kratkoročnog najma je obrađen.
-                Izdani registracijski broj je: <strong>%s</strong>.</p>
-                <p>U privitku se nalazi PDF zahtjeva s izdanim registracijskim brojem.</p>
-
-                <hr style="border:none;border-top:1px solid #DEE2E6;margin:24px 0;">
-
-                <h2 style="color:#168ABF;margin:0 0 12px;">Registration number issued</h2>
-                <p>Dear %s,</p>
-                <p>Your short-term rental registration request has been processed.
-                The issued registration number is: <strong>%s</strong>.</p>
-                <p>The submission PDF with the issued registration number is attached.</p>
-                """.formatted(safeName, safeRn, safeName, safeRn)
-        );
+    /** Gotov HTML poruke uz dostavu u korisnički pretinac. */
+    public String body(MailTemplate template, Map<String, String> values) {
+        return body(template, values, false);
     }
 
-    static String rejectionBody(String firstName) {
-        String safeName = escape(firstName);
-        return wrap(
-                """
-                <h2 style="color:#B71C1C;margin:0 0 12px;">Registracija nije prihvaćena</h2>
-                <p>Poštovani/a %s,</p>
-                <p>Nažalost, Vaš zahtjev za registraciju u sustav eTurizam STR — Kratkoročni najam
-                nije prihvaćen. Provjerite ispravnost dostavljenih podataka i pokušajte ponovno,
-                ili kontaktirajte podršku za više informacija.</p>
-
-                <hr style="border:none;border-top:1px solid #DEE2E6;margin:24px 0;">
-
-                <h2 style="color:#B71C1C;margin:0 0 12px;">Registration not approved</h2>
-                <p>Dear %s,</p>
-                <p>Unfortunately, your registration request for the eTurizam STR — Short-term rental
-                system has not been approved. Please verify the submitted information and try again,
-                or contact support for more information.</p>
-                """.formatted(safeName, safeName)
-        );
+    /**
+     * Gotov HTML poruke; {@code values} su sirove vrijednosti, escapiranje je ovdje.
+     *
+     * @param dostavaMailom je li e-pošta kanal dostave (non-EU) ili samo obavijest
+     */
+    public String body(MailTemplate template, Map<String, String> values, boolean dostavaMailom) {
+        Map<String, String> safe = new HashMap<>();
+        values.forEach((k, v) -> safe.put(k, escape(v)));
+        safe.put("klauzula.dostava", dostavaMailom ? KLAUZULA_EPOSTA : KLAUZULA_PRETINAC);
+        safe.put("gumb.prijava", button("Prijava", properties.loginUrl()));
+        safe.put("gumb.logIn", button("Log in", properties.loginUrl()));
+        return wrap(loader.body(template, safe));
     }
 
     private static String wrap(String inner) {
@@ -95,7 +91,7 @@ final class EmailTemplates {
                 <p style="margin:24px 0;">
                   <a href="%s" style="display:inline-block;padding:12px 24px;background:#168ABF;color:#ffffff;text-decoration:none;font-weight:600;">%s</a>
                 </p>
-                """.formatted(url, escape(label));
+                """.formatted(escape(url), escape(label));
     }
 
     private static String escape(String s) {

@@ -23,7 +23,8 @@ class RnStatusTransitionServiceTest {
     @BeforeEach
     void setUp() {
         rnLogRepository = mock(RegistrationNumberLogRepository.class);
-        service = new RnStatusTransitionService(rnLogRepository);
+        service = new RnStatusTransitionService(rnLogRepository,
+                mock(org.springframework.context.ApplicationEventPublisher.class));
     }
 
     // --- Valid transitions ---

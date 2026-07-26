@@ -126,4 +126,19 @@
     <!-- Opcionalni rok za ispravak nepravilnosti kod suspenzije RB-a (manualno — bez automatike). -->
     <include file="db/changelog/changes/050-rn-suspension-deadline.xml"/>
 
+    <!-- eGOP urudžbiranje: oznaka subjekta na lessoru, identitet predmeta i sync
+         status na submissionu, tablica egop_pismeno (jedan red po urudžbiranom aktu). -->
+    <include file="db/changelog/changes/051-egop-integration.xml"/>
+
+    <!-- accommodation.postal_code — potreban eGOP retry jobu za rekonstrukciju PDF-a. -->
+    <include file="db/changelog/changes/052-accommodation-postal-code.xml"/>
+
+    <!-- eGOP otvrdnjavanje: idempotentna dostava maila, backoff retryja, unique
+         constraint protiv dvostrukog urudžbiranja istog pismena. -->
+    <include file="db/changelog/changes/053-egop-hardening.xml"/>
+
+    <!-- Akti životnog ciklusa RB-a (opoziv/suspenzija/povlačenje) u isti predmet:
+         act_ref za ponovljive akte, vlastiti status/retry i snimljeni PDF po aktu. -->
+    <include file="db/changelog/changes/054-egop-lifecycle-acts.xml"/>
+
 </databaseChangeLog>

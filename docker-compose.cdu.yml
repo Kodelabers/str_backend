@@ -2,8 +2,14 @@
 # Public entry: https://str-test-eturizam.gov.hr (SSL offload at gateway → host :8085).
 # Backend is NOT exposed on the host — only reachable via the compose network.
 #
+# POZOR: ovo NIJE datoteka koja se izvršava na CDU. Server ima vlastitu kopiju u
+# ~/str-rn/str_backend/ koja nije u repou (build-on-box je zamijenjen scp-om jara —
+# vidi DEPLOY-CDU.md). Izmjena ovdje ne stiže na server dok se ne prenese ručno.
+# Ova datoteka je referenca i cilj buduće reconciliacije; DEPLOY-CDU.md §5b opisuje
+# što na serveru treba dodati.
+#
 # Prereqs on the server:
-#   1. Clone repos side-by-side: ~/str/str_backend and ~/str/str_frontend
+#   1. Repos u ~/str-rn/str_backend i ~/str-rn/str_frontend
 #   2. Copy .env.cdu.example → .env.cdu and fill in CDU_DB_PASSWORD, DRAFT_ENC_KEY
 #   3. Ensure schema `str_rn` exists in db `eturizam` (or that user shorttermrental
 #      has CREATE permission so Liquibase can create it)
@@ -20,6 +26,18 @@ services:
     restart: unless-stopped
     expose:
       - "8080"
+    # Sve ostalo iz .env.cdu ulazi u kontejner odavde — identitet tijela na aktima
+    # (STR_TIJELO_*, STR_POTPISNIK_*), eGOP URL-ovi, NIAS URL-ovi, SMTP.
+    #
+    # Zašto env_file, a ne popis u `environment:`: ondje bi svaki ključ trebao
+    # `${VAR:-}`, što u kontejner šalje PRAZNU ali POSTAVLJENU varijablu. Spring
+    # default iz `${VAR:default}` uzima samo kad varijabla NE POSTOJI — prazna bi
+    # ga pregazila i obrisala npr. eGOP URL-ove i naziv tijela. Kroz env_file
+    # nepostavljen ključ jednostavno ne postoji i default vrijedi.
+    #
+    # `environment:` ispod ima prednost nad env_file i drži ono što je na CDU fiksno.
+    env_file:
+      - .env.cdu
     environment:
       SPRING_PROFILES_ACTIVE: cdu
       CDU_DB_URL: ${CDU_DB_URL:-jdbc:postgresql://172.20.8.196:5432/eturizam}
@@ -30,6 +48,15 @@ services:
       APP_FRONTEND_BASE_URL: https://str-test-eturizam.gov.hr
       APP_MAIL_LOGIN_URL: https://str-test-eturizam.gov.hr/login
       NIAS_KEYSTORE_PASSWORD: ${NIAS_KEYSTORE_PASSWORD:-niassp2024}
+      # eGOP (uredsko poslovanje MINT-a). Ostaje ugašen dok se ne potvrdi dohvatljivost
+      # egopeaitest.mint.hr s ove kutije; bez ovih varijabli radi EgopClientMock.
+      EGOP_ENABLED: ${EGOP_ENABLED:-false}
+      EGOP_USERNAME: ${EGOP_USERNAME:-}
+      EGOP_PASSWORD: ${EGOP_PASSWORD:-}
+      EGOP_APP_DOMAIN: ${EGOP_APP_DOMAIN:-INFODOM}
+      EGOP_APP_USERNAME: ${EGOP_APP_USERNAME:-strservis}
+      EGOP_RJESAVATELJ: ${EGOP_RJESAVATELJ:-}
+      EGOP_CODEBOOKS_FAIL_FAST: ${EGOP_CODEBOOKS_FAIL_FAST:-false}
     volumes:
       - ${CDU_SECRETS_DIR:-/home/vviskov/str-secrets}:/secrets:ro
 

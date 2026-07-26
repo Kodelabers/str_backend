@@ -10,7 +10,6 @@ import com.str.backend.domain.Offering;
 import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
-import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
@@ -59,7 +58,6 @@ class RegistrationServiceDuplicateLocationTest {
     private CountyRepository countyRepository;
     private MunicipalityRepository municipalityRepository;
     private SettlementRepository settlementRepository;
-    private AccommodationTypeRepository accommodationTypeRepository;
     private ApplicationEventPublisher eventPublisher;
 
     private RegistrationService service;
@@ -76,14 +74,13 @@ class RegistrationServiceDuplicateLocationTest {
         countyRepository = mock(CountyRepository.class);
         municipalityRepository = mock(MunicipalityRepository.class);
         settlementRepository = mock(SettlementRepository.class);
-        accommodationTypeRepository = mock(AccommodationTypeRepository.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
 
         service = new RegistrationService(
                 lessorRepository, accommodationRepository, submissionRepository,
                 orchestrator, rnService, rnRepository, strLessorLookupService,
                 countyRepository, municipalityRepository, settlementRepository,
-                accommodationTypeRepository, eventPublisher);
+                eventPublisher);
 
         CountyEntity county = buildCountyEntity(7L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));

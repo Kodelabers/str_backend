@@ -42,6 +42,10 @@ public class SecurityConfig {
                 .cors(cors -> {})
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
+                        // Akti po ZUP-u nose osobne podatke stranke, uključujući OIB koji čl. 98.
+                        // st. 2 traži u uvodu. Do sada su padali pod anyRequest().permitAll().
+                        // Vlasništvo se dodatno provjerava u RnController#document.
+                        .requestMatchers("/api/rn/*/documents/**").authenticated()
                         .requestMatchers("/api/auth/me", "/api/auth/logout",
                                 "/api/generateRegistrationNumberExternal",
                                 "/api/lessor/profile", "/api/lessor/registrations",

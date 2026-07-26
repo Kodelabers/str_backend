@@ -5,6 +5,7 @@ import com.str.backend.domain.LessorApplicationStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
@@ -84,6 +85,19 @@ public interface LessorRepository extends JpaRepository<LessorEntity, UUID> {
             @Param("taxNumber") String taxNumber,
             @Param("documentNumber") String documentNumber,
             Pageable pageable);
+
+    /**
+     * eGOP: upisuje oznaku subjekta samo ako je još prazna, i vraća broj promijenjenih
+     * redaka (0 = paralelna registracija je bila brža, koristi se njezina oznaka).
+     *
+     * <p>Zamjenjuje raniji {@code SELECT ... FOR UPDATE}: pesimistički lock se držao
+     * kroz cijeli lanac SOAP poziva prema eGOP-u (do ~3,5 min), blokirajući svaki drugi
+     * upis nad tim iznajmljivačem. Uvjetni UPDATE rješava istu utrku bez dugog locka.
+     */
+    @Modifying
+    @Query("UPDATE LessorEntity l SET l.egopSubjektOznaka = :oznaka"
+            + " WHERE l.lessorId = :lessorId AND l.egopSubjektOznaka IS NULL")
+    int assignEgopSubjektIfAbsent(@Param("lessorId") UUID lessorId, @Param("oznaka") Integer oznaka);
 
     @Transactional(readOnly = true)
     Optional<LessorEntity> findByLessorIdAndApplicationStatus(UUID lessorId, LessorApplicationStatus status);
