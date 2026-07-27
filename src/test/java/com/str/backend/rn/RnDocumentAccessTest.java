@@ -49,6 +49,7 @@ class RnDocumentAccessTest {
     @MockBean RnService service;
     @MockBean RnMapper mapper;
     @MockBean StrDocumentService documentService;
+    @MockBean RnDocumentsService documentsService;
     @MockBean RnRepository rnRepository;
     @MockBean UserDetailsService userDetailsService;
 
@@ -70,6 +71,15 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/documents/{tip}", RN, "suspenzija")
                         .with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isOk());
+    }
+
+    /** Isti sigurnosni lanac štiti i popis dokumenata — bez prijave 401, bez listanja. */
+    @Test
+    void documentsList_unauthenticated_returns401() throws Exception {
+        mvc.perform(get("/api/rn/{rn}/documents", RN))
+                .andExpect(status().isUnauthorized());
+
+        verify(documentsService, never()).listForRn(any());
     }
 
     /** Javni pregled RB-a ostaje otvoren — zatvara se samo put do akata. */
