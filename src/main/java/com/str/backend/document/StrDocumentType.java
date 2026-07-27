@@ -158,6 +158,23 @@ public enum StrDocumentType {
     }
 
     /**
+     * Reverse-lookup po nazivu vrste pismena — {@code egop_pismeno} redak čuva taj naziv, a
+     * popis dokumenata iz njega izvodi slug (za ikone/rute na fronti). Prazno ako naziv ne
+     * odgovara nijednoj vrsti (stariji zapis, ručna izmjena).
+     */
+    public static Optional<StrDocumentType> fromVrstaPismenaNaziv(String naziv) {
+        if (naziv == null) {
+            return Optional.empty();
+        }
+        for (StrDocumentType t : values()) {
+            if (t.vrstaPismenaNaziv.equals(naziv)) {
+                return Optional.of(t);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
      * Koji akt nastaje iz prijelaza statusa RB-a. Jedno mjesto za oba potrošača — urudžbiranje
      * u eGOP i obavijest e-poštom — jer bi dvije kopije ovog mapiranja s vremenom razišle
      * dokument i poruku o istom događaju.

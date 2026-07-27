@@ -16,6 +16,10 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
     @Transactional(readOnly = true)
     List<EgopPismenoEntity> findBySubmissionId(UUID submissionId);
 
+    /** Akti životnog ciklusa vezani uz RB (registracijski akti imaju {@code rn} prazan). */
+    @Transactional(readOnly = true)
+    List<EgopPismenoEntity> findByRnOrderByCreatedAtAsc(String rn);
+
     /**
      * Dedupe ključ urudžbiranja — poklapa se s unique constraintom
      * {@code uq_egop_pismeno_submission_vrsta_act} (changeset 054). {@code actRef} razrješava

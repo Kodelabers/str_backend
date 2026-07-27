@@ -204,6 +204,19 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     boolean isOwnedByLessor(@Param("rn") String rn, @Param("lessorId") UUID lessorId);
 
+    /** Kao {@link #isOwnedByLessor}, ali po OIB-u — NIAS flow (lessorId nije stabilan
+     *  između prijava iste osobe, pa se vlasništvo nad RB-om provjerava po OIB-u iz SAML-a). */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT COUNT(r) > 0 FROM RnEntity r
+            WHERE r.rn = :rn AND r.submissionId IN (
+                SELECT s.submissionId FROM SubmissionEntity s
+                JOIN LessorEntity l ON l.lessorId = s.lessorId
+                WHERE l.lessorOib = :oib
+            )
+            """)
+    boolean isOwnedByOib(@Param("rn") String rn, @Param("oib") String oib);
+
     /** NIAS flow: lessorId is not stable across submissions by the same person
      *  (each NIAS registration creates a new LessorEntity snapshot), so the
      *  "Moji registracijski brojevi" view for NIAS users matches by OIB. */

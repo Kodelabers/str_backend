@@ -151,4 +151,7 @@
          ključ za budući upis RB-a natrag u str.facility_unit. -->
     <include file="db/changelog/changes/057-accommodation-facility-unit-id.xml"/>
 
+    <!-- Indeks na egop_pismeno.rn — prikaz dokumenata po registracijskom broju. -->
+    <include file="db/changelog/changes/058-egop-pismeno-rn-index.xml"/>
+
 </databaseChangeLog>

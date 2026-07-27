@@ -1,12 +1,14 @@
 package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnDocumentDto;
 import com.str.backend.rn.dto.RnResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
 import jakarta.validation.constraints.Pattern;
@@ -30,6 +32,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @Validated
 @RestController
@@ -39,13 +43,15 @@ public class RnController {
     private final RnService service;
     private final RnMapper mapper;
     private final StrDocumentService documentService;
+    private final RnDocumentsService documentsService;
     private final RnRepository rnRepository;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
-                        RnRepository rnRepository) {
+                        RnDocumentsService documentsService, RnRepository rnRepository) {
         this.service = service;
         this.mapper = mapper;
         this.documentService = documentService;
+        this.documentsService = documentsService;
         this.rnRepository = rnRepository;
     }
 
@@ -107,9 +113,23 @@ public class RnController {
     }
 
     /**
+     * Popis svih dokumenata vezanih uz RB (zahtjev + obavijest o dodjeli + akti životnog
+     * ciklusa), za prikaz „Moji registracijski brojevi". Svaki unos nosi {@code href} za
+     * preuzimanje. Owner-scoped kao i pojedinačni download.
+     */
+    @GetMapping("/{rn}/documents")
+    public List<RnDocumentDto> documents(
+            @PathVariable @Pattern(regexp = RegistrationNumber.REGEXP) String rn,
+            Authentication authentication) {
+        requireAccess(rn, authentication);
+        return documentsService.listForRn(rn);
+    }
+
+    /**
      * STR-2.1: generira akt životnog ciklusa RB-a kao PDF, po strukturi čl. 98. ZUP-a.
      * Dostava u korisnički pretinac i urudžbiranje u eGOP su zasebni koraci — ovaj endpoint
-     * samo vraća dokument (vidi {@link StrDocumentService}).
+     * samo vraća dokument (vidi {@link StrDocumentService}). {@code tip=zahtjev} nema predložak,
+     * pa se servira pohranjeni podnesak sa submissiona.
      *
      * <p>Akt nosi osobne podatke stranke, uključujući OIB koji čl. 98. st. 2 traži u uvodu, pa
      * je zaštićen dvostruko: {@code SecurityConfig} traži prijavu, a ovdje se iznajmljivača
@@ -126,7 +146,13 @@ public class RnController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Nepoznata vrsta akta: " + tip));
         requireAccess(rn, authentication);
-        byte[] pdf = documentService.render(type, rn, reason);
+        byte[] pdf = switch (type) {
+            // Zahtjev nema predložak — servira se pohranjeni podnesak sa submissiona.
+            case ZAHTJEV -> documentsService.zahtjevPdf(rn);
+            // Dodjela se renderira s pravim URBROJ-em izlaznog pismena (kao verzija u eGOP-u).
+            case DODJELA -> documentService.render(type, rn, reason, documentsService.dodjelaFiling(rn));
+            default -> documentService.render(type, rn, reason);
+        };
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -135,15 +161,44 @@ public class RnController {
     }
 
     /**
+     * Preuzimanje pohranjenog akta životnog ciklusa po id-u ({@code egop_pismeno}). Vraća
+     * vjerodostojan original — akte suspenzijskog toka ne renderiramo iznova jer bi re-render
+     * dao drugačiji sadržaj (obrisan rok, promijenjen razlog). Akt tuđeg/nepostojećeg RB-a → 404.
+     */
+    @GetMapping("/{rn}/documents/pohranjeno/{aktId}")
+    public ResponseEntity<byte[]> storedDocument(
+            @PathVariable @Pattern(regexp = RegistrationNumber.REGEXP) String rn,
+            @PathVariable UUID aktId,
+            Authentication authentication) {
+        requireAccess(rn, authentication);
+        RnDocumentsService.StoredDocument doc = documentsService.storedAktPdf(rn, aktId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + doc.filename() + "\"")
+                .body(doc.pdf());
+    }
+
+    /**
      * Prijavljeni iznajmljivač smije preuzeti samo akte koji se odnose na njegove RB-ove —
      * on im je i adresat. Tuđi RB se prijavljuje kao 404, da endpoint ne otkriva postojanje.
+     *
+     * <p>Vlasništvo se provjerava po tipu prijave, kao i „moji RB-ovi" liste: username/password
+     * flow po {@code lessorId}, NIAS po OIB-u iz SAML-a (lessorId nije stabilan između prijava).
+     * Ostale prijave (buduće interne role) prolaze.
      */
     private void requireAccess(String rn, Authentication authentication) {
         if (authentication == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
-        if (authentication.getPrincipal() instanceof LessorPrincipal principal
-                && !rnRepository.isOwnedByLessor(rn, principal.getLessorId())) {
+        if (authentication.getPrincipal() instanceof LessorPrincipal principal) {
+            if (!rnRepository.isOwnedByLessor(rn, principal.getLessorId())) {
+                throw new ResourceNotFoundException("rn not found: " + rn);
+            }
+            return;
+        }
+        Optional<String> oib = NiasOibExtractor.extractOib(authentication);
+        if (oib.isPresent() && !rnRepository.isOwnedByOib(rn, oib.get())) {
             throw new ResourceNotFoundException("rn not found: " + rn);
         }
     }
