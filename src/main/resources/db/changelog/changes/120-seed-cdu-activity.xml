@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        UAT seed za ekran "Aktivnosti platformi" na CDU okolini.
+
+        Za razliku od 036 (local mock) NE izmišlja iznajmljivače, objekte ni RB-ove —
+        veže se isključivo na RB-ove koji na CDU-u već postoje i imaju status ACTIVE.
+        Zato "Pregled" na svakom retku vodi na stvarni detalj (RnRepository.findDetail),
+        a ne na 404.
+
+        Generira 6 mjeseci (2026-01 .. 2026-06) × 2 platforme (Airbnb + Booking.com)
+        po RB-u. Volumen se izvodi iz stvarnog kapaciteta objekta (accommodation.max_beds)
+        i sezonske krivulje, pa brojke ostaju u granicama kapaciteta objekta.
+
+        Razdoblje završava sa lipnjem 2026. namjerno: izvješće s platforme stiže tek
+        nakon što mjesec zatvori, pa bi srpanj 2026. (tekući mjesec) dao received_at
+        u budućnosti.
+
+        Aktivira se isključivo Liquibase context="cdu" (vidi application-cdu.properties).
+        Idempotentan — sqlCheck preCondition na determinističkom UUID prefiksu 'cd000000'.
+    -->
+
+    <changeSet id="120-seed-cdu-activity" author="str-backend" context="cdu">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str_rn.accommodation_activity
+                WHERE activity_id::text LIKE 'cd000000-0000-0000-%'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.accommodation_activity (
+                activity_id, platform_id, rn, accommodation_id,
+                period_from, period_to,
+                overnight_stays, guest_count,
+                received_at, purge_after
+            )
+            WITH months AS (
+                SELECT
+                    g::date                                   AS period_from,
+                    (g + INTERVAL '1 month - 1 day')::date     AS period_to,
+                    EXTRACT(MONTH FROM g)::int                 AS cal_month,
+                    ROW_NUMBER() OVER (ORDER BY g)::int        AS month_idx
+                FROM generate_series(DATE '2026-01-01', DATE '2026-06-01', INTERVAL '1 month') AS g
+            ),
+            rns AS (
+                SELECT
+                    rn.rn,
+                    rn.accommodation_id,
+                    GREATEST(COALESCE(a.max_beds, 2), 1)       AS beds,
+                    -- Priobalne županije se prepoznaju uzorkom, ne točnom jednakošću:
+                    -- na CDU-u vrijednost može biti sa ili bez sufiksa " županija".
+                    (a.county ILIKE ANY (ARRAY[
+                        '%Splitsko%', '%Šibensko%', '%Zadarsk%', '%Istarsk%',
+                        '%Primorsko%', '%Dubrovačko%', '%Ličko%'
+                    ]))                                        AS coastal,
+                    ROW_NUMBER() OVER (ORDER BY rn.rn)::int    AS rn_idx
+                FROM str_rn.registration_number rn
+                JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id
+                WHERE rn.status = 'ACTIVE'
+            ),
+            platforms AS (
+                SELECT
+                    platform_id,
+                    CASE WHEN name = 'Airbnb' THEN 60 ELSE 40 END AS share_pct,
+                    CASE WHEN name = 'Airbnb' THEN 1  ELSE 2  END AS platform_idx
+                FROM str_rn.online_platform
+                WHERE name IN ('Airbnb', 'Booking.com')
+            ),
+            occupancy AS (
+                SELECT
+                    r.rn, r.accommodation_id, r.beds, r.coastal, r.rn_idx,
+                    m.period_from, m.period_to, m.month_idx,
+                    (m.period_to - m.period_from + 1) AS days_in_month,
+                    -- Popunjenost u postotku ležaj-noći. Priobalje ima izražen ljetni
+                    -- vrhunac, kontinentalni objekti ravnomjeran promet kroz godinu.
+                    CASE WHEN r.coastal THEN
+                        CASE m.cal_month
+                            WHEN 1 THEN 4  WHEN 2 THEN 5  WHEN 3 THEN 9  WHEN 4 THEN 17
+                            WHEN 5 THEN 29 WHEN 6 THEN 54 WHEN 7 THEN 78 WHEN 8 THEN 84
+                            WHEN 9 THEN 44 WHEN 10 THEN 19 WHEN 11 THEN 7 ELSE 11
+                        END
+                    ELSE
+                        CASE m.cal_month
+                            WHEN 1 THEN 14 WHEN 2 THEN 16 WHEN 3 THEN 20 WHEN 4 THEN 24
+                            WHEN 5 THEN 29 WHEN 6 THEN 33 WHEN 7 THEN 35 WHEN 8 THEN 34
+                            WHEN 9 THEN 31 WHEN 10 THEN 24 WHEN 11 THEN 17 ELSE 21
+                        END
+                    END AS fill_pct
+                FROM rns r
+                CROSS JOIN months m
+            ),
+            totals AS (
+                SELECT
+                    o.*,
+                    GREATEST(1, ROUND(
+                        (o.beds * o.days_in_month * o.fill_pct / 100.0)::numeric
+                    )::int) AS bed_nights,
+                    -- Prosječno trajanje boravka: priobalje ~5 noćenja, kontinent ~2.5.
+                    CASE WHEN o.coastal THEN 5.0 ELSE 2.5 END AS avg_stay
+                FROM occupancy o
+            )
+            SELECT
+                ('cd000000-0000-0000-'
+                    || LPAD(t.rn_idx::text, 4, '0') || '-'
+                    || LPAD(t.month_idx::text, 2, '0')
+                    || LPAD(p.platform_idx::text, 2, '0')
+                    || '00000000')::uuid,
+                p.platform_id,
+                t.rn,
+                t.accommodation_id,
+                t.period_from,
+                t.period_to,
+                GREATEST(1, ROUND((t.bed_nights * p.share_pct / 100.0)::numeric)::int),
+                -- Broj gostiju nikad ne smije premašiti broj noćenja te platforme.
+                LEAST(
+                    GREATEST(1, ROUND((t.bed_nights * p.share_pct / 100.0)::numeric)::int),
+                    GREATEST(1, ROUND((t.bed_nights / t.avg_stay * p.share_pct / 100.0)::numeric)::int)
+                ),
+                (t.period_to + INTERVAL '1 day')::timestamptz,
+                ((t.period_to + INTERVAL '1 day')::timestamptz + INTERVAL '18 months')
+            FROM totals t
+            CROSS JOIN platforms p;
+        </sql>
+        <rollback>
+            <sql>
+                DELETE FROM str_rn.accommodation_activity
+                WHERE activity_id::text LIKE 'cd000000-0000-0000-%'
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Razrada gostiju po državama — puni accordion i filter "država gosta".
+        Udjeli se primjenjuju na guest_count aktivnosti; puna imena država (ne ISO
+        kodovi) jer se vrijednost prikazuje izravno u UI-u i uspoređuje LOWER()-om
+        u PlatformActivityQuery.
+    -->
+    <changeSet id="120-seed-cdu-activity-guests" author="str-backend" context="cdu">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM str_rn.guest g
+                    WHERE g.activity_id::text LIKE 'cd000000-0000-0000-%'
+                </sqlCheck>
+                <not>
+                    <sqlCheck expectedResult="0">
+                        SELECT COUNT(*) FROM str_rn.accommodation_activity
+                        WHERE activity_id::text LIKE 'cd000000-0000-0000-%'
+                    </sqlCheck>
+                </not>
+            </and>
+        </preConditions>
+        <sql>
+            INSERT INTO str_rn.guest (guest_id, activity_id, country, guest_count)
+            SELECT
+                gen_random_uuid(),
+                aa.activity_id,
+                cs.country,
+                GREATEST(1, CEIL(aa.guest_count * cs.share)::int)
+            FROM str_rn.accommodation_activity aa
+            JOIN str_rn.accommodation a ON a.accommodation_id = aa.accommodation_id
+            JOIN (VALUES
+                ('coast', 'Njemačka',  0.45),
+                ('coast', 'Italija',   0.25),
+                ('coast', 'Austrija',  0.20),
+                ('coast', 'Slovenija', 0.10),
+                ('inland', 'Njemačka',  0.45),
+                ('inland', 'Austrija',  0.30),
+                ('inland', 'Slovenija', 0.25)
+            ) AS cs(profile, country, share)
+              ON cs.profile = CASE
+                    WHEN a.county ILIKE ANY (ARRAY[
+                        '%Splitsko%', '%Šibensko%', '%Zadarsk%', '%Istarsk%',
+                        '%Primorsko%', '%Dubrovačko%', '%Ličko%'
+                    ]) THEN 'coast' ELSE 'inland'
+                 END
+            WHERE aa.activity_id::text LIKE 'cd000000-0000-0000-%'
+              AND aa.guest_count &gt; 0;
+        </sql>
+        <rollback>
+            <sql>
+                DELETE FROM str_rn.guest
+                WHERE activity_id::text LIKE 'cd000000-0000-0000-%'
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

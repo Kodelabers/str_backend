@@ -157,4 +157,9 @@
     <!-- Proširenje kolona statusa RB-a na VARCHAR(32) — SUSPENSION_PROPOSED nije stao u VARCHAR(16). -->
     <include file="db/changelog/changes/059-widen-rn-status-columns.xml"/>
 
+    <!-- UAT seed aktivnosti platformi za CDU. Veže se na postojeće ACTIVE RB-ove
+         (ne izmišlja iznajmljivače ni objekte), pa "Pregled" vodi na stvarni detalj.
+         Gated context="cdu" — ne dira local, dev ni prod. -->
+    <include file="db/changelog/changes/120-seed-cdu-activity.xml"/>
+
 </databaseChangeLog>
