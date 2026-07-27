@@ -143,7 +143,7 @@ class RnServiceTest {
 
         service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, null);
 
-        verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION);
+        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION);
     }
 
     @Test

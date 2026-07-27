@@ -144,4 +144,7 @@
     <!-- Uklonjena DB-backed prefill tablica — TuStart sada redirecta direktno na frontend s query params. -->
     <include file="db/changelog/changes/055-drop-registration-number-prefill.xml"/>
 
+    <!-- Novi međustatus SUSPENSION_PROPOSED: RB pred suspenzijom s rokom za rješavanje. -->
+    <include file="db/changelog/changes/056-rn-status-add-suspension-proposed.xml"/>
+
 </databaseChangeLog>

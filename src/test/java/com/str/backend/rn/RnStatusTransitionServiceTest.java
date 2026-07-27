@@ -30,27 +30,51 @@ class RnStatusTransitionServiceTest {
     // --- Valid transitions ---
 
     @Test
-    void active_to_suspended_via_inspection() {
+    void active_to_suspension_proposed_via_inspection() {
         RnEntity rn = active();
-        service.transition(rn, RnStatus.SUSPENDED, RnTrigger.INSPECTION);
-        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENDED);
-        verifyLog("ACTIVE", "SUSPENDED", "INSPECTION");
+        service.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENSION_PROPOSED);
+        verifyLog("ACTIVE", "SUSPENSION_PROPOSED", "INSPECTION");
     }
 
     @Test
-    void active_to_suspended_via_consent_expiry() {
+    void active_to_suspension_proposed_via_consent_expiry() {
         RnEntity rn = active();
-        service.transition(rn, RnStatus.SUSPENDED, RnTrigger.CONSENT_EXPIRY);
-        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENDED);
-        verifyLog("ACTIVE", "SUSPENDED", "CONSENT_EXPIRY");
+        service.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.CONSENT_EXPIRY);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENSION_PROPOSED);
+        verifyLog("ACTIVE", "SUSPENSION_PROPOSED", "CONSENT_EXPIRY");
     }
 
     @Test
-    void active_to_suspended_via_incomplete_documentation() {
+    void active_to_suspension_proposed_via_incomplete_documentation() {
         RnEntity rn = active();
-        service.transition(rn, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION);
+        service.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENSION_PROPOSED);
+        verifyLog("ACTIVE", "SUSPENSION_PROPOSED", "INCOMPLETE_DOCUMENTATION");
+    }
+
+    @Test
+    void suspension_proposed_to_active_via_revoke_proposal() {
+        RnEntity rn = suspensionProposed();
+        service.transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.ACTIVE);
+        verifyLog("SUSPENSION_PROPOSED", "ACTIVE", "REVOKE_PROPOSAL");
+    }
+
+    @Test
+    void suspension_proposed_to_suspended_via_deadline_exceeded() {
+        RnEntity rn = suspensionProposed();
+        service.transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENDED);
-        verifyLog("ACTIVE", "SUSPENDED", "INCOMPLETE_DOCUMENTATION");
+        verifyLog("SUSPENSION_PROPOSED", "SUSPENDED", "DEADLINE_EXCEEDED");
+    }
+
+    @Test
+    void suspension_proposed_to_withdrawn_via_withdrawal() {
+        RnEntity rn = suspensionProposed();
+        service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+        verifyLog("SUSPENSION_PROPOSED", "WITHDRAWN", "WITHDRAWAL");
     }
 
     @Test
@@ -80,8 +104,15 @@ class RnStatusTransitionServiceTest {
     // --- Illegal transitions ---
 
     @Test
+    void active_cannot_transition_directly_to_suspended() {
+        RnEntity rn = active();
+        assertThatThrownBy(() -> service.transition(rn, RnStatus.SUSPENDED, RnTrigger.INSPECTION))
+                .isInstanceOf(IllegalStatusTransitionException.class);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.ACTIVE);
+    }
+
+    @Test
     void withdrawn_cannot_be_reactivated() {
-        // Povlačenje/opoziv je trajno — reaktivacija samo za suspendirane (TC-STR-2.1-002, TC-STR-2.2-001).
         RnEntity rn = withdrawn();
         assertThatThrownBy(() -> service.transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE))
                 .isInstanceOf(IllegalStatusTransitionException.class);
@@ -122,7 +153,7 @@ class RnStatusTransitionServiceTest {
     @Test
     void log_contains_correct_fields() {
         RnEntity rn = active();
-        service.transition(rn, RnStatus.SUSPENDED, RnTrigger.INSPECTION);
+        service.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION);
 
         ArgumentCaptor<RegistrationNumberLogEntity> captor =
                 ArgumentCaptor.forClass(RegistrationNumberLogEntity.class);
@@ -131,7 +162,7 @@ class RnStatusTransitionServiceTest {
 
         assertThat(entry.getRn()).isEqualTo(rn.getRn());
         assertThat(entry.getFromStatus()).isEqualTo("ACTIVE");
-        assertThat(entry.getToStatus()).isEqualTo("SUSPENDED");
+        assertThat(entry.getToStatus()).isEqualTo("SUSPENSION_PROPOSED");
         assertThat(entry.getTriggerName()).isEqualTo("INSPECTION");
         assertThat(entry.getOccurredAt()).isNotNull();
     }
@@ -142,8 +173,14 @@ class RnStatusTransitionServiceTest {
         return RnEntity.issue("HR120001000000000001", UUID.randomUUID(), UUID.randomUUID(), LocalDate.now());
     }
 
-    private RnEntity suspended() {
+    private RnEntity suspensionProposed() {
         RnEntity rn = active();
+        rn.applyStatus(RnStatus.SUSPENSION_PROPOSED);
+        return rn;
+    }
+
+    private RnEntity suspended() {
+        RnEntity rn = suspensionProposed();
         rn.applyStatus(RnStatus.SUSPENDED);
         return rn;
     }
