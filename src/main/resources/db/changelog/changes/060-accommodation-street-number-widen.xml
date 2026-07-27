@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- Stvarne adrese s CDU-a (eTurizam) mogu biti dulje od 16 znakova (npr. "22b/stan 5"). -->
+    <changeSet id="060-accommodation-street-number-widen" author="str-backend">
+        <modifyDataType schemaName="str_rn" tableName="accommodation"
+                        columnName="street_number" newDataType="VARCHAR(64)"/>
+        <rollback>
+            <modifyDataType schemaName="str_rn" tableName="accommodation"
+                            columnName="street_number" newDataType="VARCHAR(16)"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

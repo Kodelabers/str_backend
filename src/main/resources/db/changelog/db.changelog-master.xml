@@ -162,4 +162,7 @@
          Gated context="cdu" — ne dira local, dev ni prod. -->
     <include file="db/changelog/changes/120-seed-cdu-activity.xml"/>
 
+    <!-- Proširi street_number VARCHAR(16 → 64): stvarne CDU adrese mogu biti dulje. -->
+    <include file="db/changelog/changes/060-accommodation-street-number-widen.xml"/>
+
 </databaseChangeLog>

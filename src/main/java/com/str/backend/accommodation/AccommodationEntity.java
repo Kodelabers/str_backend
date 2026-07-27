@@ -56,7 +56,7 @@ public class AccommodationEntity {
     @Column(name = "street", length = 128, nullable = false, updatable = false)
     private String street;
 
-    @Column(name = "street_number", length = 16, nullable = false, updatable = false)
+    @Column(name = "street_number", length = 64, nullable = false, updatable = false)
     private String streetNumber;
 
     @Column(name = "house_number_code", length = 64)
