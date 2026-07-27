@@ -38,6 +38,12 @@ public class AccommodationEntity {
     @Column(name = "accommodation_code", length = 64)
     @Setter private String accommodationCode;
 
+    /** ID smještajnog objekta (unita) u eTurizmu — str.facility_unit.id, primljen kroz tuStart
+     *  handoff (URL param → submit). Ključ za budući upis RB-a natrag u str.facility_unit.
+     *  Vidi changeset 057. */
+    @Column(name = "facility_unit_id", length = 64)
+    @Setter private String facilityUnitId;
+
     @Column(name = "county", length = 128, nullable = false, updatable = false)
     private String county;
 

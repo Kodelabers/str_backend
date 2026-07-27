@@ -28,4 +28,7 @@ public interface AccommodationRequest {
     LocalDate consentDate();
     LocalDate consentWithdrawalDate();
     Boolean host();
+
+    /** ID smještajnog objekta (unita) u eTurizmu; frontend ga vraća iz URL handoffa u submit. */
+    String facilityUnitId();
 }

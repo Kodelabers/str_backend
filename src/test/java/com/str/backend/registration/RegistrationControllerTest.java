@@ -128,7 +128,7 @@ class RegistrationControllerTest {
                 4, 6,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     private RegistrationRequest withMaxBeds(RegistrationRequest r, int maxBeds) {
@@ -140,7 +140,7 @@ class RegistrationControllerTest {
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityUnitId());
     }
 
     private RegistrationRequest withOib(RegistrationRequest r, String oib) {
@@ -152,7 +152,7 @@ class RegistrationControllerTest {
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityUnitId());
     }
 
     private SubmissionEntity submissionWithPdf(UUID id, String filingNumber, byte[] pdf) {

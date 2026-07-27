@@ -145,6 +145,6 @@ class RegistrationIntegrationTest {
                 4, 6,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 }
