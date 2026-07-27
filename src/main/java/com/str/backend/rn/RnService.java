@@ -109,8 +109,15 @@ public class RnService {
             throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
         RnEntity e = load(rn);
-        transitionService.transition(e, RnStatus.SUSPENDED, trigger);
+        transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger);
         e.setSuspensionDeadline(suspensionDeadline);
+        return e;
+    }
+
+    @Transactional
+    public RnEntity revokeProposal(String rn) {
+        RnEntity e = load(rn);
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL);
         return e;
     }
 
@@ -147,10 +154,11 @@ public class RnService {
         return repository.findByAccommodationId(accommodationId);
     }
 
-    /** STR-1.5: list of inactive RNs (SUSPENDED + WITHDRAWN), for display to competent authority. */
+    /** STR-1.5: list of inactive RNs (SUSPENSION_PROPOSED + SUSPENDED + WITHDRAWN), for display to competent authority. */
     @Transactional(readOnly = true)
     public List<RnEntity> inactive() {
-        return repository.findByStatusInOrderByUpdatedAtDesc(List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
+        return repository.findByStatusInOrderByUpdatedAtDesc(
+                List.of(RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
     }
 
     /** STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging. */

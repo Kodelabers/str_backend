@@ -28,6 +28,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     List<RnEntity> findByStatusInOrderByUpdatedAtDesc(List<RnStatus> statuses);
 
+    List<RnEntity> findByStatusAndSuspensionDeadlineBefore(RnStatus status, java.time.LocalDate date);
+
     /** STR-1.3 retencija: opozvani RB-ovi kojima je valid_to (dan povlačenja) stariji od praga. */
     List<RnEntity> findByStatusAndValidToBefore(RnStatus status, java.time.LocalDate cutoff);
 

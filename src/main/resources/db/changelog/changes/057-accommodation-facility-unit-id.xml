@@ -11,7 +11,7 @@
          Zasad VARCHAR(64); finalizira se na BIGINT pri write-backu. Bez indeksa — write-back piše u
          str.facility_unit po id-u iz accommodationa u ruci, ne query-a accommodation po ovoj koloni;
          index se dodaje ako/kad se pojavi stvarni upit. -->
-    <changeSet id="056-accommodation-facility-unit-id" author="str-backend">
+    <changeSet id="057-accommodation-facility-unit-id" author="str-backend">
         <addColumn schemaName="str_rn" tableName="accommodation">
             <column name="facility_unit_id" type="VARCHAR(64)"
                     remarks="ID smještajnog objekta (unita) u eTurizmu — str.facility_unit.id"/>

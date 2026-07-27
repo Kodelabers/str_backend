@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <changeSet id="056-rn-status-add-suspension-proposed" author="str-backend">
+        <sql>
+            ALTER TABLE str_rn.registration_number
+                DROP CONSTRAINT IF EXISTS chk_rn_status;
+            ALTER TABLE str_rn.registration_number
+                ADD CONSTRAINT chk_rn_status
+                    CHECK (status IN ('IN_PROCESSING', 'ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'WITHDRAWN'));
+        </sql>
+        <rollback>
+            <sql>
+                ALTER TABLE str_rn.registration_number
+                    DROP CONSTRAINT IF EXISTS chk_rn_status;
+                ALTER TABLE str_rn.registration_number
+                    ADD CONSTRAINT chk_rn_status
+                        CHECK (status IN ('IN_PROCESSING', 'ACTIVE', 'SUSPENDED', 'WITHDRAWN'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

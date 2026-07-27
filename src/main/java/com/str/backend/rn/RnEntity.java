@@ -75,7 +75,8 @@ public class RnEntity {
         if (next == RnStatus.ACTIVE && this.validTo != null) {
             this.validTo = null;
         }
-        if (next != RnStatus.SUSPENDED) {
+        // Deadline is only meaningful during SUSPENSION_PROPOSED; clear it on exit.
+        if (next != RnStatus.SUSPENSION_PROPOSED) {
             this.suspensionDeadline = null;
         }
     }

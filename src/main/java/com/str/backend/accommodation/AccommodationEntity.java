@@ -40,7 +40,7 @@ public class AccommodationEntity {
 
     /** ID smještajnog objekta (unita) u eTurizmu — str.facility_unit.id, primljen kroz tuStart
      *  handoff (URL param → submit). Ključ za budući upis RB-a natrag u str.facility_unit.
-     *  Vidi changeset 056. */
+     *  Vidi changeset 057. */
     @Column(name = "facility_unit_id", length = 64)
     @Setter private String facilityUnitId;
 

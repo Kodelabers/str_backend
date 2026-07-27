@@ -90,6 +90,11 @@ public class RnController {
         return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline));
     }
 
+    @PostMapping("/{rn}/revoke-proposal")
+    public RnResponse revokeProposal(@PathVariable String rn) {
+        return mapper.toResponse(service.revokeProposal(rn));
+    }
+
     @PostMapping("/{rn}/reactivate")
     public RnResponse reactivate(@PathVariable String rn) {
         return mapper.toResponse(service.reactivate(rn));
