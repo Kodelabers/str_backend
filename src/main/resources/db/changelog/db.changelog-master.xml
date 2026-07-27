@@ -154,4 +154,7 @@
     <!-- Indeks na egop_pismeno.rn — prikaz dokumenata po registracijskom broju. -->
     <include file="db/changelog/changes/058-egop-pismeno-rn-index.xml"/>
 
+    <!-- Proširenje kolona statusa RB-a na VARCHAR(32) — SUSPENSION_PROPOSED nije stao u VARCHAR(16). -->
+    <include file="db/changelog/changes/059-widen-rn-status-columns.xml"/>
+
 </databaseChangeLog>

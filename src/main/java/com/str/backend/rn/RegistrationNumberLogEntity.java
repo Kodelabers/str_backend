@@ -23,10 +23,10 @@ public class RegistrationNumberLogEntity {
     @Column(name = "rn", length = 20, nullable = false, updatable = false)
     private String rn;
 
-    @Column(name = "from_status", length = 16, updatable = false)
+    @Column(name = "from_status", length = 32, updatable = false)
     private String fromStatus;
 
-    @Column(name = "to_status", length = 16, nullable = false, updatable = false)
+    @Column(name = "to_status", length = 32, nullable = false, updatable = false)
     private String toStatus;
 
     @Column(name = "trigger_name", length = 64, nullable = false, updatable = false)

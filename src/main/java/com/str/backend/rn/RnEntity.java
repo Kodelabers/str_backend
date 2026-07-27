@@ -31,7 +31,7 @@ public class RnEntity {
     private UUID accommodationId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", length = 16, nullable = false)
+    @Column(name = "status", length = 32, nullable = false)
     private RnStatus status;
 
     @Column(name = "issue_date", nullable = false, updatable = false)
