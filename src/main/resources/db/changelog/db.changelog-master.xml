@@ -144,4 +144,8 @@
     <!-- Uklonjena DB-backed prefill tablica — TuStart sada redirecta direktno na frontend s query params. -->
     <include file="db/changelog/changes/055-drop-registration-number-prefill.xml"/>
 
+    <!-- tuStart: ID smještajnog objekta (unita) iz eTurizma na registraciji (URL param → submit),
+         ključ za budući upis RB-a natrag u str.facility_unit. -->
+    <include file="db/changelog/changes/056-accommodation-facility-unit-id.xml"/>
+
 </databaseChangeLog>

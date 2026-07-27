@@ -153,6 +153,7 @@ public class RegistrationService {
                 req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
                 req.building(), req.apartments(), req.legalized());
         entity.setName(req.name());
+        entity.setFacilityUnitId(req.facilityUnitId());
         entity.setSettlement(settlementName);
         entity.setHouseNumberCode(req.houseNumberCode());
         entity.setPostalCode(req.postalCode());

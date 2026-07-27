@@ -49,7 +49,7 @@ class RegistrationServiceBuildAccommodationTest {
                 true, "3", false, true,
                 Boolean.TRUE, Boolean.TRUE,
                 LocalDate.of(2026, 1, 15), LocalDate.of(2027, 1, 15),
-                host, null);
+                host, null, "FU-42");
     }
 
     @Test
@@ -77,6 +77,7 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getConsentWithdrawalDate()).isEqualTo(LocalDate.of(2027, 1, 15));
         assertThat(e.getHost()).isTrue();
         assertThat(e.getAccommodationTypeId()).isEqualTo(1L);
+        assertThat(e.getFacilityUnitId()).isEqualTo("FU-42");
     }
 
     @Test

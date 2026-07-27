@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- tuStart: ID smještajnog objekta (unita) iz eTurizma — str.facility_unit.id — primljen kroz
+         handoff (URL param → frontend → submit) i spremljen na registraciji. Interni trag i (buduće)
+         ključ za upis RB-a natrag u str.facility_unit (pod njezinim id-em, NE facility_id).
+         Zasad VARCHAR(64); finalizira se na BIGINT pri write-backu. Bez indeksa — write-back piše u
+         str.facility_unit po id-u iz accommodationa u ruci, ne query-a accommodation po ovoj koloni;
+         index se dodaje ako/kad se pojavi stvarni upit. -->
+    <changeSet id="056-accommodation-facility-unit-id" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="accommodation">
+            <column name="facility_unit_id" type="VARCHAR(64)"
+                    remarks="ID smještajnog objekta (unita) u eTurizmu — str.facility_unit.id"/>
+        </addColumn>
+
+        <rollback>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="facility_unit_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
