@@ -109,6 +109,16 @@ public class NiasController {
         );
     }
 
+    /**
+     * Lista objekata NIAS korisnika iz eTurizam registra. Vraća praznu listu dok
+     * str.facility ne dobije puna polja (naziv, vrsta, adresa) iz TuStart integracije.
+     */
+    @GetMapping("/facilities")
+    public List<FacilityResponse> facilities(Authentication authentication) {
+        resolveOib(authentication);
+        return List.of();
+    }
+
     /** STR-1.3-001: NIAS user revokes (opoziv) their own RN. Vlasništvo se provjerava
      *  po OIB-u (svaki NIAS submission kreira novi LessorEntity snapshot, pa lessorId
      *  nije stabilan kroz povijest istog korisnika). */
