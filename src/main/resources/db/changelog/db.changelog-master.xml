@@ -141,4 +141,7 @@
          act_ref za ponovljive akte, vlastiti status/retry i snimljeni PDF po aktu. -->
     <include file="db/changelog/changes/054-egop-lifecycle-acts.xml"/>
 
+    <!-- Uklonjena DB-backed prefill tablica — TuStart sada redirecta direktno na frontend s query params. -->
+    <include file="db/changelog/changes/055-drop-registration-number-prefill.xml"/>
+
 </databaseChangeLog>
