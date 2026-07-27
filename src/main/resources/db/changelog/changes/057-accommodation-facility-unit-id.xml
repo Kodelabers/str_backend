@@ -12,6 +12,17 @@
          str.facility_unit po id-u iz accommodationa u ruci, ne query-a accommodation po ovoj koloni;
          index se dodaje ako/kad se pojavi stvarni upit. -->
     <changeSet id="057-accommodation-facility-unit-id" author="str-backend">
+        <!-- Kolona je na nekim bazama (Railway/mock) već nastala pod ranije renumeriranim id-em
+             changeseta (056-accommodation-facility-unit-id) prije preimenovanja na 057, pa je 057
+             ondje pokušao ponovno ADD i pao. preConditions preskaču dodavanje (MARK_RAN) ako kolona
+             već postoji; validCheckSum ANY pokriva baze gdje je 057 već zabilježen prije ovog gatinga.
+             Na svježim bazama (bez kolone) 057 normalno kreira kolonu. -->
+        <validCheckSum>ANY</validCheckSum>
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists schemaName="str_rn" tableName="accommodation" columnName="facility_unit_id"/>
+            </not>
+        </preConditions>
         <addColumn schemaName="str_rn" tableName="accommodation">
             <column name="facility_unit_id" type="VARCHAR(64)"
                     remarks="ID smještajnog objekta (unita) u eTurizmu — str.facility_unit.id"/>
