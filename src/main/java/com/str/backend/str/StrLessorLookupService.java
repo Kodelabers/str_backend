@@ -6,6 +6,8 @@ import com.str.backend.lessor.LessorEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 @Service
 @Transactional(readOnly = true)
 public class StrLessorLookupService {
@@ -35,19 +37,20 @@ public class StrLessorLookupService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Aktivna verzija iznajmljivača (subject_version) nije pronađena"));
 
-        HouseNumberRepository.LessorAddressProjection addr = subjectAddressRepository
+        // Address is optional: str.subject_address.address_id may not match
+        // eturizam_test.ar_address on all environments (CDU uses live eTurizam IDs).
+        // Missing address is non-fatal — it affects only the PDF, not RB assignment.
+        Optional<HouseNumberRepository.LessorAddressProjection> addrOpt = subjectAddressRepository
                 .findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(version.getId())
-                .flatMap(sa -> houseNumberRepository.resolveFullAddress(sa.getAddressId()))
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Adresa iznajmljivača nije pronađena"));
+                .flatMap(sa -> houseNumberRepository.resolveFullAddress(sa.getAddressId()));
 
         LessorEntity lessor = LessorEntity.create(
                 nullSafe(version.getFirstName(), "N/A"),
                 nullSafe(version.getLastName(), "N/A"),
-                nullSafe(addr.getStreet(), ""),
-                nullSafe(addr.getStreetNumber(), ""),
-                nullSafe(addr.getSettlement(), ""),
-                nullSafe(addr.getCounty(), ""),
+                addrOpt.map(HouseNumberRepository.LessorAddressProjection::getStreet).orElse(""),
+                addrOpt.map(HouseNumberRepository.LessorAddressProjection::getStreetNumber).orElse(""),
+                addrOpt.map(HouseNumberRepository.LessorAddressProjection::getSettlement).orElse(""),
+                addrOpt.map(HouseNumberRepository.LessorAddressProjection::getCounty).orElse(""),
                 null);
         lessor.setLessorOib(version.getPin() != null ? version.getPin() : oib);
         if (version.getName() != null && !version.getName().isBlank()) {
