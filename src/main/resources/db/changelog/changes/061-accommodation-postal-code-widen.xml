@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!-- CDU postal codes can exceed VARCHAR(16) (e.g. formatted with spaces or prefix). -->
+    <changeSet id="061-accommodation-postal-code-widen" author="str-backend">
+        <modifyDataType schemaName="str_rn" tableName="accommodation"
+                        columnName="postal_code" newDataType="VARCHAR(32)"/>
+        <rollback>
+            <modifyDataType schemaName="str_rn" tableName="accommodation"
+                            columnName="postal_code" newDataType="VARCHAR(16)"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -165,4 +165,7 @@
     <!-- Proširi street_number VARCHAR(16 → 64): stvarne CDU adrese mogu biti dulje. -->
     <include file="db/changelog/changes/060-accommodation-street-number-widen.xml"/>
 
+    <!-- Proširi postal_code VARCHAR(16 → 32): CDU postal kodovi mogu biti duži od 16 znakova. -->
+    <include file="db/changelog/changes/061-accommodation-postal-code-widen.xml"/>
+
 </databaseChangeLog>
