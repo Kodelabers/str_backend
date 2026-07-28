@@ -226,11 +226,12 @@ class PlatformActivityQuery {
             case "ACTIVE" -> "aktivan";
             case "SUSPENDED" -> "suspendiran";
             case "WITHDRAWN" -> "povucen";
+            case "INVALID" -> "nevažeći";
             default -> "bez_rb";
         };
     }
 
-    /** Frontend sends 'aktivan'/'suspendiran'/'povucen'; map to DB enum names. */
+    /** Frontend sends 'aktivan'/'suspendiran'/'povucen'/'nevažeći'; map to DB enum names. */
     private static String mapToDbStatus(String frontendStatus) {
         String token = Strings.blankToNull(frontendStatus);
         if (token == null) return null;
@@ -238,6 +239,7 @@ class PlatformActivityQuery {
             case "aktivan" -> "ACTIVE";
             case "suspendiran" -> "SUSPENDED";
             case "povucen" -> "WITHDRAWN";
+            case "nevažeći" -> "INVALID";
             // Rejecting the unknown token matters: it used to disable the filter silently, so a
             // typo — or the DB enum name ("ACTIVE") instead of the UI token — returned every row,
             // withdrawn ones included, on a screen whose whole purpose is to be filtered.
