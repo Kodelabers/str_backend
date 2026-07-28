@@ -52,6 +52,8 @@ class RnDocumentAccessTest {
     @MockBean RnDocumentsService documentsService;
     @MockBean RnRepository rnRepository;
     @MockBean UserDetailsService userDetailsService;
+    // RnController od /api/rn/export/* endpointa ovisi i o exportu; slice ga mora imati.
+    @MockBean com.str.backend.statistics.StatisticsExportService exportService;
 
     @Test
     void document_unauthenticated_returns401_andRendersNothing() throws Exception {

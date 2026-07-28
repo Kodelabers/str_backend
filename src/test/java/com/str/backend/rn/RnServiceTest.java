@@ -141,14 +141,15 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, null);
+        service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, null, null);
 
-        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION);
+        verify(transitionService).transition(
+                rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION, null, null);
     }
 
     @Test
     void suspend_rejectsNonSuspendTrigger() {
-        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.WITHDRAWAL, null))
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.WITHDRAWAL, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.trigger.invalid");
         verify(transitionService, never())

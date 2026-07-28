@@ -740,8 +740,8 @@
       },
       "RnTrigger": {
         "type": "string",
-        "enum": ["ISSUE", "CONSENT_EXPIRY", "INSPECTION", "INCOMPLETE_DOCUMENTATION", "WITHDRAWAL", "REACTIVATE", "REVOKE_PROPOSAL", "DEADLINE_EXCEEDED"],
-        "description": "CONSENT_EXPIRY – co-owner consent expired; INSPECTION – inspection finding; INCOMPLETE_DOCUMENTATION – incomplete documentation; WITHDRAWAL – withdrawal or revocation; REACTIVATE – reactivation; REVOKE_PROPOSAL – suspension proposal dropped after the party complied; DEADLINE_EXCEEDED – response deadline passed, applied by SuspensionDeadlineJob. Suspension is two-phase: CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION move ACTIVE to SUSPENSION_PROPOSED, and only DEADLINE_EXCEEDED reaches SUSPENDED."
+        "enum": ["ISSUE", "CONSENT_EXPIRY", "INSPECTION", "INCOMPLETE_DOCUMENTATION", "OTHER", "WITHDRAWAL", "REACTIVATE", "REVOKE_PROPOSAL", "DEADLINE_EXCEEDED"],
+        "description": "CONSENT_EXPIRY – co-owner consent expired; INSPECTION – inspection finding; INCOMPLETE_DOCUMENTATION – incomplete documentation; OTHER – other reason, requires a non-blank note; WITHDRAWAL – withdrawal or revocation; REACTIVATE – reactivation; REVOKE_PROPOSAL – suspension proposal dropped after the party complied; DEADLINE_EXCEEDED – response deadline passed, applied by SuspensionDeadlineJob. Suspension is two-phase: CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION / OTHER move ACTIVE to SUSPENSION_PROPOSED, and only DEADLINE_EXCEEDED reaches SUSPENDED."
       },
       "VerifyResponse": {
         "type": "object",
