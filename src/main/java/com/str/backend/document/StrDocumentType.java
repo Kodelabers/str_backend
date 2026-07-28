@@ -82,11 +82,26 @@ public enum StrDocumentType {
      *
      * <p><b>Nije među 7 vrsta pismena iz InfoDomovog maila</b> i nema šifru u eGOP šifrarniku,
      * iako je Knjiga testiranja spominje (TC-STR-2.2-001). Predložak i okidač postoje, a
-     * urudžbiranje je iza {@code str.egop.urudzbiraj-reaktivaciju} (ugašeno) dok InfoDom ne
-     * potvrdi šifru — s ugašenom zastavicom iznajmljivač i dalje dobiva obavijest e-poštom.
+     * urudžbiranje je iza {@code str.egop.akti-bez-sifre} (slug je na popisu) dok InfoDom ne
+     * potvrdi šifru. Akt se svejedno zapisuje i prikazuje stranci — staje samo slanje.
      */
     REAKTIVACIJA("reaktivacija", "Obavijest o reaktivaciji registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O REAKTIVACIJI REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
+                    ZupSection.DOSTAVNA_LISTA)),
+
+    /**
+     * Postupak suspenzije obustavljen jer je stranka postupila po prijedlogu. Kao i
+     * reaktivacija: stranci u korist, pa nema obrazloženja ni upute o pravnom lijeku.
+     *
+     * <p><b>Nije među 7 vrsta pismena iz InfoDomovog maila</b> — nastala je uz dvofaznu
+     * suspenziju, koja u tom trenutku nije postojala. Urudžbiranje je zato iza
+     * {@code str.egop.akti-bez-sifre} dok InfoDom ne potvrdi šifru; akt se svejedno zapisuje,
+     * prikazuje stranci i šalje e-poštom.
+     */
+    OBUSTAVA_SUSPENZIJE("obustava-suspenzije",
+            "Obavijest o obustavi postupka suspenzije registracijskog broja", Smjer.IZLAZNO,
+            "OBAVIJEST O OBUSTAVI POSTUPKA SUSPENZIJE REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
                     ZupSection.DOSTAVNA_LISTA));
 
@@ -187,11 +202,17 @@ public enum StrDocumentType {
      */
     public static Optional<StrDocumentType> forTransition(RnStatus to, RnTrigger trigger,
                                                           boolean byLessor) {
+        if (to == RnStatus.SUSPENSION_PROPOSED) {
+            return Optional.of(PRIJEDLOG_SUSPENZIJE);
+        }
         if (to == RnStatus.SUSPENDED) {
             return Optional.of(SUSPENZIJA);
         }
         if (to == RnStatus.ACTIVE && trigger == RnTrigger.REACTIVATE) {
             return Optional.of(REAKTIVACIJA);
+        }
+        if (to == RnStatus.ACTIVE && trigger == RnTrigger.REVOKE_PROPOSAL) {
+            return Optional.of(OBUSTAVA_SUSPENZIJE);
         }
         if (to == RnStatus.WITHDRAWN) {
             return Optional.of(byLessor ? OPOZIV : POVLACENJE);

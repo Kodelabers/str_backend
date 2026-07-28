@@ -71,14 +71,19 @@ PENDING → ACCEPTED (admin approves)
 PENDING → REJECTED (admin rejects)
 ```
 
-`RnStatus` (registration number lifecycle):
+`RnStatus` (registration number lifecycle) — suspension is **two-phase**: the party is first invited to respond (čl. 30. st. 2 ZUP), and only an expired deadline suspends:
 ```
 IN_PROCESSING → ACTIVE (ISSUE)
-ACTIVE → SUSPENDED (CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION) → ACTIVE (REACTIVATE)
-ACTIVE / SUSPENDED → WITHDRAWN (WITHDRAWAL)   [terminal — withdrawal is permanent, no reactivation]
+ACTIVE → SUSPENSION_PROPOSED (CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION)
+SUSPENSION_PROPOSED → ACTIVE (REVOKE_PROPOSAL)        [party fixed the issue]
+SUSPENSION_PROPOSED → SUSPENDED (DEADLINE_EXCEEDED)   [SuspensionDeadlineJob, daily]
+SUSPENDED → ACTIVE (REACTIVATE)
+ACTIVE / SUSPENSION_PROPOSED / SUSPENDED → WITHDRAWN (WITHDRAWAL)   [terminal — permanent, no reactivation]
 ```
 
 All status changes go exclusively through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. Each validates the transition against `canTransitionTo()` and immediately writes a `submission_log` / `registration_number_log` row — these two operations are inseparable. Never mutate the status field directly from service code.
+
+Every `RnStatus` transition publishes `RnLifecycleEvent` (AFTER_COMMIT), consumed by two listeners that both dispatch through `StrDocumentType.forTransition()` — the single source of truth mapping a transition to its ZUP act. Adding an `RnStatus` or `RnTrigger` therefore requires: a branch in `forTransition` (or a deliberate decision that the transition produces no act), and Croatian labels in `documents/hr/labels.properties` — a missing label throws at render time, i.e. *after* the status has already changed. `DocumentLabelsTest` guards this.
 
 Note: `SubmissionStatusTransitionService` is defined but not yet wired into any production call site — submissions remain in `IN_PROCESSING` indefinitely. Intentional for now; the GO pipeline will own the transition to `ACCEPTED`/`REJECTED` in a future iteration.
 

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,14 +44,15 @@ class RnLifecycleFilingListenerTest {
         when(store.saveAkt(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
-    private RnLifecycleFilingListener listener(boolean urudzbirajReaktivaciju) {
+    /** @param bezSifre slugovi na blokadnoj listi; prazno = sve se urudžbira */
+    private RnLifecycleFilingListener listener(String... bezSifre) {
         return new RnLifecycleFilingListener(lookup, documentService, store, dispatcher,
-                urudzbirajReaktivaciju);
+                new EgopAktiBezSifre(Set.of(bezSifre)));
     }
 
     @Test
     void suspension_recordsActThenDispatches() {
-        listener(false).onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
                 RnTrigger.INSPECTION, null, "nalaz inspekcije"));
 
         EgopPismenoEntity akt = capturedAkt();
@@ -64,11 +66,50 @@ class RnLifecycleFilingListenerTest {
         verify(dispatcher).dispatch(akt.getId());
     }
 
+    /**
+     * Poziv na izjašnjavanje prije nepovoljne odluke (čl. 30. st. 2). Prije uvođenja
+     * dvofazne suspenzije ovaj prijelaz nije proizvodio ništa — stranka je saznala tek za
+     * gotovu suspenziju, iako od dostave ovog akta teče rok za ispravak.
+     */
+    @Test
+    void suspensionProposal_recordsAct() {
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED,
+                RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
+
+        EgopPismenoEntity akt = capturedAkt();
+        assertThat(akt.getVrstaPismenaNaziv())
+                .isEqualTo("Obavijest o prijedlogu suspenzije registracijskog broja");
+        verify(dispatcher).dispatch(akt.getId());
+    }
+
+    /** Stranka je otklonila nedostatak — postupak se obustavlja i o tome mora biti obaviještena. */
+    @Test
+    void revokedProposal_recordsObustavaAct() {
+        listener().onLifecycleChange(event(RnStatus.SUSPENSION_PROPOSED, RnStatus.ACTIVE,
+                RnTrigger.REVOKE_PROPOSAL, null, null));
+
+        assertThat(capturedAkt().getVrstaPismenaNaziv())
+                .isEqualTo("Obavijest o obustavi postupka suspenzije registracijskog broja");
+    }
+
     /** Opoziv i povlačenje dijele okidač; razlikuje ih tko je promjenu pokrenuo. */
     @Test
     void withdrawal_byLessor_filesRevocationAct() {
-        listener(false).onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
                 RnTrigger.WITHDRAWAL, "LESSOR:" + UUID.randomUUID(), null));
+
+        assertThat(capturedAkt().getVrstaPismenaNaziv())
+                .isEqualTo("Obavijest o opozivu registracijskog broja");
+    }
+
+    /**
+     * NIAS je produkcijski put prijave, pa je ovo u praksi najčešći opoziv. Dok se gledao samo
+     * prefiks {@code LESSOR:}, dobivao je „Obavijest o povlačenju" — akt po službenoj dužnosti.
+     */
+    @Test
+    void withdrawal_byNiasLessor_filesRevocationAct() {
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
+                RnTrigger.WITHDRAWAL, "NIAS:12345678903", null));
 
         assertThat(capturedAkt().getVrstaPismenaNaziv())
                 .isEqualTo("Obavijest o opozivu registracijskog broja");
@@ -76,7 +117,7 @@ class RnLifecycleFilingListenerTest {
 
     @Test
     void withdrawal_byAuthority_filesWithdrawalAct() {
-        listener(false).onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
                 RnTrigger.WITHDRAWAL, null, "nalaz inspekcije"));
 
         assertThat(capturedAkt().getVrstaPismenaNaziv())
@@ -93,9 +134,9 @@ class RnLifecycleFilingListenerTest {
         UUID prvi = UUID.randomUUID();
         UUID drugi = UUID.randomUUID();
 
-        listener(false).onLifecycleChange(new RnLifecycleEvent(prvi, RN, RnStatus.ACTIVE,
+        listener().onLifecycleChange(new RnLifecycleEvent(prvi, RN, RnStatus.ACTIVE,
                 RnStatus.SUSPENDED, RnTrigger.INSPECTION, null, null));
-        listener(false).onLifecycleChange(new RnLifecycleEvent(drugi, RN, RnStatus.ACTIVE,
+        listener().onLifecycleChange(new RnLifecycleEvent(drugi, RN, RnStatus.ACTIVE,
                 RnStatus.SUSPENDED, RnTrigger.INSPECTION, null, null));
 
         ArgumentCaptor<EgopPismenoEntity> captor = ArgumentCaptor.forClass(EgopPismenoEntity.class);
@@ -104,19 +145,46 @@ class RnLifecycleFilingListenerTest {
         assertThat(captor.getAllValues().get(1).getActRef()).isEqualTo(drugi.toString());
     }
 
-    /** Reaktivacija nema šifru u eGOP šifrarniku — dok je zastavica ugašena, ne šalje se. */
+    /**
+     * Vrsta bez šifre u eGOP šifrarniku se <b>zapisuje</b> — akt time postoji u popisu
+     * dokumenata RB-a i stranka ga može preuzeti. Staje samo slanje, jer bi razrješavanje
+     * vrste pismena palo i vrtjelo se do iscrpljenja pokušaja.
+     */
     @Test
-    void reactivation_isNotFiledWhileDisabled() {
-        listener(false).onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.ACTIVE,
+    void typeWithoutCodebookEntry_isRecordedButNotFiled() {
+        listener("reaktivacija").onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.ACTIVE,
                 RnTrigger.REACTIVATE, null, null));
 
-        verify(store, never()).saveAkt(any());
+        EgopPismenoEntity akt = capturedAkt();
+        assertThat(akt.getPdfContent()).isNotEmpty();
+        assertThat(akt.getRn()).isEqualTo(RN);
         verify(dispatcher, never()).dispatch(any());
     }
 
+    /** Blokadna lista je po slugu, pa vrijedi za bilo koju vrstu — ne samo za reaktivaciju. */
     @Test
-    void reactivation_isFiledWhenEnabled() {
-        listener(true).onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.ACTIVE,
+    void suspensionProposal_isRecordedButNotFiledWhenOnBlocklist() {
+        listener("prijedlog-suspenzije").onLifecycleChange(event(RnStatus.ACTIVE,
+                RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION, null, null));
+
+        assertThat(capturedAkt().getVrstaPismenaNaziv())
+                .isEqualTo("Obavijest o prijedlogu suspenzije registracijskog broja");
+        verify(dispatcher, never()).dispatch(any());
+    }
+
+    /** Nepoznat slug u konfiguraciji ne smije slučajno zaustaviti neku drugu vrstu. */
+    @Test
+    void unknownBlocklistSlug_isIgnored() {
+        listener("tipfeler").onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
+                RnTrigger.INSPECTION, null, null));
+
+        EgopPismenoEntity akt = capturedAkt();
+        verify(dispatcher).dispatch(akt.getId());
+    }
+
+    @Test
+    void reactivation_isFiledWhenNotOnBlocklist() {
+        listener().onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.ACTIVE,
                 RnTrigger.REACTIVATE, null, null));
 
         assertThat(capturedAkt().getVrstaPismenaNaziv())
@@ -126,7 +194,7 @@ class RnLifecycleFilingListenerTest {
     /** Izdavanje RB-a urudžbira registracijski tok, s PDF-om izvedenim iz urudžbenog broja. */
     @Test
     void issuance_isHandledByRegistrationFlow() {
-        listener(false).onLifecycleChange(event(RnStatus.IN_PROCESSING, RnStatus.ACTIVE,
+        listener().onLifecycleChange(event(RnStatus.IN_PROCESSING, RnStatus.ACTIVE,
                 RnTrigger.ISSUE, null, null));
 
         verify(store, never()).saveAkt(any());
@@ -138,7 +206,7 @@ class RnLifecycleFilingListenerTest {
         when(documentService.render(any(), any(), any()))
                 .thenThrow(new IllegalStateException("nema predloška"));
 
-        listener(false).onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
                 RnTrigger.INSPECTION, null, null));
 
         verify(store, never()).saveAkt(any());
@@ -149,7 +217,7 @@ class RnLifecycleFilingListenerTest {
     void missingRn_skips() {
         when(lookup.findSubmissionId(RN)).thenReturn(Optional.empty());
 
-        listener(false).onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
                 RnTrigger.INSPECTION, null, null));
 
         verify(store, never()).saveAkt(any());
@@ -169,10 +237,18 @@ class RnLifecycleFilingListenerTest {
     /** Vrste pismena moraju odgovarati eGOP šifrarniku — mapiranje ide preko StrDocumentType. */
     @Test
     void actTypes_matchCodebookNames() {
-        assertThat(StrDocumentType.forTransition(RnStatus.SUSPENDED, RnTrigger.INSPECTION, false))
-                .contains(StrDocumentType.SUSPENZIJA);
+        assertThat(StrDocumentType.forTransition(RnStatus.SUSPENSION_PROPOSED,
+                RnTrigger.INSPECTION, false)).contains(StrDocumentType.PRIJEDLOG_SUSPENZIJE);
+        assertThat(StrDocumentType.forTransition(RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
+                false)).contains(StrDocumentType.SUSPENZIJA);
+        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL,
+                false)).contains(StrDocumentType.OBUSTAVA_SUSPENZIJE);
+        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REACTIVATE, false))
+                .contains(StrDocumentType.REAKTIVACIJA);
         assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, true))
                 .contains(StrDocumentType.OPOZIV);
+        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, false))
+                .contains(StrDocumentType.POVLACENJE);
         assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.ISSUE, false)).isEmpty();
     }
 }

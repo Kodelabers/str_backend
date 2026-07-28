@@ -55,7 +55,8 @@ class EmailTemplateTest {
      */
     @ParameterizedTest
     @EnumSource(value = MailTemplate.class,
-            names = {"PRIJEDLOG_SUSPENZIJE", "SUSPENZIJA", "REAKTIVACIJA", "POVLACENJE", "OPOZIV"})
+            names = {"PRIJEDLOG_SUSPENZIJE", "SUSPENZIJA", "OBUSTAVA_SUSPENZIJE", "REAKTIVACIJA",
+                    "POVLACENJE", "OPOZIV"})
     void lifecycleTemplates_stateThatEmailIsNotService(MailTemplate template) {
         String html = templates.body(template, values());
 

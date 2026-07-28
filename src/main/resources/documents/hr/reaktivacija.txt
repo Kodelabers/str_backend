@@ -2,7 +2,7 @@
 # Vrsta pismena (eGOP): „Obavijest o reaktivaciji registracijskog broja" — izlazno
 #
 # NAPOMENA: ova vrsta NIJE među 7 iz InfoDomovog maila od 22.07.2026. i nema šifru u
-# šifrarniku. Urudžbiranje je iza str.egop.urudzbiraj-reaktivaciju (ugašeno); predložak
+# šifrarniku. Slanje eGOP-u je iza str.egop.akti-bez-sifre (slug je na popisu); predložak
 # postoji da se, kad InfoDom potvrdi šifru, upali bez izmjene koda.
 #
 # Akt je stranci u korist (ukida se ograničenje), pa po čl. 30. st. 2 ZUP-a nema potrebe za

@@ -12,6 +12,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -91,7 +92,7 @@ class EgopAktPersistenceTest {
 
         Instant now = Instant.now();
         List<UUID> candidates = pismenoRepository.findRetryCandidates(
-                EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA, 10,
+                EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA, Set.of(""), 10,
                 now.minus(5, ChronoUnit.MINUTES), now.minus(1, ChronoUnit.HOURS), now);
 
         assertThat(candidates).doesNotContain(svjez.getId());
@@ -107,7 +108,7 @@ class EgopAktPersistenceTest {
 
         Instant now = Instant.now();
         List<UUID> candidates = pismenoRepository.findRetryCandidates(
-                EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA, 10,
+                EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA, Set.of(""), 10,
                 now.minus(5, ChronoUnit.MINUTES), now.minus(1, ChronoUnit.HOURS), now);
 
         assertThat(candidates).contains(pao.getId());
@@ -134,10 +135,37 @@ class EgopAktPersistenceTest {
         assertThat(candidates).doesNotContain(uBackoffu.getId(), gotov.getId());
     }
 
+    /**
+     * Vrsta bez šifre u eGOP šifrarniku se zapisuje radi prikaza stranci, ali je cron ne smije
+     * pokupiti — inače bi vrtio slanje koje je listener namjerno preskočio, do iscrpljenja
+     * pokušaja. Ovo je jedini test koji taj uvjet provjerava nad pravim upitom, a ne mockom.
+     */
+    @Test
+    void retryCandidates_excludeTypesWithoutCodebookEntry() {
+        UUID submissionId = submission();
+
+        EgopPismenoEntity bezSifre = EgopPismenoEntity.forAct(submissionId, RN,
+                UUID.randomUUID().toString(), "Obavijest o reaktivaciji registracijskog broja",
+                EgopPismenoEntity.Smjer.IZLAZNO, "pdf".getBytes());
+        pismenoRepository.saveAndFlush(bezSifre);
+
+        EgopPismenoEntity urudzbiv = akt(submissionId, UUID.randomUUID().toString());
+        pismenoRepository.saveAndFlush(urudzbiv);
+
+        Instant now = Instant.now();
+        List<UUID> candidates = pismenoRepository.findRetryCandidates(
+                EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA,
+                Set.of("Obavijest o reaktivaciji registracijskog broja"), 10,
+                now.plus(1, ChronoUnit.HOURS), now.minus(1, ChronoUnit.HOURS), now);
+
+        assertThat(candidates).contains(urudzbiv.getId());
+        assertThat(candidates).doesNotContain(bezSifre.getId());
+    }
+
     private List<UUID> candidates() {
         Instant now = Instant.now();
         return pismenoRepository.findRetryCandidates(
-                EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA, 10,
+                EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA, Set.of(""), 10,
                 now.plus(1, ChronoUnit.HOURS), now.minus(1, ChronoUnit.HOURS), now);
     }
 

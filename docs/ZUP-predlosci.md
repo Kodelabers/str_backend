@@ -54,20 +54,32 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | :--- | :--- | :--- | :--- | :--- |
 | `zahtjev` | Zahtjev za registracijski broj | ulazno | čl. 71. — vlastiti generator | registracija |
 | `dodjela` | Obavijest o dodjeli registracijskog broja | izlazno | naslov, uvod, izreka, dostavna lista | registracija |
-| `opoziv` | Obavijest o opozivu registracijskog broja | izlazno | isto kao `dodjela` | `LessorRnActionService.withdrawOwn` |
-| `prijedlog-suspenzije` | Obavijest o prijedlogu suspenzije registracijskog broja | izlazno | + obrazloženje; **rok u izreci** | ❌ nema |
-| `suspenzija` | Obavijest o suspenziji registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `RnService.suspend` |
+| `opoziv` | Obavijest o opozivu registracijskog broja | izlazno | isto kao `dodjela` | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
+| `prijedlog-suspenzije` | Obavijest o prijedlogu suspenzije registracijskog broja | izlazno | + obrazloženje; **rok u izreci** | `RnService.suspend` |
+| `suspenzija` | Obavijest o suspenziji registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `SuspensionDeadlineJob` (istek roka) |
+| `obustava-suspenzije` | Obavijest o obustavi postupka suspenzije registracijskog broja | izlazno | kao `dodjela` | `RnService.revokeProposal` |
 | `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `RnService.withdraw` |
 | `prigovor` | Prigovor na prijedlog suspenzije | **ulazno** | čl. 71. — podnesak stranke | ❌ nema |
 | `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `dodjela` | `RnService.reactivate` |
 
-`reaktivacija` **nije među 7 vrsta pismena** iz InfoDomovog maila i nema šifru u eGOP šifrarniku,
-iako je Knjiga testiranja spominje. Predložak i okidač postoje; urudžbiranje je iza
-`str.egop.urudzbiraj-reaktivaciju` (ugašeno), a obavijest e-poštom ide neovisno o tome.
+Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i šalje poziv na
+izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku roka prelazi u
+`SUSPENDED` i šalje `suspenzija`. Ispravi li stranka nedostatak, `revokeProposal` vraća RB u
+`ACTIVE` uz `obustava-suspenzije`.
 
-`prijedlog-suspenzije` i `prigovor` **nemaju okidač**: `RnService.suspend()` ide odmah u
-`SUSPENDED` (nema međustanja), a prigovor ne postoji nigdje u `src/main`. Predlošci su
-isporučeni i dostupni preko endpointa, ali automatike nema dok se ne uvede dvofazna suspenzija.
+`reaktivacija` i `obustava-suspenzije` **nisu među 7 vrsta pismena** iz InfoDomovog maila i
+nemaju šifru u eGOP šifrarniku (obje su nastale uz dvofaznu suspenziju, koje u trenutku dogovora
+nije bilo). Predlošci i okidači postoje; urudžbiranje je iza `str.egop.akti-bez-sifre` (vidi §6),
+ali se akt **svejedno zapisuje i vidi u popisu dokumenata RB-a**, a obavijest e-poštom ide
+neovisno o tome. `ZupTemplateLoaderTest` drži taj popis u šahu.
+
+`prigovor` **nema okidač** — ne postoji nigdje u `src/main`. Predložak je isporučen i dostupan
+preko endpointa, ali automatike nema dok se ne uvede domenski model prigovora.
+
+> Natpisi statusa i okidača žive u `documents/hr/labels.properties`. `ZupContextFactory` traži
+> natpis statusa pri **svakom** renderu i nedostajući ključ baca — a to se dogodi tek u
+> `AFTER_COMMIT` listeneru, nakon što je status već promijenjen. Novi `RnStatus`/`RnTrigger`
+> zato uvijek nosi i natpis; `DocumentLabelsTest` to provjerava.
 
 Stari slugovi iz Knjige testiranja (`dopis-namjere`, `nalog-suspenzija`, `nalog-povlacenje`) i
 dalje rade kao alias — postojeći linkovi ne pucaju.
@@ -172,21 +184,27 @@ escapiranje) ostaje u Javi jer je izgled, ne tekst.
 | :--- | :--- |
 | `odobrenje`, `odbijanje` | `AdminPendingRegistrationService.approve/reject` |
 | `rb-izdan` | `EgopRegistrationDispatcher` (samo non-EU; EU ide preko KP) |
-| `suspenzija` | prijelaz → `SUSPENDED` |
+| `prijedlog-suspenzije` | prijelaz → `SUSPENSION_PROPOSED` |
+| `suspenzija` | prijelaz → `SUSPENDED` uz `DEADLINE_EXCEEDED` |
+| `obustava-suspenzije` | prijelaz → `ACTIVE` uz `REVOKE_PROPOSAL` |
 | `reaktivacija` | prijelaz → `ACTIVE` uz `REACTIVATE` |
 | `povlacenje` | prijelaz → `WITHDRAWN` po službenoj dužnosti |
 | `opoziv` | prijelaz → `WITHDRAWN` na zahtjev iznajmljivača |
-| `prijedlog-suspenzije` | ❌ nema (nema dvofazne suspenzije) |
 
 Događaj `RnLifecycleEvent` objavljuje se iz **`RnStatusTransitionService.transition()`** — jedine
 točke kroz koju status smije proći (pravilo iz `CLAUDE.md`). Time obavijest ne može promaknuti
 nijednom budućem pozivatelju. `RnLifecycleEmailListener` radi `AFTER_COMMIT`, pa vidi i
 `suspensionDeadline` koji `RnService.suspend` upisuje *nakon* prijelaza.
 
-Opoziv i povlačenje dijele okidač `WITHDRAWAL`; razlikuje ih jedino `actor` s prefiksom `LESSOR:`.
+Opoziv i povlačenje dijele okidač `WITHDRAWAL`; razlikuje ih jedino `actor` — prefiks `LESSOR:`
+(prijava lozinkom) ili `NIAS:` (prijava preko NIAS-a) znači opoziv na zahtjev stranke, sve
+ostalo povlačenje po službenoj dužnosti. Oba prefiksa moraju biti u
+`RnLifecycleEvent.initiatedByLessor()`; NIAS je produkcijski put prijave, pa bi izostavljen
+prefiks krivo klasificirao većinu samo-opoziva.
 
-Akt se prilaže kao **preslika**; reaktivacija ide bez privitka jer nema svoju vrstu pismena
-(otvoreno pitanje 7). Pad rendera akta ne sprječava mail — status je već promijenjen.
+Akt se prilaže kao **preslika**. Pad rendera akta ne sprječava mail — status je već promijenjen.
+Mail ide i za vrste bez šifre u eGOP šifrarniku (`reaktivacija`, `obustava-suspenzije`), jer
+blokadna lista `str.egop.akti-bez-sifre` zaustavlja samo urudžbiranje, ne i obavijest.
 
 ---
 
@@ -207,6 +225,25 @@ str.documents.reload=${STR_DOCUMENTS_RELOAD:false}
 
 `str.documents.reload=true` čita predloške pri svakom renderu — tekst se mijenja bez restarta.
 Za produkciju ostaje `false`.
+
+Uz to, jedan ključ iz `str.egop.*` bloka dira izravno akte:
+
+```properties
+str.egop.akti-bez-sifre=${EGOP_AKTI_BEZ_SIFRE:reaktivacija,prijedlog-suspenzije,obustava-suspenzije}
+```
+
+Slugovi vrsta pismena koje eGOP šifrarnik (još) nema. Takav se akt **renderira, zapisuje u
+`str_rn.egop_pismeno` i prikazuje stranci u popisu dokumenata RB-a — ali se ne šalje eGOP-u**;
+slanje bi palo na razrješavanju vrste pismena i vrtjelo retry do iscrpljenja pokušaja.
+
+Zapisivanje je namjerno odvojeno od urudžbiranja: `GET /api/rn/{rn}/documents` popis akata gradi
+iz `egop_pismeno` (`RnDocumentsService.listForRn`), pa bi akt koji se ne zapiše postojao samo kao
+privitak e-pošte i stranka ga ne bi vidjela među svojim dokumentima. `EgopAktiBezSifre` je zato
+zajednički za listener (preskače slanje) i `EgopRetryJob` (izuzima te akte iz reda) — da popis
+živi na samo jednom mjestu, cron bi slao upravo ono što je listener preskočio.
+
+Slug se miče s popisa čim InfoDom potvrdi šifru, bez izmjene koda; zaostali akti se tada
+urudžbiraju pri prvom sljedećem prolasku retry joba. Prazna vrijednost znači da se urudžbira sve.
 
 **Uputa o pravnom lijeku je property, ne dio predloška.** Pravna narav postupka nije potvrđena
 (vidi otvoreno pitanje 1), a po čl. 111. pogrešna uputa ide na štetu tijela — ovako je pravna
@@ -271,5 +308,14 @@ dira bazu. Novi listener mora čitati (`RnDetailDto`, akt), pa mu vlastita trans
 1. Konstanta u `StrDocumentType` — slug, naziv iz eGOP šifrarnika, smjer, naslov, obvezne sekcije.
 2. `src/main/resources/documents/hr/<slug>.txt` sa svim obveznim sekcijama.
 3. Ako treba novi placeholder — dodati ga u `ZupContextFactory` **i** u tablicu iz §4.
-4. `mvn test` — `ZupTemplateLoaderTest` i `StrDocumentServiceTest` automatski pokrivaju novi tip
+4. Ako akt nastaje iz prijelaza statusa: grana u `StrDocumentType.forTransition` (jedno mjesto
+   za oba potrošača — urudžbiranje i mail), konstanta u `MailTemplate` s
+   `documents/mail/<slug>.html`, i `case` u `RnLifecycleEmailListener.mailTemplateFor`
+   (switch je iscrpan, pa build padne ako se zaboravi).
+5. Ako vrsta nema potvrđenu šifru u eGOP šifrarniku — slug na `str.egop.akti-bez-sifre` i u
+   popis u `ZupTemplateLoaderTest.typesOutsideAgreedCodebookSet_areKnownAndUnfiled`.
+6. Novi `RnStatus`/`RnTrigger` traži i natpise u `documents/hr/labels.properties` — bez njih
+   render puca u `AFTER_COMMIT` listeneru, nakon što je status već promijenjen
+   (`DocumentLabelsTest` to hvata).
+7. `mvn test` — `ZupTemplateLoaderTest` i `StrDocumentServiceTest` automatski pokrivaju novi tip
    (oba su parametrizirana nad `templateBackedTypes()`).

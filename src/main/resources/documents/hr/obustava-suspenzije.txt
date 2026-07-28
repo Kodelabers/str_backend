@@ -1,0 +1,32 @@
+# Obavijest o obustavi postupka suspenzije registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o obustavi postupka suspenzije registracijskog broja" — izlazno
+#
+# NAPOMENA: ova vrsta NIJE među 7 iz InfoDomovog maila od 22.07.2026. — nastala je uz dvofaznu
+# suspenziju, koje u tom trenutku nije bilo. Urudžbiranje je iza str.egop.akti-bez-sifre;
+# predložak postoji da se, kad InfoDom potvrdi šifru, upali bez izmjene koda.
+#
+# Akt zatvara postupak pokrenut „Obaviješću o prijedlogu suspenzije": stranka se očitovala
+# odnosno otklonila nedostatak, pa razloga za suspenziju više nema. Stranci je u korist, pa
+# po čl. 30. st. 2 ZUP-a nema potrebe za obrazloženjem ni uputom o pravnom lijeku.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${stranka.naziv}
+${stranka.zastupnik}
+${stranka.adresa}
+${stranka.postanskiBroj} ${stranka.mjesto}
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, u postupku pokrenutom po službenoj dužnosti protiv stranke ${stranka.naziv}, ${stranka.identifikator}, u predmetu suspenzije registracijskog broja ${rn.broj}, izdaje
+
+[IZREKA]
+1. Obustavlja se postupak suspenzije registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}" na adresi ${objekt.adresa}, pokrenut zbog sljedećeg razloga: ${rn.razlog}.
+
+2. Utvrđuje se da su razlozi za suspenziju otklonjeni te da registracijski broj ostaje važeći bez prekida.
+
+3. Smještajna jedinica smije se i dalje oglašavati na internetskim platformama za kratkoročni najam.
+
+[DOSTAVNA_LISTA]
+1. ${stranka.naziv} — u korisnički pretinac
+2. Pismohrana, ovdje

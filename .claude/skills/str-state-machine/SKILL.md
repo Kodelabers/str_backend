@@ -29,10 +29,23 @@ Defines legal transitions for `submission.status` (SubmissionStatus) and `regist
 | :--- | :--- | :--- |
 | — | RN issued when submission ACCEPTED | `IN_PROCESSING` |
 | `IN_PROCESSING` | `ISSUE` | `ACTIVE` |
-| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` / `INCOMPLETE_DOCUMENTATION` | `SUSPENDED` |
+| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` / `INCOMPLETE_DOCUMENTATION` | `SUSPENSION_PROPOSED` |
+| `SUSPENSION_PROPOSED` | `REVOKE_PROPOSAL` | `ACTIVE` |
+| `SUSPENSION_PROPOSED` | `DEADLINE_EXCEEDED` | `SUSPENDED` |
 | `SUSPENDED` | `REACTIVATE` | `ACTIVE` |
-| `ACTIVE` / `SUSPENDED` | `WITHDRAWAL` | `WITHDRAWN` |
+| `ACTIVE` / `SUSPENSION_PROPOSED` / `SUSPENDED` | `WITHDRAWAL` | `WITHDRAWN` |
 | `WITHDRAWN` | — (terminal) | — |
+
+Suspension is **two-phase**: `suspend()` only *proposes* it. The party is invited to respond within `suspension_deadline` (čl. 30. st. 2 ZUP); `SuspensionDeadlineJob` (daily) performs `DEADLINE_EXCEEDED` when the deadline passes unanswered. Never transition `ACTIVE → SUSPENDED` directly.
+
+## Documents
+
+Each transition maps to a ZUP act through `StrDocumentType.forTransition(to, trigger, byLessor)` — one function shared by the eGOP filing listener and the e-mail listener, so document and message can never diverge. Adding a status or trigger means:
+
+1. a branch in `forTransition` (or a deliberate decision that it produces no act — issuance is the one such case, handled by the registration flow);
+2. Croatian labels in `documents/hr/labels.properties` for the new `RnStatus` / `RnTrigger`. `ZupContextFactory` resolves the status label on **every** render and a missing key throws — after the status has already changed. `DocumentLabelsTest` guards this.
+
+`WITHDRAWAL` produces two different acts: `OPOZIV` when the lessor initiated it (actor prefix `LESSOR:` or `NIAS:`), `POVLACENJE` ex officio.
 
 ## Rules
 

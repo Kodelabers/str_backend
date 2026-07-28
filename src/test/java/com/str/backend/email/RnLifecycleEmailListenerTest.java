@@ -70,6 +70,43 @@ class RnLifecycleEmailListenerTest {
         assertThat(captured().template()).isEqualTo(MailTemplate.OPOZIV);
     }
 
+    /** NIAS je produkcijski put prijave — i taj opoziv je na zahtjev stranke, ne po dužnosti. */
+    @Test
+    void withdrawal_byNiasLessor_usesRevocationTemplate() {
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
+                RnTrigger.WITHDRAWAL, "NIAS:12345678903", null));
+
+        assertThat(captured().template()).isEqualTo(MailTemplate.OPOZIV);
+    }
+
+    /**
+     * Poziv na izjašnjavanje: mail mora nositi rok, jer je to jedini razlog zbog kojeg stranka
+     * na njega uopće mora reagirati.
+     */
+    @Test
+    void suspensionProposal_sendsMailWithDeadline() {
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED,
+                RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.template()).isEqualTo(MailTemplate.PRIJEDLOG_SUSPENZIJE);
+        assertThat(mail.razlog()).isEqualTo("nepotpuna dokumentacija");
+        assertThat(mail.rok()).isEqualTo("najkasnije do 15.08.2026.");
+        assertThat(mail.pdf()).isNotEmpty();
+    }
+
+    @Test
+    void revokedProposal_sendsDiscontinuationMail() {
+        listener.onLifecycleChange(event(RnStatus.SUSPENSION_PROPOSED, RnStatus.ACTIVE,
+                RnTrigger.REVOKE_PROPOSAL, null, null));
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.template()).isEqualTo(MailTemplate.OBUSTAVA_SUSPENZIJE);
+        assertThat(mail.razlog()).isEqualTo("obustava postupka suspenzije");
+        verify(documentService).render(StrDocumentType.OBUSTAVA_SUSPENZIJE, RN,
+                "obustava postupka suspenzije");
+    }
+
     @Test
     void withdrawal_byAuthority_usesWithdrawalTemplate() {
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
