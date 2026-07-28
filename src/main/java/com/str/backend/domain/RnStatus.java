@@ -11,7 +11,9 @@ public enum RnStatus {
         return switch (this) {
             case IN_PROCESSING -> trigger == RnTrigger.ISSUE && target == ACTIVE;
             case ACTIVE -> switch (trigger) {
-                case CONSENT_EXPIRY, INSPECTION, INCOMPLETE_DOCUMENTATION -> target == SUSPENSION_PROPOSED;
+                // OTHER je slobodan razlog: RnService#suspend uz njega traži obrazloženje, koje
+                // onda nosi izreku prijedloga umjesto šifriranog razloga.
+                case CONSENT_EXPIRY, INSPECTION, INCOMPLETE_DOCUMENTATION, OTHER -> target == SUSPENSION_PROPOSED;
                 case WITHDRAWAL -> target == WITHDRAWN;
                 default -> false;
             };
