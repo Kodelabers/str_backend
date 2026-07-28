@@ -32,6 +32,7 @@ public record PlatformActivityFilter(
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate od,
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
         String county,
+        String municipality,
         String status,
         String q,
         String rn,
@@ -45,6 +46,6 @@ public record PlatformActivityFilter(
 
     /** Unfiltered report — every criterion off. */
     public static PlatformActivityFilter none() {
-        return new PlatformActivityFilter(null, null, null, null, null, null, null, false, null);
+        return new PlatformActivityFilter(null, null, null, null, null, null, null, null, false, null);
     }
 }

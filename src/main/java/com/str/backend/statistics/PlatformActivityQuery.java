@@ -62,6 +62,7 @@ class PlatformActivityQuery {
           + "  AND (:od IS NULL OR aa.period_to >= :od)\n"
           + "  AND (:toDate IS NULL OR aa.period_from <= :toDate)\n"
           + "  AND (:county IS NULL OR a.county = :county)\n"
+          + "  AND (:municipality IS NULL OR a.city = :municipality)\n"
           + "  AND (:rnStatus IS NULL OR rn.status = :rnStatus)\n"
           // Partial match, matching the public registry's `rb` filter — the same field behaving
           // differently on two screens was an accident, not a design decision.
@@ -200,6 +201,7 @@ class PlatformActivityQuery {
         p.addValue("od", f.od(), Types.DATE);
         p.addValue("toDate", f.toDate(), Types.DATE);
         p.addValue("county", Strings.blankToNull(f.county()), Types.VARCHAR);
+        p.addValue("municipality", Strings.blankToNull(f.municipality()), Types.VARCHAR);
         p.addValue("rnStatus", mapToDbStatus(f.status()), Types.VARCHAR);
         String rn = Strings.blankToNull(f.rn());
         p.addValue("rn", rn, Types.VARCHAR);

@@ -163,13 +163,13 @@ public class RnService {
 
     /** STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging. */
     @Transactional(readOnly = true)
-    public Page<RnSummaryDto> searchRegistry(RnRegistryView view, String q, String county, Long typeId,
-                                             String rb, String city, String street, String name, String lessor,
-                                             Pageable pageable) {
+    public Page<RnSummaryDto> searchRegistry(RnRegistryView view, String q, String county, String municipality,
+                                             Long typeId, String rb, String city, String street, String name,
+                                             String lessor, Pageable pageable) {
         String[] t = SearchTokens.slots(q);
         return repository.searchRegistry(view.statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
-                Strings.blankToNull(county), typeId,
+                Strings.blankToNull(county), Strings.blankToNull(municipality), typeId,
                 Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
                 Strings.blankToNull(name), Strings.blankToNull(lessor),
                 pageable);

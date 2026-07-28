@@ -1,10 +1,13 @@
 package com.str.backend.lookup;
 
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.CountyRepository;
+import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.guest.GuestRepository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -21,16 +24,25 @@ class PlatformLookupController {
     /** Guest country of residence. The id is the name itself — that is the value the filter takes. */
     record GuestCountryResponse(String id, String naziv) {}
 
+    /** Municipality name. The id is the name itself — matches accommodation.city stored on registration. */
+    record MunicipalityLookupResponse(String id, String naziv) {}
+
     private final OnlinePlatformRepository platformRepository;
     private final AccommodationRepository accommodationRepository;
     private final GuestRepository guestRepository;
+    private final CountyRepository countyRepository;
+    private final MunicipalityRepository municipalityRepository;
 
     PlatformLookupController(OnlinePlatformRepository platformRepository,
                              AccommodationRepository accommodationRepository,
-                             GuestRepository guestRepository) {
+                             GuestRepository guestRepository,
+                             CountyRepository countyRepository,
+                             MunicipalityRepository municipalityRepository) {
         this.platformRepository = platformRepository;
         this.accommodationRepository = accommodationRepository;
         this.guestRepository = guestRepository;
+        this.countyRepository = countyRepository;
+        this.municipalityRepository = municipalityRepository;
     }
 
     @GetMapping("/platforms")
@@ -46,6 +58,20 @@ class PlatformLookupController {
         return accommodationRepository.findDistinctCountiesOrderByName().stream()
                 .map(name -> new CountyResponse(name, name))
                 .toList();
+    }
+
+    /**
+     * Municipalities for a given county name. The id equals the name — the filter matches
+     * accommodation.city, which stores the municipality name as a plain string on registration.
+     * Returns an empty list when the county name is not found in rpj_dgu.
+     */
+    @GetMapping("/municipalities")
+    List<MunicipalityLookupResponse> getMunicipalities(@RequestParam String county) {
+        return countyRepository.findByName(county)
+                .map(c -> municipalityRepository.findByCountyIdOrderByName(c.getId(), "").stream()
+                        .map(m -> new MunicipalityLookupResponse(m.getName(), m.getName()))
+                        .toList())
+                .orElse(List.of());
     }
 
     /**

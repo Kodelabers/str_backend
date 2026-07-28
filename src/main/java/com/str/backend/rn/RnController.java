@@ -67,6 +67,7 @@ public class RnController {
             @RequestParam(defaultValue = "ACTIVE") RnRegistryView view,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String county,
+            @RequestParam(required = false) String municipality,
             @RequestParam(required = false) Long typeId,
             @RequestParam(required = false) String rb,
             @RequestParam(required = false) String city,
@@ -74,7 +75,7 @@ public class RnController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
             @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.searchRegistry(view, q, county, typeId, rb, city, street, name, lessor, pageable);
+        return service.searchRegistry(view, q, county, municipality, typeId, rb, city, street, name, lessor, pageable);
     }
 
     /** STR wireframe §12 / §13: full detail of a single RN (accommodation + lessor). */
