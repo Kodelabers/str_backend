@@ -124,7 +124,11 @@ public class StatisticsService {
 
     private static CountyStrDto buildRow(String id, String name, long accommodations,
                                           Map<RnStatus, Long> byStatus) {
-        long active = byStatus.getOrDefault(RnStatus.ACTIVE, 0L);
+        // Prijedlog suspenzije je međukorak s otvorenim rokom, ne suspenzija — RB u tom statusu
+        // vrijedi, pa se broji kao aktivan. Bez toga bi ispao iz svih stupaca, a i iz ukupnog
+        // broja RB-ova, koji je zbroj ova tri.
+        long active = byStatus.getOrDefault(RnStatus.ACTIVE, 0L)
+                + byStatus.getOrDefault(RnStatus.SUSPENSION_PROPOSED, 0L);
         long suspended = byStatus.getOrDefault(RnStatus.SUSPENDED, 0L);
         long withdrawn = byStatus.getOrDefault(RnStatus.WITHDRAWN, 0L);
         return new CountyStrDto(id, name, accommodations, active, suspended, withdrawn,

@@ -46,4 +46,20 @@ class RnStatusTest {
             assertThat(RnStatus.WITHDRAWN.canTransitionTo(target, trigger)).isFalse();
         }
     }
+
+    /**
+     * A proposal is an intermediate step, not a suspension: the registration number keeps
+     * standing while the response deadline runs, so everything outside the suspension procedure
+     * itself — public verification, the registry's active view, statistics, the activity
+     * report's anomaly count — must treat it as active.
+     */
+    @Test
+    void proposedSuspensionStillCountsAsActive() {
+        assertThat(RnStatus.SUSPENSION_PROPOSED.isActiveForPublicUse()).isTrue();
+        assertThat(RnStatus.ACTIVE.isActiveForPublicUse()).isTrue();
+
+        assertThat(RnStatus.SUSPENDED.isActiveForPublicUse()).isFalse();
+        assertThat(RnStatus.WITHDRAWN.isActiveForPublicUse()).isFalse();
+        assertThat(RnStatus.IN_PROCESSING.isActiveForPublicUse()).isFalse();
+    }
 }

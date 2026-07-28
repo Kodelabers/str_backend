@@ -69,7 +69,8 @@ class StatisticsServiceTest {
                 accCount("Splitsko-dalmatinska županija", 10L)
         ));
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of(
-                rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 4L),
+                rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 3L),
+                rnCount("Splitsko-dalmatinska županija", RnStatus.SUSPENSION_PROPOSED, 1L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.SUSPENDED, 1L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.WITHDRAWN, 1L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.IN_PROCESSING, 99L)
@@ -80,11 +81,34 @@ class StatisticsServiceTest {
 
         CountyStrDto row = res.counties().get(0);
         assertThat(row.accommodations()).isEqualTo(10L);
+        // A proposed suspension is still a standing RN, so it lands in the active column.
+        // Dropping it would lose the RN from every column and from totalRn, which sums the three.
         assertThat(row.activeRn()).isEqualTo(4L);
         assertThat(row.suspendedRn()).isEqualTo(1L);
         assertThat(row.withdrawnRn()).isEqualTo(1L);
         assertThat(row.registrationRate()).isEqualTo(40.0);
         // IN_PROCESSING RNs are ignored by design — they aren't yet issued.
+    }
+
+    /** Totals must not silently lose a status; the sum of the columns is {@code totalRn}. */
+    @Test
+    void str_countsProposedSuspensionsTowardsTotals() {
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
+                county(1L, "Istarska županija")
+        ));
+        when(accommodationRepository.countByCounty()).thenReturn(List.of(
+                accCount("Istarska županija", 4L)
+        ));
+        when(rnRepository.countByCountyAndStatus()).thenReturn(List.of(
+                rnCount("Istarska županija", RnStatus.SUSPENSION_PROPOSED, 2L)
+        ));
+        when(facilityRepository.countByActiveTrue()).thenReturn(4L);
+
+        StrResponse res = service.str(null, null);
+
+        assertThat(res.counties().get(0).activeRn()).isEqualTo(2L);
+        assertThat(res.totals().totalRn()).isEqualTo(2L);
+        assertThat(res.counties().get(0).registrationRate()).isEqualTo(50.0);
     }
 
     @Test

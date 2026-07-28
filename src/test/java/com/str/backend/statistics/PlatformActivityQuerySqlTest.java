@@ -63,11 +63,15 @@ class PlatformActivityQuerySqlTest {
         query.query(PlatformActivityFilter.none(), 0, 20);
 
         String summarySql = captureSummarySql();
+        // SUSPENSION_PROPOSED is not an anomaly: the proposal only opens the response deadline,
+        // so the registration number still covers the reported activity.
         assertThat(summarySql)
-                .contains("COUNT(DISTINCT CASE WHEN rn.status <> 'ACTIVE' THEN aa.rn END) AS anomalies")
-                .contains("AND (:anomaliesOnly = FALSE OR rn.status <> 'ACTIVE')");
+                .contains("COUNT(DISTINCT CASE WHEN rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED')"
+                        + " THEN aa.rn END) AS anomalies")
+                .contains("AND (:anomaliesOnly = FALSE OR rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED'))");
 
-        assertThat(captureRowSql()).contains("AND (:anomaliesOnly = FALSE OR rn.status <> 'ACTIVE')");
+        assertThat(captureRowSql())
+                .contains("AND (:anomaliesOnly = FALSE OR rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED'))");
     }
 
     /** Registry and activity screens must treat a registration number the same way. */

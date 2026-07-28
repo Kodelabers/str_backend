@@ -55,7 +55,8 @@ public class StatisticsExportService {
     private static final DateTimeFormatter ISO_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private static final List<String> EXPORT_STATUSES =
-            List.of(RnStatus.ACTIVE.name(), RnStatus.SUSPENDED.name(), RnStatus.WITHDRAWN.name());
+            List.of(RnStatus.ACTIVE.name(), RnStatus.SUSPENSION_PROPOSED.name(),
+                    RnStatus.SUSPENDED.name(), RnStatus.WITHDRAWN.name());
 
     /**
      * Upper bound for a single activity export. Measured on this code path: 50k rows takes ~20s
@@ -523,11 +524,12 @@ public class StatisticsExportService {
     private static String translateActivityStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case "aktivan"     -> "Aktivan";
-            case "suspendiran" -> "Suspendiran";
-            case "povucen"     -> "Povučen";
-            case "bez_rb"      -> "Bez RB";
-            default            -> status;
+            case "aktivan"          -> "Aktivan";
+            case "pred_suspenzijom" -> "Pred suspenzijom";
+            case "suspendiran"      -> "Suspendiran";
+            case "povucen"          -> "Povučen";
+            case "bez_rb"           -> "Bez RB";
+            default                 -> status;
         };
     }
 
@@ -542,10 +544,11 @@ public class StatisticsExportService {
     private static String translateStatus(String status) {
         if (status == null) return "";
         return switch (status) {
-            case "ACTIVE"    -> "Aktivan";
-            case "SUSPENDED" -> "Suspendiran";
-            case "WITHDRAWN" -> "Povučen";
-            default          -> status;
+            case "ACTIVE"              -> "Aktivan";
+            case "SUSPENSION_PROPOSED" -> "Pred suspenzijom";
+            case "SUSPENDED"           -> "Suspendiran";
+            case "WITHDRAWN"           -> "Povučen";
+            default                    -> status;
         };
     }
 

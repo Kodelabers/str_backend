@@ -241,7 +241,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     List<LessorRnSummaryDto> findByLessorOib(@Param("oib") String oib);
 
-    /** Duplicate-location check: is there an ACTIVE or SUSPENDED RN for an accommodation
+    /** Duplicate-location check: is there a still-standing (ACTIVE, SUSPENSION_PROPOSED or
+     *  SUSPENDED) RN for an accommodation
      *  on this exact address (county + city + street + streetNumber, case- and whitespace-
      *  insensitive), optionally filtered to a specific lessor by OIB? When {@code oib} is
      *  null the address match alone is enough to surface a conflict; when set, the lessor
@@ -254,6 +255,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             LEFT JOIN SubmissionEntity s ON s.submissionId = r.submissionId
             LEFT JOIN LessorEntity l ON l.lessorId = s.lessorId
             WHERE r.status IN (com.str.backend.domain.RnStatus.ACTIVE,
+                               com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED,
                                com.str.backend.domain.RnStatus.SUSPENDED)
               AND LOWER(TRIM(a.county)) = LOWER(TRIM(:county))
               AND LOWER(TRIM(a.city)) = LOWER(TRIM(:city))

@@ -53,6 +53,29 @@ class VerifyControllerTest {
                 .andExpect(jsonPath("$.type").value("Apartman"));
     }
 
+    /**
+     * A proposal only opens the response deadline — the registration number still holds, so the
+     * public check must answer as it does for an active one. Reporting it as suspended (or as
+     * unknown) would tell an advertiser to pull a listing that is still lawful.
+     */
+    @Test
+    void returns_object_data_when_suspension_is_only_proposed() throws Exception {
+        RnEntity entity = rnWithStatus(RnStatus.SUSPENSION_PROPOSED);
+        when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.of(entity));
+        when(rnRepository.findPublicView(WELL_FORMED_RN)).thenReturn(Optional.of(new RnPublicView(
+                WELL_FORMED_RN, "Apartman More", "3 zvjezdice", "Korzo", "2", "Rijeka",
+                "Objekti u domaćinstvu", "Apartman")));
+
+        mvc.perform(get("/api/verify/{rn}", WELL_FORMED_RN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                // The real status is reported rather than folded into ACTIVE.
+                .andExpect(jsonPath("$.status").value("SUSPENSION_PROPOSED"))
+                .andExpect(jsonPath("$.registrationNumber").value(WELL_FORMED_RN))
+                .andExpect(jsonPath("$.accommodationName").value("Apartman More"))
+                .andExpect(jsonPath("$.address").value("Korzo 2, Rijeka"));
+    }
+
     @Test
     void returns_suspended_status_without_object_data() throws Exception {
         RnEntity entity = rnWithStatus(RnStatus.SUSPENDED);

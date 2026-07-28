@@ -1,6 +1,8 @@
 package com.str.backend.lookup;
 
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.CountyRepository;
+import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.guest.GuestRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +30,10 @@ class PlatformLookupControllerTest {
     @MockBean private OnlinePlatformRepository platformRepository;
     @MockBean private AccommodationRepository accommodationRepository;
     @MockBean private GuestRepository guestRepository;
+    // Backing the /municipalities lookup. Absent, the slice fails to build the controller and
+    // every test in the class errors out on context load, whatever it was actually asserting.
+    @MockBean private CountyRepository countyRepository;
+    @MockBean private MunicipalityRepository municipalityRepository;
 
     /**
      * STR-3.2: the guest-country filter is unusable without these options, and they must come

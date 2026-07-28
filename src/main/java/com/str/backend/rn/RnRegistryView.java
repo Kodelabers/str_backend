@@ -8,13 +8,15 @@ import java.util.List;
 public enum RnRegistryView {
 
     ALL(List.of(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED, RnStatus.WITHDRAWN)),
-    ACTIVE(List.of(RnStatus.ACTIVE)),
+    /** RB-ovi koji vrijede za oglašavanje — prijedlog suspenzije rok tek otvara, ne oduzima RB. */
+    ACTIVE(List.of(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED)),
+    /** Radna lista predmeta u tijeku: RB je i dalje valjan, ali rok za očitovanje teče. */
     SUSPENSION_PROPOSED(List.of(RnStatus.SUSPENSION_PROPOSED)),
     SUSPENDED(List.of(RnStatus.SUSPENDED)),
     /** STR-1.5: povučeni/opozvani RB-ovi. */
     WITHDRAWN(List.of(RnStatus.WITHDRAWN)),
-    /** STR-1.5: svi za oglašavanje nevažeći RB-ovi (predloženi za suspenziju + suspendirani + povučeni). */
-    INVALID(List.of(RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
+    /** STR-1.5: svi za oglašavanje nevažeći RB-ovi (suspendirani + povučeni). */
+    INVALID(List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
 
     private final List<RnStatus> statuses;
 

@@ -37,11 +37,17 @@ class PlatformActivityQuery {
     private static final TypeReference<List<PlatformChipDto>> CHIPS_TYPE = new TypeReference<>() {};
 
     /**
-     * Spec §2.10: what counts as an anomaly ("suspektan" RB). Shared by the header count and the
-     * "anomalies only" filter — the spec requires the number in the header to equal the number of
-     * registration numbers left after applying the filter, so the two must never drift apart.
+     * Spec §2.10: what counts as an anomaly ("suspektan" RB) — activity reported on a registration
+     * number that is no longer valid for advertising. SUSPENSION_PROPOSED is not one of those: the
+     * proposal only opens the response deadline and the RN keeps holding until it expires, so
+     * advertising under it is legitimate.
+     *
+     * <p>Shared by the header count and the "anomalies only" filter — the spec requires the number
+     * in the header to equal the number of registration numbers left after applying the filter, so
+     * the two must never drift apart.
      */
-    private static final String ANOMALY_PREDICATE = "rn.status <> 'ACTIVE'";
+    private static final String ANOMALY_PREDICATE =
+            "rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED')";
 
     private static final String FROM_JOINS = """
             FROM str_rn.accommodation_activity aa

@@ -27,18 +27,20 @@ public class VerifyController {
     }
 
     /**
-     * STR-1.4-001: public verification of a registration number. ACTIVE returns advertise-safe
-     * object data; SUSPENDED returns the status only; WITHDRAWN and unknown RNs are reported
-     * identically as {@code {valid:false}} (privacy — čl. 4. st. 5. STR Uredbe).
+     * STR-1.4-001: public verification of a registration number. ACTIVE and SUSPENSION_PROPOSED
+     * return advertise-safe object data — a proposal only starts the response deadline, the
+     * registration number itself still holds — with the real status in the payload; SUSPENDED
+     * returns the status only; WITHDRAWN and unknown RNs are reported identically as
+     * {@code {valid:false}} (privacy — čl. 4. st. 5. STR Uredbe).
      */
     @GetMapping("/{rn}")
     @Transactional(readOnly = true)
     public VerifyResponse verify(
             @PathVariable @Pattern(regexp = RegistrationNumber.REGEXP) String rn) {
         RnStatus status = rnRepository.findById(rn).map(RnEntity::getStatus).orElse(null);
-        if (status == RnStatus.ACTIVE) {
+        if (status != null && status.isActiveForPublicUse()) {
             return rnRepository.findPublicView(rn)
-                    .map(VerifyController::toActive)
+                    .map(v -> toActive(status, v))
                     .orElseGet(VerifyResponse::invalid);
         }
         if (status == RnStatus.SUSPENDED) {
@@ -48,8 +50,8 @@ public class VerifyController {
         return VerifyResponse.invalid();
     }
 
-    private static VerifyResponse toActive(RnPublicView v) {
-        return VerifyResponse.active(v.rn(), v.accommodationName(), v.category(),
+    private static VerifyResponse toActive(RnStatus status, RnPublicView v) {
+        return VerifyResponse.active(status, v.rn(), v.accommodationName(), v.category(),
                 composeAddress(v.street(), v.streetNumber(), v.city()), v.group(), v.type());
     }
 

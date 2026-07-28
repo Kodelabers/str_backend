@@ -74,12 +74,16 @@ PENDING → REJECTED (admin rejects)
 `RnStatus` (registration number lifecycle) — suspension is **two-phase**: the party is first invited to respond (čl. 30. st. 2 ZUP), and only an expired deadline suspends:
 ```
 IN_PROCESSING → ACTIVE (ISSUE)
-ACTIVE → SUSPENSION_PROPOSED (CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION)
+ACTIVE → SUSPENSION_PROPOSED (CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION / OTHER)
 SUSPENSION_PROPOSED → ACTIVE (REVOKE_PROPOSAL)        [party fixed the issue]
 SUSPENSION_PROPOSED → SUSPENDED (DEADLINE_EXCEEDED)   [SuspensionDeadlineJob, daily]
 SUSPENDED → ACTIVE (REACTIVATE)
 ACTIVE / SUSPENSION_PROPOSED / SUSPENDED → WITHDRAWN (WITHDRAWAL)   [terminal — permanent, no reactivation]
 ```
+
+The four suspension triggers are listed twice — `RnService.suspend()` validates the request, `RnStatus.canTransitionTo()` validates the transition — and the two must stay in sync. When they drifted, a proposal passed the service and was then refused by the state machine with a 409, i.e. *after* the request had been accepted as valid. `RnStatusTest` pins the two lists to each other. `OTHER` additionally requires a note; it carries the reason into the act, since there is no coded reason to render.
+
+**`SUSPENSION_PROPOSED` counts as active everywhere outside the suspension procedure itself.** It is the intermediate step where the response deadline runs; the registration number still holds and may still be advertised, and only `DEADLINE_EXCEEDED` suspends it. `RnStatus.isActiveForPublicUse()` is the predicate — public verification (`/api/verify`, returns object data with the real status), the registry's `view=ACTIVE`, the county statistics' active column, the duplicate-location guard, and the activity report's anomaly count all treat it that way. Correspondingly it is *not* in `RnRegistryView.INVALID` nor in `/api/rn/inactive`; its work list is `view=SUSPENSION_PROPOSED`. Note for the FE: the button that clears a proposal is `/revoke-proposal`, not `/reactivate` — `REACTIVATE` is legal only from `SUSPENDED`.
 
 All status changes go exclusively through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. Each validates the transition against `canTransitionTo()` and immediately writes a `submission_log` / `registration_number_log` row — these two operations are inseparable. Never mutate the status field directly from service code.
 

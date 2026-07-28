@@ -159,11 +159,16 @@ public class RnService {
         return repository.findByAccommodationId(accommodationId);
     }
 
-    /** STR-1.5: list of inactive RNs (SUSPENSION_PROPOSED + SUSPENDED + WITHDRAWN), for display to competent authority. */
+    /**
+     * STR-1.5: list of inactive RNs (SUSPENDED + WITHDRAWN), for display to competent authority.
+     * SUSPENSION_PROPOSED is deliberately absent — the proposal only opens the response deadline
+     * and the RN keeps holding until it expires. That work list is {@code view=SUSPENSION_PROPOSED}
+     * on the registry endpoint.
+     */
     @Transactional(readOnly = true)
     public List<RnEntity> inactive() {
         return repository.findByStatusInOrderByUpdatedAtDesc(
-                List.of(RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
+                List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
     }
 
     /** STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging. */

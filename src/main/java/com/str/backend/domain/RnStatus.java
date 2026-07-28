@@ -33,7 +33,12 @@ public enum RnStatus {
         };
     }
 
-    public boolean isPubliclyVisible() {
-        return this == ACTIVE;
+    /**
+     * SUSPENSION_PROPOSED je međukorak, ne suspenzija: dok rok za očitovanje teče RB vrijedi i
+     * smije se oglašavati, pa se svugdje izvan samog postupka broji i prikazuje kao aktivan.
+     * Suspenzija nastupa tek istekom roka ({@link RnTrigger#DEADLINE_EXCEEDED}).
+     */
+    public boolean isActiveForPublicUse() {
+        return this == ACTIVE || this == SUSPENSION_PROPOSED;
     }
 }
