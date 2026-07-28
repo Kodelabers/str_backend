@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Stabilna šifra vrste smještaja (FS_*). Naziv je prikazna vrijednost, a type_id
+        ovisi o redoslijedu inserta jer 020-reseed briše i ponovno umeće retke. Šifra
+        je zato jedini ključ na koji se integracije smiju vezati.
+    -->
+
+    <!--
+        Ujednačavanje naziva prije uvođenja šifre. Seed 007 je na dev/cdu upisao
+        "Kuca za odmor" bez dijakritika, dok 020-reseed (context="local") na local/mock
+        ima "Kuća za odmor". Ispravlja se u prikazni oblik s dijakritikom.
+
+        Sigurno je: accommodation se na vrstu veže preko accommodation_type_id, a ne
+        preko naziva, pa nema FK-a ni upita u Javi koji matchaju na literal naziva
+        (jedini čitatelj je EgopRegistrationDispatcher, i to samo za ispis).
+    -->
+    <changeSet id="060-accommodation-type-fix-kuca-name" author="str-backend">
+        <sql>
+            UPDATE str_rn.accommodation_type
+               SET name = 'Kuća za odmor'
+             WHERE name = 'Kuca za odmor';
+        </sql>
+        <!--
+            Bez rollbacka namjerno. Obrnuti UPDATE ne može razlikovati okoline: na
+            local/mock je "Kuća za odmor" upisao 020-reseed, pa bi vraćanje unazad
+            tamo pokvarilo naziv koji ovaj changeset nikad nije ni dirao.
+            Ispravak prikaznog naziva nije vrijedan te asimetrije.
+        -->
+        <rollback/>
+    </changeSet>
+
+    <changeSet id="060-accommodation-type-add-code" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="accommodation_type">
+            <column name="code" type="VARCHAR(64)"
+                    remarks="Stabilna šifra vrste smještaja (FS_SOBA, FS_APARTMAN, ...)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn schemaName="str_rn" tableName="accommodation_type" columnName="code"/>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Popunjavanje po nazivu, a ne po type_id — ID-evi se razlikuju među okolinama.
+        Usporedba ide preko LOWER(); varijanta bez dijakritika ostaje u uvjetu i nakon
+        gornjeg preimenovanja, za slučaj da neka okolina ima redak koji ono nije
+        zahvatilo. "AND code IS NULL" čini changeset ponovljivim.
+    -->
+    <changeSet id="060-accommodation-type-seed-code" author="str-backend">
+        <sql>
+            UPDATE str_rn.accommodation_type SET code = 'FS_SOBA'
+                WHERE LOWER(name) = 'soba' AND code IS NULL;
+
+            UPDATE str_rn.accommodation_type SET code = 'FS_APARTMAN'
+                WHERE LOWER(name) = 'apartman' AND code IS NULL;
+
+            UPDATE str_rn.accommodation_type SET code = 'FS_STUDIO_APARTMAN'
+                WHERE LOWER(name) = 'studio apartman' AND code IS NULL;
+
+            UPDATE str_rn.accommodation_type SET code = 'FS_KUCA_ZA_ODMOR'
+                WHERE LOWER(name) IN ('kuca za odmor', 'kuća za odmor') AND code IS NULL;
+        </sql>
+        <rollback>
+            <sql>
+                UPDATE str_rn.accommodation_type SET code = NULL
+                WHERE code IN ('FS_SOBA', 'FS_APARTMAN', 'FS_STUDIO_APARTMAN', 'FS_KUCA_ZA_ODMOR')
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Jedinstvenost šifre. Kolona ostaje nullable: NOT NULL bi srušio podizanje
+        aplikacije na svakoj okolini koja ima vrstu smještaja izvan ove četiri
+        (npr. naknadno dodanu ručno), a jedinstvenost je ono što integracijama
+        stvarno treba. Postgres dopušta više NULL-ova u unique indeksu.
+    -->
+    <changeSet id="060-accommodation-type-code-unique" author="str-backend">
+        <createIndex schemaName="str_rn" tableName="accommodation_type"
+                     indexName="ux_accommodation_type_code" unique="true">
+            <column name="code"/>
+        </createIndex>
+        <rollback>
+            <dropIndex schemaName="str_rn" tableName="accommodation_type"
+                       indexName="ux_accommodation_type_code"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

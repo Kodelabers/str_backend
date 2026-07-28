@@ -25,7 +25,8 @@ class AccommodationTypeController {
                 .map(e -> new AccommodationTypeResponse(
                         String.valueOf(e.getTypeId()),
                         e.getName(),
-                        e.getGroup()))
+                        e.getGroup(),
+                        e.getCode()))
                 .toList();
         return ResponseEntity.ok(body);
     }

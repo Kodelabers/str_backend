@@ -53,17 +53,29 @@ class StrLessorLookupServiceTest {
                 .hasMessageContaining("subject_version");
     }
 
+    /**
+     * Adresa iznajmljivača nije blokator: na CDU {@code str.subject_address.address_id}
+     * ne matcha {@code eturizam_test.ar_address}, a adresa ide samo na PDF — ne utječe
+     * na GO validaciju ni dodjelu RB-a. Kad se ne nađe, lessor se razriješi s praznim
+     * adresnim poljima umjesto da se baci 404.
+     */
     @Test
-    void throws_when_address_not_found() {
+    void resolves_lessor_with_blank_address_when_address_not_found() {
         when(subjectRepo.findFirstByJipsAndActiveTrue(OIB)).thenReturn(Optional.of(subject(1L)));
         when(versionRepo.findFirstBySubjectIdAndActiveTrueAndHistoricalFalseOrderByIdDesc(1L))
                 .thenReturn(Optional.of(version(10L, "Pero", "Perić", null, OIB)));
         when(addressRepo.findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(10L))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.resolveLessor(OIB))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("Adresa");
+        LessorEntity lessor = service.resolveLessor(OIB);
+
+        assertThat(lessor.getFirstName()).isEqualTo("Pero");
+        assertThat(lessor.getLastName()).isEqualTo("Perić");
+        assertThat(lessor.getLessorOib()).isEqualTo(OIB);
+        assertThat(lessor.getStreet()).isEmpty();
+        assertThat(lessor.getStreetNumber()).isEmpty();
+        assertThat(lessor.getPlace()).isEmpty();
+        assertThat(lessor.getCounty()).isEmpty();
     }
 
     @Test
