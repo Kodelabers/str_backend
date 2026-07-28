@@ -74,7 +74,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void registrationNumberIsMatchedPartially() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, null, "HR0100", false, null), ANY_LIMIT);
+                null, null, null, null, null, null, null, "HR0100", false, null), ANY_LIMIT);
 
         assertThat(captureRowSql()).contains("AND (:rn IS NULL OR aa.rn ILIKE :rnLike)");
         assertThat(captureParams().getValue("rnLike")).isEqualTo("%HR0100%");
@@ -113,7 +113,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void filterValuesAreBoundAsParameters() {
         query.queryAll(new PlatformActivityFilter(
-                7L, null, null, "  ", "suspendiran", null, null, true, "  Njemačka  "), ANY_LIMIT);
+                7L, null, null, "  ", null, "suspendiran", null, null, true, "  Njemačka  "), ANY_LIMIT);
 
         MapSqlParameterSource params = captureParams();
         assertThat(params.getValue("platformId")).isEqualTo(7L);
@@ -132,7 +132,7 @@ class PlatformActivityQuerySqlTest {
     void unknownStatusTokenIsRejected() {
         for (String bad : new String[]{"blabla", "ACTIVE", "Aktivan", "active"}) {
             assertThatThrownBy(() -> query.queryAll(new PlatformActivityFilter(
-                    null, null, null, null, bad, null, null, false, null), ANY_LIMIT))
+                    null, null, null, null, null, bad, null, null, false, null), ANY_LIMIT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("error.activity.status.invalid");
         }
@@ -145,7 +145,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void absentAnomalyFlagBindsAsFalseNotNull() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, null, null, null, null), ANY_LIMIT);
+                null, null, null, null, null, null, null, null, null, null), ANY_LIMIT);
 
         assertThat(captureParams().getValue("anomaliesOnly")).isEqualTo(false);
     }
@@ -153,7 +153,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void blankStatusLeavesTheFilterOff() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, "  ", null, null, false, null), ANY_LIMIT);
+                null, null, null, null, null, "  ", null, null, false, null), ANY_LIMIT);
 
         assertThat(captureParams().getValue("rnStatus")).isNull();
     }
