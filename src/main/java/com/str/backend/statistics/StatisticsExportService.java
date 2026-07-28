@@ -12,6 +12,9 @@ import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.pdf.PdfFonts;
+import com.str.backend.rn.RnRegistryView;
+import com.str.backend.rn.RnService;
+import com.str.backend.rn.dto.RnSummaryDto;
 import com.str.backend.statistics.StatisticsRepository.DetailRowProjection;
 import com.str.backend.statistics.dto.StrResponse;
 import com.str.backend.statistics.dto.CountyStrDto;
@@ -86,13 +89,16 @@ public class StatisticsExportService {
     private final StatisticsService    statisticsService;
     private final StatisticsRepository statisticsRepository;
     private final PlatformActivityQuery platformActivityQuery;
+    private final RnService            rnService;
 
     public StatisticsExportService(StatisticsService statisticsService,
                                    StatisticsRepository statisticsRepository,
-                                   PlatformActivityQuery platformActivityQuery) {
+                                   PlatformActivityQuery platformActivityQuery,
+                                   RnService rnService) {
         this.statisticsService     = statisticsService;
         this.statisticsRepository  = statisticsRepository;
         this.platformActivityQuery = platformActivityQuery;
+        this.rnService             = rnService;
     }
 
     // ── PDF ──────────────────────────────────────────────────────────────────
@@ -247,6 +253,156 @@ public class StatisticsExportService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate STR Excel", e);
         }
+    }
+
+    // ── RN Registry export ────────────────────────────────────────────────────
+
+    private static final String[] RN_HEADERS = {
+            "Registracijski broj", "Status", "Datum izdavanja", "Vrijedi od", "Vrijedi do",
+            "Naziv objekta", "Vrsta objekta", "Iznajmljivač", "Ulica i kbr.", "Grad", "Županija"
+    };
+
+    private List<RnSummaryDto> fetchRegistryForExport(RnRegistryView view, String q, String county,
+                                                      String municipality, Long typeId,
+                                                      boolean foreignOnly, String rb, String city,
+                                                      String street, String name, String lessor) {
+        List<RnSummaryDto> rows = rnService.searchRegistryForExport(
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+        if (rows.size() > MAX_EXPORT_ROWS) {
+            throw new BusinessException("error.export.too.many.rows");
+        }
+        return rows;
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generateRegistryXlsx(RnRegistryView view, String q, String county, String municipality,
+                                       Long typeId, boolean foreignOnly, String rb, String city,
+                                       String street, String name, String lessor) {
+        List<RnSummaryDto> rows = fetchRegistryForExport(
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+        SXSSFWorkbook wb = new SXSSFWorkbook(SXSSF_WINDOW_ROWS);
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            Sheet sheet = wb.createSheet("Registar RB");
+            org.apache.poi.ss.usermodel.Font boldFont = wb.createFont();
+            boldFont.setBold(true);
+            CellStyle headerStyle = wb.createCellStyle();
+            headerStyle.setFont(boldFont);
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < RN_HEADERS.length; i++) {
+                var cell = headerRow.createCell(i);
+                cell.setCellValue(RN_HEADERS[i]);
+                cell.setCellStyle(headerStyle);
+            }
+            int rowIdx = 1;
+            for (RnSummaryDto r : rows) {
+                Row row = sheet.createRow(rowIdx++);
+                row.createCell(0).setCellValue(nullToEmpty(r.rn()));
+                row.createCell(1).setCellValue(translateStatus(r.status() != null ? r.status().name() : null));
+                row.createCell(2).setCellValue(formatDate(r.issueDate()));
+                row.createCell(3).setCellValue(formatDate(r.validFrom()));
+                row.createCell(4).setCellValue(formatDate(r.validTo()));
+                row.createCell(5).setCellValue(nullToEmpty(r.accommodationName()));
+                row.createCell(6).setCellValue(nullToEmpty(r.accommodationTypeName()));
+                row.createCell(7).setCellValue(rnLessorLabel(r));
+                row.createCell(8).setCellValue(rnAddress(r));
+                row.createCell(9).setCellValue(nullToEmpty(r.city()));
+                row.createCell(10).setCellValue(nullToEmpty(r.county()));
+            }
+            wb.write(baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate registry Excel", e);
+        } finally {
+            wb.dispose();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generateRegistryCsv(RnRegistryView view, String q, String county, String municipality,
+                                      Long typeId, boolean foreignOnly, String rb, String city,
+                                      String street, String name, String lessor) {
+        List<RnSummaryDto> rows = fetchRegistryForExport(
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(CSV_INITIAL_BUFFER_BYTES);
+        try (Writer out = new BufferedWriter(new OutputStreamWriter(baos, StandardCharsets.UTF_8))) {
+            out.write('\uFEFF'); // BOM for Excel-compatible UTF-8
+            out.write(String.join(",", RN_HEADERS));
+            out.write("\r\n");
+            for (RnSummaryDto r : rows) {
+                out.write(csvEscape(r.rn()));                                       out.write(',');
+                out.write(csvEscape(translateStatus(r.status() != null ? r.status().name() : null))); out.write(',');
+                out.write(csvEscape(formatDate(r.issueDate())));                    out.write(',');
+                out.write(csvEscape(formatDate(r.validFrom())));                    out.write(',');
+                out.write(csvEscape(formatDate(r.validTo())));                      out.write(',');
+                out.write(csvEscape(r.accommodationName()));                        out.write(',');
+                out.write(csvEscape(r.accommodationTypeName()));                    out.write(',');
+                out.write(csvEscape(rnLessorLabel(r)));                             out.write(',');
+                out.write(csvEscape(rnAddress(r)));                                 out.write(',');
+                out.write(csvEscape(r.city()));                                     out.write(',');
+                out.write(csvEscape(r.county()));
+                out.write("\r\n");
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to generate registry CSV", e);
+        }
+        return baos.toByteArray();
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generateRegistryPdf(RnRegistryView view, String q, String county, String municipality,
+                                      Long typeId, boolean foreignOnly, String rb, String city,
+                                      String street, String name, String lessor) {
+        List<RnSummaryDto> rows = fetchRegistryForExport(
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            Document doc = new Document(PageSize.A4.rotate(), 28, 28, 36, 28);
+            PdfWriter.getInstance(doc, baos);
+            doc.open();
+
+            Paragraph title = new Paragraph("Registar registracijskih brojeva", FNT_TITLE);
+            title.setSpacingAfter(4);
+            doc.add(title);
+            Paragraph dateP = new Paragraph("Generirano: " + LocalDate.now().format(DATE_FMT), FNT_DATE);
+            dateP.setSpacingAfter(14);
+            doc.add(dateP);
+
+            float[] widths = {3f, 2f, 2f, 2f, 2f, 3.5f, 2.5f, 3f, 3f, 2.5f, 3f};
+            PdfPTable table = new PdfPTable(widths);
+            table.setWidthPercentage(100);
+            for (String h : RN_HEADERS) table.addCell(thCell(h));
+            for (RnSummaryDto r : rows) {
+                table.addCell(tdCell(nullToEmpty(r.rn())));
+                table.addCell(tdCell(translateStatus(r.status() != null ? r.status().name() : null)));
+                table.addCell(tdCell(formatDate(r.issueDate())));
+                table.addCell(tdCell(formatDate(r.validFrom())));
+                table.addCell(tdCell(formatDate(r.validTo())));
+                table.addCell(tdCell(nullToEmpty(r.accommodationName())));
+                table.addCell(tdCell(nullToEmpty(r.accommodationTypeName())));
+                table.addCell(tdCell(rnLessorLabel(r)));
+                table.addCell(tdCell(rnAddress(r)));
+                table.addCell(tdCell(nullToEmpty(r.city())));
+                table.addCell(tdCell(nullToEmpty(r.county())));
+            }
+            doc.add(table);
+            doc.close();
+            return baos.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate registry PDF", e);
+        }
+    }
+
+    private static String rnLessorLabel(RnSummaryDto r) {
+        if (r.lessorLegalEntityName() != null && !r.lessorLegalEntityName().isBlank())
+            return r.lessorLegalEntityName();
+        String parts = ((r.lessorFirstName() != null ? r.lessorFirstName() : "") + " "
+                + (r.lessorLastName() != null ? r.lessorLastName() : "")).trim();
+        return parts.isEmpty() ? "-" : parts;
+    }
+
+    private static String rnAddress(RnSummaryDto r) {
+        String street = nullToEmpty(r.street());
+        String number = nullToEmpty(r.streetNumber());
+        return number.isEmpty() ? street : street + " " + number;
     }
 
     // ── Platform activities export (STR-3.2) ───────────────────────────────────

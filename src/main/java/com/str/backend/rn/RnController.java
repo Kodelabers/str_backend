@@ -11,6 +11,7 @@ import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnDocumentDto;
 import com.str.backend.rn.dto.RnResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
+import com.str.backend.statistics.StatisticsExportService;
 import jakarta.validation.constraints.Pattern;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.domain.Page;
@@ -45,14 +46,17 @@ public class RnController {
     private final StrDocumentService documentService;
     private final RnDocumentsService documentsService;
     private final RnRepository rnRepository;
+    private final StatisticsExportService exportService;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
-                        RnDocumentsService documentsService, RnRepository rnRepository) {
+                        RnDocumentsService documentsService, RnRepository rnRepository,
+                        StatisticsExportService exportService) {
         this.service = service;
         this.mapper = mapper;
         this.documentService = documentService;
         this.documentsService = documentsService;
         this.rnRepository = rnRepository;
+        this.exportService = exportService;
     }
 
     /** STR-1.5: display of inactive RNs (SUSPENDED + WITHDRAWN). */
@@ -69,13 +73,14 @@ public class RnController {
             @RequestParam(required = false) String county,
             @RequestParam(required = false) String municipality,
             @RequestParam(required = false) Long typeId,
+            @RequestParam(defaultValue = "false") boolean foreignOnly,
             @RequestParam(required = false) String rb,
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
             @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.searchRegistry(view, q, county, municipality, typeId, rb, city, street, name, lessor, pageable);
+        return service.searchRegistry(view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, pageable);
     }
 
     /** STR wireframe §12 / §13: full detail of a single RN (accommodation + lessor). */
@@ -93,8 +98,9 @@ public class RnController {
     public RnResponse suspend(
             @PathVariable String rn,
             @RequestParam RnTrigger reason,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate suspensionDeadline) {
-        return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate suspensionDeadline,
+            @RequestParam(required = false) String note) {
+        return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline, note));
     }
 
     @PostMapping("/{rn}/revoke-proposal")
@@ -178,6 +184,73 @@ public class RnController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + doc.filename() + "\"")
                 .body(doc.pdf());
+    }
+
+    /** STR §12/§13: export filtered registry as Excel. */
+    @GetMapping("/export/xlsx")
+    public ResponseEntity<byte[]> exportXlsx(
+            @RequestParam(defaultValue = "ALL") RnRegistryView view,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String county,
+            @RequestParam(required = false) String municipality,
+            @RequestParam(required = false) Long typeId,
+            @RequestParam(defaultValue = "false") boolean foreignOnly,
+            @RequestParam(required = false) String rb,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String street,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String lessor) {
+        byte[] xlsx = exportService.generateRegistryXlsx(
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"registar-rb.xlsx\"")
+                .body(xlsx);
+    }
+
+    /** STR §12/§13: export filtered registry as CSV. */
+    @GetMapping("/export/csv")
+    public ResponseEntity<byte[]> exportCsv(
+            @RequestParam(defaultValue = "ALL") RnRegistryView view,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String county,
+            @RequestParam(required = false) String municipality,
+            @RequestParam(required = false) Long typeId,
+            @RequestParam(defaultValue = "false") boolean foreignOnly,
+            @RequestParam(required = false) String rb,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String street,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String lessor) {
+        byte[] csv = exportService.generateRegistryCsv(
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"registar-rb.csv\"")
+                .body(csv);
+    }
+
+    /** STR §12/§13: export filtered registry as PDF. */
+    @GetMapping("/export/pdf")
+    public ResponseEntity<byte[]> exportPdf(
+            @RequestParam(defaultValue = "ALL") RnRegistryView view,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String county,
+            @RequestParam(required = false) String municipality,
+            @RequestParam(required = false) Long typeId,
+            @RequestParam(defaultValue = "false") boolean foreignOnly,
+            @RequestParam(required = false) String rb,
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String street,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String lessor) {
+        byte[] pdf = exportService.generateRegistryPdf(
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"registar-rb.pdf\"")
+                .body(pdf);
     }
 
     /**
