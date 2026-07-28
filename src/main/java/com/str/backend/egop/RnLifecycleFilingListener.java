@@ -6,7 +6,6 @@ import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -31,6 +30,11 @@ import java.util.UUID;
  * poslao bi drugi dokument pod istim urudžbenim brojem.
  *
  * <p>Pad u koraku 3 ne gubi ništa — akt je zapisan i {@link EgopRetryJob} ga pokupi.
+ *
+ * <p>Koraci 1 i 2 idu <b>i za vrste bez šifre u eGOP šifrarniku</b> ({@link EgopAktiBezSifre});
+ * preskače se samo korak 3. Akt time postoji u {@code egop_pismeno}, pa se stranci prikazuje u
+ * „Moji registracijski brojevi" i može se preuzeti — jednako kao zahtjev i obavijest o dodjeli.
+ * Da se preskakalo i zapisivanje, dokument bi postojao samo kao privitak e-pošte.
  */
 @Component
 public class RnLifecycleFilingListener {
@@ -41,19 +45,18 @@ public class RnLifecycleFilingListener {
     private final StrDocumentService documentService;
     private final EgopFilingStore store;
     private final EgopAktDispatcher dispatcher;
-    private final boolean urudzbirajReaktivaciju;
+    private final EgopAktiBezSifre bezSifre;
 
     public RnLifecycleFilingListener(RnLifecycleLookup lookup,
                                      StrDocumentService documentService,
                                      EgopFilingStore store,
                                      EgopAktDispatcher dispatcher,
-                                     @Value("${str.egop.urudzbiraj-reaktivaciju:false}")
-                                     boolean urudzbirajReaktivaciju) {
+                                     EgopAktiBezSifre bezSifre) {
         this.lookup = lookup;
         this.documentService = documentService;
         this.store = store;
         this.dispatcher = dispatcher;
-        this.urudzbirajReaktivaciju = urudzbirajReaktivaciju;
+        this.bezSifre = bezSifre;
     }
 
     /**
@@ -71,16 +74,6 @@ public class RnLifecycleFilingListener {
         if (type.isEmpty()) {
             return;
         }
-        if (type.get() == StrDocumentType.REAKTIVACIJA && !urudzbirajReaktivaciju) {
-            // „Obavijest o reaktivaciji" nema šifru u eGOP šifrarniku (nije među 7 vrsta iz
-            // maila 22.07.2026.). Slanje bi palo na razrješavanju vrste pismena i vrtjelo se
-            // do iscrpljenja pokušaja; obavijest e-poštom ide neovisno o ovome.
-            log.info("egop_akt_skipped reason=reaktivacija_disabled rn={}"
-                    + " — upaliti str.egop.urudzbiraj-reaktivaciju kad InfoDom potvrdi šifru",
-                    event.rn());
-            return;
-        }
-
         UUID submissionId = lookup.findSubmissionId(event.rn()).orElse(null);
         if (submissionId == null) {
             log.error("egop_akt_skipped reason=missing_submission rn={} vrsta='{}'",
@@ -100,6 +93,16 @@ public class RnLifecycleFilingListener {
             log.error("egop_akt_not_recorded rn={} vrsta='{}': {} — akt nije zapisan pa ga"
                     + " ni retry neće pokupiti; urudžbirati ručno",
                     event.rn(), type.get().vrstaPismenaNaziv(), e.getMessage(), e);
+            return;
+        }
+
+        if (!bezSifre.urudzbiv(type.get())) {
+            // Akt je zapisan i vidljiv stranci; staje samo slanje, jer bi razrješavanje vrste
+            // pismena palo i vrtjelo se do iscrpljenja pokušaja. EgopRetryJob ove akte izuzima
+            // iz reda dok je slug na popisu — makne li se, urudžbirat će i ovaj zaostatak.
+            log.info("egop_akt_not_filed reason=vrsta_bez_sifre akt={} rn={} vrsta='{}'"
+                    + " — maknuti '{}' iz str.egop.akti-bez-sifre kad InfoDom potvrdi šifru",
+                    akt.getId(), event.rn(), type.get().vrstaPismenaNaziv(), type.get().slug());
             return;
         }
 

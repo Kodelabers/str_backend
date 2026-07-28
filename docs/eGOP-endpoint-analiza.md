@@ -1897,9 +1897,17 @@ akti nose konstantu `REGISTRACIJA`. NOT NULL je bitan — NULL se u unique klju�
 Suspenzija urudžbirana šest mjeseci kasnije ne smije dirati taj state machine; pad jednog ne
 smije značiti ponovno slanje drugog.
 
-**Reaktivacija je iza `str.egop.urudzbiraj-reaktivaciju` (ugašeno).** Ta vrsta nije među 7 iz
-maila 22.07. i nema šifru — slanje bi palo na razrješavanju vrste i vrtjelo se do iscrpljenja.
-Obavijest e-poštom ide neovisno.
+**Vrste bez potvrđene šifre su iza `str.egop.akti-bez-sifre` (blokadna lista slugova).**
+`reaktivacija` i `obustava-suspenzije` nisu među 7 iz maila 22.07. i nemaju šifru — slanje bi
+palo na razrješavanju vrste i vrtjelo se do iscrpljenja. `prijedlog-suspenzije` jest među 7, ali
+je do potvrde živim pozivom također na popisu. Slug se miče s popisa čim InfoDom potvrdi šifru,
+bez izmjene koda; zaostali akti se tada urudžbiraju pri prvom sljedećem prolasku retry joba.
+
+**Popis zaustavlja samo slanje, ne i zapisivanje.** Akt se renderira i upisuje u `egop_pismeno`
+kao i svaki drugi, jer `RnDocumentsService` iz te tablice gradi popis dokumenata RB-a za frontu —
+akt koji se ne zapiše stranka ne bi vidjela među svojim dokumentima, nego samo kao privitak
+e-pošte. `EgopAktiBezSifre` je zato zajednički za listener i `EgopRetryJob`; potonji te akte
+izuzima iz reda kandidata (`findRetryCandidates`, uvjet `vrstaPismenaNaziv NOT IN`).
 
 #### Dostava (točka 7 zadatka)
 

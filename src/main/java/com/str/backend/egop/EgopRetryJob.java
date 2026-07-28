@@ -34,6 +34,7 @@ public class EgopRetryJob {
     private final EgopRegistrationDispatcher dispatcher;
     private final EgopAktDispatcher aktDispatcher;
     private final EgopRetryPolicy retryPolicy;
+    private final EgopAktiBezSifre bezSifre;
     private final Duration grace;
     private final Duration maxAge;
     private final int batchSize;
@@ -43,6 +44,7 @@ public class EgopRetryJob {
                         EgopRegistrationDispatcher dispatcher,
                         EgopAktDispatcher aktDispatcher,
                         EgopRetryPolicy retryPolicy,
+                        EgopAktiBezSifre bezSifre,
                         @Value("${str.egop.retry.grace:PT5M}") Duration grace,
                         @Value("${str.egop.retry.max-age:P7D}") Duration maxAge,
                         @Value("${str.egop.retry.batch-size:50}") int batchSize) {
@@ -51,6 +53,7 @@ public class EgopRetryJob {
         this.dispatcher = dispatcher;
         this.aktDispatcher = aktDispatcher;
         this.retryPolicy = retryPolicy;
+        this.bezSifre = bezSifre;
         this.grace = grace;
         this.maxAge = maxAge;
         this.batchSize = batchSize;
@@ -94,10 +97,14 @@ public class EgopRetryJob {
      * <p>{@code grace} vrijedi i ovdje: akt koji još nije ni pokušan preskače se dok ne
      * odstoji, da cron ne otme posao inline slanju koje je pokrenuo listener. Akt koji je
      * pao ima {@code nextAttemptAt} i taj ga rok pušta ranije.
+     *
+     * <p>Vrste bez šifre u šifrarniku su izuzete — one se zapisuju radi prikaza stranci, ali se
+     * namjerno ne šalju, pa bi ih cron inače vrtio do iscrpljenja pokušaja.
      */
     private void retryAkte(Instant now) {
         List<UUID> candidates = pismenoRepository.findRetryCandidates(
                 EgopSyncStatus.SYNCED, EgopPismenoEntity.ACT_REF_REGISTRACIJA,
+                bezSifre.vrstePismena(),
                 retryPolicy.maxAttempts(), now.minus(grace), now.minus(maxAge), now);
         if (candidates.isEmpty()) {
             return;

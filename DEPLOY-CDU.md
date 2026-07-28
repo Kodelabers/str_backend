@@ -99,7 +99,7 @@ STR_EPECAT_ENABLED=false
 STR_DOCUMENTS_RELOAD=false
 
 # --- eGOP ---
-EGOP_URUDZBIRAJ_REAKTIVACIJU=false
+EGOP_AKTI_BEZ_SIFRE=reaktivacija,prijedlog-suspenzije,obustava-suspenzije
 
 # --- obavijesti e-poštom (ugašeno dok nema SMTP-a dohvatljivog s kutije) ---
 APP_MAIL_ENABLED=false

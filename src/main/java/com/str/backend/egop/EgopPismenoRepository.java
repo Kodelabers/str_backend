@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,12 +42,18 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
      *   <li>{@code nextAttemptAt} prazan → akt još nije ni pokušan, čeka se {@code notAfter}
      *       (grace) da inline slanje dobije priliku dovršiti.</li>
      * </ul>
+     *
+     * @param bezSifre nazivi vrsta pismena koje eGOP šifrarnik nema — zapisuju se i prikazuju
+     *                 stranci, ali se ne šalju ({@link EgopAktiBezSifre}). Bez ovog uvjeta cron
+     *                 bi urudžbirao upravo ono što je listener namjerno preskočio. Nikad prazno:
+     *                 JPQL {@code NOT IN ()} je sintaktička greška.
      */
     @Transactional(readOnly = true)
     @Query("""
             SELECT p.id FROM EgopPismenoEntity p
             WHERE p.status <> :synced
               AND p.actRef <> :registracija
+              AND p.vrstaPismenaNaziv NOT IN :bezSifre
               AND p.syncAttempts < :maxAttempts
               AND p.createdAt > :notBefore
               AND ((p.nextAttemptAt IS NOT NULL AND p.nextAttemptAt <= :now)
@@ -55,6 +62,7 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
             """)
     List<UUID> findRetryCandidates(@Param("synced") EgopSyncStatus synced,
                                    @Param("registracija") String registracija,
+                                   @Param("bezSifre") Collection<String> bezSifre,
                                    @Param("maxAttempts") int maxAttempts,
                                    @Param("notAfter") Instant notAfter,
                                    @Param("notBefore") Instant notBefore,

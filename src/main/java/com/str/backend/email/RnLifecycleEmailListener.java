@@ -99,6 +99,7 @@ public class RnLifecycleEmailListener {
             case OPOZIV -> MailTemplate.OPOZIV;
             case REAKTIVACIJA -> MailTemplate.REAKTIVACIJA;
             case PRIJEDLOG_SUSPENZIJE -> MailTemplate.PRIJEDLOG_SUSPENZIJE;
+            case OBUSTAVA_SUSPENZIJE -> MailTemplate.OBUSTAVA_SUSPENZIJE;
             // ZAHTJEV/DODJELA/PRIGOVOR ne nastaju iz prijelaza statusa.
             default -> throw new IllegalStateException("Nema poruke za vrstu akta " + type);
         };

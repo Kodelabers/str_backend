@@ -144,6 +144,47 @@ class StrDocumentServiceTest {
     }
 
     /**
+     * Regresija: {@code ZupContextFactory} traži natpis za status RB-a pri svakom renderu, a
+     * {@code SUSPENSION_PROPOSED} ga nije imao — pa je upravo akt koji taj status objavljuje
+     * pucao. Fixture inače vrti {@code SUSPENDED}, gdje se kvar nije vidio.
+     */
+    @ParameterizedTest
+    @MethodSource("templateBackedTypes")
+    void render_forProposedSuspension_doesNotFailOnMissingStatusLabel(StrDocumentType type)
+            throws IOException {
+        when(rnRepository.findDetail(RN))
+                .thenReturn(Optional.of(detail(RnStatus.SUSPENSION_PROPOSED)));
+
+        String text = textOf(service.render(type, RN, "nepotpuna dokumentacija"));
+
+        assertThat(text).contains(RN);
+        assertThat(text).doesNotContain("${");
+    }
+
+    /** Obustava zatvara postupak pokrenut prijedlogom — izreka to mora reći izrijekom. */
+    @Test
+    void revocationOfProposalAct_statesProceedingIsDiscontinued() throws IOException {
+        String text = textOf(service.render(StrDocumentType.OBUSTAVA_SUSPENZIJE, RN,
+                "dokumentacija je dopunjena"));
+
+        assertThat(text).contains("Obustavlja se postupak suspenzije");
+        assertThat(text).contains("ostaje važeći");
+        assertThat(text).contains("dokumentacija je dopunjena");
+    }
+
+    /** Razlog iz revizijskog traga za okidače uvedene uz dvofaznu suspenziju. */
+    @Test
+    void render_fallsBackToLabelsForTwoPhaseTriggers() throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "SUSPENSION_PROPOSED", "SUSPENDED",
+                        "DEADLINE_EXCEEDED", null, null)));
+
+        String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN, null));
+
+        assertThat(text).contains("istek roka za očitovanje");
+    }
+
+    /**
      * Čl. 98. st. 8: ovjera je moguća samo kvalificiranim elektroničkim pečatom. Dok pečata
      * nema, akt ga ne smije tvrditi.
      */
@@ -226,7 +267,11 @@ class StrDocumentServiceTest {
     }
 
     private static RnDetailDto detail() {
-        return new RnDetailDto(RN, RnStatus.SUSPENDED,
+        return detail(RnStatus.SUSPENDED);
+    }
+
+    private static RnDetailDto detail(RnStatus status) {
+        return new RnDetailDto(RN, status,
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 1), null,
                 LocalDate.of(2026, 8, 15), null, null, UUID.randomUUID(),
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", null, "Ilica", "1",

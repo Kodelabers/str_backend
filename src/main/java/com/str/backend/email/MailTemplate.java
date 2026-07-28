@@ -21,9 +21,9 @@ public enum MailTemplate {
     ODOBRENJE("odobrenje", Keys.ODOBRENJE),
     ODBIJANJE("odbijanje", Keys.SAMO_IME),
     RB_IZDAN("rb-izdan", Keys.RB_IZDAN),
-    /** Bez pozivatelja dok ne postoji dvofazna suspenzija — vidi docs/ZUP-predlosci.md. */
     PRIJEDLOG_SUSPENZIJE("prijedlog-suspenzije", Keys.LIFECYCLE),
     SUSPENZIJA("suspenzija", Keys.LIFECYCLE),
+    OBUSTAVA_SUSPENZIJE("obustava-suspenzije", Keys.LIFECYCLE),
     REAKTIVACIJA("reaktivacija", Keys.LIFECYCLE),
     POVLACENJE("povlacenje", Keys.LIFECYCLE),
     OPOZIV("opoziv", Keys.LIFECYCLE);

@@ -85,6 +85,40 @@ class RnDocumentsServiceTest {
         assertThat(sus.naziv()).isEqualTo("Obavijest o suspenziji registracijskog broja");
     }
 
+    /**
+     * Akti suspenzijskog toka moraju stajati u istom popisu kao zahtjev i obavijest o dodjeli —
+     * s vlastitim slugom, smjerom i linkom za preuzimanje. Uvjet je da postoji redak u
+     * {@code egop_pismeno}; {@code RnLifecycleFilingListener} ga zato zapisuje i onda kad se akt
+     * ne urudžbira (vrsta bez šifre u šifrarniku).
+     */
+    @Test
+    void listForRn_suspensionFlowActs_areListedLikeZahtjevAndDodjela() {
+        stubRn(submissionId, LocalDate.now().minusDays(2));
+        stubSubmission("pdf".getBytes(), Instant.now().minus(3, ChronoUnit.DAYS));
+        EgopPismenoEntity prijedlog = EgopPismenoEntity.forAct(submissionId, RN, "log1",
+                "Obavijest o prijedlogu suspenzije registracijskog broja",
+                EgopPismenoEntity.Smjer.IZLAZNO, new byte[]{1});
+        EgopPismenoEntity obustava = EgopPismenoEntity.forAct(submissionId, RN, "log2",
+                "Obavijest o obustavi postupka suspenzije registracijskog broja",
+                EgopPismenoEntity.Smjer.IZLAZNO, new byte[]{2});
+        EgopPismenoEntity opoziv = EgopPismenoEntity.forAct(submissionId, RN, "log3",
+                "Obavijest o opozivu registracijskog broja",
+                EgopPismenoEntity.Smjer.IZLAZNO, new byte[]{3});
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN))
+                .thenReturn(List.of(prijedlog, obustava, opoziv));
+
+        List<RnDocumentDto> docs = service.listForRn(RN);
+
+        assertThat(docs).extracting(RnDocumentDto::slug).containsExactly(
+                "zahtjev", "dodjela", "prijedlog-suspenzije", "obustava-suspenzije", "opoziv");
+        // Slug se izvodi iz naziva vrste pismena — bez toga fronta nema ikonu ni rutu.
+        assertThat(docs).extracting(RnDocumentDto::slug).doesNotContainNull();
+        assertThat(docs.get(2).href())
+                .isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + prijedlog.getId());
+        assertThat(docs.get(3).naziv())
+                .isEqualTo("Obavijest o obustavi postupka suspenzije registracijskog broja");
+    }
+
     @Test
     void listForRn_noSubmission_onlyDodjela() {
         stubRn(null, LocalDate.now().minusDays(2));

@@ -20,7 +20,7 @@
       "get": {
         "tags": ["verify"],
         "summary": "Check registration number validity",
-        "description": "Public endpoint used by SDEP and OTA platforms to check whether a registration number is valid. A registration number is valid if and only if it exists and its status is ACTIVE. Returns valid=false for non-existent numbers and for numbers in status IN_PROCESSING, SUSPENDED, or WITHDRAWN. Always returns HTTP 200 for a well-formed registration number.",
+        "description": "Public endpoint used by SDEP and OTA platforms to check whether a registration number is valid. A registration number is valid if and only if it exists and its status is ACTIVE. Returns valid=false for non-existent numbers and for numbers in status IN_PROCESSING, SUSPENSION_PROPOSED, SUSPENDED, or WITHDRAWN. Always returns HTTP 200 for a well-formed registration number.",
         "operationId": "verifyRn",
         "parameters": [{ "$ref": "#/components/parameters/rn" }],
         "responses": {
@@ -44,7 +44,7 @@
       "get": {
         "tags": ["rn"],
         "summary": "List inactive registration numbers (STR-1.5)",
-        "description": "Returns all RNs in status SUSPENDED or WITHDRAWN, sorted by last-updated descending. Intended for the competent authority.",
+        "description": "Returns all RNs in status SUSPENSION_PROPOSED, SUSPENDED or WITHDRAWN, sorted by last-updated descending. Intended for the competent authority.",
         "operationId": "listInactive",
         "responses": {
           "200": {
@@ -736,12 +736,12 @@
       },
       "RnStatus": {
         "type": "string",
-        "enum": ["IN_PROCESSING", "ACTIVE", "SUSPENDED", "WITHDRAWN"]
+        "enum": ["IN_PROCESSING", "ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED", "WITHDRAWN"]
       },
       "RnTrigger": {
         "type": "string",
-        "enum": ["ISSUE", "CONSENT_EXPIRY", "INSPECTION", "WITHDRAWAL", "REACTIVATE"],
-        "description": "CONSENT_EXPIRY – co-owner consent expired; INSPECTION – inspection finding; WITHDRAWAL – voluntary withdrawal; REACTIVATE – reactivation"
+        "enum": ["ISSUE", "CONSENT_EXPIRY", "INSPECTION", "INCOMPLETE_DOCUMENTATION", "WITHDRAWAL", "REACTIVATE", "REVOKE_PROPOSAL", "DEADLINE_EXCEEDED"],
+        "description": "CONSENT_EXPIRY – co-owner consent expired; INSPECTION – inspection finding; INCOMPLETE_DOCUMENTATION – incomplete documentation; WITHDRAWAL – withdrawal or revocation; REACTIVATE – reactivation; REVOKE_PROPOSAL – suspension proposal dropped after the party complied; DEADLINE_EXCEEDED – response deadline passed, applied by SuspensionDeadlineJob. Suspension is two-phase: CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION move ACTIVE to SUSPENSION_PROPOSED, and only DEADLINE_EXCEEDED reaches SUSPENDED."
       },
       "VerifyResponse": {
         "type": "object",
@@ -749,7 +749,7 @@
         "properties": {
           "valid": {
             "type": "boolean",
-            "description": "True if the registration number exists and has status ACTIVE; false in all other cases (not found, IN_PROCESSING, SUSPENDED, WITHDRAWN)",
+            "description": "True if the registration number exists and has status ACTIVE; false in all other cases (not found, IN_PROCESSING, SUSPENSION_PROPOSED, SUSPENDED, WITHDRAWN)",
             "example": true
           }
         }

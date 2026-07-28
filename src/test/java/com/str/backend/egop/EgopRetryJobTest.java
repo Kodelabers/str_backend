@@ -29,7 +29,8 @@ class EgopRetryJobTest {
 
     private EgopRetryJob job(int batchSize) {
         return new EgopRetryJob(submissionRepository, pismenoRepository, dispatcher, aktDispatcher,
-                retryPolicy, Duration.ofMinutes(5), Duration.ofDays(7), batchSize);
+                retryPolicy, new EgopAktiBezSifre(java.util.Set.of()),
+                Duration.ofMinutes(5), Duration.ofDays(7), batchSize);
     }
 
     @Test
@@ -71,7 +72,7 @@ class EgopRetryJobTest {
     void retryPending_dispatchesLifecycleActs() {
         UUID akt = UUID.randomUUID();
         when(pismenoRepository.findRetryCandidates(eq(EgopSyncStatus.SYNCED),
-                eq(EgopPismenoEntity.ACT_REF_REGISTRACIJA), eq(10), any(), any(), any()))
+                eq(EgopPismenoEntity.ACT_REF_REGISTRACIJA), any(), eq(10), any(), any(), any()))
                 .thenReturn(List.of(akt));
 
         job(50).retryPending();
@@ -84,7 +85,7 @@ class EgopRetryJobTest {
     void retryPending_actFailure_continuesWithRest() {
         UUID prvi = UUID.randomUUID();
         UUID drugi = UUID.randomUUID();
-        when(pismenoRepository.findRetryCandidates(any(), any(), any(Integer.class), any(), any(), any()))
+        when(pismenoRepository.findRetryCandidates(any(), any(), any(), any(Integer.class), any(), any(), any()))
                 .thenReturn(List.of(prvi, drugi));
         org.mockito.Mockito.doThrow(new IllegalStateException("boom"))
                 .when(aktDispatcher).dispatch(prvi);

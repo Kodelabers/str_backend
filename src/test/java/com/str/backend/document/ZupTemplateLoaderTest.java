@@ -127,14 +127,28 @@ class ZupTemplateLoaderTest {
     }
 
     /**
-     * Reaktivacija je osmi tip i namjerno <b>nije</b> među 7 iz maila — nema šifru u šifrarniku,
-     * pa joj je urudžbiranje iza zastavice. Ako je InfoDom naknadno potvrdi, ovaj test se briše,
-     * a naziv seli u popis gore.
+     * Tipovi izvan 7 dogovorenih iz maila 22.07.2026. Oba su nastala iz dvofazne suspenzije,
+     * koje u trenutku dogovora nije bilo, i nemaju šifru u eGOP šifrarniku — zato su po
+     * defaultu na {@code str.egop.akti-bez-sifre}. Kad InfoDom potvrdi šifru, naziv seli u
+     * popis gore i miče se odavde.
+     *
+     * <p>Popis, a ne broj tipova: novi tip mora natjerati autora da svjesno odluči je li u
+     * dogovorenom skupu, a ne samo da podigne brojku.
      */
     @Test
-    void reactivation_isNotPartOfTheAgreedCodebookSet() {
-        assertThat(StrDocumentType.REAKTIVACIJA.vrstaPismenaNaziv())
-                .isEqualTo("Obavijest o reaktivaciji registracijskog broja");
-        assertThat(StrDocumentType.values()).hasSize(8);
+    void typesOutsideAgreedCodebookSet_areKnownAndUnfiled() {
+        Set<String> dogovoreni = Set.of(
+                "Zahtjev za registracijski broj",
+                "Obavijest o dodjeli registracijskog broja",
+                "Obavijest o opozivu registracijskog broja",
+                "Obavijest o prijedlogu suspenzije registracijskog broja",
+                "Obavijest o suspenziji registracijskog broja",
+                "Obavijest o povlačenju registracijskog broja",
+                "Prigovor na prijedlog suspenzije");
+
+        assertThat(StrDocumentType.values())
+                .filteredOn(t -> !dogovoreni.contains(t.vrstaPismenaNaziv()))
+                .containsExactlyInAnyOrder(
+                        StrDocumentType.REAKTIVACIJA, StrDocumentType.OBUSTAVA_SUSPENZIJE);
     }
 }
