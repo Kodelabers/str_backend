@@ -108,7 +108,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " AND (CAST(:lessor AS string) IS NULL OR LOWER(CONCAT(COALESCE(l.firstName,''),' ',COALESCE(l.lastName,''),' ',COALESCE(l.legalEntityName,''))) LIKE CONCAT('%', LOWER(CAST(:lessor AS string)), '%'))" +
             " AND (CAST(:county AS string) IS NULL OR LOWER(a.county) = LOWER(CAST(:county AS string)))" +
             " AND (CAST(:municipality AS string) IS NULL OR LOWER(a.city) = LOWER(CAST(:municipality AS string)))" +
-            " AND (:typeId IS NULL OR a.accommodationTypeId = :typeId)";
+            " AND (:typeId IS NULL OR a.accommodationTypeId = :typeId)" +
+            " AND (CAST(:foreignOnly AS string) IS NULL OR l.lessorOib IS NULL)";
 
     String RN_FROM =
             " FROM RnEntity r" +
@@ -135,6 +136,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("county") String county,
             @Param("municipality") String municipality,
             @Param("typeId") Long typeId,
+            @Param("foreignOnly") String foreignOnly,
             @Param("rb") String rb,
             @Param("city") String city,
             @Param("street") String street,

@@ -15,6 +15,7 @@ import com.str.backend.rn.dto.RnSummaryDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -102,14 +103,18 @@ public class RnService {
     }
 
     @Transactional
-    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline) {
+    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note) {
         if (trigger != RnTrigger.CONSENT_EXPIRY
                 && trigger != RnTrigger.INSPECTION
-                && trigger != RnTrigger.INCOMPLETE_DOCUMENTATION) {
+                && trigger != RnTrigger.INCOMPLETE_DOCUMENTATION
+                && trigger != RnTrigger.OTHER) {
             throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
+        if (trigger == RnTrigger.OTHER && Strings.blankToNull(note) == null) {
+            throw new BusinessException("error.rn.suspend.note.required");
+        }
         RnEntity e = load(rn);
-        transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger);
+        transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, null, Strings.blankToNull(note));
         e.setSuspensionDeadline(suspensionDeadline);
         return e;
     }
@@ -164,15 +169,33 @@ public class RnService {
     /** STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging. */
     @Transactional(readOnly = true)
     public Page<RnSummaryDto> searchRegistry(RnRegistryView view, String q, String county, String municipality,
-                                             Long typeId, String rb, String city, String street, String name,
-                                             String lessor, Pageable pageable) {
+                                             Long typeId, boolean foreignOnly, String rb, String city,
+                                             String street, String name, String lessor, Pageable pageable) {
         String[] t = SearchTokens.slots(q);
         return repository.searchRegistry(view.statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
                 Strings.blankToNull(county), Strings.blankToNull(municipality), typeId,
+                foreignOnly ? "true" : null,
                 Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
                 Strings.blankToNull(name), Strings.blankToNull(lessor),
                 pageable);
+    }
+
+    /** STR wireframe §12 / §13: export of registry rows matching filters (max 50 000). */
+    @Transactional(readOnly = true)
+    public List<RnSummaryDto> searchRegistryForExport(RnRegistryView view, String q, String county,
+                                                      String municipality, Long typeId, boolean foreignOnly,
+                                                      String rb, String city, String street,
+                                                      String name, String lessor) {
+        String[] t = SearchTokens.slots(q);
+        Page<RnSummaryDto> page = repository.searchRegistry(view.statuses(),
+                t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
+                Strings.blankToNull(county), Strings.blankToNull(municipality), typeId,
+                foreignOnly ? "true" : null,
+                Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
+                Strings.blankToNull(name), Strings.blankToNull(lessor),
+                PageRequest.of(0, 50_001));
+        return page.getContent();
     }
 
     /** STR wireframe §12 / §13: full detail for a single RN (joined accommodation + lessor). */

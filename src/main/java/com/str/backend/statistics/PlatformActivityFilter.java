@@ -37,15 +37,17 @@ public record PlatformActivityFilter(
         String q,
         String rn,
         Boolean anomaliesOnly,
-        String guestCountry
+        String guestCountry,
+        Boolean foreignOnly
 ) {
 
     public PlatformActivityFilter {
         anomaliesOnly = anomaliesOnly != null && anomaliesOnly;
+        foreignOnly = foreignOnly != null && foreignOnly;
     }
 
     /** Unfiltered report — every criterion off. */
     public static PlatformActivityFilter none() {
-        return new PlatformActivityFilter(null, null, null, null, null, null, null, null, false, null);
+        return new PlatformActivityFilter(null, null, null, null, null, null, null, null, false, null, false);
     }
 }

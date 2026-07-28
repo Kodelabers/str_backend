@@ -77,6 +77,7 @@ class PlatformActivityQuery {
           + "       OR (COALESCE(l.first_name,'') || ' ' || COALESCE(l.last_name,'')) ILIKE :qLike\n"
           + "       OR COALESCE(l.legal_entity_name,'') ILIKE :qLike)\n"
           + "  AND (:anomaliesOnly = FALSE OR " + ANOMALY_PREDICATE + ")\n"
+          + "  AND (:foreignOnly = FALSE OR l.lessor_oib IS NULL)\n"
           + "  AND (:guestCountry IS NULL OR EXISTS (\n"
           + "          SELECT 1 FROM str_rn.guest g\n"
           + "          WHERE g.activity_id = aa.activity_id\n"
@@ -210,6 +211,7 @@ class PlatformActivityQuery {
         p.addValue("qLike", q != null && !q.isBlank() ? "%" + q.trim() + "%" : null, Types.VARCHAR);
         p.addValue("anomaliesOnly", f.anomaliesOnly(), Types.BOOLEAN);
         p.addValue("guestCountry", Strings.blankToNull(f.guestCountry()), Types.VARCHAR);
+        p.addValue("foreignOnly", f.foreignOnly(), Types.BOOLEAN);
         return p;
     }
 
