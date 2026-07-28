@@ -52,21 +52,22 @@ class AddressLookupServiceTest {
     }
 
     @Test
-    void findCountries_excludes_eu_members_keeps_non_eu_and_null_iso() {
+    void findCountries_excludes_eu_and_efta_members_keeps_rest_and_null_iso() {
         List<CountryEntity> mixed = List.of(
-                country(1, "Austrija", "AT"),       // EU -> excluded
+                country(1, "Austrija", "AT"),        // EU -> excluded
                 country(2, "Njemačka", "DE"),        // EU -> excluded
                 country(3, "Hrvatska", "HR"),        // EU -> excluded
-                country(4, "Srbija", "RS"),          // non-EU -> kept
-                country(5, "Švicarska", "CH"),       // non-EU -> kept
-                country(6, "Nepoznata", null)        // null iso -> kept
+                country(4, "Švicarska", "CH"),       // EFTA -> excluded
+                country(5, "Norveška", "NO"),        // EFTA -> excluded
+                country(6, "Srbija", "RS"),          // outside EU/EFTA -> kept
+                country(7, "Nepoznata", null)        // null iso -> kept
         );
         when(countryRepository.findByActiveTrueOrderByName()).thenReturn(mixed);
 
         List<CountryResponse> result = service.findCountries(null);
 
         assertThat(result).extracting(CountryResponse::getName)
-                .containsExactly("Srbija", "Švicarska", "Nepoznata");
+                .containsExactly("Srbija", "Nepoznata");
     }
 
     @Test
