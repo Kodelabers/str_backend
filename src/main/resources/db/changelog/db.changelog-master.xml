@@ -157,6 +157,10 @@
     <!-- Proširenje kolona statusa RB-a na VARCHAR(32) — SUSPENSION_PROPOSED nije stao u VARCHAR(16). -->
     <include file="db/changelog/changes/059-widen-rn-status-columns.xml"/>
 
+    <!-- Stabilna šifra vrste smještaja (FS_*) — naziv i type_id se razlikuju među
+         okolinama, pa se integracije vežu na šifru. -->
+    <include file="db/changelog/changes/060-accommodation-type-add-code.xml"/>
+
     <!-- UAT seed aktivnosti platformi za CDU. Veže se na postojeće ACTIVE RB-ove
          (ne izmišlja iznajmljivače ni objekte), pa "Pregled" vodi na stvarni detalj.
          Gated context="cdu" — ne dira local, dev ni prod. -->
