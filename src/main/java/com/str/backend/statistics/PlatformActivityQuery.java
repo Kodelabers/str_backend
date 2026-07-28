@@ -224,6 +224,7 @@ class PlatformActivityQuery {
         if (dbStatus == null) return "bez_rb";
         return switch (dbStatus) {
             case "ACTIVE" -> "aktivan";
+            case "SUSPENSION_PROPOSED" -> "pred_suspenzijom";
             case "SUSPENDED" -> "suspendiran";
             case "WITHDRAWN" -> "povucen";
             case "INVALID" -> "nevažeći";
@@ -237,6 +238,7 @@ class PlatformActivityQuery {
         if (token == null) return null;
         return switch (token) {
             case "aktivan" -> "ACTIVE";
+            case "pred_suspenzijom" -> "SUSPENSION_PROPOSED";
             case "suspendiran" -> "SUSPENDED";
             case "povucen" -> "WITHDRAWN";
             case "nevažeći" -> "INVALID";
