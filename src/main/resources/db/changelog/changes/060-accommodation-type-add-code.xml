@@ -26,13 +26,13 @@
                SET name = 'Kuća za odmor'
              WHERE name = 'Kuca za odmor';
         </sql>
-        <rollback>
-            <sql>
-                UPDATE str_rn.accommodation_type
-                   SET name = 'Kuca za odmor'
-                 WHERE name = 'Kuća za odmor';
-            </sql>
-        </rollback>
+        <!--
+            Bez rollbacka namjerno. Obrnuti UPDATE ne može razlikovati okoline: na
+            local/mock je "Kuća za odmor" upisao 020-reseed, pa bi vraćanje unazad
+            tamo pokvarilo naziv koji ovaj changeset nikad nije ni dirao.
+            Ispravak prikaznog naziva nije vrijedan te asimetrije.
+        -->
+        <rollback/>
     </changeSet>
 
     <changeSet id="060-accommodation-type-add-code" author="str-backend">

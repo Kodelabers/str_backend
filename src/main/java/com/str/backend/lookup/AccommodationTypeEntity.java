@@ -35,18 +35,16 @@ public class AccommodationTypeEntity {
      * i {@code typeId}, koji se razlikuju među okolinama, šifra je ono na što se vanjske
      * integracije smiju vezati. Popunjava je Liquibase (changeset 060), pa je nullable —
      * vrsta dodana izvan migracije ostaje bez šifre umjesto da obori insert.
+     *
+     * <p>Namjerno se ne postavlja iz Jave: šifrarnik je u vlasništvu migracija, a ne
+     * aplikacijskog koda, pa konstruktor nema parametar za šifru.
      */
     @Column(name = "code")
     private String code;
 
     public AccommodationTypeEntity(String name, boolean registrationNumberAllowed, String group) {
-        this(name, registrationNumberAllowed, group, null);
-    }
-
-    public AccommodationTypeEntity(String name, boolean registrationNumberAllowed, String group, String code) {
         this.name = name;
         this.registrationNumberAllowed = registrationNumberAllowed;
         this.group = group;
-        this.code = code;
     }
 }
