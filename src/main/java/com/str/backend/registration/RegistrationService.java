@@ -8,11 +8,13 @@ import com.str.backend.address.MunicipalityEntity;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementEntity;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.AccommodationRequest;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
@@ -35,6 +37,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -52,6 +55,7 @@ public class RegistrationService {
     private final CountyRepository countyRepository;
     private final MunicipalityRepository municipalityRepository;
     private final SettlementRepository settlementRepository;
+    private final AccommodationTypeRepository accommodationTypeRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public RegistrationService(LessorRepository lessorRepository,
@@ -64,6 +68,7 @@ public class RegistrationService {
                                CountyRepository countyRepository,
                                MunicipalityRepository municipalityRepository,
                                SettlementRepository settlementRepository,
+                               AccommodationTypeRepository accommodationTypeRepository,
                                ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
@@ -75,6 +80,7 @@ public class RegistrationService {
         this.countyRepository = countyRepository;
         this.municipalityRepository = municipalityRepository;
         this.settlementRepository = settlementRepository;
+        this.accommodationTypeRepository = accommodationTypeRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -153,7 +159,7 @@ public class RegistrationService {
                 req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
                 req.building(), req.apartments(), req.legalized());
         entity.setName(req.name());
-        entity.setFacilityUnitId(req.facilityUnitId());
+        entity.setFacilityId(req.facilityId());
         entity.setSettlement(settlementName);
         entity.setHouseNumberCode(req.houseNumberCode());
         entity.setPostalCode(req.postalCode());
@@ -163,14 +169,39 @@ public class RegistrationService {
         if (req.host() != null) {
             entity.markHost(req.host());
         }
-        if (req.typeId() != null) {
-            try {
-                entity.setAccommodationTypeId(Long.parseLong(req.typeId()));
-            } catch (NumberFormatException e) {
-                log.warn("typeId '{}' nije numerički, polje se ignorira", req.typeId());
-            }
-        }
+        resolveAccommodationTypeId(req.typeId()).ifPresent(entity::setAccommodationTypeId);
         return entity;
+    }
+
+    /**
+     * Prihvaća i numerički {@code type_id} i stabilnu šifru vrste ({@code FS_KUCA_ZA_ODMOR},
+     * ...). Šifra je ono što tuStart šalje u handoff URL-u i ono na što se veže frontend,
+     * jer se {@code type_id} razlikuje među okolinama.
+     *
+     * <p>Nerazrješiva vrsta se ne ignorira tiho: bez nje registracija gubi provjeru iz
+     * {@code RnService.issue()} koja hotelu/kampu brani dodjelu RB-a, pa bi objekt bez
+     * prava na RB prošao. Zato {@link BusinessException} (→ 400) umjesto praznog polja.
+     */
+    private Optional<Long> resolveAccommodationTypeId(String typeId) {
+        if (typeId == null || typeId.isBlank()) {
+            return Optional.empty();
+        }
+        String value = typeId.trim();
+
+        if (value.chars().allMatch(Character::isDigit)) {
+            long id = Long.parseLong(value);
+            if (!accommodationTypeRepository.existsById(id)) {
+                throw new BusinessException("error.accommodation.type.unknown");
+            }
+            return Optional.of(id);
+        }
+
+        return Optional.of(accommodationTypeRepository.findByCodeIgnoreCase(value)
+                .orElseThrow(() -> {
+                    log.warn("nepoznata vrsta smještaja '{}' — nije ni type_id ni šifra", value);
+                    return new BusinessException("error.accommodation.type.unknown");
+                })
+                .getTypeId());
     }
 
     private void runValidation(AccommodationEntity accommodation, LessorEntity lessor) {

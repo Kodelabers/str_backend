@@ -30,5 +30,5 @@ public interface AccommodationRequest {
     Boolean host();
 
     /** ID smještajnog objekta (unita) u eTurizmu; frontend ga vraća iz URL handoffa u submit. */
-    String facilityUnitId();
+    String facilityId();
 }

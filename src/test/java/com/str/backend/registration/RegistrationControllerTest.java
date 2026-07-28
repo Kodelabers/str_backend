@@ -140,7 +140,7 @@ class RegistrationControllerTest {
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityUnitId());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId());
     }
 
     private RegistrationRequest withOib(RegistrationRequest r, String oib) {
@@ -152,7 +152,7 @@ class RegistrationControllerTest {
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityUnitId());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId());
     }
 
     private SubmissionEntity submissionWithPdf(UUID id, String filingNumber, byte[] pdf) {

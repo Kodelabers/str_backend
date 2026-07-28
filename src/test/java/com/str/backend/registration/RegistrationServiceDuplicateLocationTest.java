@@ -11,6 +11,7 @@ import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
+import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
@@ -31,8 +32,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -58,6 +61,7 @@ class RegistrationServiceDuplicateLocationTest {
     private CountyRepository countyRepository;
     private MunicipalityRepository municipalityRepository;
     private SettlementRepository settlementRepository;
+    private AccommodationTypeRepository accommodationTypeRepository;
     private ApplicationEventPublisher eventPublisher;
 
     private RegistrationService service;
@@ -76,11 +80,14 @@ class RegistrationServiceDuplicateLocationTest {
         settlementRepository = mock(SettlementRepository.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
 
+        accommodationTypeRepository = mock(AccommodationTypeRepository.class);
+        lenient().when(accommodationTypeRepository.existsById(anyLong())).thenReturn(true);
+
         service = new RegistrationService(
                 lessorRepository, accommodationRepository, submissionRepository,
                 orchestrator, rnService, rnRepository, strLessorLookupService,
                 countyRepository, municipalityRepository, settlementRepository,
-                eventPublisher);
+                accommodationTypeRepository, eventPublisher);
 
         CountyEntity county = buildCountyEntity(7L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));

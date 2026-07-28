@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        tuStart handoff sada šalje facilityId (str.facility.id), a ne više id unita
+        (str.facility_unit.id) — vidi primjer URL-a u docs/TUSTART-INTEGRACIJA.md.
+        Nakon dodjele RB-a upis ide u str.facility.registration_number po tom id-u,
+        pa kolona 057 dobiva ime koje odgovara onome što stvarno drži.
+
+        preConditions pokrivaju baze na kojima 057 nikad nije stvorio kolonu
+        (ondje je MARK_RAN) i ponovno pokretanje nakon djelomičnog deploya.
+    -->
+    <changeSet id="061-accommodation-rename-facility-id" author="str-backend">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <columnExists schemaName="str_rn" tableName="accommodation" columnName="facility_unit_id"/>
+                <not>
+                    <columnExists schemaName="str_rn" tableName="accommodation" columnName="facility_id"/>
+                </not>
+            </and>
+        </preConditions>
+
+        <renameColumn schemaName="str_rn" tableName="accommodation"
+                      oldColumnName="facility_unit_id"
+                      newColumnName="facility_id"
+                      columnDataType="VARCHAR(64)"
+                      remarks="ID objekta u eTurizmu — str.facility.id, primljen kroz tuStart handoff"/>
+
+        <rollback>
+            <renameColumn schemaName="str_rn" tableName="accommodation"
+                          oldColumnName="facility_id"
+                          newColumnName="facility_unit_id"
+                          columnDataType="VARCHAR(64)"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

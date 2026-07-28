@@ -33,5 +33,5 @@ public record RegistrationExternalRequest(
         LocalDate consentWithdrawalDate,
         Boolean host,
         Boolean confirmDuplicateLocation,
-        @Size(max = 64) String facilityUnitId
+        @Size(max = 64) String facilityId
 ) implements AccommodationRequest {}

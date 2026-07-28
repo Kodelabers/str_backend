@@ -7,6 +7,8 @@ import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
+import com.str.backend.lookup.AccommodationTypeEntity;
+import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
@@ -55,12 +57,20 @@ class PdfLocalExportTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper om;
     @Autowired private SubmissionRepository submissionRepository;
+    @Autowired private AccommodationTypeRepository accommodationTypeRepository;
+
+    /** Vrsta se razrješava iz baze, pa je H2 (bez Liquibase seeda) treba dobiti ovdje. */
+    private String typeId;
 
     @MockBean private StrLessorLookupService strLessorLookupService;
     @MockBean private CountyRepository countyRepository;
 
     @BeforeEach
     void setupMocks() {
+        typeId = String.valueOf(accommodationTypeRepository
+                .save(new AccommodationTypeEntity("Apartman", true, "domacinstvo"))
+                .getTypeId());
+
         LessorEntity lessor = LessorEntity.create(
                 "Pero", "Perić",
                 "Sjenjak", "19", "Osijek", "Osječko-baranjska županija",
@@ -114,7 +124,7 @@ class PdfLocalExportTest {
 
     private RegistrationRequest buildRequest() {
         return new RegistrationRequest(
-                "12312312316", "AP1 Dugi Rat", "1",
+                "12312312316", "AP1 Dugi Rat", typeId,
                 7L, "Dugi Rat", "Dugi Rat",
                 "Drage Ivaniševića", "3", null, "21315",
                 4, 6,

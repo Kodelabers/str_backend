@@ -35,7 +35,7 @@ public record RegistrationRequest(
         LocalDate consentWithdrawalDate,
         Boolean host,
         Boolean confirmDuplicateLocation,
-        @Size(max = 64) String facilityUnitId
+        @Size(max = 64) String facilityId
 ) implements AccommodationRequest {
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {
@@ -45,6 +45,6 @@ public record RegistrationRequest(
                 orig.offerType(), orig.offering(), orig.building(), orig.floor(),
                 orig.apartments(), orig.legalized(), orig.lessorResidence(), orig.coOwnerConsent(),
                 orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),
-                orig.confirmDuplicateLocation(), orig.facilityUnitId());
+                orig.confirmDuplicateLocation(), orig.facilityId());
     }
 }
