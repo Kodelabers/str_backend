@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        str.facility.registration_number — kolona u koju STR nakon dodjele upisuje RB
+        za objekt primljen kroz tuStart handoff (FacilityRegistrationNumberWriteBack).
+
+        Na dev/cdu/prod kolona već postoji u pravoj eTurizam tablici; ovdje se dodaje
+        samo u mock (context="local"), koji ju nema jer je 117 poravnavao stupce prema
+        starijem snimku sheme. Bez nje write-back lokalno ne bi imao gdje pisati.
+    -->
+    <changeSet id="121-str-facility-registration-number" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists schemaName="str" tableName="facility"/>
+                <not>
+                    <columnExists schemaName="str" tableName="facility" columnName="registration_number"/>
+                </not>
+            </and>
+        </preConditions>
+
+        <addColumn schemaName="str" tableName="facility">
+            <column name="registration_number" type="VARCHAR(64)"
+                    remarks="Registracijski broj koji je STR dodijelio ovom objektu"/>
+        </addColumn>
+
+        <rollback>
+            <dropColumn schemaName="str" tableName="facility" columnName="registration_number"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

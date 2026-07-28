@@ -38,11 +38,12 @@ public class AccommodationEntity {
     @Column(name = "accommodation_code", length = 64)
     @Setter private String accommodationCode;
 
-    /** ID smještajnog objekta (unita) u eTurizmu — str.facility_unit.id, primljen kroz tuStart
-     *  handoff (URL param → submit). Ključ za budući upis RB-a natrag u str.facility_unit.
-     *  Vidi changeset 057. */
-    @Column(name = "facility_unit_id", length = 64)
-    @Setter private String facilityUnitId;
+    /** ID objekta u eTurizmu — {@code str.facility.id}, primljen kroz tuStart handoff
+     *  (URL param {@code facilityId} → submit). Ključ po kojem
+     *  {@code FacilityRegistrationNumberWriteBack} nakon dodjele upisuje RB natrag u
+     *  {@code str.facility.registration_number}. Vidi changesetove 057 i 062. */
+    @Column(name = "facility_id", length = 64)
+    @Setter private String facilityId;
 
     @Column(name = "county", length = 128, nullable = false, updatable = false)
     private String county;

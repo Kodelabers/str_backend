@@ -33,9 +33,9 @@ Svi su **opcionalni**. Identitet (ime, prezime, OIB) se **ne šalje** — STR ga
 
 | Parametar | Opis | Primjer |
 | :--- | :--- | :--- |
-| `facilityUnitId` | ID smještajnog objekta (unita) u eTurizmu — `str.facility_unit.id`. Šalje se samo za postojeći objekt. | `42` |
-| `name` | Naziv objekta | `Apartman Ana` |
-| `type` | Vrsta objekta | `Apartman` |
+| `facilityId` | ID objekta u eTurizmu — `str.facility.id`. Šalje se samo za postojeći objekt; ključ po kojem STR nakon dodjele vraća RB (v. §6). | `1448035` |
+| `name` | Naziv objekta | `kuća test 55` |
+| `type` | Vrsta objekta — šifra iz `GET /api/lookups/accommodation-types` (`code`). Backend je prima izravno u `typeId` (v. §5), pa je frontend ne mora prevoditi. | `FS_KUCA_ZA_ODMOR` |
 | `maxBedCount` | Broj kreveta | `3` |
 | `maxGuestCount` | Maksimalni broj gostiju | `6` |
 | `county` | Županija | `Grad Zagreb` |
@@ -56,7 +56,7 @@ izvodi iz adrese.
 ## 4. Primjer (CDU) — postojeći objekt
 
 ```
-https://str-test-eturizam.gov.hr/registration-number?facilityUnitId=42&name=Apartman%20Ana&type=Apartman&maxBedCount=3&maxGuestCount=6&county=Grad%20Zagreb&municipality=Zagreb&settlement=Zagreb&street=Ilica&streetNumber=1&postalCode=10000&place=Zagreb
+https://str-test-eturizam.gov.hr/registration-number?facilityId=1448035&name=ku%C4%87a%20test%2055&type=FS_KUCA_ZA_ODMOR&maxBedCount=0&maxGuestCount=0&streetNumber&street&settlement&postalCode&municipality&county
 ```
 
 Novi objekt = ista ruta bez parametara:
@@ -64,14 +64,48 @@ Novi objekt = ista ruta bez parametara:
 https://str-test-eturizam.gov.hr/registration-number
 ```
 
-## 5. Povrat registracijskog broja
+## 5. Vrsta objekta — `typeId` prima i šifru
 
-Frontend pri spremanju šalje `facilityUnitId` u tijelu `POST /api/generateRegistrationNumber`; backend
-ga zapamti na registraciji (`str_rn.accommodation.facility_unit_id`). Dogovoreni povrat prema eTurizmu:
-STR nakon dodjele RB-a **upiše RB u `str.facility_unit`** pod tim `id`-em unita. **Blokirano** dok ne
-stignu prava na upis + naziv/tip RB kolone.
+Polje `typeId` u tijelu `POST /api/generateRegistrationNumber` prihvaća **dvije** vrijednosti:
 
-## 6. Napomene za STR frontend
+| Vrijednost | Primjer | Kada |
+| :--- | :--- | :--- |
+| Stabilna šifra (`FS_*`) | `FS_KUCA_ZA_ODMOR` | tuStart handoff — `type` iz URL-a se proslijedi kakav jest |
+| Numerički `type_id` | `4` | STR forma, gdje korisnik bira iz dropdowna |
+
+Šifra se uspoređuje bez obzira na velika/mala slova i okolni razmak. Preporuka je slati šifru:
+`type_id` se razlikuje među okolinama jer changeset `020-reseed` briše i ponovno umeće retke.
+
+Nepoznata vrijednost (ni postojeća šifra ni postojeći `type_id`) vraća **400**
+`error.accommodation.type.unknown`. Namjerno se ne ignorira tiho — bez vrste otpada provjera iz
+`RnService.issue()` koja hotelu i kampu brani dodjelu RB-a.
+
+## 6. Povrat registracijskog broja
+
+Frontend pri spremanju šalje `facilityId` u tijelu `POST /api/generateRegistrationNumber`; backend ga
+zapamti na registraciji (`str_rn.accommodation.facility_id`). Nakon dodjele RB-a STR **upiše RB u
+`str.facility.registration_number`** za redak čiji `id` odgovara tom `facilityId`.
+
+Izvedba: `FacilityRegistrationNumberWriteBack`, okinut iz `RnIssuedListener` nakon commita
+registracijske transakcije (`TransactionPhase.AFTER_COMMIT`).
+
+Ponašanje u rubnim slučajevima:
+
+| Situacija | Ishod |
+| :--- | :--- |
+| Registracija bez `facilityId` (nije iz tuStarta) | Preskače se, ništa se ne piše |
+| Objekt već ima RB u `str.facility` | Ne prepisuje se (`WHERE registration_number IS NULL`), logira se `facility_writeback_no_row` |
+| `id` ne postoji u `str.facility` | Isto kao gore — logira se, RB ostaje valjan |
+| Upis padne (npr. nema `UPDATE` prava) | Logira se `facility_writeback_failed`, **RB ostaje valjan i izdan** |
+
+Retryja nema — eTurizam nema idempotentni endpoint za ovo, pa neuspjeli upis ide na ručnu
+intervenciju preko logova.
+
+> **Preduvjet za okoline:** ovo je jedini put pisanja u shemu `str`, koja je inače read-only za STR.
+> DB korisnik treba `UPDATE` pravo na `str.facility.registration_number`. Bez toga registracija i
+> dalje prolazi, ali se RB ne vraća u eTurizam.
+
+## 7. Napomene za STR frontend
 
 - **Identitet** (ime/prezime/OIB) iz NIAS sesije (`GET /api/nias/me`), nikad iz URL-a.
 - **Param survival:** kod hladnog ulaska (nema STR sesije) ide redirect na NIAS i query parametri se
@@ -80,8 +114,8 @@ stignu prava na upis + naziv/tip RB kolone.
 - **Adresni autocomplete:** primljene nazive (`county`/`municipality`/`settlement`) razriješiti u
   stavke kaskade (da se uhvate ID-evi koje submit traži); ako string ne pogodi, ostaviti korisniku.
 
-## 7. Što je u swaggeru, a što nije
+## 8. Što je u swaggeru, a što nije
 
 tuStart ulazne točke su **frontend rute** — **nisu** u swaggeru (swagger dokumentira samo backend REST
 API). U swaggeru je backend koji frontend zove tijekom toka: `POST /api/generateRegistrationNumber`
-(tijelo sadrži `facilityUnitId`), `GET /api/nias/me`, te adresni lookup endpointi.
+(tijelo sadrži `facilityId`), `GET /api/nias/me`, te adresni lookup endpointi.
