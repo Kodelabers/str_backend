@@ -57,6 +57,7 @@ services:
       EGOP_APP_USERNAME: ${EGOP_APP_USERNAME:-strservis}
       EGOP_RJESAVATELJ: ${EGOP_RJESAVATELJ:-}
       EGOP_CODEBOOKS_FAIL_FAST: ${EGOP_CODEBOOKS_FAIL_FAST:-false}
+      EGOP_TRACE_SOAP: ${EGOP_TRACE_SOAP:-false}
     volumes:
       - ${CDU_SECRETS_DIR:-/home/vviskov/str-secrets}:/secrets:ro
 
