@@ -33,6 +33,35 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     /** STR-1.3 retencija: opozvani RB-ovi kojima je valid_to (dan povlačenja) stariji od praga. */
     List<RnEntity> findByStatusAndValidToBefore(RnStatus status, java.time.LocalDate cutoff);
 
+    interface FacilityRnRow {
+        String getFacilityId();
+        String getRn();
+    }
+
+    /**
+     * RB-ovi koje je STR izdao za eTurizam objekte iz predanog popisa.
+     *
+     * <p>Popis objekata na NIAS dashboardu primarno čita RB iz {@code str.facility.registration_number},
+     * ali je taj write-back best-effort po dizajnu ({@code FacilityRegistrationNumberWriteBack}
+     * ne retryja i ne obara izdavanje). Bez ovog upita objekt s izdanim RB-om izgledao bi kao da
+     * ga nema svaki put kad je upis u tuđu shemu pao.
+     *
+     * <p>Uzimaju se samo izdani i još stojeći RB-ovi. {@code WITHDRAWN} je terminalan, a
+     * {@code IN_PROCESSING} ne bi smio postojati u tablici (v. {@code RnEntity.issue()}, koji
+     * odmah postavlja {@code ACTIVE}) — nabraja se eksplicitno da se to ne promijeni tiho.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT a.facilityId AS facilityId, r.rn AS rn
+            FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE a.facilityId IN :facilityIds
+              AND r.status IN (com.str.backend.domain.RnStatus.ACTIVE,
+                               com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED,
+                               com.str.backend.domain.RnStatus.SUSPENDED)
+            ORDER BY r.issueDate
+            """)
+    List<FacilityRnRow> findRnsByFacilityIds(@Param("facilityIds") List<String> facilityIds);
+
     /** STR statistics: counts of RNs grouped by accommodation county + RN status. */
     @Transactional(readOnly = true)
     @Query("""

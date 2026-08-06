@@ -4,6 +4,9 @@ import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.auth.SessionIdentityResolver;
 import com.str.backend.auth.dto.MeResponse;
+import com.str.backend.categorization.CategorizationDecisionRequest;
+import com.str.backend.categorization.CategorizationDecisionResponse;
+import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.lessor.LessorDocumentEntity;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
@@ -16,12 +19,16 @@ import com.str.backend.lessor.LessorWithdrawRequest;
 import com.str.backend.rn.RnRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -38,6 +45,8 @@ public class NiasController {
     private final CountryRepository countryRepository;
     private final LessorRnActionService rnActionService;
     private final SessionIdentityResolver identityResolver;
+    private final NiasFacilityService facilityService;
+    private final CategorizationDecisionService categorizationDecisionService;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -45,7 +54,9 @@ public class NiasController {
                           LessorDocumentRepository lessorDocumentRepository,
                           CountryRepository countryRepository,
                           LessorRnActionService rnActionService,
-                          SessionIdentityResolver identityResolver) {
+                          SessionIdentityResolver identityResolver,
+                          NiasFacilityService facilityService,
+                          CategorizationDecisionService categorizationDecisionService) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -53,6 +64,8 @@ public class NiasController {
         this.countryRepository = countryRepository;
         this.rnActionService = rnActionService;
         this.identityResolver = identityResolver;
+        this.facilityService = facilityService;
+        this.categorizationDecisionService = categorizationDecisionService;
     }
 
     /**
@@ -110,13 +123,30 @@ public class NiasController {
     }
 
     /**
-     * Lista objekata NIAS korisnika iz eTurizam registra. Vraća praznu listu dok
-     * str.facility ne dobije puna polja (naziv, vrsta, adresa) iz TuStart integracije.
+     * Popis objekata NIAS korisnika: objekti iz eTurizam registra + uploadana skenirana
+     * rješenja koja tamo još nisu upisana. Objekt s RB-om frontend vodi na „Prikaži", objekt
+     * bez RB-a na „Zatraži RB".
+     *
+     * <p>Paginirano — na dev-u postoji iznajmljivač s 1530 objekata.
      */
     @GetMapping("/facilities")
-    public List<FacilityResponse> facilities(Authentication authentication) {
-        resolveOib(authentication);
-        return List.of();
+    public FacilityPageResponse facilities(@RequestParam(required = false) Integer page,
+                                           @RequestParam(required = false) Integer size,
+                                           Authentication authentication) {
+        return facilityService.list(resolveOib(authentication), page, size);
+    }
+
+    /**
+     * Upload skeniranog papirnatog rješenja o kategorizaciji koje nije migrirano u eTurizam
+     * (procedura koju eTurizam već ima). Zapis ide u {@code str_rn.categorization_decision} i
+     * do upisa u eTurizam se na popisu iznad prikazuje kao privremeno rješenje, bez RB-a.
+     */
+    @PostMapping(value = "/categorization-decisions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public CategorizationDecisionResponse uploadCategorizationDecision(
+            @Valid @ModelAttribute CategorizationDecisionRequest req,
+            Authentication authentication) {
+        return categorizationDecisionService.upload(resolveOib(authentication), req);
     }
 
     /** STR-1.3-001: NIAS user revokes (opoziv) their own RN. Vlasništvo se provjerava

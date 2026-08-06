@@ -15,6 +15,7 @@ import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
+import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +55,7 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(MunicipalityRepository.class),
                 mock(SettlementRepository.class),
                 accommodationTypeRepository,
+                mock(FacilityClaimVerifier.class),
                 mock(ApplicationEventPublisher.class));
     }
 

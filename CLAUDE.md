@@ -30,7 +30,8 @@ Unit tests (`@ActiveProfiles("test")`) use H2 from `src/test/resources/applicati
 
 Two external read-only schema families:
 
-- `str` — `subject`, `subject_version`, `subject_address`, `address`, `country` (still used by `StrLessorLookupService` to resolve OIB → lessor identity + home address, and by `CountryRepository` for the country dropdown). On `dev`/`prod` these are fully populated by the upstream service; on `local`/`mock` only `subject*` are mocked, `address`/`country` mocks are TBD on `rpj_dgu`/`eturizam_test`. The address-hierarchy tables (`county`, `municipality`, `settlement`, `street`, `house_number`) used to live here but have been migrated off — see below.
+- `str` — `subject`, `subject_version`, `subject_address`, `address`, `country` (still used by `StrLessorLookupService` to resolve OIB → lessor identity + home address, and by `CountryRepository` for the country dropdown). On `dev`/`prod` these are fully populated by the upstream service; on `local`/`mock` only `subject*` are mocked, `address`/`country` mocks are TBD on `rpj_dgu`/`eturizam_test`. The **registration form** no longer reads the address hierarchy from here (it uses `rpj_dgu` / `eturizam_test`, see below), but the `str` hierarchy tables (`county`, `municipality`, `settlement`, `street`, `house_number`) do still exist and are populated on `dev`/`prod` — the facility list reads them to resolve object addresses, because `str.address`'s denormalized name columns are almost entirely empty there.
+- `str` — facility side: `facility`, `facility_type`, `facility_capacity`, `facility_unit(_capacity)`, `document`, `codebook_element` (shared codebook: id → code/name for type, subtype, category, business status, capacity type). Read by the NIAS dashboard object list. Full mapping, dedup rules and the reason `str.vw_src_facility_actual` is unusable are in `docs/ETURIZAM-OBJEKTI.md`; mocked locally by changeset 123.
 - `rpj_dgu` + `eturizam_test` — DGU registar prostornih jedinica + eTurizam adresni registar. Address hierarchy for the registration form now reads from these:
   - `CountyEntity` → `rpj_dgu.zupanije` (id, zu_ime, zu_rb)
   - `MunicipalityEntity` → `rpj_dgu.gradovi_i_opcine` (id, jls_ime, jls_mb, zu_rb)
@@ -55,7 +56,11 @@ On `dev`/`prod` we read from the real registries. On `local`/`mock` the address 
 ```
 POST /api/generateRegistrationNumber             → RegistrationService.generateRegistrationNumber()  ← runs GO pipeline, returns {registrationNumber, submissionId}
 GET  /api/generateRegistrationNumber/{id}/pdf    → SubmissionPdfGenerator
+GET  /api/nias/facilities                        → NiasFacilityService  ← lessor's existing eTurizam objects + uploaded scanned decisions (paged)
+POST /api/nias/categorization-decisions          → CategorizationDecisionService  ← scanned paper decision that was never migrated to eTurizam
 ```
+
+A request carrying `facilityId` (tuStart handoff, existing object) is checked by `FacilityClaimVerifier` **before** anything else: the facility must belong to the caller's OIB, and the submitted type (`FS_*`) and bed count must match eTurizam — otherwise 400. Ownership is the load-bearing part: `FacilityRegistrationNumberWriteBack` writes the issued RN into `str.facility` for whatever `facilityId` arrived, so an unchecked foreign id would stamp our RN onto someone else's record in a registry we don't own. Bed count is validated, guest count is not — eTurizam does not track guests for household accommodation.
 
 ### State machines
 There are two separate state machines:

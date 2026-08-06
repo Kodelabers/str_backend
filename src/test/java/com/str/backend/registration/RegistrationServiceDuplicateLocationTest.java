@@ -16,6 +16,7 @@ import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
+import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
@@ -87,7 +88,7 @@ class RegistrationServiceDuplicateLocationTest {
                 lessorRepository, accommodationRepository, submissionRepository,
                 orchestrator, rnService, rnRepository, strLessorLookupService,
                 countyRepository, municipalityRepository, settlementRepository,
-                accommodationTypeRepository, eventPublisher);
+                accommodationTypeRepository, mock(FacilityClaimVerifier.class), eventPublisher);
 
         CountyEntity county = buildCountyEntity(7L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));

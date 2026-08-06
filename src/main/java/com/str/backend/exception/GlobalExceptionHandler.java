@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -38,6 +39,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusiness(BusinessException ex) {
         return build(HttpStatus.BAD_REQUEST, resolve(ex.getMessage()), null);
+    }
+
+    /**
+     * Datoteka veća od {@code spring.servlet.multipart.max-file-size} (10 MB). Bez ovog rukovatelja
+     * Spring vrati 500, pa bi korisnik na uploadu skeniranog rješenja dobio „greška na serveru"
+     * umjesto poruke o veličini — a frontend to ograničenje već prikazuje u dropzoneu.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException ex) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, resolve("error.upload.file.tooLarge"), null);
     }
 
     @ExceptionHandler(IllegalStatusTransitionException.class)

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Skenirano papirnato rješenje o kategorizaciji koje nije migrirano u eTurizam.
+        Korisnik ga uploada s NIAS dashboarda; objekt se do verifikacije prikazuje samo
+        iz ove tablice (izvor PRIVREMENO_RJESENJE), jer str.facility je za nas read-only
+        osim write-backa RB-a.
+
+        Svi metapodaci osim datoteke su nullable: frontend danas šalje samo datoteku, a
+        koje podatke korisnik uz nju unosi još je otvoreno pitanje za MINTS. Time endpoint
+        radi s današnjim FE-om, a kad odgovor dođe ne treba mijenjati shemu.
+    -->
+    <changeSet id="122-categorization-decision" author="str-backend">
+        <createTable schemaName="str_rn" tableName="categorization_decision"
+                     remarks="Uploadana skenirana rješenja o kategorizaciji (nemigrirani objekti)">
+            <column name="decision_id" type="UUID" remarks="PK">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="lessor_oib" type="VARCHAR(11)"
+                    remarks="OIB podnositelja iz NIAS sesije — veza na iznajmljivača, jer lessor_id nije stabilan kroz povijest">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="object_name" type="VARCHAR(255)" remarks="Naziv objekta s rješenja (opcionalno)"/>
+            <column name="accommodation_type_code" type="VARCHAR(64)" remarks="FS_* šifra vrste smještaja (opcionalno)"/>
+            <column name="address_text" type="VARCHAR(500)" remarks="Adresa objekta kako je upisana na rješenju (opcionalno)"/>
+            <column name="decision_number" type="VARCHAR(64)" remarks="Klasa / broj rješenja (opcionalno)"/>
+            <column name="decision_date" type="DATE" remarks="Datum rješenja (opcionalno)"/>
+            <column name="max_beds" type="INTEGER" remarks="Broj kreveta s rješenja (opcionalno)"/>
+            <column name="note" type="VARCHAR(1000)" remarks="Napomena podnositelja"/>
+
+            <column name="file_name" type="VARCHAR(255)" remarks="Originalni naziv uploadane datoteke">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content_type" type="VARCHAR(100)" remarks="MIME tip potvrđen magic-byteovima, ne header klijenta">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_size" type="BIGINT" remarks="Veličina u bajtovima">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_content" type="BYTEA" remarks="Sadržaj skena (PDF/JPEG/PNG, do 10 MB)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="status" type="VARCHAR(16)" defaultValue="SUBMITTED"
+                    remarks="SUBMITTED → VERIFIED / REJECTED (verificira nadležno tijelo)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="facility_id" type="VARCHAR(64)"
+                    remarks="str.facility.id nakon što nadležno tijelo objekt upiše u eTurizam; do tada NULL i zapis se prikazuje kao privremen"/>
+            <column name="uploaded_at" type="TIMESTAMPTZ" remarks="Trenutak uploada">
+                <constraints nullable="false"/>
+            </column>
+            <column name="verified_by" type="VARCHAR(255)" remarks="Korisnik nadležnog tijela koji je zapis verificirao"/>
+            <column name="verified_at" type="TIMESTAMPTZ" remarks="Trenutak verifikacije"/>
+        </createTable>
+
+        <createIndex schemaName="str_rn" tableName="categorization_decision"
+                     indexName="idx_categorization_decision_oib">
+            <column name="lessor_oib"/>
+            <column name="status"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="categorization_decision"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

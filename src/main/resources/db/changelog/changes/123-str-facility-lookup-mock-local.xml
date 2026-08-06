@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock tablica koje popis objekata za NIAS dashboard joina, a lokalno ih nema
+      (context="local"; na dev/prod ih posjeduje eTurizam i read-only su).
+
+      Struktura je prepisana iz definicije view-a str.vw_src_facility_actual na dev-u:
+        facility_type      → codebook_element (type_id, sub_type_id)  = vrsta / podvrsta
+        facility.category_id / business_status_id → codebook_element  = kategorija / status
+        facility.address_id → address, pa imena preko settlement/street/house_number/
+                              municipality/county (denormalizirane kolone u address su
+                              na dev-u gotovo prazne, pa je hijerarhija primarna)
+        facility_capacity  → codebook_element (CAT_BROJ_KREVETA)      = broj kreveta
+        facility_unit(+_capacity)                                     = jedinice hotela i sl.
+
+      INTENTIONALLY LOOSE SCHEMA, kao i 100-str-schema-local: bez FK-ova i NOT NULL-ova.
+    -->
+
+    <changeSet id="123-str-codebook-element" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="codebook_element"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="codebook_element">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="code" type="VARCHAR(100)"/>
+            <column name="name" type="VARCHAR(255)"/>
+            <column name="codebook_id" type="BIGINT"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="codebook_element" indexName="idx_str_codebook_element_code">
+            <column name="code"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="123-str-document" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="document"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="document">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="business_case_id" type="BIGINT"/>
+            <column name="subject_version_id" type="BIGINT"/>
+            <column name="registry_number" type="VARCHAR(64)"/>
+            <column name="subtype_code" type="VARCHAR(64)"/>
+            <column name="issue_date" type="DATE"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="document" indexName="idx_str_document_business_case">
+            <column name="business_case_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="123-str-facility-type" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="facility_type"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="facility_type">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="facility_id" type="BIGINT"/>
+            <column name="type_id" type="BIGINT"/>
+            <column name="sub_type_id" type="BIGINT"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="facility_type" indexName="idx_str_facility_type_facility">
+            <column name="facility_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="123-str-facility-capacity" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="facility_capacity"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="facility_capacity">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="facility_id" type="BIGINT"/>
+            <column name="type_id" type="BIGINT"/>
+            <column name="quantity" type="INTEGER"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="facility_capacity" indexName="idx_str_facility_capacity_facility">
+            <column name="facility_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="123-str-facility-unit" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="facility_unit"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="facility_unit">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="facility_id" type="BIGINT"/>
+            <column name="type_id" type="BIGINT"/>
+            <column name="number_of_units" type="INTEGER"/>
+            <column name="registration_number" type="VARCHAR(64)"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="facility_unit" indexName="idx_str_facility_unit_facility">
+            <column name="facility_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="123-str-facility-unit-capacity" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="facility_unit_capacity"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="facility_unit_capacity">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="facility_unit_id" type="BIGINT"/>
+            <column name="type_id" type="BIGINT"/>
+            <column name="quantity" type="INTEGER"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="facility_unit_capacity" indexName="idx_str_facility_unit_capacity_unit">
+            <column name="facility_unit_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="123-str-address" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="address"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="address">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="country_id" type="BIGINT"/>
+            <column name="county_id" type="BIGINT"/>
+            <column name="municipality_id" type="BIGINT"/>
+            <column name="settlement_id" type="BIGINT"/>
+            <column name="street_id" type="BIGINT"/>
+            <column name="house_number_id" type="BIGINT"/>
+            <column name="county" type="VARCHAR(255)"/>
+            <column name="municipality" type="VARCHAR(255)"/>
+            <column name="settlement" type="VARCHAR(255)"/>
+            <column name="street" type="VARCHAR(255)"/>
+            <column name="house_number" type="VARCHAR(32)"/>
+            <column name="postal_code" type="VARCHAR(16)"/>
+            <column name="full_address" type="VARCHAR(500)"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="123-str-address-hierarchy" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="settlement"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="county">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(255)"/>
+            <column name="country_id" type="BIGINT"/>
+        </createTable>
+        <createTable schemaName="str" tableName="municipality">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(255)"/>
+            <column name="county_id" type="BIGINT"/>
+        </createTable>
+        <createTable schemaName="str" tableName="settlement">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(255)"/>
+            <column name="municipality_id" type="BIGINT"/>
+            <column name="postal_code" type="VARCHAR(16)"/>
+        </createTable>
+        <createTable schemaName="str" tableName="street">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(255)"/>
+            <column name="settlement_id" type="BIGINT"/>
+        </createTable>
+        <createTable schemaName="str" tableName="house_number">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(32)"/>
+            <column name="street_id" type="BIGINT"/>
+        </createTable>
+    </changeSet>
+
+    <!--
+      Šifrarnik: samo elementi koje popis čita. Kodovi su stvarni (provjereni na dev-u),
+      ID-evi su lokalni — kod je ono na što se vežemo, ID se među okolinama razlikuje.
+    -->
+    <changeSet id="123-str-codebook-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.codebook_element</sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.codebook_element (id, active, code, name) VALUES
+              (1000, true, 'FT_UGOST_USL_U_DOM', 'Objekti u kojima se pružaju ugostiteljske usluge u domaćinstvu'),
+              (1001, true, 'FT_RESTORAN',        'Restorani'),
+              (1010, true, 'FS_SOBA',            'Soba'),
+              (1011, true, 'FS_APARTMAN',        'Apartman'),
+              (1012, true, 'FS_STUDIO_APARTMAN', 'Studio apartman'),
+              (1013, true, 'FS_KUCA_ZA_ODMOR',   'Kuća za odmor'),
+              (1014, true, 'FS_PIZZERIA',        'Pizzeria'),
+              (1020, true, 'C_3_ZVJEZDICE',      'Tri zvjezdice'),
+              (1021, true, 'C_2_ZVJEZDICE',      'Dvije zvjezdice'),
+              (1030, true, 'FBS_ACTIVE',         'Aktivan'),
+              (1031, true, 'FBS_INACTIVE',       'Odjavljen'),
+              (1040, true, 'CAT_BROJ_KREVETA',   'Broj kreveta'),
+              (1041, true, 'CAT_BROJ_POM_KREVETA','Broj pomoćnih kreveta'),
+              (1042, true, 'CAT_BROJ_GOSTIJU',   'Broj gostiju');
+        </sql>
+    </changeSet>
+
+    <!--
+      Iznajmljivač za mock NIAS sesiju. OIB 99999999990 (nias.mock.fixed-oib) je do sada
+      postojao samo kao str_rn.lessor iz changeseta 048, pa bi popis objekata lokalno bio
+      prazan — ovdje dobiva i str.subject / subject_version, jer popis ide po str strani.
+
+      Objekti 200-207 pokrivaju sve slučajeve prikaza i filtriranja:
+        200 soba bez RB-a, 201 apartman s RB-om, 202 studio bez RB-a,
+        203 kuća za odmor s RB-om, 204 pizzeria (filter je mora izbaciti),
+        205 soba s active=false (izbacuje se nakon dedupa),
+        206/207 isti system_uuid — prikazuje se samo noviji (207).
+    -->
+    <changeSet id="123-str-mock-oib-facilities-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.subject WHERE jips = '99999999990'</sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.subject (id, active, jips) VALUES (99, true, '99999999990');
+            INSERT INTO str.subject_version (id, active, subject_id, first_name, last_name, pin, historical)
+              VALUES (99, true, 99, 'NIAS', 'Demo', '99999999990', false);
+
+            INSERT INTO str.county (id, name)                        VALUES (9201, 'Splitsko-dalmatinska županija');
+            INSERT INTO str.municipality (id, name, county_id)       VALUES (9101, 'Makarska', 9201);
+            INSERT INTO str.settlement (id, name, municipality_id, postal_code)
+              VALUES (9001, 'Makarska', 9101, '21300');
+            INSERT INTO str.street (id, name, settlement_id)         VALUES (9301, 'Kralja Petra Krešimira IV', 9001);
+            INSERT INTO str.house_number (id, name, street_id)       VALUES (9401, '88', 9301);
+
+            INSERT INTO str.address (id, active, county_id, municipality_id, settlement_id, street_id,
+                                     house_number_id, full_address)
+            SELECT 900 + g, true, 9201, 9101, 9001, 9301, 9401,
+                   'Kralja Petra Krešimira IV 88, 21300 Makarska'
+            FROM generate_series(0, 7) AS g;
+
+            INSERT INTO str.document (id, active, business_case_id, subject_version_id) VALUES
+              (900, true, 9000, 99), (901, true, 9001, 99), (902, true, 9002, 99), (903, true, 9003, 99),
+              (904, true, 9004, 99), (905, true, 9005, 99), (906, true, 9006, 99), (907, true, 9006, 99);
+
+            INSERT INTO str.facility (id, active, subject_id, subject_version_id, name, system_uuid,
+                                      document_id, address_id, category_id, business_status_id,
+                                      same_address_subject, historical, registration_number) VALUES
+              (200, true,  99, 99, 'Soba 1',            'mock-uuid-200', 900, 900, 1020, 1030, false, false, NULL),
+              (201, true,  99, 99, 'Apartman Jadran',   'mock-uuid-201', 901, 901, 1020, 1030, false, false, 'HR100000000000000001'),
+              (202, true,  99, 99, 'Studio Makarska',   'mock-uuid-202', 902, 902, 1021, 1030, false, false, NULL),
+              (203, true,  99, 99, 'Kuća Krešimir',     'mock-uuid-203', 903, 903, 1020, 1030, false, false, 'HR100000000000000002'),
+              (204, true,  99, 99, 'Pizzeria Dalmacija','mock-uuid-204', 904, 904, NULL, 1030, false, false, NULL),
+              (205, false, 99, 99, 'Soba odjavljena',   'mock-uuid-205', 905, 905, 1020, 1031, false, false, NULL),
+              (206, true,  99, 99, 'Soba stara verzija','mock-uuid-206', 906, 906, 1020, 1030, false, false, NULL),
+              (207, true,  99, 99, 'Soba nova verzija', 'mock-uuid-206', 907, 907, 1020, 1030, false, false, NULL);
+
+            INSERT INTO str.facility_type (id, active, facility_id, type_id, sub_type_id) VALUES
+              (200, true, 200, 1000, 1010),
+              (201, true, 201, 1000, 1011),
+              (202, true, 202, 1000, 1012),
+              (203, true, 203, 1000, 1013),
+              (204, true, 204, 1001, 1014),
+              (205, true, 205, 1000, 1010),
+              (206, true, 206, 1000, 1010),
+              (207, true, 207, 1000, 1010);
+
+            INSERT INTO str.facility_capacity (id, active, facility_id, type_id, quantity) VALUES
+              (200, true, 200, 1040, 2),
+              (201, true, 201, 1040, 4),
+              (202, true, 201, 1041, 1),
+              (203, true, 202, 1040, 3),
+              (204, true, 203, 1040, 6),
+              (205, true, 205, 1040, 2),
+              (206, true, 206, 1040, 2),
+              (207, true, 207, 1040, 3);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
