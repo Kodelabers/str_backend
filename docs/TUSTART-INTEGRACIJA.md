@@ -105,6 +105,44 @@ intervenciju preko logova.
 > DB korisnik treba `UPDATE` pravo na `str.facility.registration_number`. Bez toga registracija i
 > dalje prolazi, ali se RB ne vraća u eTurizam.
 
+## 6a. Zaključana vrsta i kapacitet za postojeći objekt
+
+Kad tijelo `POST /api/generateRegistrationNumber` nosi `facilityId`, backend prije svega ostalog
+provjerava tri stvari (`FacilityClaimVerifier`):
+
+| Provjera | Ishod na neslaganje |
+| :--- | :--- |
+| Objekt pripada OIB-u iz NIAS sesije (`facility → subject_version → subject.jips`) | 400 `error.facility.notOwned` |
+| Objekt postoji i aktivan je | 400 `error.facility.unknown` / `error.facility.inactive` |
+| Objekt već nema stojeći RB (ACTIVE / SUSPENSION_PROPOSED / SUSPENDED) | 400 `error.facility.alreadyRegistered` |
+| `typeId` odgovara podvrsti u eTurizmu (`FS_*`) | 400 `error.facility.type.mismatch` |
+| `maxBeds` odgovara `CAT_BROJ_KREVETA` u eTurizmu | 400 `error.facility.beds.mismatch` |
+
+Vlasništvo nije kozmetika: write-back iz §6 piše RB u `str.facility` za poslani `facilityId`, pa bi
+bez provjere tuđi ID upisao RB u tuđi zapis u eTurizmu.
+
+Broj gostiju se **ne** provjerava — eTurizam ga za objekte u domaćinstvu ne vodi (v.
+`docs/ETURIZAM-OBJEKTI.md`), pa ga korisnik unosi sam.
+
+## 6b. NIAS dashboard — postojeći objekti i skenirano rješenje
+
+| Endpoint | Namjena |
+| :--- | :--- |
+| `GET /api/nias/facilities?page=&size=` | Popis objekata prijavljenog iznajmljivača (eTurizam + uploadana skenirana rješenja). Paginirano, default 20, max 100. |
+| `POST /api/nias/categorization-decisions` | Upload skeniranog papirnatog rješenja (multipart, `datoteka` + opcionalni metapodaci). |
+
+Item popisa nosi `registracijskiBroj` (null → frontend nudi „Zatraži RB", inače „Prikaži") i `izvor`
+(`ETURIZAM` / `PRIVREMENO_RJESENJE`). Prijenos objekta iz drugog izvora u eTurizam radi nadležno
+tijelo; do tada zapis živi u `str_rn.categorization_decision` i prikazuje se bez RB-a.
+
+Upload prihvaća PDF/JPEG/PNG do 10 MB, a tip određuje iz sadržaja (magic bytes), ne iz
+`Content-Type` headera. Prevelika datoteka daje **413** `error.upload.file.tooLarge`; neispravan
+sadržaj 400 `error.categorization.file.type`.
+
+> Preduvjet za CDU: reverse proxy pred aplikacijom mora dopustiti tijelo od 10 MB
+> (`client_max_body_size`), inače zahtjev nikad ne dođe do Springa i korisnik dobije 413 od proxyja
+> bez našeg tijela greške.
+
 ## 7. Napomene za STR frontend
 
 - **Identitet** (ime/prezime/OIB) iz NIAS sesije (`GET /api/nias/me`), nikad iz URL-a.

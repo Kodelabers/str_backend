@@ -25,6 +25,7 @@ import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
@@ -56,6 +57,7 @@ public class RegistrationService {
     private final MunicipalityRepository municipalityRepository;
     private final SettlementRepository settlementRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
+    private final FacilityClaimVerifier facilityClaimVerifier;
     private final ApplicationEventPublisher eventPublisher;
 
     public RegistrationService(LessorRepository lessorRepository,
@@ -69,6 +71,7 @@ public class RegistrationService {
                                MunicipalityRepository municipalityRepository,
                                SettlementRepository settlementRepository,
                                AccommodationTypeRepository accommodationTypeRepository,
+                               FacilityClaimVerifier facilityClaimVerifier,
                                ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
@@ -81,6 +84,7 @@ public class RegistrationService {
         this.municipalityRepository = municipalityRepository;
         this.settlementRepository = settlementRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
+        this.facilityClaimVerifier = facilityClaimVerifier;
         this.eventPublisher = eventPublisher;
     }
 
@@ -90,6 +94,7 @@ public class RegistrationService {
                 .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
 
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
+        verifyFacilityClaim(req.oib(), accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
         LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
@@ -107,11 +112,23 @@ public class RegistrationService {
                 .orElseThrow(() -> new ResourceNotFoundException("lessor not found: " + lessorId));
 
         AccommodationEntity accommodation = buildAccommodation(req, county.getName());
+        verifyFacilityClaim(lessor.getLessorOib(), accommodation);
         checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
 
         runValidation(accommodation, lessor);
 
         return commitRegistration(lessor, accommodation);
+    }
+
+    /**
+     * Kad zahtjev nosi {@code facilityId} iz tuStart handoffa, objekt mora pripadati podnositelju
+     * i poslana vrsta / broj kreveta moraju odgovarati eTurizmu — v. {@link FacilityClaimVerifier}.
+     * Provjera ide prije svega ostalog: jedina je brana između tuđeg {@code facilityId} i
+     * write-backa RB-a u tuđi zapis.
+     */
+    private void verifyFacilityClaim(String oib, AccommodationEntity accommodation) {
+        facilityClaimVerifier.verify(oib, accommodation.getFacilityId(),
+                accommodation.getAccommodationTypeId(), accommodation.getMaxBeds());
     }
 
     /**

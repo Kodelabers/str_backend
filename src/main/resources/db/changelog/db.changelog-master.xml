@@ -180,4 +180,11 @@
          RB-a; na dev/cdu/prod kolona već postoji u pravoj eTurizam tablici. -->
     <include file="db/changelog/changes/121-str-facility-registration-number-local.xml"/>
 
+    <!-- Skenirano papirnato rješenje o kategorizaciji (NIAS dashboard, upload). -->
+    <include file="db/changelog/changes/122-categorization-decision.xml"/>
+
+    <!-- Mock šifrarnika, adrese i kapaciteta iz eTurizma (context="local") — bez njih popis
+         objekata na NIAS dashboardu lokalno nema što joinati. -->
+    <include file="db/changelog/changes/123-str-facility-lookup-mock-local.xml"/>
+
 </databaseChangeLog>
