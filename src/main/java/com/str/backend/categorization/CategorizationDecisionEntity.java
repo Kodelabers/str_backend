@@ -1,5 +1,6 @@
 package com.str.backend.categorization;
 
+import com.str.backend.exception.IllegalStatusTransitionException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -109,6 +110,36 @@ public class CategorizationDecisionEntity {
         e.maxBeds = metadata.maxBeds();
         e.note = metadata.note();
         return e;
+    }
+
+    /**
+     * Nadležno tijelo prihvaća rješenje. Dopušteno samo iz {@link CategorizationDecisionStatus#SUBMITTED}.
+     *
+     * <p>{@code facilityId} se ovdje NE postavlja: upis objekta u eTurizam i dodjela oznake su
+     * odvojen korak koji radi eTurizam servis ({@code str.*} nam je read-only). Do potvrde tog
+     * ugovora s MINTS-om {@code VERIFIED} je čista oznaka — v. TODO u {@code AdminCategorizationDecisionService}.
+     */
+    public void verify(String actor) {
+        requireSubmitted();
+        this.status = CategorizationDecisionStatus.VERIFIED;
+        this.verifiedBy = actor;
+        this.verifiedAt = Instant.now();
+    }
+
+    /** Konačno odbijanje. Dopušteno samo iz {@link CategorizationDecisionStatus#SUBMITTED}. */
+    public void reject(String actor) {
+        requireSubmitted();
+        this.status = CategorizationDecisionStatus.REJECTED;
+        this.verifiedBy = actor;
+        this.verifiedAt = Instant.now();
+    }
+
+    /** Verify i reject su dopušteni samo nad neobrađenim (SUBMITTED) zapisom — inače 409. */
+    private void requireSubmitted() {
+        if (status != CategorizationDecisionStatus.SUBMITTED) {
+            throw new IllegalStatusTransitionException(
+                    "Rješenje " + decisionId + " nije u statusu SUBMITTED (trenutno: " + status + ")");
+        }
     }
 
     /** Metapodaci s rješenja — svi opcionalni, v. komentar na razredu. */
