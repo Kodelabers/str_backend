@@ -121,14 +121,22 @@ public class RegistrationService {
     }
 
     /**
-     * Kad zahtjev nosi {@code facilityId} iz tuStart handoffa, objekt mora pripadati podnositelju
-     * i poslana vrsta / broj kreveta moraju odgovarati eTurizmu — v. {@link FacilityClaimVerifier}.
-     * Provjera ide prije svega ostalog: jedina je brana između tuđeg {@code facilityId} i
-     * write-backa RB-a u tuđi zapis.
+     * Kad zahtjev nosi {@code facilityId} iz tuStart handoffa, objekt mora pripadati podnositelju,
+     * a poslana vrsta, broj kreveta, naziv i adresa moraju odgovarati eTurizmu — v.
+     * {@link FacilityClaimVerifier}. Provjera ide prije svega ostalog: jedina je brana između
+     * tuđeg {@code facilityId} i write-backa RB-a u tuđi zapis.
      */
     private void verifyFacilityClaim(String oib, AccommodationEntity accommodation) {
         facilityClaimVerifier.verify(oib, accommodation.getFacilityId(),
-                accommodation.getAccommodationTypeId(), accommodation.getMaxBeds());
+                new FacilityClaimVerifier.Claim(
+                        accommodation.getAccommodationTypeId(),
+                        accommodation.getMaxBeds(),
+                        accommodation.getName(),
+                        accommodation.getCounty(),
+                        accommodation.getCity(),
+                        accommodation.getSettlement(),
+                        accommodation.getStreet(),
+                        accommodation.getStreetNumber()));
     }
 
     /**
@@ -172,9 +180,11 @@ public class RegistrationService {
     AccommodationEntity buildAccommodation(AccommodationRequest req, String countyName) {
         String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName, "");
         String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName, null);
+        // Broj gostiju je maknut s forme — po primjedbi s UAT-a isti je kao broj kreveta.
+        // Kolona je NOT NULL i zadržana radi već izdanih RB-ova, pa se popunjava iz kreveta.
         AccommodationEntity entity = AccommodationEntity.create(
                 null, countyName, cityName, req.street(), req.streetNumber(),
-                req.maxBeds(), req.maxGuests(), req.offerType(), req.offering(),
+                req.maxBeds(), req.maxBeds(), req.offerType(), req.offering(),
                 req.building(), req.apartments(), req.legalized());
         entity.setName(req.name());
         entity.setFacilityId(req.facilityId());

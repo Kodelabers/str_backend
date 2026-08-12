@@ -153,7 +153,7 @@ class RegistrationServiceDuplicateLocationTest {
                 OIB, "AP1", "1",
                 7L, "Split", "Meje",
                 "Marulićeva", "5", "  ", "21000",
-                4, 6,
+                4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
                 null, null, null, null, null, null, null);
@@ -171,7 +171,7 @@ class RegistrationServiceDuplicateLocationTest {
                 OIB, "AP1", "1",
                 7L, "Split", "Meje",
                 "Marulićeva", "5", HOUSE_NUMBER_CODE, "21000",
-                4, 6,
+                4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
                 null, null, null, null, null, confirm, null);

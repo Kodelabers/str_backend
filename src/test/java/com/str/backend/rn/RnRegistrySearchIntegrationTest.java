@@ -196,4 +196,107 @@ class RnRegistrySearchIntegrationTest {
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.content[0].rn").value("HR00000003"));
     }
+
+    // --- Radna lista „rok za očitovanje ističe uskoro" (primjedba s UAT-a) ---
+
+    /** Postavlja rok bez prolaska kroz suspend(), da fixture ne ovisi o statusnom stroju. */
+    private void seedProposedWithDeadline(String rn, LocalDate deadline) {
+        RnEntity e = rnRepository.findById(rn).orElseThrow();
+        e.applyStatus(RnStatus.SUSPENSION_PROPOSED); // package-private, same package
+        e.setSuspensionDeadline(deadline);
+        rnRepository.save(e);
+    }
+
+    @Test
+    void deadlineWithinDays_selectsOnlyRnsExpiringInsideTheWindow() throws Exception {
+        seedProposedWithDeadline("HR00000001", LocalDate.now().plusDays(3));
+        seedProposedWithDeadline("HR00000002", LocalDate.now().plusDays(30));
+
+        mvc.perform(get("/api/rn")
+                        .param("view", "SUSPENSION_PROPOSED")
+                        .param("deadlineWithinDays", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000001"))
+                .andExpect(jsonPath("$.content[0].suspensionDeadline").exists());
+
+        mvc.perform(get("/api/rn")
+                        .param("view", "SUSPENSION_PROPOSED")
+                        .param("deadlineWithinDays", "60"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+    }
+
+    /**
+     * Rok koji je već istekao mora ostati na listi: job se vrti jednom dnevno, pa između isteka
+     * i prelaska u SUSPENDED postoji prozor u kojem je predmet najhitniji. Donje granice nema.
+     */
+    @Test
+    void deadlineWithinDays_keepsAlreadyExpiredDeadlines() throws Exception {
+        seedProposedWithDeadline("HR00000001", LocalDate.now().minusDays(2));
+
+        mvc.perform(get("/api/rn")
+                        .param("view", "SUSPENSION_PROPOSED")
+                        .param("deadlineWithinDays", "0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000001"));
+    }
+
+    /** RB bez postavljenog roka ne smije upasti u radnu listu. */
+    @Test
+    void deadlineWithinDays_excludesRnsWithoutDeadline() throws Exception {
+        RnEntity e = rnRepository.findById("HR00000001").orElseThrow();
+        e.applyStatus(RnStatus.SUSPENSION_PROPOSED);
+        rnRepository.save(e);
+
+        mvc.perform(get("/api/rn")
+                        .param("view", "SUSPENSION_PROPOSED")
+                        .param("deadlineWithinDays", "365"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    /**
+     * {@code Integer.MAX_VALUE} dana daje godinu izvan raspona Postgresovog {@code date} tipa;
+     * bez ograničenja upit tamo pada s 500. H2 to proguta, pa test čuva samo da endpoint ostane
+     * na 200 — sama kapa je u {@code RnService}.
+     */
+    @Test
+    void deadlineWithinDays_absurdWindowDoesNotBlowUp() throws Exception {
+        seedProposedWithDeadline("HR00000001", LocalDate.now().plusDays(3));
+
+        mvc.perform(get("/api/rn")
+                        .param("view", "SUSPENSION_PROPOSED")
+                        .param("deadlineWithinDays", String.valueOf(Integer.MAX_VALUE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+    }
+
+    /** Negativan prozor je smislen upit („istekao prije barem x dana"), ne izostanak filtra. */
+    @Test
+    void deadlineWithinDays_negativeWindowLooksIntoThePast() throws Exception {
+        seedProposedWithDeadline("HR00000001", LocalDate.now().minusDays(10));
+        seedProposedWithDeadline("HR00000002", LocalDate.now().plusDays(10));
+
+        mvc.perform(get("/api/rn")
+                        .param("view", "SUSPENSION_PROPOSED")
+                        .param("deadlineWithinDays", "-5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000001"));
+    }
+
+    /** Bez parametra filtar ne smije ništa odsjeći. */
+    @Test
+    void withoutDeadlineParam_allProposedRnsAreListed() throws Exception {
+        seedProposedWithDeadline("HR00000001", LocalDate.now().plusDays(3));
+        RnEntity b = rnRepository.findById("HR00000002").orElseThrow();
+        b.applyStatus(RnStatus.SUSPENSION_PROPOSED);
+        rnRepository.save(b);
+
+        mvc.perform(get("/api/rn").param("view", "SUSPENSION_PROPOSED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+    }
 }

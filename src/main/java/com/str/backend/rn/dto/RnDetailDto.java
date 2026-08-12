@@ -26,7 +26,6 @@ public record RnDetailDto(
         String accommodationName,
         String accommodationTypeName,
         Integer maxBeds,
-        Integer maxGuests,
         String category,
 
         UUID lessorId,

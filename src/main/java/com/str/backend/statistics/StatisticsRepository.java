@@ -27,7 +27,6 @@ interface StatisticsRepository extends Repository<RnEntity, String> {
         LocalDate getValidFrom();
         LocalDate getValidTo();
         Integer getMaxBeds();
-        Integer getMaxGuests();
     }
 
     @Transactional(readOnly = true)
@@ -45,8 +44,7 @@ interface StatisticsRepository extends Repository<RnEntity, String> {
                 r.issue_date                      AS "issueDate",
                 r.valid_from                      AS "validFrom",
                 r.valid_to                        AS "validTo",
-                a.max_beds                        AS "maxBeds",
-                a.max_guests                      AS "maxGuests"
+                a.max_beds                        AS "maxBeds"
             FROM str_rn.registration_number r
             JOIN str_rn.accommodation a ON a.accommodation_id = r.accommodation_id
             LEFT JOIN rpj_dgu.gradovi_i_opcine m ON m.id::text = a.city

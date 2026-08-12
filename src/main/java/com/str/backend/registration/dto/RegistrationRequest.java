@@ -22,7 +22,6 @@ public record RegistrationRequest(
         String houseNumberCode,
         String postalCode,
         @Min(1) int maxBeds,
-        @Min(1) int maxGuests,
         @NotNull OfferType offerType,
         @NotNull Offering offering,
         @NotNull Boolean building,
@@ -41,7 +40,7 @@ public record RegistrationRequest(
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {
         return new RegistrationRequest(oib, orig.name(), orig.typeId(), orig.countyId(),
                 orig.cityId(), orig.settlementId(), orig.street(), orig.streetNumber(),
-                orig.houseNumberCode(), orig.postalCode(), orig.maxBeds(), orig.maxGuests(),
+                orig.houseNumberCode(), orig.postalCode(), orig.maxBeds(),
                 orig.offerType(), orig.offering(), orig.building(), orig.floor(),
                 orig.apartments(), orig.legalized(), orig.lessorResidence(), orig.coOwnerConsent(),
                 orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),

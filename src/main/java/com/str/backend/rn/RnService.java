@@ -14,6 +14,7 @@ import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +32,8 @@ public class RnService {
 
     private static final Logger log = LoggerFactory.getLogger(RnService.class);
     private static final int MAX_RN_ATTEMPTS = 5;
+    /** Deset godina — dovoljno za svaki stvarni rok, a drži datum unutar raspona DB tipa `date`. */
+    private static final int MAX_DEADLINE_WINDOW_DAYS = 3650;
 
     // Maps str.county.name → EGOP organization ID used in RN generation
     private static final Map<String, Integer> COUNTY_EGOP_ORG_IDS = Map.ofEntries(
@@ -62,15 +65,18 @@ public class RnService {
     private final AccommodationRepository accommodationRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final Clock clock;
+    private final int suspensionResponseDays;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
-                     AccommodationTypeRepository accommodationTypeRepository, Clock clock) {
+                     AccommodationTypeRepository accommodationTypeRepository, Clock clock,
+                     @Value("${str.rn.suspension.response-days:15}") int suspensionResponseDays) {
         this.repository = repository;
         this.transitionService = transitionService;
         this.accommodationRepository = accommodationRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.clock = clock;
+        this.suspensionResponseDays = suspensionResponseDays;
     }
 
     @Transactional
@@ -102,6 +108,16 @@ public class RnService {
         throw new BusinessException("error.rn.generation.failed");
     }
 
+    /**
+     * Prva faza suspenzije (čl. 30. st. 2 ZUP-a): stranka se poziva na očitovanje, RB i dalje
+     * vrijedi, a suspendira ga tek {@link SuspensionDeadlineJob} po isteku roka.
+     *
+     * <p>Rok se, ako nije poslan, postavlja sam na {@code danas + responseDays}. Bez toga bi
+     * kolona ostala {@code NULL}, job predmet nikad ne bi pokupio i RB bi zauvijek visio u
+     * {@code SUSPENSION_PROPOSED} — dok akt stranci već tvrdi da rok teče („u roku od 15 dana",
+     * {@code rok.default} u {@code documents/hr/labels.properties}). Zadana vrijednost prati taj
+     * tekst; mijenja se preko {@code str.rn.suspension.response-days}.
+     */
     @Transactional
     public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note) {
         if (trigger != RnTrigger.CONSENT_EXPIRY
@@ -113,9 +129,17 @@ public class RnService {
         if (trigger == RnTrigger.OTHER && Strings.blankToNull(note) == null) {
             throw new BusinessException("error.rn.suspend.note.required");
         }
+        // Rok u prošlosti nije rok: SuspensionDeadlineJob bi ga pokupio već iduće noći i RB bi bio
+        // suspendiran a da se stranka nije imala kad očitovati — a upravo joj to čl. 30. st. 2
+        // ZUP-a jamči. Tipfeler u godini ne smije proći kao valjan poziv na očitovanje.
+        if (suspensionDeadline != null && suspensionDeadline.isBefore(LocalDate.now(clock))) {
+            throw new BusinessException("error.rn.suspend.deadline.past");
+        }
         RnEntity e = load(rn);
         transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, null, Strings.blankToNull(note));
-        e.setSuspensionDeadline(suspensionDeadline);
+        e.setSuspensionDeadline(suspensionDeadline != null
+                ? suspensionDeadline
+                : LocalDate.now(clock).plusDays(suspensionResponseDays));
         return e;
     }
 
@@ -175,7 +199,8 @@ public class RnService {
     @Transactional(readOnly = true)
     public Page<RnSummaryDto> searchRegistry(RnRegistryView view, String q, String county, String municipality,
                                              Long typeId, boolean foreignOnly, String rb, String city,
-                                             String street, String name, String lessor, Pageable pageable) {
+                                             String street, String name, String lessor,
+                                             Integer deadlineWithinDays, Pageable pageable) {
         String[] t = SearchTokens.slots(q);
         return repository.searchRegistry(view.statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
@@ -183,6 +208,7 @@ public class RnService {
                 foreignOnly ? "true" : null,
                 Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
                 Strings.blankToNull(name), Strings.blankToNull(lessor),
+                deadlineBefore(deadlineWithinDays),
                 pageable);
     }
 
@@ -191,7 +217,8 @@ public class RnService {
     public List<RnSummaryDto> searchRegistryForExport(RnRegistryView view, String q, String county,
                                                       String municipality, Long typeId, boolean foreignOnly,
                                                       String rb, String city, String street,
-                                                      String name, String lessor) {
+                                                      String name, String lessor,
+                                                      Integer deadlineWithinDays) {
         String[] t = SearchTokens.slots(q);
         Page<RnSummaryDto> page = repository.searchRegistry(view.statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
@@ -199,8 +226,31 @@ public class RnService {
                 foreignOnly ? "true" : null,
                 Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
                 Strings.blankToNull(name), Strings.blankToNull(lessor),
+                deadlineBefore(deadlineWithinDays),
                 PageRequest.of(0, 50_001));
         return page.getContent();
+    }
+
+    /**
+     * Gornja granica roka za očitovanje — „ističe u narednih {@code x} dana". Datum se računa
+     * ovdje, a ne u upitu, da rezultat ne ovisi o vremenskoj zoni baze; {@code Clock} je isti
+     * koji koristi i izdavanje RB-a, pa je test deterministički.
+     *
+     * <p>{@code x = 0} znači „rok je istekao ili ističe danas", a negativan broj pomiče granicu
+     * u prošlost („istekao prije barem x dana") — oboje su smisleni upiti i prolaze kakvi jesu.
+     *
+     * <p>Vrijednost se ograničava na {@link #MAX_DEADLINE_WINDOW_DAYS}: {@code Integer.MAX_VALUE}
+     * dana daje godinu 5881637, što premašuje raspon Postgresovog tipa {@code date} (do 5874897)
+     * i sruši upit s 500. H2 na testu to proguta, pa se rub ne bi vidio prije produkcije. Kapa
+     * je i inače bezopasna — prozor od 10 godina obuhvaća svaki postojeći rok.
+     */
+    private LocalDate deadlineBefore(Integer deadlineWithinDays) {
+        if (deadlineWithinDays == null) {
+            return null;
+        }
+        int days = Math.clamp(deadlineWithinDays.longValue(),
+                -MAX_DEADLINE_WINDOW_DAYS, MAX_DEADLINE_WINDOW_DAYS);
+        return LocalDate.now(clock).plusDays(days);
     }
 
     /** STR wireframe §12 / §13: full detail for a single RN (joined accommodation + lessor). */

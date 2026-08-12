@@ -68,7 +68,7 @@ class RegistrationServiceBuildAccommodationTest {
                 "12312312316", "AP1", typeId,
                 7L, "Split", "Meje",
                 "Marulićeva", "5", null, "21000",
-                4, 6,
+                4,
                 OfferType.PRIMARY_RESIDENCE, Offering.PART,
                 true, "3", false, true,
                 Boolean.TRUE, Boolean.TRUE,
@@ -88,7 +88,8 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getStreet()).isEqualTo("Marulićeva");
         assertThat(e.getStreetNumber()).isEqualTo("5");
         assertThat(e.getMaxBeds()).isEqualTo(4);
-        assertThat(e.getMaxGuests()).isEqualTo(6);
+        // Broj gostiju je maknut s forme (UAT) — kolona je NOT NULL i puni se iz broja kreveta.
+        assertThat(e.getMaxGuests()).isEqualTo(4);
         assertThat(e.getOfferType()).isEqualTo(OfferType.PRIMARY_RESIDENCE);
         assertThat(e.getOffering()).isEqualTo(Offering.PART);
         assertThat(e.isBuilding()).isTrue();

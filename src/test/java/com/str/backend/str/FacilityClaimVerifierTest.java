@@ -5,6 +5,7 @@ import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnRepository.FacilityRnRow;
+import com.str.backend.str.FacilityClaimVerifier.Claim;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.junit.jupiter.api.Test;
 
@@ -33,16 +34,21 @@ class FacilityClaimVerifierTest {
     private final FacilityClaimVerifier verifier =
             new FacilityClaimVerifier(facilityRepository, typeRepository, rnRepository);
 
+    /** Zahtjev koji ni u čemu ne odstupa od stubanog objekta. */
+    private static Claim claim(long typeId, int beds) {
+        return new Claim(typeId, beds, null, null, null, null, null, null);
+    }
+
     @Test
     void skips_whenNoFacilityId() {
-        assertThatCode(() -> verifier.verify(OIB, null, 1L, 2)).doesNotThrowAnyException();
-        assertThatCode(() -> verifier.verify(OIB, "  ", 1L, 2)).doesNotThrowAnyException();
+        assertThatCode(() -> verifier.verify(OIB, null, claim(1L, 2))).doesNotThrowAnyException();
+        assertThatCode(() -> verifier.verify(OIB, "  ", claim(1L, 2))).doesNotThrowAnyException();
         verifyNoInteractions(facilityRepository);
     }
 
     @Test
     void rejects_whenFacilityIdNotNumeric() {
-        assertThatThrownBy(() -> verifier.verify(OIB, "abc", 1L, 2))
+        assertThatThrownBy(() -> verifier.verify(OIB, "abc", claim(1L, 2)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.unknown");
         verifyNoInteractions(facilityRepository);
@@ -52,7 +58,7 @@ class FacilityClaimVerifierTest {
     void rejects_whenFacilityMissing() {
         when(facilityRepository.findOwnership(anyLong())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> verifier.verify(OIB, "153049", 1L, 2))
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.unknown");
     }
@@ -61,7 +67,7 @@ class FacilityClaimVerifierTest {
     void rejects_whenFacilityBelongsToAnotherLessor() {
         stubFacility("12312312316", "FS_SOBA", 2, true);
 
-        assertThatThrownBy(() -> verifier.verify(OIB, "153049", 1L, 2))
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.notOwned");
     }
@@ -70,7 +76,7 @@ class FacilityClaimVerifierTest {
     void rejects_whenFacilityInactive() {
         stubFacility(OIB, "FS_SOBA", 2, false);
 
-        assertThatThrownBy(() -> verifier.verify(OIB, "153049", 1L, 2))
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.inactive");
     }
@@ -86,7 +92,7 @@ class FacilityClaimVerifierTest {
         FacilityRnRow existing = mock(FacilityRnRow.class);
         when(rnRepository.findRnsByFacilityIds(List.of("153049"))).thenReturn(List.of(existing));
 
-        assertThatThrownBy(() -> verifier.verify(OIB, "153049", 1L, 2))
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.alreadyRegistered");
     }
@@ -96,7 +102,7 @@ class FacilityClaimVerifierTest {
         stubFacility(OIB, "FS_SOBA", 2, true);
         stubSubmittedType(1L, "FS_APARTMAN");
 
-        assertThatThrownBy(() -> verifier.verify(OIB, "153049", 1L, 2))
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.type.mismatch");
     }
@@ -106,7 +112,7 @@ class FacilityClaimVerifierTest {
         stubFacility(OIB, "FS_SOBA", 2, true);
         stubSubmittedType(1L, "FS_SOBA");
 
-        assertThatThrownBy(() -> verifier.verify(OIB, "153049", 1L, 5))
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 5)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.beds.mismatch");
     }
@@ -116,7 +122,7 @@ class FacilityClaimVerifierTest {
         stubFacility(OIB, "FS_SOBA", 2, true);
         stubSubmittedType(1L, "fs_soba"); // sifra se usporeduje neosjetljivo na velika/mala slova
 
-        assertThatCode(() -> verifier.verify(OIB, " 153049 ", 1L, 2)).doesNotThrowAnyException();
+        assertThatCode(() -> verifier.verify(OIB, " 153049 ", claim(1L, 2))).doesNotThrowAnyException();
     }
 
     /** eTurizam bez kategoriziranog kapaciteta ne smije obarati zahtjev. */
@@ -125,7 +131,7 @@ class FacilityClaimVerifierTest {
         stubFacility(OIB, "FS_SOBA", null, true);
         stubSubmittedType(1L, "FS_SOBA");
 
-        assertThatCode(() -> verifier.verify(OIB, "153049", 1L, 4)).doesNotThrowAnyException();
+        assertThatCode(() -> verifier.verify(OIB, "153049", claim(1L, 4))).doesNotThrowAnyException();
     }
 
     /** Vrsta bez FS_ šifre (npr. hotel) — usporedba se preskače, ne laže. */
@@ -136,16 +142,215 @@ class FacilityClaimVerifierTest {
         assertThat(type.getCode()).isNull();
         when(typeRepository.findById(9L)).thenReturn(Optional.of(type));
 
-        assertThatCode(() -> verifier.verify(OIB, "153049", 9L, 2)).doesNotThrowAnyException();
+        assertThatCode(() -> verifier.verify(OIB, "153049", claim(9L, 2))).doesNotThrowAnyException();
     }
 
-    private void stubFacility(String oib, String subtypeCode, Integer beds, boolean active) {
+    // --- Naziv i adresa: primjedba s UAT-a da se gornji podaci ne smiju mijenjati ---
+
+    @Test
+    void rejects_whenNameChanged() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubName("Apartman Marija");
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, "Apartman Ivana", null, null, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.name.mismatch");
+    }
+
+    @Test
+    void passes_whenNameDiffersOnlyByCaseAndSpacing() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubName("Apartman  Marija");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, " apartman marija ", null, null, null, null, null)))
+                .doesNotThrowAnyException();
+    }
+
+    /**
+     * {@code -} je u {@code str.facility.name} uobičajeni popunjivač. Zaključati ga značilo bi
+     * zabraniti korisniku da upiše stvarni naziv objekta, pa se broji kao nepoznato.
+     */
+    @Test
+    void passes_whenEturizamNameIsPlaceholder() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubName("-");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, "Villa Ana", null, null, null, null, null)))
+                .doesNotThrowAnyException();
+    }
+
+    /**
+     * 11,5 % objekata na CDU nosi ime vlasnika umjesto naziva objekta (27.912 od 242.468).
+     * Zaključati to značilo bi da vlasnik ne može upisati stvarni naziv.
+     */
+    @Test
+    void passes_whenEturizamNameIsTheLessorsOwnName() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubName("Tonći Beroš");
+        when(stubbedRow.getOwnerFullName()).thenReturn("Tonći Beroš");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, "Villa Makarska", null, null, null, null, null)))
+                .doesNotThrowAnyException();
+        assertThat(FacilityClaimVerifier.lockedFields(stubbedRow)).doesNotContain("name");
+    }
+
+    /** Isto i kad je ime na `subject_version.name` (pravna osoba). */
+    @Test
+    void passes_whenEturizamNameIsTheLegalEntityName() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubName("  beroš d.o.o. ");
+        when(stubbedRow.getOwnerName()).thenReturn("Beroš d.o.o.");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, "Villa Makarska", null, null, null, null, null)))
+                .doesNotThrowAnyException();
+    }
+
+    /** Naziv koji je vrsta smještaja ostaje zaključan — to je vrijednost koju eTurizam vodi. */
+    @Test
+    void locksGenericTypeWordName_whichIsNotTheLessorsName() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubName("Apartman");
+        when(stubbedRow.getOwnerFullName()).thenReturn("Tonći Beroš");
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, "Villa Makarska", null, null, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.name.mismatch");
+    }
+
+    /**
+     * Popunjivač se prepoznaje po pravilu „nema ni slova ni znamenke", ne po popisu — inače bi
+     * svaki novi oblik (`--`, `.`) prošao kao stvarni naziv i zaključao polje.
+     */
+    @Test
+    void treatsAnyPunctuationOnlyNameAsMissing() {
+        for (String placeholder : new String[]{"-", "--", "—", ".", "...", "   "}) {
+            stubFacility(OIB, "FS_SOBA", 2, true);
+            stubSubmittedType(1L, "FS_SOBA");
+            stubName(placeholder);
+
+            assertThatCode(() -> verifier.verify(OIB, "153049",
+                    new Claim(1L, 2, "Villa Ana", null, null, null, null, null)))
+                    .describedAs("popunjivac '%s'", placeholder)
+                    .doesNotThrowAnyException();
+            assertThat(FacilityClaimVerifier.objectName(stubbedRow)).isNull();
+        }
+    }
+
+    @Test
+    void rejects_whenStreetChanged() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubAddress("Splitsko-dalmatinska", "Makarska", "Makarska", "Kalalarga", "12");
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, null, "Splitsko-dalmatinska", "Makarska", "Makarska", "Ilica", "12")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.address.mismatch");
+    }
+
+    @Test
+    void rejects_whenCountyChanged() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubAddress("Splitsko-dalmatinska", "Makarska", "Makarska", "Kalalarga", "12");
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, null, "Grad Zagreb", "Makarska", "Makarska", "Kalalarga", "12")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.address.mismatch");
+    }
+
+    @Test
+    void passes_whenAddressMatches() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubAddress("Splitsko-dalmatinska", "Makarska", "Makarska", "Kalalarga", "12");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, null, "Splitsko-dalmatinska", "Makarska", "Makarska", "Kalalarga", "12")))
+                .doesNotThrowAnyException();
+    }
+
+    /**
+     * Adrese u {@code str.address} su rijetko strukturirane (ulica popunjena u 217 od 285.874
+     * redaka). Prazan izvor ne smije oboriti zahtjev — inače bi legitiman handoff dobio 400.
+     */
+    @Test
+    void passes_whenEturizamHasNoStructuredAddress() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, "Villa Ana", "Splitsko-dalmatinska", "Makarska", "Makarska", "Ilica", "1")))
+                .doesNotThrowAnyException();
+    }
+
+    // --- Popis zaključanih polja koji ide frontendu ---
+
+    @Test
+    void lockedFields_listsOnlyWhatEturizamKnows() {
         FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
-        when(row.getOib()).thenReturn(oib);
-        when(row.getSubtypeCode()).thenReturn(subtypeCode);
-        when(row.getBeds()).thenReturn(beds);
-        when(row.getActive()).thenReturn(active);
-        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+        when(row.getSubtypeCode()).thenReturn("FS_SOBA");
+        when(row.getBeds()).thenReturn(2);
+        when(row.getName()).thenReturn("-");                 // popunjivač → nije zaključano
+        when(row.getCountyName()).thenReturn("Splitsko-dalmatinska");
+        when(row.getMunicipalityName()).thenReturn("Makarska");
+        when(row.getSettlementName()).thenReturn(null);      // nepoznato → nije zaključano
+        when(row.getStreetName()).thenReturn("  ");          // prazno → nije zaključano
+        when(row.getHouseNumber()).thenReturn("12");
+
+        assertThat(FacilityClaimVerifier.lockedFields(row))
+                .containsExactly("typeId", "maxBeds", "countyId", "cityId", "streetNumber");
+    }
+
+    /** Popis i provjera moraju se slagati: polje koje nije zaključano smije se poslati izmijenjeno. */
+    @Test
+    void lockedFields_agreesWithVerify() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubName("-");
+        FacilityOwnershipRow row = facilityRepository.findOwnership(153049L).orElseThrow();
+
+        assertThat(FacilityClaimVerifier.lockedFields(row)).doesNotContain("name");
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, "Novi naziv", null, null, null, null, null)))
+                .doesNotThrowAnyException();
+    }
+
+    private FacilityOwnershipRow stubbedRow;
+
+    private void stubFacility(String oib, String subtypeCode, Integer beds, boolean active) {
+        stubbedRow = mock(FacilityOwnershipRow.class);
+        when(stubbedRow.getOib()).thenReturn(oib);
+        when(stubbedRow.getSubtypeCode()).thenReturn(subtypeCode);
+        when(stubbedRow.getBeds()).thenReturn(beds);
+        when(stubbedRow.getActive()).thenReturn(active);
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(stubbedRow));
+    }
+
+    private void stubName(String name) {
+        when(stubbedRow.getName()).thenReturn(name);
+    }
+
+    private void stubAddress(String county, String municipality, String settlement,
+                             String street, String houseNumber) {
+        when(stubbedRow.getCountyName()).thenReturn(county);
+        when(stubbedRow.getMunicipalityName()).thenReturn(municipality);
+        when(stubbedRow.getSettlementName()).thenReturn(settlement);
+        when(stubbedRow.getStreetName()).thenReturn(street);
+        when(stubbedRow.getHouseNumber()).thenReturn(houseNumber);
     }
 
     private void stubSubmittedType(long typeId, String code) {
