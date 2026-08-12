@@ -35,6 +35,8 @@ class RnServiceTest {
     private RnStatusTransitionService transitionService;
     private AccommodationRepository accommodationRepository;
     private AccommodationTypeRepository accommodationTypeRepository;
+    private static final int SUSPENSION_RESPONSE_DAYS = 15;
+
     private final Clock clock = Clock.fixed(Instant.parse("2026-04-30T10:00:00Z"), ZoneId.of("UTC"));
 
     private RnService service;
@@ -46,7 +48,7 @@ class RnServiceTest {
         accommodationRepository = mock(AccommodationRepository.class);
         accommodationTypeRepository = mock(AccommodationTypeRepository.class);
         service = new RnService(repository, transitionService, accommodationRepository,
-                accommodationTypeRepository, clock);
+                accommodationTypeRepository, clock, SUSPENSION_RESPONSE_DAYS);
     }
 
     @Test
@@ -145,6 +147,64 @@ class RnServiceTest {
 
         verify(transitionService).transition(
                 rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION, null, null);
+    }
+
+    /**
+     * Bez zadanog roka kolona bi ostala NULL, {@code SuspensionDeadlineJob} predmet nikad ne bi
+     * pokupio i RB bi zauvijek visio u SUSPENSION_PROPOSED — dok akt stranci tvrdi da rok teče.
+     */
+    @Test
+    void suspend_defaultsDeadline_whenNoneGiven() {
+        RnEntity rn = activeRn();
+        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, null, null);
+
+        assertThat(rn.getSuspensionDeadline())
+                .isEqualTo(LocalDate.now(clock).plusDays(SUSPENSION_RESPONSE_DAYS));
+    }
+
+    @Test
+    void suspend_keepsExplicitDeadline() {
+        RnEntity rn = activeRn();
+        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        LocalDate chosen = LocalDate.of(2026, 6, 1);
+
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, chosen, null);
+
+        assertThat(rn.getSuspensionDeadline()).isEqualTo(chosen);
+    }
+
+    /** Tipfeler u godini ne smije proći kao valjan poziv na očitovanje (čl. 30. st. 2 ZUP-a). */
+    @Test
+    void suspend_rejectsDeadlineInThePast() {
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.INSPECTION,
+                LocalDate.now(clock).minusDays(1), null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.suspend.deadline.past");
+        verify(transitionService, never())
+                .transition(any(), any(), any(), anyString(), anyString());
+    }
+
+    /** Rok koji ističe danas je valjan — job hvata samo strogo starije od danas. */
+    @Test
+    void suspend_acceptsDeadlineToday() {
+        RnEntity rn = activeRn();
+        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        LocalDate today = LocalDate.now(clock);
+
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, today, null);
+
+        assertThat(rn.getSuspensionDeadline()).isEqualTo(today);
+    }
+
+    @Test
+    void suspend_requiresNote_forOtherReason() {
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.OTHER, null, "  "))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.suspend.note.required");
+        verify(transitionService, never())
+                .transition(any(), any(), any(), anyString(), anyString());
     }
 
     @Test

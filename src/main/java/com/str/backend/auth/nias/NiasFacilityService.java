@@ -3,10 +3,13 @@ package com.str.backend.auth.nias;
 import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrFacilityRepository;
 import com.str.backend.str.StrFacilityRepository.FacilityListingRow;
+import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -79,6 +82,40 @@ public class NiasFacilityService {
         }
 
         return new FacilityPageResponse(items, pageIndex, pageSize, temporary.size() + eturizamTotal);
+    }
+
+    /**
+     * Mjerodavni podaci jednog objekta + polja koja se za njega ne smiju mijenjati.
+     *
+     * <p>Tuđi i nepostojeći objekt daju isti 404: postojanje tuđeg zapisa nije podatak koji
+     * ovaj endpoint smije otkriti, a i sam submit bi ga odbio ({@code error.facility.notOwned}).
+     */
+    @Transactional(readOnly = true)
+    public FacilityClaimResponse claim(String oib, String facilityId) {
+        long id;
+        try {
+            id = Long.parseLong(facilityId.trim());
+        } catch (NumberFormatException e) {
+            throw new ResourceNotFoundException("facility not found: " + facilityId);
+        }
+        FacilityOwnershipRow row = facilityRepository.findOwnership(id)
+                .filter(r -> oib.equals(r.getOib()))
+                .orElseThrow(() -> new ResourceNotFoundException("facility not found: " + facilityId));
+
+        return new FacilityClaimResponse(
+                String.valueOf(id),
+                // Ne sirovi facility.name: kad je to popunjivač ili ime vlasnika, objekt zapravo
+                // nema naziv. Vratiti ga značilo bi da frontend predpopuni ime osobe u polje
+                // „naziv objekta", a polje istovremeno nije na popisu zaključanih.
+                FacilityClaimVerifier.objectName(row),
+                row.getSubtypeCode(),
+                row.getBeds(),
+                row.getCountyName(),
+                row.getMunicipalityName(),
+                row.getSettlementName(),
+                row.getStreetName(),
+                row.getHouseNumber(),
+                FacilityClaimVerifier.lockedFields(row));
     }
 
     private List<FacilityResponse> fromEturizam(String oib, List<String> codes, int limit, int offset) {

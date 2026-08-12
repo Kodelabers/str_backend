@@ -275,7 +275,7 @@ class StrDocumentServiceTest {
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 1), null,
                 LocalDate.of(2026, 8, 15), null, null, UUID.randomUUID(),
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", null, "Ilica", "1",
-                "Apartman Sunce", "Apartman", 4, 6, "3*",
+                "Apartman Sunce", "Apartman", 4, "3*",
                 UUID.randomUUID(), "Ana", "Anić", null, "ana@example.com", "98765432109",
                 false, null, null, null,
                 null, null, null, null, null);
@@ -287,7 +287,7 @@ class StrDocumentServiceTest {
                 null, null, null,
                 null, null, null, null,
                 null, null, null, null, null, null,
-                null, null, null, null, null,
+                null, null, null, null,
                 null, null, null, null, null, null,
                 null, null, null, null,
                 null, null, null, null, null);

@@ -183,9 +183,9 @@ public class StatisticsExportService {
         List<DetailRowProjection> rows = statisticsRepository.findDetailRows(EXPORT_STATUSES);
         StringBuilder sb = new StringBuilder();
         sb.append('﻿'); // BOM for Excel-compatible UTF-8
-        sb.append("Registracijski broj,Naziv objekta,Adresa,Grad,Županija,")
+        sb.append("Registracijski broj,Naziv objekta,Adresa,Grad/naselje,Županija,")
           .append("Kategorija,Tip ponude,Status RB,Datum izdavanja,")
-          .append("Vrijedi od,Vrijedi do,Max ležajeva,Max gostiju\r\n");
+          .append("Vrijedi od,Vrijedi do,Max ležajeva\r\n");
         for (DetailRowProjection row : rows) {
             sb.append(csvEscape(row.getRn())).append(',')
               .append(csvEscape(row.getName())).append(',')
@@ -198,8 +198,7 @@ public class StatisticsExportService {
               .append(csvEscape(formatDate(row.getIssueDate()))).append(',')
               .append(csvEscape(formatDate(row.getValidFrom()))).append(',')
               .append(csvEscape(formatDate(row.getValidTo()))).append(',')
-              .append(csvEscape(row.getMaxBeds())).append(',')
-              .append(csvEscape(row.getMaxGuests())).append("\r\n");
+              .append(csvEscape(row.getMaxBeds())).append("\r\n");
         }
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -220,9 +219,9 @@ public class StatisticsExportService {
             headerStyle.setFont(boldFont);
 
             String[] headers = {
-                    "Registracijski broj", "Naziv objekta", "Adresa", "Grad", "Županija",
+                    "Registracijski broj", "Naziv objekta", "Adresa", "Grad/naselje", "Županija",
                     "Kategorija", "Tip ponude", "Status RB", "Datum izdavanja",
-                    "Vrijedi od", "Vrijedi do", "Max ležajeva", "Max gostiju"
+                    "Vrijedi od", "Vrijedi do", "Max ležajeva"
             };
             Row headerRow = sheet.createRow(0);
             for (int i = 0; i < headers.length; i++) {
@@ -246,7 +245,6 @@ public class StatisticsExportService {
                 r.createCell(9).setCellValue(formatDate(row.getValidFrom()));
                 r.createCell(10).setCellValue(formatDate(row.getValidTo()));
                 r.createCell(11).setCellValue(row.getMaxBeds() != null ? row.getMaxBeds() : 0);
-                r.createCell(12).setCellValue(row.getMaxGuests() != null ? row.getMaxGuests() : 0);
             }
 
             wb.write(baos);
@@ -260,15 +258,18 @@ public class StatisticsExportService {
 
     private static final String[] RN_HEADERS = {
             "Registracijski broj", "Status", "Datum izdavanja", "Vrijedi od", "Vrijedi do",
-            "Naziv objekta", "Vrsta objekta", "Iznajmljivač", "Ulica i kbr.", "Grad", "Županija"
+            "Rok za očitovanje",
+            "Naziv objekta", "Vrsta objekta", "Iznajmljivač", "Ulica i kbr.", "Grad/naselje", "Županija"
     };
 
     private List<RnSummaryDto> fetchRegistryForExport(RnRegistryView view, String q, String county,
                                                       String municipality, Long typeId,
                                                       boolean foreignOnly, String rb, String city,
-                                                      String street, String name, String lessor) {
+                                                      String street, String name, String lessor,
+                                                      Integer deadlineWithinDays) {
         List<RnSummaryDto> rows = rnService.searchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                deadlineWithinDays);
         if (rows.size() > MAX_EXPORT_ROWS) {
             throw new BusinessException("error.export.too.many.rows");
         }
@@ -278,9 +279,11 @@ public class StatisticsExportService {
     @Transactional(readOnly = true)
     public byte[] generateRegistryXlsx(RnRegistryView view, String q, String county, String municipality,
                                        Long typeId, boolean foreignOnly, String rb, String city,
-                                       String street, String name, String lessor) {
+                                       String street, String name, String lessor,
+                                      Integer deadlineWithinDays) {
         List<RnSummaryDto> rows = fetchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                deadlineWithinDays);
         SXSSFWorkbook wb = new SXSSFWorkbook(SXSSF_WINDOW_ROWS);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("Registar RB");
@@ -302,12 +305,13 @@ public class StatisticsExportService {
                 row.createCell(2).setCellValue(formatDate(r.issueDate()));
                 row.createCell(3).setCellValue(formatDate(r.validFrom()));
                 row.createCell(4).setCellValue(formatDate(r.validTo()));
-                row.createCell(5).setCellValue(nullToEmpty(r.accommodationName()));
-                row.createCell(6).setCellValue(nullToEmpty(r.accommodationTypeName()));
-                row.createCell(7).setCellValue(rnLessorLabel(r));
-                row.createCell(8).setCellValue(rnAddress(r));
-                row.createCell(9).setCellValue(nullToEmpty(r.city()));
-                row.createCell(10).setCellValue(nullToEmpty(r.county()));
+                row.createCell(5).setCellValue(formatDate(r.suspensionDeadline()));
+                row.createCell(6).setCellValue(nullToEmpty(r.accommodationName()));
+                row.createCell(7).setCellValue(nullToEmpty(r.accommodationTypeName()));
+                row.createCell(8).setCellValue(rnLessorLabel(r));
+                row.createCell(9).setCellValue(rnAddress(r));
+                row.createCell(10).setCellValue(nullToEmpty(r.city()));
+                row.createCell(11).setCellValue(nullToEmpty(r.county()));
             }
             wb.write(baos);
             return baos.toByteArray();
@@ -321,9 +325,11 @@ public class StatisticsExportService {
     @Transactional(readOnly = true)
     public byte[] generateRegistryCsv(RnRegistryView view, String q, String county, String municipality,
                                       Long typeId, boolean foreignOnly, String rb, String city,
-                                      String street, String name, String lessor) {
+                                      String street, String name, String lessor,
+                                      Integer deadlineWithinDays) {
         List<RnSummaryDto> rows = fetchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                deadlineWithinDays);
         ByteArrayOutputStream baos = new ByteArrayOutputStream(CSV_INITIAL_BUFFER_BYTES);
         try (Writer out = new BufferedWriter(new OutputStreamWriter(baos, StandardCharsets.UTF_8))) {
             out.write('\uFEFF'); // BOM for Excel-compatible UTF-8
@@ -335,6 +341,7 @@ public class StatisticsExportService {
                 out.write(csvEscape(formatDate(r.issueDate())));                    out.write(',');
                 out.write(csvEscape(formatDate(r.validFrom())));                    out.write(',');
                 out.write(csvEscape(formatDate(r.validTo())));                      out.write(',');
+                out.write(csvEscape(formatDate(r.suspensionDeadline())));           out.write(',');
                 out.write(csvEscape(r.accommodationName()));                        out.write(',');
                 out.write(csvEscape(r.accommodationTypeName()));                    out.write(',');
                 out.write(csvEscape(rnLessorLabel(r)));                             out.write(',');
@@ -352,9 +359,11 @@ public class StatisticsExportService {
     @Transactional(readOnly = true)
     public byte[] generateRegistryPdf(RnRegistryView view, String q, String county, String municipality,
                                       Long typeId, boolean foreignOnly, String rb, String city,
-                                      String street, String name, String lessor) {
+                                      String street, String name, String lessor,
+                                      Integer deadlineWithinDays) {
         List<RnSummaryDto> rows = fetchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                deadlineWithinDays);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4.rotate(), 28, 28, 36, 28);
             PdfWriter.getInstance(doc, baos);
@@ -367,7 +376,7 @@ public class StatisticsExportService {
             dateP.setSpacingAfter(14);
             doc.add(dateP);
 
-            float[] widths = {3f, 2f, 2f, 2f, 2f, 3.5f, 2.5f, 3f, 3f, 2.5f, 3f};
+            float[] widths = {3f, 2f, 2f, 2f, 2f, 2f, 3.5f, 2.5f, 3f, 3f, 2.5f, 3f};
             PdfPTable table = new PdfPTable(widths);
             table.setWidthPercentage(100);
             for (String h : RN_HEADERS) table.addCell(thCell(h));
@@ -377,6 +386,7 @@ public class StatisticsExportService {
                 table.addCell(tdCell(formatDate(r.issueDate())));
                 table.addCell(tdCell(formatDate(r.validFrom())));
                 table.addCell(tdCell(formatDate(r.validTo())));
+                table.addCell(tdCell(formatDate(r.suspensionDeadline())));
                 table.addCell(tdCell(nullToEmpty(r.accommodationName())));
                 table.addCell(tdCell(nullToEmpty(r.accommodationTypeName())));
                 table.addCell(tdCell(rnLessorLabel(r)));
@@ -409,7 +419,7 @@ public class StatisticsExportService {
     // ── Platform activities export (STR-3.2) ───────────────────────────────────
 
     private static final String[] PA_HEADERS = {
-            "Registracijski broj", "Vlasnik", "Adresa", "Grad", "Županija", "Platforme",
+            "Registracijski broj", "Vlasnik", "Adresa", "Grad/naselje", "Županija", "Platforme",
             "Period od", "Period do", "Noćenja", "Gosti", "Status RB", "Prijavljeno"
     };
 

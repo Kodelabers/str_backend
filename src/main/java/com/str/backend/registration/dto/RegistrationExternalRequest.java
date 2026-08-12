@@ -20,7 +20,6 @@ public record RegistrationExternalRequest(
         String houseNumberCode,
         String postalCode,
         @Min(1) int maxBeds,
-        @Min(1) int maxGuests,
         @NotNull OfferType offerType,
         @NotNull Offering offering,
         @NotNull Boolean building,

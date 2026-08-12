@@ -145,6 +145,15 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getSubtypeCode();
         Integer getBeds();
         Boolean getActive();
+        String getName();
+        /** Naziv/ime iznajmljivača — služi samo da se prepozna kad je `facility.name` zapravo on. */
+        String getOwnerName();
+        String getOwnerFullName();
+        String getCountyName();
+        String getMunicipalityName();
+        String getSettlementName();
+        String getStreetName();
+        String getHouseNumber();
     }
 
     /**
@@ -159,15 +168,38 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * <p>{@code coalesce(active, true)} jer {@code facility_type.active} u eTurizmu smije biti
      * NULL (njihov vlastiti view ga uopće ne filtrira); {@code active = true} bi za takve zapise
      * izgubio vrstu i provjera bi se tiho preskočila.
+     *
+     * <p>Broj kreveta ima isti {@code facility_unit_capacity} fallback kao
+     * {@link #findListingByOib} — bez njega objekt s jedinicama vrati {@code NULL} kreveta i
+     * provjera kapaciteta se tiho preskoči, pa bi popis i provjera vidjeli različit podatak.
+     *
+     * <p>Adresa i naziv se čitaju istom join-mapom kao popis (isti {@code CASE} za
+     * {@code same_address_subject}), jer se uspoređuju s onim što je korisnik vidio u formi.
      */
     @Query(value = """
             SELECT s.jips      AS oib,
                    c_sub.code  AS subtypeCode,
                    f.active    AS active,
-                   (SELECT sum(fc.quantity) FROM str.facility_capacity fc
-                      JOIN str.codebook_element ce ON ce.id = fc.type_id
-                     WHERE fc.facility_id = f.id AND coalesce(fc.active, true) = true
-                       AND ce.code = 'CAT_BROJ_KREVETA') AS beds
+                   f.name      AS name,
+                   sv.name     AS ownerName,
+                   btrim(coalesce(sv.first_name,'') || ' ' || coalesce(sv.last_name,'')) AS ownerFullName,
+                   coalesce(co.name, a.county)       AS countyName,
+                   coalesce(mu.name, a.municipality) AS municipalityName,
+                   coalesce(se.name, a.settlement)   AS settlementName,
+                   coalesce(stt.name, a.street)      AS streetName,
+                   coalesce(hn.name, a.house_number) AS houseNumber,
+                   coalesce(
+                       (SELECT sum(fc.quantity) FROM str.facility_capacity fc
+                          JOIN str.codebook_element ce ON ce.id = fc.type_id
+                         WHERE fc.facility_id = f.id AND coalesce(fc.active, true) = true
+                           AND ce.code = 'CAT_BROJ_KREVETA'),
+                       (SELECT sum(fuc.quantity) FROM str.facility_unit fu
+                          JOIN str.facility_unit_capacity fuc
+                            ON fuc.facility_unit_id = fu.id AND coalesce(fuc.active, true) = true
+                          JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
+                         WHERE fu.facility_id = f.id AND coalesce(fu.active, true) = true
+                           AND ce2.code = 'CAT_BROJ_KREVETA')
+                   ) AS beds
             FROM str.facility f
             JOIN str.subject_version sv ON sv.id = f.subject_version_id
             JOIN str.subject s          ON s.id  = sv.subject_id
@@ -175,6 +207,17 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    ON ft.id = (SELECT max(x.id) FROM str.facility_type x
                                 WHERE x.facility_id = f.id AND coalesce(x.active, true) = true)
             LEFT JOIN str.codebook_element c_sub ON c_sub.id = ft.sub_type_id
+            LEFT JOIN str.address a
+                   ON a.id = CASE WHEN f.same_address_subject = true
+                                  THEN (SELECT max(x.address_id) FROM str.subject_address x
+                                         WHERE x.subject_version_id = f.subject_version_id
+                                           AND coalesce(x.active, true) = true)
+                                  ELSE f.address_id END
+            LEFT JOIN str.county co        ON co.id  = a.county_id
+            LEFT JOIN str.municipality mu  ON mu.id  = a.municipality_id
+            LEFT JOIN str.settlement se    ON se.id  = a.settlement_id
+            LEFT JOIN str.street stt       ON stt.id = a.street_id
+            LEFT JOIN str.house_number hn  ON hn.id  = a.house_number_id
             WHERE f.id = :facilityId
             ORDER BY s.id DESC
             LIMIT 1

@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -138,7 +139,12 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " AND (CAST(:county AS string) IS NULL OR LOWER(a.county) = LOWER(CAST(:county AS string)))" +
             " AND (CAST(:municipality AS string) IS NULL OR LOWER(a.city) = LOWER(CAST(:municipality AS string)))" +
             " AND (:typeId IS NULL OR a.accommodationTypeId = :typeId)" +
-            " AND (CAST(:foreignOnly AS string) IS NULL OR l.lessorOib IS NULL)";
+            " AND (CAST(:foreignOnly AS string) IS NULL OR l.lessorOib IS NULL)" +
+            // Radna lista „rok ističe uskoro": namjerno bez donje granice — već istekli, a još
+            // neobrađeni rokovi (job se vrti jednom dnevno) moraju ostati vidljivi, inače bi
+            // predmet ispao s liste točno onda kad je najhitniji.
+            " AND (CAST(:deadlineBefore AS date) IS NULL OR (r.suspensionDeadline IS NOT NULL" +
+            "      AND r.suspensionDeadline <= CAST(:deadlineBefore AS date)))";
 
     String RN_FROM =
             " FROM RnEntity r" +
@@ -150,7 +156,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     @Transactional(readOnly = true)
     @Query(value = "SELECT new com.str.backend.rn.dto.RnSummaryDto("
-            + " r.rn, r.status, r.issueDate, r.validFrom, r.validTo,"
+            + " r.rn, r.status, r.issueDate, r.validFrom, r.validTo, r.suspensionDeadline,"
             + " a.accommodationId, a.county, a.city, a.street, a.streetNumber,"
             + " a.name, t.name,"
             + " l.lessorId, l.firstName, l.lastName, l.legalEntityName)"
@@ -171,6 +177,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("street") String street,
             @Param("name") String name,
             @Param("lessor") String lessor,
+            @Param("deadlineBefore") LocalDate deadlineBefore,
             Pageable pageable);
 
     @Transactional(readOnly = true)
@@ -179,7 +186,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
                 r.rn, r.status, r.issueDate, r.validFrom, r.validTo, r.suspensionDeadline,
                 r.createdAt, r.updatedAt, r.submissionId,
                 a.accommodationId, a.county, a.city, a.settlement, a.street, a.streetNumber,
-                a.name, t.name, a.maxBeds, a.maxGuests, a.category,
+                a.name, t.name, a.maxBeds, a.category,
                 l.lessorId, l.firstName, l.lastName, l.legalEntityName, l.email, l.lessorOib,
                 l.legalEntityOwner, c.name, l.legalEntityCity, l.legalEntityRegistrationNumber,
                 l.representativeOib, l.legalRepresentativeName,

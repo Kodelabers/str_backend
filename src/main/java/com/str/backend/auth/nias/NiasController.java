@@ -137,6 +137,20 @@ public class NiasController {
     }
 
     /**
+     * Mjerodavni podaci jednog objekta za predpopunu forme zahtjeva za RB, uz
+     * {@code zakljucanaPolja} — popis polja koja se za taj objekt ne smiju mijenjati.
+     *
+     * <p>Postoji jer tuStart podatke šalje kroz query string koji je korisniku vidljiv i
+     * izmjenjiv. Frontend zaključava polja po ovom odgovoru, ne po URL-u; isti račun radi
+     * {@code FacilityClaimVerifier} pri submitu, pa se prikaz i provjera ne mogu razići.
+     */
+    @GetMapping("/facilities/{facilityId}")
+    public FacilityClaimResponse facility(@PathVariable String facilityId,
+                                          Authentication authentication) {
+        return facilityService.claim(resolveOib(authentication), facilityId);
+    }
+
+    /**
      * Upload skeniranog papirnatog rješenja o kategorizaciji koje nije migrirano u eTurizam
      * (procedura koju eTurizam već ima). Zapis ide u {@code str_rn.categorization_decision} i
      * do upisa u eTurizam se na popisu iznad prikazuje kao privremeno rješenje, bez RB-a.

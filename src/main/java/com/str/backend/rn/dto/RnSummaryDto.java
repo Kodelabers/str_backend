@@ -11,6 +11,8 @@ public record RnSummaryDto(
         LocalDate issueDate,
         LocalDate validFrom,
         LocalDate validTo,
+        /** Rok za očitovanje; popunjen samo u statusu SUSPENSION_PROPOSED. */
+        LocalDate suspensionDeadline,
         UUID accommodationId,
         String county,
         String city,

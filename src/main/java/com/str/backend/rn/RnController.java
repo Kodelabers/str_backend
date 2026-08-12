@@ -65,7 +65,14 @@ public class RnController {
         return mapper.toResponseList(service.inactive());
     }
 
-    /** STR wireframe §12 / §13: paginated public registry of RNs. */
+    /**
+     * STR wireframe §12 / §13: paginated public registry of RNs.
+     *
+     * <p>{@code deadlineWithinDays} je radna lista tražena na UAT-u: RB-ovi kojima rok za
+     * očitovanje ističe u narednih x dana. Namjerno je filtar ovdje, a ne zaseban pregled —
+     * ovaj endpoint već nosi ostale filtre, paging, sortiranje i tri izvoza. Uobičajena
+     * kombinacija je {@code ?view=SUSPENSION_PROPOSED&deadlineWithinDays=7}.
+     */
     @GetMapping
     public Page<RnSummaryDto> registry(
             @RequestParam(defaultValue = "ACTIVE") RnRegistryView view,
@@ -79,8 +86,10 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) Integer deadlineWithinDays,
             @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.searchRegistry(view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, pageable);
+        return service.searchRegistry(view, q, county, municipality, typeId, foreignOnly, rb, city,
+                street, name, lessor, deadlineWithinDays, pageable);
     }
 
     /** STR wireframe §12 / §13: full detail of a single RN (accommodation + lessor). */
@@ -199,9 +208,11 @@ public class RnController {
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
-            @RequestParam(required = false) String lessor) {
+            @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) Integer deadlineWithinDays) {
         byte[] xlsx = exportService.generateRegistryXlsx(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                deadlineWithinDays);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE,
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -222,9 +233,11 @@ public class RnController {
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
-            @RequestParam(required = false) String lessor) {
+            @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) Integer deadlineWithinDays) {
         byte[] csv = exportService.generateRegistryCsv(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                deadlineWithinDays);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"registar-rb.csv\"")
@@ -244,9 +257,11 @@ public class RnController {
             @RequestParam(required = false) String city,
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
-            @RequestParam(required = false) String lessor) {
+            @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) Integer deadlineWithinDays) {
         byte[] pdf = exportService.generateRegistryPdf(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor);
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                deadlineWithinDays);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"registar-rb.pdf\"")

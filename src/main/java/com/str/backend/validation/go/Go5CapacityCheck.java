@@ -24,7 +24,6 @@ public class Go5CapacityCheck implements ValidationCheck {
     @Override
     public ValidationResult check(ValidationContext context) {
         return new ValidationResult.Passed(STEP,
-                "kreveti=" + context.accommodation().getMaxBeds()
-                        + ", gosti=" + context.accommodation().getMaxGuests());
+                "kreveti=" + context.accommodation().getMaxBeds());
     }
 }

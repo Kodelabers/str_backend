@@ -30,6 +30,39 @@ Implementirano u backendu (prethodna sesija + tekuća), pa sljedeće stavke viš
 - 🟡 **B4** — 18-mj. retencijski scheduler za opozvane RB-ove: **faza 1 (detekcija + audit)** gotova; stvarno brisanje/anonimizacija (faza 2) čeka potvrdu opsega + KP (BX1).
 - ⏸️ **B2/B3** — privatnost internog registra (PII/404) **odgođeno do NIAS rola** (ide u BX0 paket).
 
+## Primjedbe s UAT radionice (2026-08-11)
+
+Riješeno u backendu:
+
+- ✅ **Zaključani podaci postojećeg objekta** — `FacilityClaimVerifier` uz vrstu i broj kreveta
+  provjerava i naziv i adresu; novi `GET /api/nias/facilities/{id}` vraća `zakljucanaPolja` da
+  frontend ne zaključava po tuStart URL-u. Vidi `docs/TUSTART-INTEGRACIJA.md` §6a–§6b.
+- ✅ **Broj gostiju maknut** — `maxGuests` više nije polje zahtjeva, detalja RB-a ni izvoza;
+  `max_guests` se puni iz `max_beds` (kolona zadržana radi izdanih RB-ova).
+- ✅ **Rok suspenzije** — filtar `GET /api/rn?view=SUSPENSION_PROPOSED&deadlineWithinDays=x` +
+  kolona „Rok za očitovanje" u sva tri izvoza. Usput ispravljeno: rok se sam postavlja na
+  `danas + 15` kad nije poslan (prije je ostajao NULL i `SuspensionDeadlineJob` predmet nikad
+  ne bi pokupio), dodana nedostajuća poruka `error.rn.suspend.note.required`.
+- ✅ **Razlozi suspenzije/povlačenja** — `GET /api/lookups/rn-triggers` (frontend ih više ne
+  hardkodira) + `docs/RN-RAZLOZI-STATUSA.md` za pregled i dopunu naručitelja.
+
+Nalaz usput (analiza nad CDU podacima) — **`docs/ADRESE-IZVOR-PODATAKA.md`**:
+adresna kaskada čita iz tri sheme (`str.country` + `rpj_dgu` + `eturizam_test`), a `str.*` ima
+potpunu vlastitu hijerarhiju, 100 % DGU-ključanu (`external_code` ↔ `jls_mb` 556/556, `na_mb`
+6752/6757). `rpj_dgu` ne može biti jedini izvor — nema ulica ni kućnih brojeva. Preporuka je
+izbaciti `rpj_dgu` iz forme, `eturizam_test` zadržati zbog katastarske čestice. Zaseban zahvat,
+dodiruje formu, statistiku i popis objekata; opseg dogovoriti.
+
+Otvoreno iz istog seta:
+
+- **FE:** labela „Grad" → „Grad/naselje" (backend mijenja samo zaglavlja izvoza; polje ostaje
+  `cityId` / `accommodation.city`), micanje hover tekstova s forme (backend ih nema — nula
+  pogodaka na `tooltip/hover/hint`), onemogućavanje polja po `zakljucanaPolja`.
+- **Šifrarnička tablica + forma za administriranje razloga** — naručitelj je najavio; opseg treba
+  dogovoriti nakon što vrati dopunjeni popis. Ograničenje je u `docs/RN-RAZLOZI-STATUSA.md` §4:
+  iz baze se mogu administrirati naziv i dostupnost, ali ne i novi razlog (traži svoj akt po ZUP-u).
+- **Pregled logova platformi preko SDEP-a** — potvrđeno izvan opsega; vodi se kao BX4.
+
 **Novi otvoreni TODO-i (iz koda; ne mogu se sad dovršiti):**
 - **BX0 (NIAS):** role-gate `permitAll` endpointa koji izlažu osobne podatke — preostaje `GET /api/statistics/platform-activities/{xlsx,csv}` (imena/adrese), inline `TODO(auth/BX0)`. *`GET /api/rn/{rn}/documents/{tip}` je zatvoren 26.07.2026.* — traži prijavu, a iznajmljivač je ograničen na vlastite RB-ove; akt po čl. 98. st. 2 ZUP-a nosi OIB stranke. Interna rola i dalje nedostaje, pa svaki prijavljeni ne-iznajmljivač prolazi.
 - **B4 faza 2:** stvarno brisanje/anonimizacija + KP potvrda; detekcija preskače opozvane RB-ove s `valid_to = NULL` (legacy) → prije faze 2 backfill `valid_to` iz revizijskog loga.

@@ -16,7 +16,6 @@ public interface AccommodationRequest {
     String houseNumberCode();
     String postalCode();
     int maxBeds();
-    int maxGuests();
     OfferType offerType();
     Offering offering();
     Boolean building();

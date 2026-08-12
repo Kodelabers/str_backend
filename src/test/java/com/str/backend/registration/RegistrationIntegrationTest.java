@@ -142,7 +142,7 @@ class RegistrationIntegrationTest {
                 "12312312316", "Apartman Sunce", null,
                 2L, "Split", null,
                 "Ulica kralja Tomislava", "14a", null, "21000",
-                4, 6,
+                4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
                 null, null, null, null, null, null, null);
