@@ -62,20 +62,24 @@ class EgopFilingServiceTest {
                 "Zahtjev za registracijski broj", "101",
                 "Obavijest o dodjeli registracijskog broja", "102"));
 
-        service = new EgopFilingService(egopClient, store, properties("MINT", "str-svc"), "",
-                "Izdavanje Registracijskog broja",
-                "Zahtjev za registracijski broj",
-                "Obavijest o dodjeli registracijskog broja",
-                "MINISTARSTVO TURIZMA");
+        service = new EgopFilingService(egopClient, store, resolver(), properties("MINT", "str-svc"),
+                "", "NP");
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
         lessor.setLessorOib("12345678901");
         submission = SubmissionEntity.create(null, lessor.getLessorId(), null, null, null, null);
     }
 
+    /** Bez zadanih šifri — sve se razrješava po našim nazivima, kao i prije resolvera. */
+    private EgopVrstaResolver resolver() {
+        return new EgopVrstaResolver(egopClient, new EgopVrsteProperties(null,
+                new EgopVrsteProperties.Nazivi("Izdavanje Registracijskog broja",
+                        "MINISTARSTVO TURIZMA", Map.of(), null)));
+    }
+
     private static EgopProperties properties(String appDomain, String appUsername) {
         return new EgopProperties(true, "ntlm-user", "ntlm-pass", appDomain, appUsername,
-                null, null,
+                null, null, "http://egop",
                 new EgopProperties.Endpoint("http://mdm"),
                 new EgopProperties.Endpoint("http://pismeno"),
                 new EgopProperties.Endpoint("http://predmet"),
@@ -183,11 +187,8 @@ class EgopFilingServiceTest {
 
     @Test
     void fileRegistration_usesConfiguredRjesavateljWhenSet() throws Exception {
-        service = new EgopFilingService(egopClient, store, properties("MINT", "str-svc"), "MINT\\ivan.ivic",
-                "Izdavanje Registracijskog broja",
-                "Zahtjev za registracijski broj",
-                "Obavijest o dodjeli registracijskog broja",
-                "MINISTARSTVO TURIZMA");
+        service = new EgopFilingService(egopClient, store, resolver(), properties("MINT", "str-svc"),
+                "MINT\\ivan.ivic", "NP");
         givenSubjektAndPredmetCreated();
 
         service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
@@ -210,7 +211,7 @@ class EgopFilingServiceTest {
 
         EgopPismenoEntity postojeceUlazno = EgopPismenoEntity.create(
                 submission.getSubmissionId(), "Zahtjev za registracijski broj",
-                EgopPismenoEntity.Smjer.ULAZNO, 1001, "529-06/26-1");
+                EgopPismenoEntity.Smjer.ULAZNO, 1001, "529-06/26-1", "101", false);
         postojeceUlazno.markDocumentAttached();
         when(store.findPismeno(submission.getSubmissionId(), "Zahtjev za registracijski broj",
                 EgopPismenoEntity.ACT_REF_REGISTRACIJA))

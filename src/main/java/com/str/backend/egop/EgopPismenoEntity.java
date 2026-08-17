@@ -79,6 +79,22 @@ public class EgopPismenoEntity {
     private String urBroj;
 
     /**
+     * eGOP šifra vrste pismena pod kojom je akt <b>stvarno</b> urudžbiran — nije izvediva iz
+     * {@link #vrstaPismenaNaziv}, jer se preslikavanje naziva na šifru konfigurira
+     * ({@link EgopVrstaResolver}) i mijenja između okruženja.
+     */
+    @Column(name = "egop_vrsta_sifra", length = 32)
+    private String egopVrstaSifra;
+
+    /**
+     * Šifra je bila posudbena. Bez ovog zapisa se nakon dolaska pravih šifri ne bi znalo
+     * koje akte treba stornirati i ponovno poslati — a to je jedini put natrag, jer eGOP
+     * vrstu na postojećem pismenu ne mijenja.
+     */
+    @Column(name = "egop_vrsta_privremena", nullable = false)
+    private boolean egopVrstaPrivremena;
+
+    /**
      * eGOP nema idempotentno prilaganje dokumenta — bez ovog flaga bi retry nakon
      * pada duplicirao PDF na već obrađenom pismenu.
      */
@@ -134,7 +150,8 @@ public class EgopPismenoEntity {
      * PDF renderira <i>iz</i> urudžbenog broja koji taj poziv vrati.
      */
     public static EgopPismenoEntity create(UUID submissionId, String vrstaPismenaNaziv,
-                                           Smjer smjer, int jop, String urBroj) {
+                                           Smjer smjer, int jop, String urBroj,
+                                           String egopVrstaSifra, boolean egopVrstaPrivremena) {
         EgopPismenoEntity e = new EgopPismenoEntity();
         e.id = UUID.randomUUID();
         e.submissionId = submissionId;
@@ -143,6 +160,8 @@ public class EgopPismenoEntity {
         e.smjer = smjer;
         e.jop = jop;
         e.urBroj = urBroj;
+        e.egopVrstaSifra = egopVrstaSifra;
+        e.egopVrstaPrivremena = egopVrstaPrivremena;
         e.status = EgopSyncStatus.PISMENO_OK;
         e.createdAt = Instant.now();
         e.updatedAt = e.createdAt;
@@ -150,9 +169,12 @@ public class EgopPismenoEntity {
     }
 
     /** Pismeno je kreirano u eGOP-u; dokument još nije priložen. */
-    public void applyPismeno(int jop, String urBroj) {
+    public void applyPismeno(int jop, String urBroj, String egopVrstaSifra,
+                             boolean egopVrstaPrivremena) {
         this.jop = jop;
         this.urBroj = urBroj;
+        this.egopVrstaSifra = egopVrstaSifra;
+        this.egopVrstaPrivremena = egopVrstaPrivremena;
         this.status = EgopSyncStatus.PISMENO_OK;
         this.updatedAt = Instant.now();
     }

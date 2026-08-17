@@ -1,3 +1,9 @@
+# InfoDom dev okolina (s-str-02.infodom.hr): frontend :8085, backend :8086, profil `dev`.
+# Jedina okolina s koje je eGOP (http://egop2builder/EAI_MINT) dohvatljiv — CDU ga ne vidi.
+#
+# Run:
+#   docker compose --env-file .env.dev up -d --build
+#   docker compose logs -f backend
 services:
   backend:
     build:
@@ -6,6 +12,12 @@ services:
     restart: unless-stopped
     ports:
       - "8086:8080"
+    # Sve iz .env.dev ulazi u kontejner odavde (EGOP_*, tajne). Kroz env_file, a NE kao
+    # `${VAR:-}` u `environment:`: ondje bi nepostavljen ključ u kontejner ušao kao PRAZNA
+    # ali POSTAVLJENA varijabla, a Spring default iz `${VAR:default}` vrijedi samo kad
+    # varijabla NE POSTOJI — prazna bi ga pregazila (npr. obrisala eGOP base URL).
+    env_file:
+      - .env.dev
     environment:
       SPRING_PROFILES_ACTIVE: dev
       APP_MAIL_LOGIN_URL: http://s-str-02.infodom.hr:8085/login
@@ -15,6 +27,12 @@ services:
       - /home/vviskov/str-secrets:/secrets:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      # eGOP je na single-label hostu (`egop2builder`), kakav se u Linux kontejneru najčešće
+      # NE razrješava — hostov NetBIOS/WINS ne nasljeđuje se, a search domena ne pomaže ako
+      # host nema FQDN. Provjera na kutiji:
+      #     docker exec str-backend getent hosts egop2builder
+      # Ako je prazno, odkomentirati s IP-om iz `nslookup egop2builder` na hostu:
+      # - "egop2builder:10.0.0.0"
 
   frontend:
     build:

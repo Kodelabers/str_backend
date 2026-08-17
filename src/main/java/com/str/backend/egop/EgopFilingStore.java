@@ -121,9 +121,10 @@ public class EgopFilingStore {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void applyPismeno(UUID aktId, int jop, String urBroj) {
+    public void applyPismeno(UUID aktId, int jop, String urBroj, String egopVrstaSifra,
+                             boolean egopVrstaPrivremena) {
         egopPismenoRepository.findById(aktId).ifPresent(akt -> {
-            akt.applyPismeno(jop, urBroj);
+            akt.applyPismeno(jop, urBroj, egopVrstaSifra, egopVrstaPrivremena);
             egopPismenoRepository.save(akt);
         });
     }

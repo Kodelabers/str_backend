@@ -176,6 +176,10 @@
          preimenuje u facility_id da odgovara onome što drži. -->
     <include file="db/changelog/changes/062-accommodation-rename-facility-id.xml"/>
 
+    <!-- Šifra eGOP vrste pod kojom je pismeno urudžbirano + oznaka da je posudbena; popis
+         za storniranje kad InfoDom dostavi prave šifre vrsta. -->
+    <include file="db/changelog/changes/063-egop-pismeno-vrsta-sifra.xml"/>
+
     <!-- str.facility.registration_number u mocku (context="local") — odredište write-backa
          RB-a; na dev/cdu/prod kolona već postoji u pravoj eTurizam tablici. -->
     <include file="db/changelog/changes/121-str-facility-registration-number-local.xml"/>

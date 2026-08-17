@@ -6,6 +6,8 @@ import hr.infodom.egov.mdm.ArrayOfErrorStatus;
 import hr.infodom.egov.mdm.BaseInfo;
 import hr.infodom.egov.mdm.DohvatiUstrojActive;
 import hr.infodom.egov.mdm.DohvatiUstrojActiveResponse;
+import hr.infodom.egov.mdm.DohvatiUstrojKorisnika;
+import hr.infodom.egov.mdm.DohvatiUstrojKorisnikaResponse;
 import hr.infodom.egov.mdm.DohvatiVrstePismenaActive;
 import hr.infodom.egov.mdm.DohvatiVrstePismenaActiveResponse;
 import hr.infodom.egov.mdm.DohvatiVrstePredmetaActive;
@@ -37,6 +39,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_USTROJ_ACTIVE_SOAP_ACTION;
+import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_USTROJ_KORISNIKA_SOAP_ACTION;
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_VRSTE_PISMENA_ACTIVE_SOAP_ACTION;
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_VRSTE_PREDMETA_ACTIVE_SOAP_ACTION;
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_VRSTE_PRILOGA_ACTIVE_SOAP_ACTION;
@@ -75,13 +78,16 @@ class EgopCodebooks {
     private final WebServiceTemplate egopMDMWebServiceTemplate;
     private final String appUsername;
     private final boolean failFast;
+    private final boolean logContents;
 
     EgopCodebooks(WebServiceTemplate egopMDMWebServiceTemplate,
                   EgopProperties properties,
-                  @Value("${str.egop.codebooks.fail-fast:true}") boolean failFast) {
+                  @Value("${str.egop.codebooks.fail-fast:true}") boolean failFast,
+                  @Value("${str.egop.codebooks.log-contents:false}") boolean logContents) {
         this.egopMDMWebServiceTemplate = egopMDMWebServiceTemplate;
         this.appUsername = properties.qualifiedAppUsername();
         this.failFast = failFast;
+        this.logContents = logContents;
     }
 
     @PostConstruct
@@ -146,16 +152,24 @@ class EgopCodebooks {
         reload();
     }
 
+    /**
+     * Prazan šifrarnik <b>vrsta priloga</b> se ne računa: nijedan poziv u toku urudžbiranja ga
+     * ne koristi (prilozi se ne kreiraju, vidi {@code EgopFilingService}). Kad bi se računao,
+     * okolina na kojoj je taj šifrarnik prazan bila bi trajno „nekompletna" — uz
+     * {@code fail-fast=true} servis se ne bi digao zbog podatka koji nam ne treba, a uz
+     * {@code false} bi svaki dohvat vrste pokretao novi (throttlan) krug od pet MDM zahtjeva.
+     */
     private boolean hasEmptyCodebook() {
         return vrsteSubjekata.isEmpty() || ustroj.isEmpty() || vrstePredmeta.isEmpty()
-                || vrstePismena.isEmpty() || vrstePriloga.isEmpty();
+                || vrstePismena.isEmpty();
     }
 
     /**
      * Učitava svaki šifrarnik neovisno — djelomičan uspjeh je bolji od nikakvog, a
      * neuspio pojedinačni dohvat zadržava prethodno učitanu vrijednost.
      *
-     * @return {@code true} ako su nakon poziva svi šifrarnici popunjeni
+     * @return {@code true} ako su nakon poziva popunjeni svi šifrarnici koje tok koristi
+     *         (vidi {@link #hasEmptyCodebook()})
      */
     private synchronized boolean reload() {
         lastAttemptAt = System.currentTimeMillis();
@@ -175,11 +189,26 @@ class EgopCodebooks {
                 return current.isEmpty() ? loaded : current;
             }
             log.info("Loaded eGOP {} with {} entries", name, loaded.size());
+            logContents(name, loaded);
             return loaded;
         } catch (RuntimeException e) {
             log.error("egop_codebook_load_failed codebook={}: {}", name, e.getMessage(), e);
             return current;
         }
+    }
+
+    /**
+     * Puni ispis {@code naziv → šifra}. Postoji zato što se šifre vrsta biraju <b>iz</b> tuđeg
+     * šifrarnika: dok STR nema svoje vrste, treba vidjeti što na okolini uopće postoji, a
+     * jedini pogled u to je ovaj log. Iza prekidača jer vrste predmeta na testu imaju 2430
+     * unosa — to nije nešto što se ispisuje pri svakom startu.
+     */
+    private void logContents(String name, Map<?, ?> loaded) {
+        if (!logContents) {
+            return;
+        }
+        loaded.forEach((naziv, sifra) ->
+                log.info("egop_codebook_entry codebook={} sifra={} naziv='{}'", name, sifra, naziv));
     }
 
     private Map<String, String> loadVrsteSubjekata() {
@@ -191,8 +220,10 @@ class EgopCodebooks {
                 request, MDM_LISTA_VRSTE_POSLOVNIH_SUBJEKATA_SOAP_ACTION);
 
         // naziv → oznaka, kao i ostali šifrarnici (referentni klijent mapira obrnuto,
-        // ali sam po nazivu izvlači ID — vidi VrstaPoslovnihSubjekata). MDM sadrži
-        // duplikate naziva ("Trgovačko društvo" pod 5 i 10) pa se zadržava prva oznaka.
+        // ali sam po nazivu izvlači ID — vidi VrstaPoslovnihSubjekata). Merge (a,b)->a je
+        // ovdje zaštita, ne nužnost: vrste subjekata na testu su jedinstvene (Pravna osoba 2,
+        // Fizička osoba 3), a duple nazive ima šifrarnik vrsta predmeta („Usluge u domaćinstvu"
+        // pod 7765 i 8906) — zato se te šifre zadaju eksplicitno, vidi EgopVrstaResolver.
         return response.getListaVrstePoslovnihSubjekataResult()
                 .getTipOsobeInfo()
                 .stream()
@@ -200,15 +231,45 @@ class EgopCodebooks {
                 .collect(Collectors.toMap(TipOsobeInfo::getNaziv, TipOsobeInfo::getOznaka, (a, b) -> a));
     }
 
+    /**
+     * Ustroj se dohvaća s {@code DohvatiUstrojKorisnika}, ne s {@code DohvatiUstrojActive}:
+     * na InfoDomovoj test okolini {@code Active} vraća prazan set (potvrđeno SoapUI-em,
+     * 14.08.2026.), a {@code Korisnika} vraća hijerarhiju org. jedinica prijavljenog
+     * korisnika — što je upravo ono što nam treba za nadležnu jedinicu. {@code Active}
+     * ostaje kao fallback za okoline gdje je obrnuto.
+     */
     private Map<String, Integer> loadUstroj() {
         log.info("Loading CODEBOOK_USTROJ from eGOP...");
+        Map<String, Integer> korisnika = loadUstrojKorisnika();
+        if (!korisnika.isEmpty()) {
+            return korisnika;
+        }
+        log.warn("egop_codebook_ustroj_korisnika_empty — probam DohvatiUstrojActive");
+        return loadUstrojActive();
+    }
+
+    private Map<String, Integer> loadUstrojKorisnika() {
+        DohvatiUstrojKorisnika request = new DohvatiUstrojKorisnika();
+        request.setUsername(appUsername);
+
+        return toUstrojMap(((DohvatiUstrojKorisnikaResponse) call(request,
+                MDM_DOHVATI_USTROJ_KORISNIKA_SOAP_ACTION))
+                .getDohvatiUstrojKorisnikaResult()
+                .getUstrojInfo());
+    }
+
+    private Map<String, Integer> loadUstrojActive() {
         DohvatiUstrojActive request = new DohvatiUstrojActive();
         request.setUserName(appUsername);
 
-        return ((DohvatiUstrojActiveResponse) call(request, MDM_DOHVATI_USTROJ_ACTIVE_SOAP_ACTION))
+        return toUstrojMap(((DohvatiUstrojActiveResponse) call(request,
+                MDM_DOHVATI_USTROJ_ACTIVE_SOAP_ACTION))
                 .getDohvatiUstrojActiveResult()
-                .getUstrojInfo()
-                .stream()
+                .getUstrojInfo());
+    }
+
+    private Map<String, Integer> toUstrojMap(java.util.List<UstrojInfo> jedinice) {
+        return jedinice.stream()
                 .peek(this::handleErrors)
                 .collect(Collectors.toMap(UstrojInfo::getNazivorgjedinice, UstrojInfo::getIdorgjedinice,
                         (a, b) -> a));
