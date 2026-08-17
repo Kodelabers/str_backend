@@ -11,6 +11,8 @@ import org.apache.http.config.RegistryBuilder;
 import org.apache.http.impl.auth.NTLMSchemeFactory;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.HttpClients;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,6 +34,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "hr.infodom.str.integration.egop.enabled", havingValue = "true")
 public class EgopConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(EgopConfig.class);
+
     private final EgopProperties properties;
 
     public EgopConfig(EgopProperties properties) {
@@ -39,6 +43,11 @@ public class EgopConfig {
         // a ne tiho otići u eGOP kao prazan korisnik.
         properties.requireComplete();
         this.properties = properties;
+        // Ispis efektivnih adresa: pogrešno okruženje (test vs prod, InfoDom mreža vs mint.hr)
+        // inače se prepoznaje samo po tome što pozivi ne rade. Lozinka se ne ispisuje.
+        log.info("egop_endpoints base={} mdm={} predmet={} pismeno={} subjekt={} ntlm_user={}",
+                properties.baseUrl(), properties.mdm().url(), properties.predmet().url(),
+                properties.pismeno().url(), properties.subjekt().url(), properties.username());
     }
 
     @Bean

@@ -15,6 +15,8 @@ class EgopSoapCallback {
             "http://www.infodom.hr/egov/DohvatiVrstePismenaActive");
     static final SoapActionCallback MDM_DOHVATI_VRSTE_PRILOGA_ACTIVE_SOAP_ACTION = new SoapActionCallback(
             "http://www.infodom.hr/egov/DohvatiVrstePrilogaActive");
+    static final SoapActionCallback MDM_DOHVATI_USTROJ_KORISNIKA_SOAP_ACTION = new SoapActionCallback(
+            "http://www.infodom.hr/egov/DohvatiUstrojKorisnika");
     static final SoapActionCallback MDM_DOHVATI_USTROJ_ALL_SOAP_ACTION = new SoapActionCallback(
             "http://www.infodom.hr/egov/DohvatiUstrojAll");
     static final SoapActionCallback MDM_DOHVATI_VRSTE_PREDMETA_ALL_SOAP_ACTION = new SoapActionCallback(

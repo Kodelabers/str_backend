@@ -153,7 +153,7 @@ class RnDocumentsServiceTest {
 
         EgopPismenoEntity izlazno = EgopPismenoEntity.create(submissionId,
                 StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
-                1002, "529-06/26-2");
+                1002, "529-06/26-2", "57", true);
         when(egopPismenoRepository.findBySubmissionIdAndVrstaPismenaNazivAndActRef(
                 eq(submissionId), eq(StrDocumentType.DODJELA.vrstaPismenaNaziv()),
                 eq(EgopPismenoEntity.ACT_REF_REGISTRACIJA)))

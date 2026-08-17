@@ -19,3 +19,8 @@ target/
 
 ### Secrets — keystores i privatni ključevi ne idu u git ###
 secrets/
+*.jks
+*.p12
+*.pfx
+*.key
+*.pem

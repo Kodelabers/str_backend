@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Do prvog živog urudžbiranja eGOP šifrarnik nema STR-ove vrste pismena, pa se akti
+      šalju pod posudbenim šiframa („Zahtjev", „Obavijest", „Prigovor") — dovoljno da se
+      testira prohodnost integracije. Šifra vrste nije izvediva iz vrsta_pismena_naziv jer
+      je preslikavanje konfiguracijsko (EgopVrstaResolver) i različito po okruženju.
+
+      Bez ovog zapisa se nakon dolaska pravih šifri ne bi znalo koje akte treba stornirati
+      i ponovno urudžbirati — eGOP vrstu na postojećem pismenu ne mijenja.
+    -->
+    <changeSet id="063-egop-pismeno-vrsta-sifra" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="egop_pismeno">
+            <column name="egop_vrsta_sifra" type="VARCHAR(32)"/>
+            <column name="egop_vrsta_privremena" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <!--
+          Jedini upit nad ovom kolonom je „koji su akti pod posudbenom šifrom, po vremenu" —
+          popis za storniranje nakon dolaska pravih šifri.
+        -->
+        <createIndex schemaName="str_rn" tableName="egop_pismeno"
+                     indexName="ix_egop_pismeno_vrsta_privremena">
+            <column name="egop_vrsta_privremena"/>
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

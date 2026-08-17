@@ -1929,3 +1929,110 @@ jer dok KP ne postoji to ne bi bilo točno.
   trajnosti kao postojeći registracijski put. Zatvorilo bi ga usklađivanje log ↔ akt.
 - **NTLM iz Dockera** neprovjeren (natuknica „sad smo u Dockeru, možda će bit problema s
   produkcijom") — ide u isti smoke test kao §17.6.
+
+---
+
+### 17.9 InfoDom test okolina i posudbene šifre vrsta (14.08.2026.)
+
+Naručitelj je odlučio da se prohodnost integracije testira **s bilo kojim dostupnim šifrarničkim
+vrstama**, prije nego što eGOP dobije STR-ove vrste. Podaci ispod su iz SoapUI poziva s InfoDom
+VPN-a (Mladen, 14.08.2026.).
+
+#### Adresa — nije ona iz spec-a
+
+```
+http://egop2builder/EAI_MINT/ServiceMDM.asmx      (i ServicePredmet / ServicePismeno / ServiceSubjekt)
+```
+
+Tri razlike prema spec-u (§4): **http** umjesto https, interni single-label host
+`egop2builder` umjesto `egopeaitest.mint.hr`, i **prefiks putanje `/EAI_MINT`**. Zato je uvedeno:
+
+- `hr.infodom.str.integration.egop.base-url` — jedna vrijednost, četiri endpointa se iz nje
+  izvode (`EgopProperties`); per-servis override ostaje.
+- **base-url namjerno nema default.** Ugrađena vrijednost znači da pogrešno podešena okolina
+  tiho puca na tuđi eGOP; ovako `requireComplete()` obori start s popisom nedostajućih ključeva.
+  `requireUrl` uz to odbija relativne adrese (bez base-url-a izvedeni URL bi bio
+  `/ServiceMDM.asmx` — ne-prazan a neupotrebljiv).
+- `EgopConfig` na startu logira efektivna sva četiri URL-a (`egop_endpoints`).
+
+Auth: NTLM `INFODOM\student1`, aplikacijski identitet u payloadu `INFODOM\strservis`
+(potvrđeno valjanim za tu okolinu) — dakle postojeći defaulti `app-domain`/`app-username` su
+točni. Jedina okolina s koje je eGOP dohvatljiv je **InfoDom dev (`s-str-02`)**; CDU ga ne vidi.
+
+#### Šifrarnici na testu — što stvarno postoji
+
+| Šifrarnik | Nalaz |
+| :--- | :--- |
+| Vrste pismena (`DohvatiVrstePismenaActive`) | 127 općih vrsta („Zahtjev" 100, „Obavijest" 57, „Prigovor" 62, „Rješenje" 81, „Poziv" 78, „Dopis" 3). **Nijedna STR-ova vrsta ne postoji.** |
+| Vrste predmeta | **2430** unosa, s **duplim nazivima** — „Usluge u domaćinstvu" pod 7765 **i** 8906, „Ostalo" pod tri šifre. |
+| Ustroj | `DohvatiUstrojActive` vraća **prazno**; `DohvatiUstrojKorisnika` vraća hijerarhiju MINT-a — „MINISTARSTVO TURIZMA" = **559** (korijen, oznaka `0000`). |
+| Vrste subjekata | „Pravna osoba" 2, „Fizička osoba" 3 — poklapa se s `VrstaPoslovnihSubjekata` znak za znak. |
+| Vrste priloga | sadržaj nije provjeren; tok ih ne koristi (prilozi se ne kreiraju), pa prazan popis više ne označava šifrarnike nekompletnima. |
+
+Metode s kojih su podaci uzeti — i koje kod zove: `ListaVrstePoslovnihSubjekata`,
+`DohvatiVrstePredmetaActive`, `DohvatiVrstePismenaActive`, `DohvatiUstrojKorisnika`. (Prvi mail
+je popis vrsta pismena pripisao `…PismenaAll`, ali je envelope bio `…ActiveResponse`; naručitelj
+je 14.08. potvrdio `Active`.) **Kreiranje predmeta i pismena tim šifrarničkim vrstama je
+potvrđeno živim pozivima s InfoDom VPN-a** — dakle vrsta predmeta i vrste pismena prolaze;
+neprovjeren ostaje samo tok kroz našu aplikaciju (mreža iz kontejnera, rješavatelj, smjer).
+
+Dupli nazivi su razlog zašto razrješavanje po nazivu **ne može** biti glavni put: `Collectors.toMap`
+s merge `(a,b)->a` bira prvi unos iz odgovora, dakle arbitrarnu od dvije šifre.
+
+#### `EgopVrstaResolver` — jedino mjesto koje vrstu prevodi u šifru
+
+Redoslijed: zadana šifra po slugu → zadani naziv po slugu (kroz MDM) → naš kanonski naziv
+(kroz MDM) → fallback šifra/naziv → `EgopBadRequestException`. Zadana šifra se razrješava
+**prije** dohvata šifrarnika, pa uz pinane šifre MDM nije na kritičnom putu urudžbiranja —
+što je bitno jer dio šifrarnika na toj okolini vraća prazno.
+
+Prevodi se **tek u trenutku poziva**. U bazi ostaju naši kanonski nazivi: `vrsta_pismena_naziv`
+je i dio `uq_egop_pismeno_submission_vrsta_act` i ključ po kojem `EgopPismenoRepository`
+filtrira, pa preslikavanje više naših vrsta na *istu* eGOP šifru ne ruši ni jedno ni drugo.
+`KreirajPismeno2.nazivPismena` također ostaje naš — to je jedino mjesto na kojem se u
+urudžbenom zapisniku vidi o kojem je aktu riječ kad je šifra posudbena.
+
+Mapiranje na InfoDom okolini (`.env.dev.example`):
+
+| slug | eGOP vrsta | šifra |
+| :--- | :--- | :--- |
+| `zahtjev` | Zahtjev | 100 |
+| `prigovor` | Prigovor | 62 |
+| ostalih 7 (izlazni akti) | Obavijest | 57 |
+| predmet | Usluge u domaćinstvu | 7765 (knjiga `NP`) |
+| ustroj | MINISTARSTVO TURIZMA | 559 |
+
+Odabir nije slučajan: eGOP **smjer izvodi iz vrste pismena** (§17.3), a Zahtjev/Prigovor su
+prirodno ulazni i Obavijest izlazna — što se poklapa s našim 2 ulazna + 7 izlaznih akata.
+`Rješenje` (81) bi za suspenziju/povlačenje bilo legalno bliže, ali je vjerojatno vezano na
+upravnu upisnu knjigu, a mi otvaramo neupravni predmet; `str.egop.upisna-knjiga` je zato
+postao property (dosad je `NP` bio hardkodiran).
+
+#### Trag za povratak
+
+Changeset **063** dodaje `egop_pismeno.egop_vrsta_sifra` + `egop_vrsta_privremena`. Šifra nije
+izvediva iz naziva (preslikavanje je konfiguracijsko i različito po okolini), a eGOP vrstu na
+postojećem pismenu ne mijenja — storniranje i ponovno urudžbiranje je jedini put natrag:
+
+```sql
+SELECT id, rn, vrsta_pismena_naziv, egop_vrsta_sifra, ur_broj
+FROM str_rn.egop_pismeno WHERE egop_vrsta_privremena ORDER BY created_at;
+```
+
+Kad prave šifre stignu: zamijeniti `EGOP_SIFRA_*` u `.env.dev`, staviti
+`EGOP_SIFRE_PRIVREMENE=false`, restart. **Bez izmjene koda.**
+
+#### Otvoreno
+
+1. **Razrješavanje `egop2builder` iz Docker kontejnera.** Single-label host se u Linux
+   kontejneru najčešće ne razrješava (hostov NetBIOS/WINS se ne nasljeđuje). Provjera:
+   `docker exec str-backend getent hosts egop2builder`; ako je prazno → `extra_hosts` u
+   `docker-compose.yml` (komentar je već tamo, treba IP iz `nslookup egop2builder`).
+2. **`OdrediRjesavatelja`** — i dalje nepotvrđen; pad se manifestira tek na `KreirajPismeno2`.
+   Ako padne s `INFODOM\strservis`, probati `INFODOM\student1` (`EGOP_RJESAVATELJ`).
+3. **Smjer pismena** — provjeriti nakon prvog testa je li eGOP izlazne akte pod vrstom
+   „Obavijest" doista upisao kao izlazne.
+4. **Je li 7765 dopušten u knjizi `NP`** — kreiranje predmeta i pismena je potvrđeno živim
+   pozivima, ali nije potvrđeno da je testirana kombinacija bila upravo 7765 + `NP`. Ako
+   `KreirajPredmet2` odbije, probati `EGOP_UPISNA_KNJIGA=UP/I`, pa 8906 kao drugu šifru istog
+   naziva.

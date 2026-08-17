@@ -3,7 +3,6 @@ package com.str.backend.egop;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.EgopSyncStatus;
-import com.str.backend.egop.codebook.VrstaPoslovnihSubjekata;
 import com.str.backend.egop.codebook.VrstaUpisneKnjige;
 import com.str.backend.egop.exception.EgopBadRequestException;
 import com.str.backend.egop.exception.EgopException;
@@ -58,42 +57,38 @@ public class EgopFilingService {
 
     private final EgopClient egopClient;
     private final EgopFilingStore store;
+    private final EgopVrstaResolver vrste;
 
     private final String appUsername;
     private final String rjesavatelj;
-    private final String vrstaPredmetaNaziv;
-    private final String ulaznoPismenoNaziv;
-    private final String izlaznoPismenoNaziv;
-    private final String nadleznaOrgJedinicaNaziv;
+    private final VrstaUpisneKnjige upisnaKnjiga;
+
+    /**
+     * Nazivi vrsta pismena registracijskog toka. Dolaze iz {@link StrDocumentType} jer je
+     * naziv ono što se zapisuje na {@code egop_pismeno}; zamjena eGOP <i>šifre</i> ide kroz
+     * {@link EgopVrstaResolver}, ne kroz naziv.
+     */
+    private static final String ULAZNO_PISMENO_NAZIV = StrDocumentType.ZAHTJEV.vrstaPismenaNaziv();
+    private static final String IZLAZNO_PISMENO_NAZIV = StrDocumentType.DODJELA.vrstaPismenaNaziv();
 
     public EgopFilingService(EgopClient egopClient,
                              EgopFilingStore store,
+                             EgopVrstaResolver vrste,
                              EgopProperties properties,
                              @Value("${str.egop.rjesavatelj:}") String rjesavatelj,
-                             @Value("${str.egop.vrsta-predmeta:Izdavanje Registracijskog broja}") String vrstaPredmetaNaziv,
-                             // Defaulti dolaze iz StrDocumentType — naziv je ključ eGOP šifrarnika,
-                             // pa mora imati jedan izvor. Property ostaje da se naziv može zamijeniti
-                             // bez rebuilda ako ga InfoDom promijeni.
-                             @Value("${str.egop.vrsta-pismena-zahtjev:}") String ulaznoPismenoNaziv,
-                             @Value("${str.egop.vrsta-pismena-dodjela:}") String izlaznoPismenoNaziv,
-                             @Value("${str.egop.nadlezna-org-jedinica:MINISTARSTVO TURIZMA}") String nadleznaOrgJedinicaNaziv) {
+                             // Konfigurabilna jer posudbena vrsta predmeta ne mora biti dopuštena
+                             // u neupravnoj knjizi — tada se bez rebuilda proba UP/I.
+                             @Value("${str.egop.upisna-knjiga:NP}") String upisnaKnjiga) {
         this.egopClient = egopClient;
         this.store = store;
+        this.vrste = vrste;
         this.appUsername = properties.qualifiedAppUsername();
         // InfoDom (26.07.2026): rješavatelj mora biti osoba s username-om; probna
         // vrijednost je servisni račun, a property dopušta zamjenu bez rebuilda.
         this.rjesavatelj = (rjesavatelj == null || rjesavatelj.isBlank())
                 ? this.appUsername
                 : rjesavatelj;
-        this.vrstaPredmetaNaziv = vrstaPredmetaNaziv;
-        this.ulaznoPismenoNaziv = orDefault(ulaznoPismenoNaziv, StrDocumentType.ZAHTJEV);
-        this.izlaznoPismenoNaziv = orDefault(izlaznoPismenoNaziv, StrDocumentType.DODJELA);
-        this.nadleznaOrgJedinicaNaziv = nadleznaOrgJedinicaNaziv;
-    }
-
-    private static String orDefault(String configured, StrDocumentType type) {
-        return (configured == null || configured.isBlank())
-                ? type.vrstaPismenaNaziv() : configured;
+        this.upisnaKnjiga = VrstaUpisneKnjige.getByCode(upisnaKnjiga);
     }
 
     /**
@@ -118,7 +113,7 @@ public class EgopFilingService {
         ensurePredmet(submission, lessor, subjektOznaka);
         advance(submission, EgopSyncStatus.PREDMET_OK);
 
-        EgopPismenoEntity ulazno = ensurePismeno(submission, ulaznoPismenoNaziv,
+        EgopPismenoEntity ulazno = ensurePismeno(submission, ULAZNO_PISMENO_NAZIV,
                 EgopPismenoEntity.Smjer.ULAZNO, subjektOznaka, lessor.getLessorOib());
         FilingReference ulaznaOznaka = filing(submission, ulazno);
         byte[] zahtjevPdf = documents.zahtjev(ulaznaOznaka);
@@ -128,7 +123,7 @@ public class EgopFilingService {
         // Smjer (ulazno/izlazno) ne šaljemo — eGOP ga određuje sam iz konfiguracije vrste
         // pismena; Smjer na našem entitetu je samo interna evidencija. Dostavu obavijesti
         // (KP eGrađana za EU) također rješava eGOP strana, ne STR.
-        EgopPismenoEntity izlazno = ensurePismeno(submission, izlaznoPismenoNaziv,
+        EgopPismenoEntity izlazno = ensurePismeno(submission, IZLAZNO_PISMENO_NAZIV,
                 EgopPismenoEntity.Smjer.IZLAZNO, subjektOznaka, lessor.getLessorOib());
         // Izlazno pismeno nosi vlastiti URBROJ, pa i vlastiti PDF — ranije se ovdje prilagala
         // kopija PDF-a zahtjeva, dokument s krivim urudžbenim brojem i krivim naslovom.
@@ -213,11 +208,7 @@ public class EgopFilingService {
             request.setMbJmbg(lessor.getTaxNumber());
         }
 
-        String vrstaNaziv = lessor.isLegalEntityOwner()
-                ? VrstaPoslovnihSubjekata.PRAVNA_OSOBA.getNaziv()
-                : VrstaPoslovnihSubjekata.FIZICKA_OSOBA.getNaziv();
-        request.setTipOsobe(resolveRequired(egopClient.getVrstePoslovnihSubjekata(), vrstaNaziv,
-                "vrsta poslovnog subjekta"));
+        request.setTipOsobe(vrste.tipOsobe(lessor.isLegalEntityOwner()));
 
         String naziv = subjektNaziv(lessor);
         request.setNaziv(naziv);
@@ -247,17 +238,17 @@ public class EgopFilingService {
 
         KreirajPredmet2 request = new KreirajPredmet2();
         request.setUserName(appUsername);
-        request.setUpisnaKnjiga(VrstaUpisneKnjige.NP.getCode());
-        request.setVrstaPredmeta(resolveRequired(egopClient.getVrstePredmeta(), vrstaPredmetaNaziv,
-                "vrsta predmeta"));
-        request.setNadleznaOrgJedinica(resolveRequired(egopClient.getUstroj(), nadleznaOrgJedinicaNaziv,
-                "nadležna org. jedinica"));
+        request.setUpisnaKnjiga(upisnaKnjiga.getCode());
+        request.setVrstaPredmeta(vrste.vrstaPredmeta());
+        request.setNadleznaOrgJedinica(vrste.nadleznaOrgJedinica());
         request.setSubjektOznaka(subjektOznaka);
         request.setSubjektOIB(lessor.getLessorOib());
         String identitet = lessor.getLessorOib() != null
                 ? subjektNaziv(lessor) + ", OIB " + lessor.getLessorOib()
                 : subjektNaziv(lessor);
-        request.setNazivPredmeta(vrstaPredmetaNaziv + " — " + identitet);
+        // Naziv predmeta ostaje naš i čitljiv i kad je šifra vrste posudbena — inače se u
+        // urudžbenom zapisniku ne bi vidjelo o čemu je predmet.
+        request.setNazivPredmeta(vrste.predmetNaziv() + " — " + identitet);
         request.setDatumOtvaranja(EgopDates.toXml(LocalDateTime.now()));
 
         PredmetBasicInfo2 predmet = egopClient.kreirajPredmet2(request);
@@ -315,25 +306,33 @@ public class EgopFilingService {
             return existing.get();
         }
 
-        PismenoBasicInfo2 pismeno = kreirajPismeno(submission, vrstaNaziv, subjektOznaka, subjektOib);
+        Kreirano kreirano = kreirajPismeno(submission, vrstaNaziv, subjektOznaka, subjektOib);
+        PismenoBasicInfo2 pismeno = kreirano.pismeno();
         EgopPismenoEntity entity = EgopPismenoEntity.create(
-                submission.getSubmissionId(), vrstaNaziv, smjer, pismeno.getJop(), pismeno.getUrBroj());
+                submission.getSubmissionId(), vrstaNaziv, smjer, pismeno.getJop(), pismeno.getUrBroj(),
+                kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
         return store.savePismeno(entity);
     }
 
-    private PismenoBasicInfo2 kreirajPismeno(SubmissionEntity submission, String vrstaNaziv,
-                                             Integer subjektOznaka, String subjektOib)
+    /** Odgovor eGOP-a + šifra vrste pod kojom je pismeno stvarno urudžbirano. */
+    private record Kreirano(PismenoBasicInfo2 pismeno, EgopVrstaResolver.Vrsta vrsta) {}
+
+    private Kreirano kreirajPismeno(SubmissionEntity submission, String vrstaNaziv,
+                                    Integer subjektOznaka, String subjektOib)
             throws EgopException {
+        EgopVrstaResolver.Vrsta vrsta = vrste.vrstaPismena(vrstaNaziv);
         KreirajPismeno2 request = new KreirajPismeno2();
         request.setUserName(appUsername);
         request.setRbrSpisa(submission.getEgopRbrPredmeta());
         request.setUredskaGodina(submission.getEgopUredskaGodina().shortValue());
-        request.setVrstaPismena(resolveRequired(egopClient.getVrstePismena(), vrstaNaziv, "vrsta pismena"));
+        request.setVrstaPismena(vrsta.sifra());
         request.setSubjektOznaka(subjektOznaka);
         request.setSubjektOIB(subjektOib);
+        // Naziv pismena je NAŠ, ne naziv posudbene vrste — to je jedino mjesto na kojem se u
+        // eGOP-u vidi o kojem je aktu riječ kad je šifra vrste privremena.
         request.setNazivPismena(vrstaNaziv);
         request.setDatumNastanka(EgopDates.toXml(LocalDateTime.now()));
-        return egopClient.kreirajPismeno2(request);
+        return new Kreirano(egopClient.kreirajPismeno2(request), vrsta);
     }
 
     /**
@@ -359,10 +358,13 @@ public class EgopFilingService {
         ensurePredmet(submission, lessor, subjektOznaka);
 
         if (!akt.isFiled()) {
-            PismenoBasicInfo2 pismeno = kreirajPismeno(submission, akt.getVrstaPismenaNaziv(),
+            Kreirano kreirano = kreirajPismeno(submission, akt.getVrstaPismenaNaziv(),
                     subjektOznaka, lessor.getLessorOib());
-            akt.applyPismeno(pismeno.getJop(), pismeno.getUrBroj());
-            store.applyPismeno(akt.getId(), pismeno.getJop(), pismeno.getUrBroj());
+            PismenoBasicInfo2 pismeno = kreirano.pismeno();
+            akt.applyPismeno(pismeno.getJop(), pismeno.getUrBroj(), kreirano.vrsta().sifra(),
+                    kreirano.vrsta().privremena());
+            store.applyPismeno(akt.getId(), pismeno.getJop(), pismeno.getUrBroj(),
+                    kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
         }
 
         // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
@@ -389,16 +391,6 @@ public class EgopFilingService {
         egopClient.kreirajDokumentZaPismeno(request);
         pismeno.markDocumentAttached();
         store.markDocumentAttached(pismeno.getId());
-    }
-
-    private <T> T resolveRequired(java.util.Map<String, T> codebook, String naziv, String opis)
-            throws EgopBadRequestException {
-        T id = EgopNaziv.resolveId(codebook, naziv);
-        if (id == null) {
-            throw new EgopBadRequestException(
-                    "eGOP šifrarnik nema unos za " + opis + " '" + naziv + "' — provjeriti konfiguraciju i MDM");
-        }
-        return id;
     }
 
     private String subjektNaziv(LessorEntity lessor) {

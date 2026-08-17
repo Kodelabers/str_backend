@@ -51,6 +51,9 @@ services:
       # eGOP (uredsko poslovanje MINT-a). Ostaje ugašen dok se ne potvrdi dohvatljivost
       # egopeaitest.mint.hr s ove kutije; bez ovih varijabli radi EgopClientMock.
       EGOP_ENABLED: ${EGOP_ENABLED:-false}
+      # Adresa eGOP-a; prazna je bezopasna jer je i Spring default prazan, a uz
+      # EGOP_ENABLED=true bez nje aplikacija namjerno ne krene (requireComplete).
+      EGOP_BASE_URL: ${EGOP_BASE_URL:-}
       EGOP_USERNAME: ${EGOP_USERNAME:-}
       EGOP_PASSWORD: ${EGOP_PASSWORD:-}
       EGOP_APP_DOMAIN: ${EGOP_APP_DOMAIN:-INFODOM}

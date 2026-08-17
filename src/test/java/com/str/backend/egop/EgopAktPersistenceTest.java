@@ -66,7 +66,8 @@ class EgopAktPersistenceTest {
     void retryCandidates_excludeRegistrationActs() {
         UUID submissionId = submission();
         EgopPismenoEntity registracijski = EgopPismenoEntity.create(submissionId,
-                "Zahtjev za registracijski broj", EgopPismenoEntity.Smjer.ULAZNO, 1, "urbroj");
+                "Zahtjev za registracijski broj", EgopPismenoEntity.Smjer.ULAZNO, 1, "urbroj",
+                "100", true);
         registracijski.markFailed("boom", Instant.now().minus(1, ChronoUnit.MINUTES));
         pismenoRepository.saveAndFlush(registracijski);
 
