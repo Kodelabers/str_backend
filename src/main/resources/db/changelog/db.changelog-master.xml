@@ -191,4 +191,8 @@
          objekata na NIAS dashboardu lokalno nema što joinati. -->
     <include file="db/changelog/changes/123-str-facility-lookup-mock-local.xml"/>
 
+    <!-- Prezentacijski šifrarnik razloga suspenzije/povlačenja (natpis/aktivnost/redoslijed);
+         semantika prijelaza ostaje u kodu (RnTrigger). -->
+    <include file="db/changelog/changes/124-rn-status-reason.xml"/>
+
 </databaseChangeLog>

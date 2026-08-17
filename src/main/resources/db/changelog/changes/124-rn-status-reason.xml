@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Prezentacijski/administrativni šifrarnik razloga promjene statusa RB-a (suspenzija /
+      povlačenje). NIJE izvor istine o tome koji su razlozi semantički valjani — to ostaje u
+      kodu (RnTrigger + RnStatus.canTransitionTo + RnService.suspend). Ova tablica nosi samo
+      natpis, kontekst, „traži bilješku", aktivnost i redoslijed, pa se ti podaci mogu
+      pregledati i dopuniti (i kasnije administrirati kroz formu) bez rebuilda. `code` je
+      RnTrigger.name(); redak čija šifra nije u kodom prihvaćenom skupu se u obrascu ignorira.
+    -->
+    <changeSet id="124-rn-status-reason" author="str-backend">
+        <createTable schemaName="str_rn" tableName="rn_status_reason"
+                     remarks="Šifrarnik razloga suspenzije/povlačenja (natpis + aktivnost); semantika ostaje u kodu">
+            <column name="reason_id" type="BIGINT" autoIncrement="true" remarks="PK">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="context" type="VARCHAR(16)" remarks="SUSPENZIJA / POVLACENJE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="code" type="VARCHAR(64)" remarks="RnTrigger.name()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="label_hr" type="VARCHAR(255)" remarks="Hrvatski natpis razloga">
+                <constraints nullable="false"/>
+            </column>
+            <column name="requires_note" type="BOOLEAN" defaultValueBoolean="false"
+                    remarks="Traži li se uz razlog slobodan tekst (npr. OTHER)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"
+                    remarks="Nudi li se razlog u obrascu — gašenje bez izmjene koda">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sort_order" type="INT" defaultValueNumeric="0" remarks="Redoslijed u obrascu">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint schemaName="str_rn" tableName="rn_status_reason"
+                             columnNames="context, code"
+                             constraintName="uq_rn_status_reason_context_code"/>
+
+        <!-- Seed = trenutni razlozi iz RnTriggerLookupController + documents/hr/labels.properties. -->
+        <insert schemaName="str_rn" tableName="rn_status_reason">
+            <column name="context" value="SUSPENZIJA"/>
+            <column name="code" value="CONSENT_EXPIRY"/>
+            <column name="label_hr" value="istek suglasnosti suvlasnika"/>
+            <column name="requires_note" valueBoolean="false"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="sort_order" valueNumeric="1"/>
+        </insert>
+        <insert schemaName="str_rn" tableName="rn_status_reason">
+            <column name="context" value="SUSPENZIJA"/>
+            <column name="code" value="INSPECTION"/>
+            <column name="label_hr" value="nalaz inspekcijskog nadzora"/>
+            <column name="requires_note" valueBoolean="false"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="sort_order" valueNumeric="2"/>
+        </insert>
+        <insert schemaName="str_rn" tableName="rn_status_reason">
+            <column name="context" value="SUSPENZIJA"/>
+            <column name="code" value="INCOMPLETE_DOCUMENTATION"/>
+            <column name="label_hr" value="nepotpuna dokumentacija"/>
+            <column name="requires_note" valueBoolean="false"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="sort_order" valueNumeric="3"/>
+        </insert>
+        <insert schemaName="str_rn" tableName="rn_status_reason">
+            <column name="context" value="SUSPENZIJA"/>
+            <column name="code" value="OTHER"/>
+            <column name="label_hr" value="drugi razlog"/>
+            <column name="requires_note" valueBoolean="true"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="sort_order" valueNumeric="4"/>
+        </insert>
+        <insert schemaName="str_rn" tableName="rn_status_reason">
+            <column name="context" value="POVLACENJE"/>
+            <column name="code" value="WITHDRAWAL"/>
+            <column name="label_hr" value="povlačenje registracijskog broja"/>
+            <column name="requires_note" valueBoolean="false"/>
+            <column name="active" valueBoolean="true"/>
+            <column name="sort_order" valueNumeric="1"/>
+        </insert>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="rn_status_reason"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
