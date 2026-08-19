@@ -167,10 +167,44 @@ public class RegistrationService {
         return s == null || s.isBlank();
     }
 
+    /** INTERNAL-only pristup: bilo koji podnesak (owner-check se preskače u kontroleru za ROLE_INTERNAL). */
     @Transactional(readOnly = true)
     public SubmissionEntity getSubmissionForPdf(UUID submissionId) {
         SubmissionEntity submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
+        return requireStoredPdf(submission);
+    }
+
+    /**
+     * Owner-scoped PDF za LOCAL (ne-EU) korisnika: samo podnesak koji pripada {@code lessorId};
+     * inače 404 (bez otkrivanja postojanja tuđeg podneska). Sprječava IDOR nad nasumičnim UUID-om.
+     */
+    @Transactional(readOnly = true)
+    public SubmissionEntity getSubmissionForPdfOwnedByLessorId(UUID submissionId, UUID lessorId) {
+        SubmissionEntity submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
+        if (!lessorId.equals(submission.getLessorId())) {
+            throw new ResourceNotFoundException("submission not found: " + submissionId);
+        }
+        return requireStoredPdf(submission);
+    }
+
+    /** Owner-scoped PDF za NIAS korisnika: vlasništvo po OIB-u (submission → lessor.lessorOib). */
+    @Transactional(readOnly = true)
+    public SubmissionEntity getSubmissionForPdfOwnedByOib(UUID submissionId, String oib) {
+        SubmissionEntity submission = submissionRepository.findById(submissionId)
+                .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
+        boolean owned = submission.getLessorId() != null
+                && lessorRepository.findById(submission.getLessorId())
+                        .map(l -> oib.equals(l.getLessorOib()))
+                        .orElse(false);
+        if (!owned) {
+            throw new ResourceNotFoundException("submission not found: " + submissionId);
+        }
+        return requireStoredPdf(submission);
+    }
+
+    private static SubmissionEntity requireStoredPdf(SubmissionEntity submission) {
         if (submission.getPdfContent() == null || submission.getPdfContent().length == 0) {
             throw new ResourceNotFoundException("error.pdf.not.stored");
         }

@@ -97,7 +97,7 @@ Ostalo (BX0–BX8, te FE stavke F1–F8) nepromijenjeno — vidi tablice ispod.
 
 > **Autorizacija po rolama je bloker/TODO.** Role (npr. službenik / voditelj / admin) **dobit ćemo iz NIAS-a u budućnosti**. Do tada **nemamo potpunu specifikaciju ni dokumentaciju** kako su role strukturirane (nazivi, claimovi, mapiranje na ovlasti), pa se autorizacijski model **ne može** finalizirati. Sve stavke koje uvjetuju ovlast prema roli (suspend/reactivate/withdraw, admin approve/reject, povjerljive statistike, pouzdani aktor u auditu) ostaju **blokirane na NIAS rolama** i u kodu se vode kao `TODO(auth)`. Do tada ti endpointi rade funkcionalno, ali bez gatinga.
 
-| # | Funkcionalnost | UC / TC | Ovisi o (bloker) | Referenca |
+| # | Funkcionalnost | UC / TC | Ovisi o (bloker) | Referenca |RnTrigger
 |---|----------------|---------|------------------|-----------|
 | BX0 | **Autorizacija po rolama** — `@PreAuthorize` / role-gating na suspend/reactivate/withdraw, `/api/admin/**`, `/api/statistics/**`, `/api/activity/purge`. Trenutno sve `permitAll()`. | C.4, STR-2.1 | **NIAS role — nema specifikacije/dokumentacije** (TODO) | `SecurityConfig.java:44-48`; TODO(auth) u `AdminPendingRegistrationController` |
 | BX1 | **Dostava u komunikacijski pretinac (KP) + ePečat/MINTS potpis** rješenja/dopisa. | STR-1.1/1.2/1.3/2.1/2.2 | **KP klijent + ePečat/MINTS klijent — NE postoje** | nema klijenta u `registries/` |

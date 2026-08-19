@@ -1,7 +1,8 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.str.backend.auth.nias.NiasOibResolver;
+import com.str.backend.auth.role.StrRoles;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -15,11 +16,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -40,6 +45,12 @@ class RegistrationControllerTest {
     @Autowired private ObjectMapper om;
 
     @MockBean private RegistrationService service;
+    @MockBean private NiasOibResolver niasOibResolver;
+
+    private static Authentication internalAuth() {
+        return new UsernamePasswordAuthenticationToken("interni", null,
+                List.of(new SimpleGrantedAuthority(StrRoles.ROLE_INTERNAL)));
+    }
 
     @Test
     void post_returns_201_with_registration_number() throws Exception {
@@ -94,7 +105,7 @@ class RegistrationControllerTest {
         SubmissionEntity s = submissionWithPdf(id, "334-01/26-01/1001", pdf);
         when(service.getSubmissionForPdf(id)).thenReturn(s);
 
-        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
+        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id).principal(internalAuth()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_PDF))
                 .andExpect(header().string("Content-Disposition",
@@ -107,7 +118,7 @@ class RegistrationControllerTest {
         UUID id = UUID.randomUUID();
         when(service.getSubmissionForPdf(id)).thenThrow(new ResourceNotFoundException("submission not found"));
 
-        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
+        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id).principal(internalAuth()))
                 .andExpect(status().isNotFound());
     }
 
@@ -116,7 +127,7 @@ class RegistrationControllerTest {
         UUID id = UUID.randomUUID();
         when(service.getSubmissionForPdf(id)).thenThrow(new ResourceNotFoundException("error.pdf.not.stored"));
 
-        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
+        mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id).principal(internalAuth()))
                 .andExpect(status().isNotFound());
     }
 

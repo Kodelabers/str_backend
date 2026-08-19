@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Mock externo vlasništvom str.application_user (samo za autorizaciju).
+        Na dev/prod tablicu puni drugi servis; ovdje (context="local") mockiramo
+        podskup stupaca koje čita StrApplicationUserRepository: username + internal.
+
+        Interni korisnik se nalazi po username = OIB. Seedamo dva demo korisnika:
+          - 11111111119  internal=true  → ROLE_INTERNAL (za lokalni test internih opcija)
+          - 99999999990  internal=false → ROLE_USER    (postojeći mock NIAS demo iz changeseta 048)
+
+        Lokalno se INTERNAL/USER testira prebacivanjem nias.mock.fixed-oib na jedan od ova dva OIB-a.
+
+        Idempotentno: createTable je čuvan preConditionom, seed sqlCheck-om na fiksnim OIB-ovima.
+    -->
+
+    <changeSet id="119-str-application-user" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="application_user"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="application_user">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="username" type="VARCHAR(64)"/>
+            <column name="internal" type="BOOLEAN"/>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex schemaName="str" tableName="application_user" indexName="idx_str_application_user_username">
+            <column name="username"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="119-str-application-user-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str.application_user WHERE username IN ('11111111119','99999999990')
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.application_user (id, username, internal, active) VALUES
+            (900001, '11111111119', true,  true),
+            (900002, '99999999990', false, true);
+        </sql>
+        <rollback>
+            <sql>DELETE FROM str.application_user WHERE username IN ('11111111119','99999999990')</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

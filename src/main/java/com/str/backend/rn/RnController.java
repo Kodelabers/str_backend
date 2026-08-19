@@ -2,6 +2,7 @@ package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.nias.NiasOibExtractor;
+import com.str.backend.auth.role.Authorities;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RegistrationNumber;
@@ -274,11 +275,17 @@ public class RnController {
      *
      * <p>Vlasništvo se provjerava po tipu prijave, kao i „moji RB-ovi" liste: username/password
      * flow po {@code lessorId}, NIAS po OIB-u iz SAML-a (lessorId nije stabilan između prijava).
-     * Ostale prijave (buduće interne role) prolaze.
+     *
+     * <p>INTERNAL prolazi bez provjere vlasništva — voditelj postupka mora vidjeti akte svake
+     * stranke. Provjera po OIB-u ga inače blokira, jer i interni službenik dolazi kroz NIAS s
+     * vlastitim OIB-om, pa bi na tuđem aktu dobio 404.
      */
     private void requireAccess(String rn, Authentication authentication) {
         if (authentication == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        if (Authorities.isInternal(authentication)) {
+            return;
         }
         if (authentication.getPrincipal() instanceof LessorPrincipal principal) {
             if (!rnRepository.isOwnedByLessor(rn, principal.getLessorId())) {

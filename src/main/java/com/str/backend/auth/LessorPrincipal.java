@@ -1,5 +1,6 @@
 package com.str.backend.auth;
 
+import com.str.backend.auth.role.StrRoles;
 import com.str.backend.lessor.LessorEntity;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -18,7 +19,11 @@ public final class LessorPrincipal implements UserDetails, Serializable {
 
     public static final String ROLE = "ROLE_LESSOR";
 
-    private static final List<GrantedAuthority> AUTHORITIES = List.of(new SimpleGrantedAuthority(ROLE));
+    // Ne-EU iznajmljivač je obična USER uloga; ROLE_LESSOR zadržan radi kompatibilnosti
+    // (MeResponse.role, postojeći gating na /api/generateRegistrationNumberExternal).
+    private static final List<GrantedAuthority> AUTHORITIES = List.of(
+            new SimpleGrantedAuthority(ROLE),
+            new SimpleGrantedAuthority(StrRoles.ROLE_USER));
 
     private final UUID lessorId;
     private final String username;

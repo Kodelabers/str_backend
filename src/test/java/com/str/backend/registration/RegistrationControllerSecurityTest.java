@@ -2,6 +2,8 @@ package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.NiasOibResolver;
+import com.str.backend.auth.role.InternalUserResolver;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
@@ -43,6 +45,9 @@ class RegistrationControllerSecurityTest {
     @MockBean RegistrationService service;
     // ensures SecurityConfig.authenticationManager() gets a concrete bean and our filter chain loads
     @MockBean UserDetailsService userDetailsService;
+    // RegistrationController now resolves NIAS OIB for owner-scoped PDF; SecurityConfig needs the role resolver.
+    @MockBean NiasOibResolver niasOibResolver;
+    @MockBean InternalUserResolver internalUserResolver;
 
     @Test
     void external_unauthenticated_returns_401() throws Exception {

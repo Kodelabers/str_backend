@@ -9,6 +9,7 @@ import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnStatusTransitionService;
+import com.str.backend.rn.dto.RnDetailDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -71,6 +72,26 @@ public class LessorRnActionService {
                 "NIAS:" + oib, Strings.blankToNull(reason));
         log.info("rn_withdraw_by_nias rn={} oib={}", rn, oib);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
+    }
+
+    /**
+     * Owner-scoped detalj RB-a za LOCAL (ne-EU) korisnika: vraća pun {@link RnDetailDto} samo ako
+     * RB pripada tom {@code lessorId}; inače 404 (bez otkrivanja postojanja tuđeg RB-a). USER preko
+     * ove rute vidi isključivo svoje RB-ove; INTERNAL koristi javni registar ({@code /api/rn}).
+     */
+    @Transactional(readOnly = true)
+    public RnDetailDto detailOwnedByLessorId(String rn, UUID lessorId) {
+        loadOwnedByLessorId(rn, lessorId);
+        return rnRepository.findDetail(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
+    }
+
+    /** NIAS varijanta owner-scoped detalja: vlasništvo po OIB-u (RB → submission → lessor.lessorOib). */
+    @Transactional(readOnly = true)
+    public RnDetailDto detailOwnedByOib(String rn, String oib) {
+        loadOwnedByOib(rn, oib);
+        return rnRepository.findDetail(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
     }
 
     /** Loads the RN and verifies it belongs to the lessor; 404 otherwise (no existence leak). */

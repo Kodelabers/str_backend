@@ -2,6 +2,8 @@ package com.str.backend.registration;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.nias.NiasOibExtractor;
+import com.str.backend.auth.nias.NiasOibResolver;
+import com.str.backend.auth.role.Authorities;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
@@ -28,9 +30,11 @@ import java.util.UUID;
 public class RegistrationController {
 
     private final RegistrationService service;
+    private final NiasOibResolver niasOibResolver;
 
-    public RegistrationController(RegistrationService service) {
+    public RegistrationController(RegistrationService service, NiasOibResolver niasOibResolver) {
         this.service = service;
+        this.niasOibResolver = niasOibResolver;
     }
 
     @PostMapping("/api/generateRegistrationNumber")
@@ -55,9 +59,14 @@ public class RegistrationController {
                 .body(service.generateRegistrationNumberExternal(req, principal.getLessorId()));
     }
 
+    /**
+     * PDF podneska. Sadrži PII (osobni podaci iznajmljivača) pa je owner-scoped:
+     * INTERNAL vidi svaki podnesak, USER samo svoj (po lessorId za LOCAL, po OIB-u za NIAS),
+     * inače 404 — sprječava IDOR nad nasumičnim {@code submissionId}.
+     */
     @GetMapping(value = "/api/generateRegistrationNumber/{submissionId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID submissionId) {
-        SubmissionEntity submission = service.getSubmissionForPdf(submissionId);
+    public ResponseEntity<byte[]> downloadPdf(@PathVariable UUID submissionId, Authentication authentication) {
+        SubmissionEntity submission = resolvePdfSubmission(submissionId, authentication);
         String idForName = submission.getFilingNumber() != null
                 ? submission.getFilingNumber()
                 : submission.getSubmissionId().toString();
@@ -66,5 +75,20 @@ public class RegistrationController {
                         "inline; filename=\"submission-" + idForName.replaceAll("[^A-Za-z0-9._-]", "_") + ".pdf\"")
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(submission.getPdfContent());
+    }
+
+    /** INTERNAL → bilo koji podnesak; LOCAL → svoj po lessorId; NIAS → svoj po OIB-u; inače 401. */
+    private SubmissionEntity resolvePdfSubmission(UUID submissionId, Authentication authentication) {
+        if (Authorities.isInternal(authentication)) {
+            return service.getSubmissionForPdf(submissionId);
+        }
+        if (authentication != null && authentication.getPrincipal() instanceof LessorPrincipal principal) {
+            return service.getSubmissionForPdfOwnedByLessorId(submissionId, principal.getLessorId());
+        }
+        // NIAS: pravi SAML principal ili local/mock fallback na nias.mock.fixed-oib.
+        String oib = NiasOibExtractor.extractOib(authentication)
+                .or(() -> niasOibResolver.resolve(authentication))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+        return service.getSubmissionForPdfOwnedByOib(submissionId, oib);
     }
 }

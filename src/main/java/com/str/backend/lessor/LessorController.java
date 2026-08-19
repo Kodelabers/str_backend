@@ -4,6 +4,7 @@ import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.rn.dto.RnDetailDto;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -96,6 +97,17 @@ public class LessorController {
     public List<LessorRnSummaryDto> getRegistrations(Authentication authentication) {
         UUID lessorId = extractLessorId(authentication);
         return rnRepository.findByLessorId(lessorId);
+    }
+
+    /**
+     * Owner-scoped detalj JEDNOG vlastitog RB-a za LOCAL (ne-EU) korisnika (po lessorId). USER smije
+     * vidjeti detalje isključivo svojih RB-ova — tuđi (ili nepostojeći) RB vraća 404. Javni registar
+     * ({@code /api/rn/**}) je zaključan na INTERNAL.
+     */
+    @GetMapping("/lessor/registrations/{rn}")
+    public RnDetailDto getRegistrationDetail(@PathVariable String rn, Authentication authentication) {
+        UUID lessorId = extractLessorId(authentication);
+        return rnActionService.detailOwnedByLessorId(rn, lessorId);
     }
 
     /** STR-1.3-001: lessor revokes (opoziv) their own RN → WITHDRAWN. Owner-only. */

@@ -89,6 +89,9 @@
     <!-- Align mock str.facility columns with real dev/prod schema — gated by context="local". -->
     <include file="db/changelog/changes/117-str-facility-add-columns-local.xml"/>
 
+    <!-- Mock str.application_user (username + internal) za autorizaciju — gated by context="local". -->
+    <include file="db/changelog/changes/119-str-application-user-local.xml"/>
+
     <!-- Prevodi sve postojeće RB-ove (uključujući hex iz mock seeda 036) u
          strogo decimalni format i stegne CHECK constraint-e na ^HR[0-9]{18}$.
          Mora ići iza 036-mock-rn-activity-seed da pokupi i lokalni mock. -->

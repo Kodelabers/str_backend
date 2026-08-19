@@ -17,6 +17,7 @@ import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.LessorWithdrawRequest;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.rn.dto.RnDetailDto;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -161,6 +162,17 @@ public class NiasController {
             @Valid @ModelAttribute CategorizationDecisionRequest req,
             Authentication authentication) {
         return categorizationDecisionService.upload(resolveOib(authentication), req);
+    }
+
+    /**
+     * Owner-scoped detalj JEDNOG vlastitog RB-a za NIAS korisnika (po OIB-u). USER smije vidjeti
+     * detalje isključivo svojih RB-ova — tuđi (ili nepostojeći) RB vraća 404. Javni registar
+     * ({@code /api/rn/**}) je zaključan na INTERNAL.
+     */
+    @GetMapping("/registrations/{rn}")
+    public RnDetailDto registrationDetail(@PathVariable String rn, Authentication authentication) {
+        String oib = resolveOib(authentication);
+        return rnActionService.detailOwnedByOib(rn, oib);
     }
 
     /** STR-1.3-001: NIAS user revokes (opoziv) their own RN. Vlasništvo se provjerava

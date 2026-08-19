@@ -4,6 +4,7 @@ import com.str.backend.auth.dto.MeResponse;
 import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.auth.nias.NiasOibResolver;
+import com.str.backend.auth.role.InternalUserResolver;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import org.springframework.http.HttpStatus;
@@ -32,10 +33,14 @@ public class SessionIdentityResolver {
 
     private final LessorRepository lessorRepository;
     private final NiasOibResolver niasOibResolver;
+    private final InternalUserResolver roleResolver;
 
-    public SessionIdentityResolver(LessorRepository lessorRepository, NiasOibResolver niasOibResolver) {
+    public SessionIdentityResolver(LessorRepository lessorRepository,
+                                   NiasOibResolver niasOibResolver,
+                                   InternalUserResolver roleResolver) {
         this.lessorRepository = lessorRepository;
         this.niasOibResolver = niasOibResolver;
+        this.roleResolver = roleResolver;
     }
 
     @Transactional(readOnly = true)
@@ -66,8 +71,10 @@ public class SessionIdentityResolver {
                 e.getUsername(), e.getFirstName(), e.getLastName(), LessorPrincipal.ROLE, e.getEmail());
     }
 
-    // NIAS assertion ne nosi rolu ni email → oba null (do razrješenja izvora role).
-    private static MeResponse nias(String oib, String firstName, String lastName) {
-        return new MeResponse(AUTH_TYPE_NIAS, oib, null, null, firstName, lastName, null, null);
+    // NIAS assertion ne nosi rolu ni email. Rolu izvodimo iz OIB-a (str.application_user.internal);
+    // email ostaje null. Role: ROLE_INTERNAL (interni službenik) ili ROLE_USER (obični građanin).
+    private MeResponse nias(String oib, String firstName, String lastName) {
+        return new MeResponse(AUTH_TYPE_NIAS, oib, null, null, firstName, lastName,
+                roleResolver.resolveRole(oib), null);
     }
 }

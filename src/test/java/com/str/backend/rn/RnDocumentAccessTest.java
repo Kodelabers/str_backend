@@ -2,6 +2,8 @@ package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.SecurityConfig;
+import com.str.backend.auth.role.InternalUserResolver;
+import com.str.backend.auth.role.StrRoles;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.lessor.LessorEntity;
@@ -12,6 +14,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -54,6 +57,8 @@ class RnDocumentAccessTest {
     @MockBean UserDetailsService userDetailsService;
     // RnController od /api/rn/export/* endpointa ovisi i o exportu; slice ga mora imati.
     @MockBean com.str.backend.statistics.StatisticsExportService exportService;
+    // SecurityConfig ga traži za mock-role filter (local/mock); u testu je neaktivan, ali bean mora postojati.
+    @MockBean InternalUserResolver internalUserResolver;
 
     @Test
     void document_unauthenticated_returns401_andRendersNothing() throws Exception {
@@ -84,10 +89,39 @@ class RnDocumentAccessTest {
         verify(documentsService, never()).listForRn(any());
     }
 
-    /** Javni pregled RB-a ostaje otvoren — zatvara se samo put do akata. */
+    /**
+     * Interni službenik vidi akt svake stranke — vlasništvo se za INTERNAL ne provjerava.
+     * Bez te iznimke bi ga provjera po OIB-u blokirala, jer i on dolazi kroz NIAS s vlastitim
+     * OIB-om koji nije vlasnik RB-a.
+     */
     @Test
-    void publicRnEndpoints_remainOpen() throws Exception {
-        mvc.perform(get("/api/rn/inactive")).andExpect(status().isOk());
+    void document_asInternal_returnsPdf_forSomeoneElsesRn() throws Exception {
+        when(rnRepository.isOwnedByOib(eq(RN), any())).thenReturn(false);
+        when(documentService.render(eq(StrDocumentType.SUSPENZIJA), eq(RN), any()))
+                .thenReturn(new byte[]{1, 2, 3});
+
+        mvc.perform(get("/api/rn/{rn}/documents/{tip}", RN, "suspenzija")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                "sluzbenik", null,
+                                java.util.List.of(new SimpleGrantedAuthority(StrRoles.ROLE_INTERNAL))))))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * Registar RB-a više NIJE anoniman. Uvođenjem uloga cijeli {@code /api/rn/**} (osim akata,
+     * koji su owner-scoped iznad) zaključan je na INTERNAL — neprijavljeni dobiva 401, interni
+     * službenik 200. Ranije je ovaj endpoint padao pod {@code anyRequest().permitAll()}.
+     */
+    @Test
+    void registryEndpoints_requireInternalRole() throws Exception {
+        mvc.perform(get("/api/rn/inactive"))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(get("/api/rn/inactive")
+                        .with(authentication(new UsernamePasswordAuthenticationToken(
+                                "sluzbenik", null,
+                                java.util.List.of(new SimpleGrantedAuthority(StrRoles.ROLE_INTERNAL))))))
+                .andExpect(status().isOk());
     }
 
     private UsernamePasswordAuthenticationToken principalAuth(UUID lessorId) {

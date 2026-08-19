@@ -2,6 +2,8 @@ package com.str.backend.auth;
 
 import com.str.backend.auth.dto.MeResponse;
 import com.str.backend.auth.nias.NiasOibResolver;
+import com.str.backend.auth.role.InternalUserResolver;
+import com.str.backend.auth.role.StrRoles;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,13 +30,15 @@ class SessionIdentityResolverTest {
 
     private LessorRepository lessorRepository;
     private NiasOibResolver niasOibResolver;
+    private InternalUserResolver roleResolver;
     private SessionIdentityResolver resolver;
 
     @BeforeEach
     void setUp() {
         lessorRepository = mock(LessorRepository.class);
         niasOibResolver = mock(NiasOibResolver.class);
-        resolver = new SessionIdentityResolver(lessorRepository, niasOibResolver);
+        roleResolver = mock(InternalUserResolver.class);
+        resolver = new SessionIdentityResolver(lessorRepository, niasOibResolver, roleResolver);
     }
 
     @Test
@@ -77,8 +81,10 @@ class SessionIdentityResolverTest {
     }
 
     @Test
-    void niasPrincipal_resolvesFromSamlAttributes_withoutDbLookup() {
+    void niasPrincipal_resolvesFromSamlAttributes_withRoleFromOib() {
         Authentication auth = niasAuth("12345678901", "Ivan", "Horvat");
+        // NIAS assertion ne nosi rolu — izvodi se iz OIB-a preko InternalUserResolver.
+        when(roleResolver.resolveRole("12345678901")).thenReturn(StrRoles.ROLE_INTERNAL);
 
         MeResponse me = resolver.resolve(auth);
 
@@ -88,8 +94,8 @@ class SessionIdentityResolverTest {
         assertThat(me.lastName()).isEqualTo("Horvat");
         assertThat(me.lessorId()).isNull();
         assertThat(me.username()).isNull();
-        // NIAS assertion ne nosi rolu ni email
-        assertThat(me.role()).isNull();
+        assertThat(me.role()).isEqualTo(StrRoles.ROLE_INTERNAL);
+        // NIAS assertion ne nosi email
         assertThat(me.email()).isNull();
     }
 

@@ -1,5 +1,6 @@
 package com.str.backend.auth.nias;
 
+import com.str.backend.auth.role.InternalUserResolver;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.Conditions;
 import org.opensaml.saml.saml2.core.LogoutRequest;
@@ -119,7 +120,7 @@ public class NiasSamlConfig {
 
     @Bean
     public AuthenticationSuccessHandler authenticationSuccessHandler(
-            NiasSamlProperties props, NiasSessionRegistry sessionRegistry) {
+            NiasSamlProperties props, NiasSessionRegistry sessionRegistry, InternalUserResolver roleResolver) {
         return (request, response, authentication) -> {
             if (authentication instanceof Saml2Authentication) {
                 Saml2Authentication saml2Auth = (Saml2Authentication) authentication;
@@ -131,8 +132,11 @@ public class NiasSamlConfig {
                         currentPrincipal.getAttributes(),
                         sessionIndexes);
                 newPrincipal.setRelyingPartyRegistrationId(currentPrincipal.getRelyingPartyRegistrationId());
+                // Uloga se izvodi iz OIB-a (str.application_user.internal) — NIAS assertion ne nosi rolu.
+                // Svaka NIAS prijava daje barem ROLE_USER; interni službenik dobiva ROLE_INTERNAL.
+                String oib = NiasOibExtractor.extractOib(saml2Auth).orElse(null);
                 Saml2Authentication enriched = new Saml2Authentication(
-                        newPrincipal, samlResponse, saml2Auth.getAuthorities());
+                        newPrincipal, samlResponse, roleResolver.resolveAuthorities(oib));
                 enriched.setDetails(saml2Auth.getDetails());
                 SecurityContextHolder.getContext().setAuthentication(enriched);
 
