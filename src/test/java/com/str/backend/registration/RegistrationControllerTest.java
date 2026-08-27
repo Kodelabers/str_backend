@@ -1,7 +1,7 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.str.backend.captcha.AltchaService;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -40,6 +40,7 @@ class RegistrationControllerTest {
     @Autowired private ObjectMapper om;
 
     @MockBean private RegistrationService service;
+    @MockBean private AltchaService altchaService;
 
     @Test
     void post_returns_201_with_registration_number() throws Exception {

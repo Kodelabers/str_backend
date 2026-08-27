@@ -1,6 +1,7 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.str.backend.captcha.AltchaService;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -41,6 +42,7 @@ class RegistrationControllerSecurityTest {
     @Autowired ObjectMapper om;
 
     @MockBean RegistrationService service;
+    @MockBean AltchaService altchaService;
     // ensures SecurityConfig.authenticationManager() gets a concrete bean and our filter chain loads
     @MockBean UserDetailsService userDetailsService;
 

@@ -1,5 +1,6 @@
 package com.str.backend.exception;
 
+import com.str.backend.captcha.CaptchaException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -29,6 +30,11 @@ public class GlobalExceptionHandler {
 
     public GlobalExceptionHandler(MessageSource messageSource) {
         this.messageSource = messageSource;
+    }
+
+    @ExceptionHandler(CaptchaException.class)
+    public ResponseEntity<ErrorResponse> handleCaptcha(CaptchaException ex) {
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, resolve(ex.getMessage()), null);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

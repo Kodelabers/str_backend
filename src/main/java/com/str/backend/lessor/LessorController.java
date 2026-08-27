@@ -3,6 +3,7 @@ package com.str.backend.lessor;
 import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.captcha.AltchaService;
 import com.str.backend.rn.RnRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -36,25 +38,31 @@ public class LessorController {
     private final CountryRepository countryRepository;
     private final RnRepository rnRepository;
     private final LessorRnActionService rnActionService;
+    private final AltchaService altchaService;
 
     public LessorController(LessorRegistrationService registrationService,
                             LessorRepository lessorRepository,
                             LessorDocumentRepository lessorDocumentRepository,
                             CountryRepository countryRepository,
                             RnRepository rnRepository,
-                            LessorRnActionService rnActionService) {
+                            LessorRnActionService rnActionService,
+                            AltchaService altchaService) {
         this.registrationService = registrationService;
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
         this.countryRepository = countryRepository;
         this.rnRepository = rnRepository;
         this.rnActionService = rnActionService;
+        this.altchaService = altchaService;
     }
 
     @PostMapping(value = "/registerLessor", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public LessorRegistrationResponse register(
-            @Valid @ModelAttribute LessorRegistrationRequest req) throws IOException {
+            @Valid @ModelAttribute LessorRegistrationRequest req,
+            @RequestHeader(value = "X-Altcha", required = false) String altcha)
+            throws IOException {
+        altchaService.verifyOrThrow(altcha);
         return registrationService.register(req);
     }
 

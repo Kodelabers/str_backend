@@ -1,5 +1,6 @@
 package com.str.backend.rn;
 
+import com.str.backend.captcha.AltchaService;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.dto.RnPublicView;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,9 @@ class VerifyControllerTest {
 
     @MockBean
     private RnRepository rnRepository;
+
+    @MockBean
+    private AltchaService altchaService;
 
     @Test
     void returns_active_with_public_data_when_active() throws Exception {

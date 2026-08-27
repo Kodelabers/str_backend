@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.nias.NiasOibExtractor;
+import com.str.backend.captcha.AltchaService;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,15 +30,19 @@ import java.util.UUID;
 public class RegistrationController {
 
     private final RegistrationService service;
+    private final AltchaService altchaService;
 
-    public RegistrationController(RegistrationService service) {
+    public RegistrationController(RegistrationService service, AltchaService altchaService) {
         this.service = service;
+        this.altchaService = altchaService;
     }
 
     @PostMapping("/api/generateRegistrationNumber")
     public ResponseEntity<RegistrationResponse> generateRegistrationNumber(
             @Valid @RequestBody RegistrationRequest req,
-            Authentication authentication) {
+            Authentication authentication,
+            @RequestHeader(value = "X-Altcha", required = false) String altcha) {
+        altchaService.verifyOrThrow(altcha);
         // When NIAS SAML2 is active, OIB comes from the assertion — override whatever the client sent.
         RegistrationRequest finalReq = NiasOibExtractor.extractOib(authentication)
                 .map(oib -> RegistrationRequest.withOib(req, oib))

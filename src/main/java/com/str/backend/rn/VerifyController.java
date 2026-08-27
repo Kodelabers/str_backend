@@ -1,5 +1,6 @@
 package com.str.backend.rn;
 
+import com.str.backend.captcha.AltchaService;
 import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.dto.RnPublicView;
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -21,9 +23,11 @@ import java.util.stream.Stream;
 public class VerifyController {
 
     private final RnRepository rnRepository;
+    private final AltchaService altchaService;
 
-    public VerifyController(RnRepository rnRepository) {
+    public VerifyController(RnRepository rnRepository, AltchaService altchaService) {
         this.rnRepository = rnRepository;
+        this.altchaService = altchaService;
     }
 
     /**
@@ -36,7 +40,9 @@ public class VerifyController {
     @GetMapping("/{rn}")
     @Transactional(readOnly = true)
     public VerifyResponse verify(
-            @PathVariable @Pattern(regexp = RegistrationNumber.REGEXP) String rn) {
+            @PathVariable @Pattern(regexp = RegistrationNumber.REGEXP) String rn,
+            @RequestHeader(value = "X-Altcha", required = false) String altcha) {
+        altchaService.verifyOrThrow(altcha);
         RnStatus status = rnRepository.findById(rn).map(RnEntity::getStatus).orElse(null);
         if (status != null && status.isActiveForPublicUse()) {
             return rnRepository.findPublicView(rn)
