@@ -12,6 +12,8 @@ import hr.infodom.egov.mdm.DohvatiVrstePismenaActive;
 import hr.infodom.egov.mdm.DohvatiVrstePismenaActiveResponse;
 import hr.infodom.egov.mdm.DohvatiVrstePredmetaActive;
 import hr.infodom.egov.mdm.DohvatiVrstePredmetaActiveResponse;
+import hr.infodom.egov.mdm.DohvatiVrstePredmetaKorisnika;
+import hr.infodom.egov.mdm.DohvatiVrstePredmetaKorisnikaResponse;
 import hr.infodom.egov.mdm.DohvatiVrstePrilogaActive;
 import hr.infodom.egov.mdm.DohvatiVrstePrilogaActiveResponse;
 import hr.infodom.egov.mdm.ErrorStatus;
@@ -22,6 +24,7 @@ import hr.infodom.egov.mdm.UstrojInfo;
 import hr.infodom.egov.mdm.VrstePismenaInfo;
 import hr.infodom.egov.mdm.VrstePredmetaInfo;
 import hr.infodom.egov.mdm.VrstePrilogaInfo;
+import hr.infodom.egov.mdm.VrsteSpisaInfo;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +45,7 @@ import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_USTROJ_ACTIVE_SO
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_USTROJ_KORISNIKA_SOAP_ACTION;
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_VRSTE_PISMENA_ACTIVE_SOAP_ACTION;
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_VRSTE_PREDMETA_ACTIVE_SOAP_ACTION;
+import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_VRSTE_PREDMETA_KORISNIKA_SOAP_ACTION;
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_VRSTE_PRILOGA_ACTIVE_SOAP_ACTION;
 import static com.str.backend.egop.EgopSoapCallback.MDM_LISTA_VRSTE_POSLOVNIH_SUBJEKATA_SOAP_ACTION;
 
@@ -275,8 +279,42 @@ class EgopCodebooks {
                         (a, b) -> a));
     }
 
+    /**
+     * Vrste predmeta se dohvaćaju s {@code DohvatiVrstePredmetaKorisnika}, ne s
+     * {@code …Active}: {@code Active} vraća cijeli katalog (na testu 1900+), a {@code KreirajPredmet2}
+     * nema polje dosje — eGOP ga izvodi iz para (vrsta + korisnikova ovlast). Vrsta iz generičkog
+     * {@code Active} kojoj korisnik nije ovlašten za dosje pada s „Odabrani dosje ne dopušta kreiranje
+     * predmeta" (potvrdio InfoDom, 31.08.2026.). {@code Korisnika} vraća baš one vrste koje prijavljeni
+     * korisnik smije otvoriti (s otvorenim dosjeom), pa razrješena šifra ide bez dosje-greške.
+     * {@code Active} ostaje fallback za okoline gdje je obrnuto — isti obrazac kao {@link #loadUstroj()}.
+     */
     private Map<String, String> loadVrstePredmeta() {
         log.info("Loading CODEBOOK_VRSTE_PREDMETA from eGOP...");
+        Map<String, String> korisnika = loadVrstePredmetaKorisnika();
+        if (!korisnika.isEmpty()) {
+            return korisnika;
+        }
+        log.warn("egop_codebook_vrste_predmeta_korisnika_empty — probam DohvatiVrstePredmetaActive");
+        return loadVrstePredmetaActive();
+    }
+
+    private Map<String, String> loadVrstePredmetaKorisnika() {
+        DohvatiVrstePredmetaKorisnika request = new DohvatiVrstePredmetaKorisnika();
+        request.setUserName(appUsername);
+        // Filteri (setVrsta / setNaziv / setDosjeId) ostaju prazni — dohvaćamo cijeli korisnikov skup.
+
+        return ((DohvatiVrstePredmetaKorisnikaResponse) call(request, MDM_DOHVATI_VRSTE_PREDMETA_KORISNIKA_SOAP_ACTION))
+                .getDohvatiVrstePredmetaKorisnikaResult()
+                .getVrsteSpisaInfo()
+                .stream()
+                .peek(this::handleErrors)
+                .collect(Collectors.toMap(
+                        VrsteSpisaInfo::getNazivVrstePredmeta,
+                        VrsteSpisaInfo::getIdvrste,
+                        (a, b) -> a));
+    }
+
+    private Map<String, String> loadVrstePredmetaActive() {
         DohvatiVrstePredmetaActive request = new DohvatiVrstePredmetaActive();
         request.setUserName(appUsername);
 
