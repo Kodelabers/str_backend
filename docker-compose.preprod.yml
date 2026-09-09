@@ -1,0 +1,64 @@
+# Predprodukcija na s-str-02.infodom.hr: FE :8085, BE :8086, profil `preprod`, baza `eturizam`.
+#
+# ZAUZIMA PORTOVE BIVŠEG DEV STACKA. Dev MORA biti oboren prije `up`:
+#   docker compose --env-file .env.dev down
+# `docker-compose.yml` i `.env.dev` ostaju netaknuti, pa je dev okolina (jedina s koje je eGOP
+# dohvatljiv) resurektabilna jednim `up`-om nakon što se preprod obori. Vidi DEPLOY-PREPROD.md.
+#
+# `name:` je OBAVEZAN. Bez njega compose izvodi ime projekta iz direktorija (`str_backend`), pa
+# bi se servisi `backend`/`frontend` poklopili s dev projektom u istom direktoriju i `up` bi
+# rekreirao dev kontejnere umjesto da digne nove.
+#
+# Prereqs na kutiji:
+#   1. Repos u /home/vviskov/str-deploy/str_backend i .../str_frontend (postojeći dev checkout)
+#   2. cp .env.preprod.example .env.preprod pa upisati tajne (5 vrijednosti)
+#   3. Keystore produkcijskog NIAS-a u /home/vviskov/str-secrets/nias-prod.p12
+#   4. Shema `str_rn` postoji u bazi `eturizam` (na preprod profilu je NITKO ne kreira —
+#      LocalDatabaseConfig radi samo na local/mock)
+#
+# Run:
+#   sudo docker compose -f docker-compose.preprod.yml --env-file .env.preprod up -d --build
+#   sudo docker compose -f docker-compose.preprod.yml logs -f backend
+name: str-preprod
+
+services:
+  backend:
+    build:
+      context: .
+    container_name: str-backend-preprod
+    restart: unless-stopped
+    ports:
+      - "8086:8080"
+    # Sve iz .env.preprod ulazi u kontejner odavde. Kroz env_file, a NE kao `${VAR:-}` u
+    # `environment:`: ondje bi nepostavljen ključ u kontejner ušao kao PRAZNA ali POSTAVLJENA
+    # varijabla, a Spring default iz `${VAR:default}` vrijedi samo kad varijabla NE POSTOJI —
+    # prazna bi ga pregazila (npr. obrisala NIAS entity-id ili DB URL).
+    env_file:
+      - .env.preprod
+    # `environment:` ima prednost nad env_file i drži ono što je na ovoj okolini fiksno.
+    environment:
+      SPRING_PROFILES_ACTIVE: preprod
+      APP_CORS_ALLOWED_ORIGINS: http://s-str-02.infodom.hr:8085
+      APP_FRONTEND_BASE_URL: http://s-str-02.infodom.hr:8085
+      APP_MAIL_LOGIN_URL: http://s-str-02.infodom.hr:8085/login
+    # /secrets je isti mount kao na dev stacku; postojeći nias-sp.jks se ne dira, uz njega
+    # stoji nias-prod.p12 (produkcijski NIAS certifikat).
+    volumes:
+      - ${PREPROD_SECRETS_DIR:-/home/vviskov/str-secrets}:/secrets:ro
+    # extra_hosts za egop2builder se NE prenosi — eGOP je na predprodukciji ugašen.
+
+  frontend:
+    build:
+      context: ../str_frontend
+      args:
+        VITE_API_URL: http://s-str-02.infodom.hr:8086
+        VITE_USE_MOCK: "false"
+        VITE_NIAS_ENABLED: "true"
+    container_name: str-frontend-preprod
+    restart: unless-stopped
+    environment:
+      PORT: "80"
+    ports:
+      - "8085:80"
+    depends_on:
+      - backend
