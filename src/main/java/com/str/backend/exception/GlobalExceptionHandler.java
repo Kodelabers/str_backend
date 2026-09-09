@@ -1,6 +1,7 @@
 package com.str.backend.exception;
 
 import com.str.backend.captcha.CaptchaException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -32,8 +33,20 @@ public class GlobalExceptionHandler {
         this.messageSource = messageSource;
     }
 
+    /**
+     * Odgovor je namjerno štur (stranci se ne objašnjava zašto je provjera pala), pa bez ovog
+     * loga „Potrebna je ALTCHA provjera" ne kaže NIŠTA o uzroku. A uzroci su bitno različiti:
+     * fronta bez widgeta uopće ne šalje zaglavlje, dok riješena pa istekla captcha šalje puno.
+     * Zato se bilježi putanja i je li {@code X-Altcha} uopće stigao — ne i sadržaj.
+     */
     @ExceptionHandler(CaptchaException.class)
-    public ResponseEntity<ErrorResponse> handleCaptcha(CaptchaException ex) {
+    public ResponseEntity<ErrorResponse> handleCaptcha(CaptchaException ex, HttpServletRequest request) {
+        String header = request.getHeader("X-Altcha");
+        log.warn("captcha_odbijena razlog={} putanja={} X-Altcha={}",
+                ex.getMessage(),
+                request.getRequestURI(),
+                header == null ? "NIJE POSLAN (fronta ga ne šalje ili je build stariji od captche)"
+                        : header.isBlank() ? "prazan" : "poslan (" + header.length() + " znakova)");
         return build(HttpStatus.UNPROCESSABLE_ENTITY, resolve(ex.getMessage()), null);
     }
 
