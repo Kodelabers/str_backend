@@ -40,7 +40,12 @@ services:
       args:
         VITE_API_URL: http://s-str-02.infodom.hr:8086
         VITE_USE_MOCK: "false"
-        VITE_NIAS_ENABLED: "true"
+        # Mora prati .env.dev, gdje je NIAS_SAML_ENABLED=false: na ovoj kutiji NIAS ne radi
+        # (startup pada na keystoreu i dohvatu FINA metapodataka). S "true" fronta prikazuje
+        # „Prijava putem eGrađana", koja onda gađa /saml2/authenticate/nias — endpoint koji s
+        # ugašenim NIAS-om ne postoji. Dosad se to popravljalo LOKALNOM izmjenom na kutiji, koja
+        # je blokirala `git pull --ff-only` i mogla se izgubiti; zato je vrijednost sad u repou.
+        VITE_NIAS_ENABLED: "false"
     container_name: str-frontend
     restart: unless-stopped
     environment:

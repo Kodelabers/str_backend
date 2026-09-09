@@ -33,6 +33,15 @@ sudo docker compose --env-file .env.dev up -d --build backend frontend
 
 Ne mogu raditi istovremeno — dijele portove 8085/8086.
 
+> **Zamka pri povratku:** kutija je do 09.09.2026. imala `develop` na `6f93b71`, tj. **prije**
+> ALTCHA captche. Prelaskom na aktualni `develop` captcha postaje obavezna i na `dev` profilu, pa
+> stari `.env.dev` **više ne diže backend** (`AltchaService` odbija ugrađeni
+> `change-me-in-production`). Prije povratka dopiši u `.env.dev` na kutiji:
+>
+> ```bash
+> echo "CAPTCHA_HMAC_KEY=$(openssl rand -base64 32)" >> .env.dev
+> ```
+
 ## Raspored na kutiji
 
 Isti checkout kao dev (repo je već kloniran, GitHub creds keširane, `str_frontend` je susjedni
