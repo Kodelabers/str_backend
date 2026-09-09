@@ -143,8 +143,15 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             // Radna lista „rok ističe uskoro": namjerno bez donje granice — već istekli, a još
             // neobrađeni rokovi (job se vrti jednom dnevno) moraju ostati vidljivi, inače bi
             // predmet ispao s liste točno onda kad je najhitniji.
-            " AND (CAST(:deadlineBefore AS date) IS NULL OR (r.suspensionDeadline IS NOT NULL" +
-            "      AND r.suspensionDeadline <= CAST(:deadlineBefore AS date)))";
+            // BEZ CAST-a, za razliku od filtera iznad. CAST(:p AS string) je trik da `IS NULL`
+            // prođe na Postgresu kad Hibernate ne može zaključiti tip parametra; za string je
+            // bezopasan jer Postgres dopušta cast(bytea as text), pa se netočno vezan null nikad
+            // ne primijeti. Za datum NE prolazi: `cast(bytea as date)` je zabranjen i upit puca s
+            // `ERROR: cannot cast type bytea to date`. Ovdje cast nije ni potreban — tip se
+            // zaključuje iz usporedbe `r.suspensionDeadline <= :deadlineBefore`, pa Hibernate veže
+            // null kao DATE. Ne vraćati CAST.
+            " AND (:deadlineBefore IS NULL OR (r.suspensionDeadline IS NOT NULL" +
+            "      AND r.suspensionDeadline <= :deadlineBefore))";
 
     String RN_FROM =
             " FROM RnEntity r" +
