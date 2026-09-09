@@ -373,7 +373,7 @@ git log -1 --format='%h %ci %s'          # potvrdi da je na zadnjem develop merg
 ls docker-compose.preprod.yml .env.preprod.example    # obje moraju postojati nakon pulla
 
 cp .env.preprod.example .env.preprod
-nano .env.preprod
+
 ```
 
 Upisuje se **pet** vrijednosti; ostalo je u predlošku već popunjeno i ne dira se.
@@ -557,20 +557,46 @@ http://s-str-02.infodom.hr:8085
 „Prijava putem eGrađana" → redirect na `https://nias.gov.hr/sso-http` → nakon prijave povratak na
 `/registration-number`.
 
-### NIAS preko HTTP-a — poznat rizik
+### NIAS preko HTTP-a — riješeno spremanjem AuthnRequesta u bazu
 
-Okolina je na **plain HTTP-u**, a NIAS na naš ACS šalje **cross-site POST**
-(`nias.gov.hr` → `s-str-02.infodom.hr`). Spring drži AuthnRequest u `HttpSession`, pa sesijski
-cookie mora doći uz taj POST:
+Okolina je na **plain HTTP-u**, a NIAS na naš ACS šalje **cross-site POST** (`nias.gov.hr` →
+`s-str-02.infodom.hr`). Spring po defaultu drži AuthnRequest u `HttpSessionu`, pa uz taj POST
+mora stići sesijski cookie — a ne stigne: `SameSite=Lax` (browserov default kad atribut nije
+postavljen) na cross-site POST-u cookie ne šalje, dok `SameSite=None` traži `Secure`, koji preko
+HTTP-a otpada. Izmjereno 09.09.2026.:
 
-- **Ne** postavljaj `server.servlet.session.cookie.same-site=none` (kao na CDU) — `SameSite=None`
-  zahtijeva `Secure`, a `Secure` cookie preko HTTP-a browser odbacuje, pa prijava zajamčeno ne bi
-  radila. Profil ga zato namjerno ne postavlja.
-- S nepostavljenim atributom browseri primjenjuju `Lax`, a Chrome uz „Lax+POST" iznimku (cookie
-  mlađi od 2 min) takav POST propušta. Firefox i Safari se ponašaju drukčije.
-- Padne li prijava na `InResponseTo` ili „saved request not found" → **to je ovaj problem**, a ne
-  konfiguracija URL-ova. Rješenje je HTTPS pred okolinom (kao CDU gateway), ne petljanje po
-  cookie atributima.
+```
+NIAS prijava nije uspjela: invalid_in_response_to / The response contained an InResponseTo
+attribute [ARQ599eb07-…] but no saved authentication request was found | sessionPresent=false
+```
+
+Nije bilo do potpisa, issuera ni destinationa — assertion je uredno stigao, ali spremljeni
+zahtjev nije nađen. **Ne postoji kombinacija postavki koja to rješava preko HTTP-a.**
+
+Zato profil ima `nias.saml.request-store=database`: AuthnRequest se pamti u
+`str_rn.saml_auth_request` i na ACS-u traži po `InResponseTo` iz odgovora, pa cookie nije
+potreban ni u jednom koraku. Korelacija zahtjev↔odgovor **ostaje**, dakle zaštita od replaya se
+ne skida — premješta se samo nosač, iz sesije u bazu. Nakon uspješne prijave sesija se stvara
+normalno (`Set-Cookie` u odgovoru na ACS POST prolazi bez problema), a idući zahtjevi s
+frontenda su same-site pa cookie ide.
+
+Default je i dalje `session`, pa okoline iza HTTPS-a (CDU) rade nepromijenjeno. Dobije li
+predprodukcija HTTPS, dovoljno je `NIAS_REQUEST_STORE=session` — bez ijedne druge izmjene.
+
+Provjera da je aktivno:
+
+```bash
+sudo docker logs str-backend-preprod 2>&1 | grep 'NIAS AuthnRequest se sprema u bazu'
+```
+
+```sql
+-- za vrijeme prijave (između klika i povratka s NIAS-a) ovdje stoji red; nakon prijave se briše
+select request_id, created_at from str_rn.saml_auth_request;
+```
+
+Ostane li prijava neuspješna, u logu je `saml_auth_request_not_found` (zahtjev istekao ili već
+iskorišten) ili `saml_auth_request_expired` (stariji od 15 min).
+
 
 ### Ako NIAS odbije prijavu ili odjavu
 

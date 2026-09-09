@@ -191,4 +191,8 @@
          objekata na NIAS dashboardu lokalno nema što joinati. -->
     <include file="db/changelog/changes/123-str-facility-lookup-mock-local.xml"/>
 
+    <!-- SAML AuthnRequest izvan sesije — nužno kad sesijski cookie ne preživi NIAS-ov
+         cross-site POST (vidi komentar u changesetu). -->
+    <include file="db/changelog/changes/064-saml-auth-request.xml"/>
+
 </databaseChangeLog>

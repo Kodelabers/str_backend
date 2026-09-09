@@ -50,6 +50,12 @@ public class NiasSecurityConfig {
                         .requestMatchers("/error", "/login", "/saml2/**", "/login/saml2/**", "/logout/saml2/**")
                         .permitAll()
                         .anyRequest().authenticated())
+                // NAPOMENA: Saml2AuthenticationRequestRepository se ovdje NE postavlja jer
+                // Saml2LoginConfigurer sam traži takav bean u kontekstu (getBeanOrNull) i ubacuje
+                // ga u Saml2WebSsoAuthenticationFilter, Saml2WebSsoAuthenticationRequestFilter i
+                // OpenSamlAuthenticationTokenConverter; bez bean-a uzima
+                // HttpSessionSaml2AuthenticationRequestRepository. Bean postoji samo uz
+                // nias.saml.request-store=database (vidi NiasSamlConfig).
                 .saml2Login(saml -> saml
                         .relyingPartyRegistrationRepository(registrations)
                         .authenticationRequestResolver(authenticationRequestResolver)

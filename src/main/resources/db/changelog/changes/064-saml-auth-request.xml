@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Odlazni SAML AuthnRequest, spremljen izvan HttpSessiona.
+
+      Spring ga po defaultu drži u sesiji (HttpSessionSaml2AuthenticationRequestRepository), pa
+      pri povratku s NIAS-a mora stići sesijski cookie. NIAS na naš ACS šalje CROSS-SITE POST, a
+      na njemu preglednik ne šalje SameSite=Lax cookie (default kad atribut nije postavljen);
+      SameSite=None traži Secure, koji preko plain HTTP-a otpada. Rezultat je bio
+      `invalid_in_response_to`: assertion stigne, ali spremljeni zahtjev se ne nađe.
+
+      Ovdje se zahtjev pamti po SVOM ID-u, a na ACS-u se nalazi po `InResponseTo` iz odgovora —
+      dakle bez ikakvog cookieja. Korelacija zahtjev↔odgovor time OSTAJE (zaštita od replaya se
+      ne skida), samo se nosač premješta iz sesije u bazu.
+
+      Aktivira se s nias.saml.request-store=database; default ostaje `session`, pa okoline iza
+      HTTPS-a (CDU) rade nepromijenjeno.
+
+      Redovi su kratkotrajni: brišu se čim se iskoriste, a neiskorišteni (korisnik odustane na
+      NIAS-u) se čiste po `created_at`.
+    -->
+    <changeSet id="064-saml-auth-request" author="str-backend">
+        <createTable schemaName="str_rn" tableName="saml_auth_request">
+            <column name="request_id" type="VARCHAR(200)">
+                <constraints primaryKey="true" primaryKeyName="pk_saml_auth_request" nullable="false"/>
+            </column>
+            <column name="saml_request" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="relay_state" type="TEXT"/>
+            <column name="authentication_request_uri" type="VARCHAR(1000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="relying_party_registration_id" type="VARCHAR(100)"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- Čišćenje istekelih zahtjeva ide po created_at, pa mu treba indeks. -->
+        <createIndex schemaName="str_rn" tableName="saml_auth_request" indexName="ix_saml_auth_request_created_at">
+            <column name="created_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
