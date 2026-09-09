@@ -598,6 +598,41 @@ Ostane li prijava neuspješna, u logu je `saml_auth_request_not_found` (zahtjev 
 iskorišten) ili `saml_auth_request_expired` (stariji od 15 min).
 
 
+### ALTCHA je na ovoj okolini UGAŠENA — i to je posljedica istog nedostatka HTTPS-a
+
+ALTCHA rješava proof-of-work preko **Web Crypto** (`crypto.subtle`), koji je dostupan **samo u
+sigurnom kontekstu** — `https://` ili `localhost`. Na `http://s-str-02.infodom.hr:8085` widget
+javi „Secure context (HTTPS) required" i nikad ne dođe do riješenog stanja. Nema konfiguracije
+koja to zaobilazi.
+
+Zato su u `docker-compose.preprod.yml` **dva prekidača, jedan uz drugi**:
+
+| Prekidač | Vrijednost | Učinak |
+| :--- | :--- | :--- |
+| `APP_CAPTCHA_ENABLED` (backend) | `false` | `AltchaService.verifyOrThrow` odmah izlazi |
+| `VITE_CAPTCHA_ENABLED` (frontend, build arg) | `false` | `CaptchaField` ne renderira ništa — nema widgeta ni obaveznog pravila |
+
+**Moraju se mijenjati zajedno.** Razidu li se, okolina je neupotrebljiva:
+
+- samo backend ugašen → forma blokira slanje jer i dalje traži riješenu captchu;
+- samo frontend ugašen → svaki javni formular vraća 422 „Potrebna je ALTCHA provjera".
+
+`VITE_CAPTCHA_ENABLED` je **build-time** argument, pa promjena traži `--build` frontenda, ne
+samo restart.
+
+Dijagnostika ako se ipak pojavi 422: backend uz svako odbijanje logira
+
+```bash
+sudo docker logs str-backend-preprod 2>&1 | grep captcha_odbijena
+```
+
+Redak kaže i je li `X-Altcha` uopće stigao — time se odmah razlikuje „fronta ne šalje zaglavlje"
+od „provjera je istekla ili je kriva".
+
+Kad okolina dobije HTTPS, oba prekidača se vraćaju na `true` (i `CAPTCHA_HMAC_KEY` mora biti
+postavljen, inače backend ne starta).
+
+
 ### Ako NIAS odbije prijavu ili odjavu
 
 NIAS ignorira URL-ove koje pošaljemo i callback vraća na one **registrirane uz certifikat**. Ako
