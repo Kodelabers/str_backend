@@ -227,6 +227,7 @@ Preflight na `eturizam` @ `s-str-02:5431` dao je ovo (user `shorttermrental`, č
 | :--- | :--- | :--- | :--- | :--- |
 | `str_rn` | `str_owner` (naša) | ✅ | ✅ | 0 — **shema je prazna** |
 | `str` | `tustart_owner` | ✅ (`str_owner=U/tustart_owner`) | ✗ (i treba tako — read-only) | 144 |
+| | | | | *tablična prava: `SELECT` ✅ na `facility`/`subject`/`country`, `UPDATE` ❌* |
 | `rpj_dgu` | `gis_owner` | ❌ | ✗ | 8 |
 | `eturizam_test` | `gis_owner` | ❌ | ✗ | 9 |
 
@@ -235,6 +236,27 @@ podataka — naša shema tamo nikad nije postojala. Liquibase zato vrti **cijeli
 nule**, a registar na preprodu starta **bez ijednog registracijskog broja**. To mijenja
 očekivanja za testiranje: `select count(*) from str_rn.registration_number` je 0, i tako treba
 biti. `CREATE` na `str_rn` je potvrđen, pa Liquibase prolazi.
+
+#### `str` je čitljiv, ali nije zapisiv
+
+`USAGE` na shemi sam po sebi ne daje `SELECT` na tablice, pa je i to izmjereno:
+`has_table_privilege` vraća `t` za `str.facility`, `str.subject` i `str.country` — popis objekata
+eTurizma, OIB lookup iznajmljivača i padajući izbornik država rade.
+
+`UPDATE` na `str.facility` je **`f`**. To je odredište `FacilityRegistrationNumberWriteBack`-a
+(upis izdanog RB-a natrag u eTurizam za objekt koji je došao kroz tuStart handoff). Nije
+blokada — taj razred namjerno guta greške i logira `facility_writeback_failed`, a RB ostaje
+izdan i valjan. Praktična posljedica: na preprodu se **tuStart handoff ne može testirati
+end-to-end** jer RB ne dolazi natrag u `str.facility`.
+
+Ako je taj tok u opsegu testiranja, od `tustart_owner`-a treba i:
+
+```sql
+GRANT UPDATE (registration_number) ON str.facility TO str_owner;
+```
+
+Grant je namjerno sužen na jedan stupac — write-back ne dira ništa drugo. Ako tok nije u
+opsegu, ovo se preskače i u logu se ignorira `facility_writeback_failed`.
 
 #### ⚠️ Blokada: nema pristupa adresnim registrima
 
