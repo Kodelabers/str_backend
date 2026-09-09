@@ -114,25 +114,52 @@ ide dolje.
 Preprod se deploya s grane `develop`. Provjeri da su izmjene mergeane (nova grana → PR →
 `develop`; nikad push na `develop` ni PR na `main`).
 
-## 2. Preflight na kutiji
+## 2. Preflight — VPN i dohvatljivost
 
 Sve tri stavke ruše start ako padnu — provjeri ih **prije** nego oboriš dev.
 
+### 2a. Na InfoDom VPN, pa do kutije
+
+Kutija `s-str-02.infodom.hr` je na InfoDomovoj mreži i **nije dostupna s interneta**. Treba
+InfoDom **Sophos SSL VPN** (račun tipa `mhangi`). To je *druga* tajna od eGOP/NTLM lozinke i od
+državnog VPN-a kojim se ide na CDU — ne miješati.
+
 ```bash
+# s laptopa, nakon što je VPN gore:
+nslookup s-str-02.infodom.hr
 ssh mhangi@s-str-02.infodom.hr
+```
 
-# a) produkcijski NIAS je dohvatljiv? (metadata se čita pri dizanju konteksta)
+Za `s-str-02` **nema** SSH aliasa u `~/.ssh/config` (tamo je samo `cdu` → 172.20.8.158), pa ide
+puno ime hosta. Ako `ssh` visi, VPN nije gore ili je pao; ako `nslookup` ne razriješi a VPN je
+gore, DNS ide mimo tunela.
+
+> **Full-tunnel:** dok si na InfoDom VPN-u laptop zna izgubiti javni internet. To ne blokira
+> deploy (build i `git pull` idu **s kutije**), ali blokira `git push` s laptopa — zato prvo
+> pushaj granu, pa se spajaj na VPN.
+
+### 2b. Vidi li kutija produkcijski NIAS?
+
+```bash
 curl -sS -o /dev/null -w 'NIAS metadata: %{http_code}\n' https://nias.gov.hr/metadata
-#   očekuj 200; vješanje ili 000 = firewall → aplikacija ne bi startala
+```
 
-# b) baza: shema, changelog, članstvo u roli
+Očekuj **200**; vješanje ili `000` = firewall. Ovo nije kozmetika: `NiasSamlConfig` dohvaća IdP
+metadatu **pri dizanju konteksta**, pa nedohvatljiv `nias.gov.hr` znači da aplikacija uopće ne
+krene — točno onako kako je `dev` padao na `niastst.fina.hr`. Ako je izlaz zatvoren, digni
+okolinu s `NIAS_SAML_ENABLED=false` u `.env.preprod` (radi bez prijave) i traži otvaranje
+prema `nias.gov.hr:443`.
+
+### 2c. Baza: shema, changelog, članstvo u roli
+
+```bash
 psql "postgresql://<user>@s-str-02.infodom.hr:5431/eturizam" \
      -c "\dn str_rn" \
      -c "select count(*) from str_rn.databasechangelog" \
      -c "select pg_has_role(current_user,'str_owner','member')"
 ```
 
-Kako čitati (b):
+Kako čitati:
 
 - **`str_rn` ne postoji** → Liquibase pada; na `preprod` profilu shemu nitko ne kreira
   (`LocalDatabaseConfig` radi samo na `local`/`mock`). Riješi s
@@ -145,11 +172,16 @@ Kako čitati (b):
 
 ## 3. Keystore na kutiju
 
+Prijenos ide **s laptopa preko VPN-a**; keystore nikad ne ulazi u git (`.gitignore` blokira
+`*.p12`).
+
 ```powershell
+# s laptopa (PowerShell), VPN gore:
 scp "$env:USERPROFILE\Downloads\keystore.p12" mhangi@s-str-02.infodom.hr:/tmp/nias-prod.p12
 ```
 
-Pa na kutiji:
+Pa na kutiji — `install` u jednom koraku postavlja vlasnika i prava, da datoteka ne ostane
+čitljiva svima:
 
 ```bash
 sudo install -o vviskov -g vviskov -m 640 /tmp/nias-prod.p12 /home/vviskov/str-secrets/nias-prod.p12
@@ -157,7 +189,21 @@ rm /tmp/nias-prod.p12
 ls -l /home/vviskov/str-secrets/
 ```
 
-Stari `nias-sp.jks` (dev, testni NIAS) ostaje — ne briši ga, treba dev okolini.
+Provjeri da je datoteka prenesena neoštećeno — usporedi checksum s onim izmjerenim lokalno
+09.09.2026.:
+
+```bash
+sha256sum /home/vviskov/str-secrets/nias-prod.p12
+# očekuj: f3284f082fd69ecae0de3041af21260eb15261a587dab7df08c9b2f80dfcaf90
+# velicina: 11132 bajta
+```
+
+Ovako se lozinka ne pojavljuje ni u `ps` ni u shell historyju kutije. Sadržaj keystorea je
+ionako već provjeren lokalno (korak 0), a da se privatni ključ stvarno učitava potvrdit će
+startup u koraku 6 — ako alias ili lozinka ne odgovaraju, kontekst pada na dizanju.
+
+Stari `nias-sp.jks` (dev, testni NIAS) **ostaje** — ne briši ga, treba dev okolini kad se vraća
+na eGOP.
 
 ## 4. `git pull` + `.env.preprod` (kao vviskov)
 
@@ -166,25 +212,64 @@ sudo -iu vviskov
 cd ~/str-deploy/str_backend
 git pull --ff-only origin develop
 git log -1 --format='%h %ci %s'          # potvrdi da je na zadnjem develop mergeu
+ls docker-compose.preprod.yml .env.preprod.example    # obje moraju postojati nakon pulla
 
 cp .env.preprod.example .env.preprod
 nano .env.preprod
-#   PREPROD_DB_USERNAME=<isti kao CDU>
-#   PREPROD_DB_PASSWORD=<ssh cdu; grep CDU_DB_PASSWORD ~/str-rn/str_backend/.env.cdu>
-#   DRAFT_ENC_KEY=<openssl rand -base64 32 — NOVA vrijednost; skice iz dumpa su ovdje nebitne>
-#   CAPTCHA_HMAC_KEY=<openssl rand -base64 32; generiraj jednom i NE mijenjaj>
-#     NE ostavljaj prazan: nepostavljen ključ obori start s jasnom greškom, a PRAZAN pusti
-#     start i tek /api/captcha/challenge vrati 500 — vidi komentar u .env.preprod.example
-#   NIAS_KEYSTORE_PASSWORD=<lozinka keystorea>
-#     (NIAS_ENTITY_ID i NIAS_KEY_ALIAS su već popunjeni u .example — vidi korak 0)
-
-cd ~/str-deploy/str_frontend
-git pull --ff-only origin develop
-exit                                      # natrag na svoj račun
 ```
 
-Prazna vrijednost NIJE isto što i nepostavljena — ključ koji ne postavljaš zakomentiraj.
-Datoteka `.env.preprod` mora postojati, inače `docker compose up` puca na `env_file`.
+Upisuje se **pet** vrijednosti; ostalo je u predlošku već popunjeno i ne dira se.
+
+| Ključ | Odakle | Napomena |
+| :--- | :--- | :--- |
+| `PREPROD_DB_USERNAME` | s CDU kutije | `ssh cdu; grep CDU_DB_USERNAME ~/str-rn/str_backend/.env.cdu` (vjerojatno `shorttermrental`) |
+| `PREPROD_DB_PASSWORD` | s CDU kutije | `ssh cdu; grep CDU_DB_PASSWORD ~/str-rn/str_backend/.env.cdu`; rezerva: `.env.cdu.bak.*` ili `docker exec str-backend-cdu env \| grep CDU_DB` |
+| `NIAS_KEYSTORE_PASSWORD` | Simon / FINA | lozinka za `nias-prod.p12` |
+| `DRAFT_ENC_KEY` | generiraj | `openssl rand -base64 32` — **nova** vrijednost; skice iz dumpa su ovdje nebitne |
+| `CAPTCHA_HMAC_KEY` | generiraj | `openssl rand -base64 32` — generiraj jednom i **ne** rotiraj |
+
+`NIAS_ENTITY_ID` i `NIAS_KEY_ALIAS` su **već popunjeni** u predlošku (vidi korak 0) — ne treba
+ih tipkati; pogrešno prepisan DN je najčešći način da NIAS ne prepozna servis.
+
+**Prazna vrijednost NIJE isto što i nepostavljena** — ključ koji ne postavljaš zakomentiraj.
+Najgadnija posljedica te razlike je `CAPTCHA_HMAC_KEY`: nepostavljen obori start s jasnom
+greškom, a **prazan pusti start** i tek `GET /api/captcha/challenge` vrati 500, pa su sva 4
+javna formulara mrtva bez ijedne greške u startup logu.
+
+Datoteka `.env.preprod` **mora postojati** — bez nje `docker compose up` puca na `env_file`.
+
+Na kraju frontend, pa natrag na svoj račun:
+
+```bash
+cd ~/str-deploy/str_frontend
+git pull --ff-only origin develop
+exit
+```
+
+### 4b. URL-ovi — što je efektivno i kad se dira
+
+URL-ovi **nisu** u `.env.preprod`; dolaze iz defaulta u `application-preprod.properties` i iz
+`environment:` bloka u `docker-compose.preprod.yml`. Efektivno stanje:
+
+| Namjena | Vrijednost |
+| :--- | :--- |
+| IdP metadata | `https://nias.gov.hr/metadata` |
+| SSO odredište (AuthnRequest) | `https://nias.gov.hr/sso-http` — **iz metadate, ne konfigurira se** |
+| SLO odredište | `https://nias.gov.hr/ssout-http` (+ SOAP `…/ssout-soap`) — isto iz metadate |
+| Naš ACS | `http://s-str-02.infodom.hr:8086/login/saml2/sso/nias` |
+| Naš SLO (HTTP) | `http://s-str-02.infodom.hr:8086/logout/saml2/slo/nias` |
+| Naš SLO (SOAP) | `http://s-str-02.infodom.hr:8086/logout/saml2/soap/nias` |
+| Nakon prijave | `http://s-str-02.infodom.hr:8085/registration-number` |
+| Nakon neuspjele prijave | `http://s-str-02.infodom.hr:8085/?nias_error=true` |
+| Nakon odjave | `http://s-str-02.infodom.hr:8085/` |
+| CORS / frontend base | `http://s-str-02.infodom.hr:8085` |
+| Frontend → backend (`VITE_API_URL`) | `http://s-str-02.infodom.hr:8086` (build arg, ne runtime) |
+
+Dirati ih treba **samo** ako NIAS uz certifikat ima registrirane druge — tada se u
+`.env.preprod` odkomentiraju `NIAS_ACS_URL` / `NIAS_SLO_URL` / `NIAS_*_REDIRECT_URL` i upišu te
+vrijednosti. Mijenja li se port ili host, mijenja se i `VITE_API_URL` u
+`docker-compose.preprod.yml`, jer je to **build-time** argument — sam restart ga ne mijenja,
+treba `--build`.
 
 ## 5. Oboriti dev, dignuti preprod
 
@@ -226,7 +311,7 @@ U logu se **ne smije** pojaviti:
 | `app.captcha.hmac-key must be overridden` | `CAPTCHA_HMAC_KEY` nije postavljen (vrijedi ugrađeni default) |
 | `Could not resolve placeholder 'NIAS_ENTITY_ID'` | korak 0 nije odrađen |
 | `UnrecoverableKeyException` ili NPE na keystoreu | pogrešan `NIAS_KEY_ALIAS` ili lozinka keystorea |
-| `permission denied to set role "str_owner"` | user nije član role (preflight 2b) |
+| `permission denied to set role "str_owner"` | user nije član role (preflight 2c) |
 
 Funkcionalna provjera:
 
