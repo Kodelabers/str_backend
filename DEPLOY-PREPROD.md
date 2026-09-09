@@ -152,23 +152,71 @@ prema `nias.gov.hr:443`.
 
 ### 2c. Baza: shema, changelog, članstvo u roli
 
-```bash
-psql "postgresql://<user>@s-str-02.infodom.hr:5431/eturizam" \
-     -c "\dn str_rn" \
-     -c "select count(*) from str_rn.databasechangelog" \
-     -c "select pg_has_role(current_user,'str_owner','member')"
+**`psql` NIJE instaliran na kutiji**, a `apt install postgresql-client` traži admina — ne
+instalirati samovoljno na dijeljenoj kutiji. Tri načina bez toga, po redu preferencije.
+
+#### A. S laptopa (preferirano — ništa se ne instalira)
+
+Dok je InfoDom VPN gore, port 5431 je dohvatljiv po imenu hosta (isto onako kako se spaja i
+aplikacija). Na Windowsu je `psql` u `C:\Program Files\PostgreSQL\17\bin`.
+
+Jedna komanda odgovara na cijelo pitanje — replicira **točno** ono što radi aplikacijski JDBC
+URL, uključujući `options`:
+
+```powershell
+psql "postgresql://<user>@s-str-02.infodom.hr:5431/eturizam?options=-c%20role%3Dstr_owner" -c "select current_user, session_user"
 ```
 
-Kako čitati:
+Prođe li i vrati `current_user = str_owner`, konekcija sa `SET ROLE` radi. Padne li s
+`permission denied to set role`, user nije član role.
+
+Detaljnije:
+
+```powershell
+psql "postgresql://<user>@s-str-02.infodom.hr:5431/eturizam" `
+  -c "\dn str_rn" `
+  -c "select count(*) from str_rn.databasechangelog" `
+  -c "select rolname from pg_roles where pg_has_role(current_user, oid, 'member') order by 1"
+```
+
+Zadnji upit ispisuje **sve** role kojih je user član — informativnije od `pg_has_role(...)`
+boolean-a, i odmah se vidi kako se rola točno zove ako nije `str_owner`. Lozinku ne stavljati u
+`$env:PGPASSWORD`; pustiti psql da pita.
+
+#### B. Na kutiji, kroz postojeći Postgres kontejner
+
+Postgres na :5431 je kontejner `str2-*` stacka, pa `psql` postoji *u njemu*:
+
+```bash
+sudo docker ps --format '{{.Names}}' | grep -i postgres        # nađi točno ime
+sudo docker exec -i <ime-kontejnera> psql -U <user> -d eturizam \
+  -c "select rolname from pg_roles where pg_has_role(current_user, oid, 'member') order by 1"
+```
+
+Iznutra ide preko lokalnog socketa, pa lozinka često nije potrebna (`trust`/`peer`).
+**Samo read-only upiti** — to je tuđi stack, ne restartati ga i ne dirati mu podatke.
+
+#### C. Zadnja opcija — pustiti Liquibase da kaže
+
+Nije preflight (dev stack u tom trenutku već leži), ali je definitivno. Nakon `up` u logu:
+
+| Zapis | Znači |
+| :--- | :--- |
+| `permission denied to set role "str_owner"` | user nije član role → tražiti da ga se doda |
+| `FATAL: database "eturizam" does not exist` | dump nije na tom serveru |
+| Liquibase pada na `default-schema` / `str_rn` ne postoji | `CREATE SCHEMA str_rn AUTHORIZATION str_owner;` |
+| `Started StrBackendApplication` | sve troje je bilo u redu |
+
+#### Kako čitati rezultat
 
 - **`str_rn` ne postoji** → Liquibase pada; na `preprod` profilu shemu nitko ne kreira
   (`LocalDatabaseConfig` radi samo na `local`/`mock`). Riješi s
   `CREATE SCHEMA str_rn AUTHORIZATION str_owner;` pa ponovi.
 - **`databasechangelog` postoji** → Liquibase samo validira checksume i primijeni zaostatak.
   Changeseti su nepromjenjivi nakon primjene; izmjena postojećeg = `ValidationFailedException`.
-- **`pg_has_role` vraća `f`** → user nije član `str_owner`, pa konekcija s
-  `options=-c role=str_owner` pada **već na handshakeu** (ne na prvom upitu). Traži da ga se doda
-  u rolu; ne skidaj `options` iz URL-a jer bi zapisi išli u pogrešno vlasništvo.
+- **`SET ROLE` ne prolazi** → konekcija s `options=-c role=str_owner` pada **već na handshakeu**
+  (ne na prvom upitu). Traži da se usera doda u rolu; **ne** skidaj `options` iz URL-a jer bi
+  zapisi išli u pogrešno vlasništvo.
 
 ## 3. Keystore na kutiju
 
