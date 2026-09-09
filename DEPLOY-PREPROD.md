@@ -218,6 +218,85 @@ Nije preflight (dev stack u tom trenutku već leži), ali je definitivno. Nakon 
   (ne na prvom upitu). Traži da se usera doda u rolu; **ne** skidaj `options` iz URL-a jer bi
   zapisi išli u pogrešno vlasništvo.
 
+### 2d. Prava na vanjske sheme — izmjereno 09.09.2026.
+
+Preflight na `eturizam` @ `s-str-02:5431` dao je ovo (user `shorttermrental`, član samo role
+`str_owner`, `SET ROLE str_owner` radi):
+
+| Shema | Owner | `USAGE` za `str_owner` | `CREATE` | Tablica (`pg_tables`) |
+| :--- | :--- | :--- | :--- | :--- |
+| `str_rn` | `str_owner` (naša) | ✅ | ✅ | 0 — **shema je prazna** |
+| `str` | `tustart_owner` | ✅ (`str_owner=U/tustart_owner`) | ✗ (i treba tako — read-only) | 144 |
+| `rpj_dgu` | `gis_owner` | ❌ | ✗ | 8 |
+| `eturizam_test` | `gis_owner` | ❌ | ✗ | 9 |
+
+**`str_rn` je prazan.** „Dump produkcije" je produkcija **eTurizma** (`str`), ne STR-ovih
+podataka — naša shema tamo nikad nije postojala. Liquibase zato vrti **cijeli changelog od
+nule**, a registar na preprodu starta **bez ijednog registracijskog broja**. To mijenja
+očekivanja za testiranje: `select count(*) from str_rn.registration_number` je 0, i tako treba
+biti. `CREATE` na `str_rn` je potvrđen, pa Liquibase prolazi.
+
+#### ⚠️ Blokada: nema pristupa adresnim registrima
+
+`nspacl` za `rpj_dgu` i `eturizam_test` je **prazan** — nema nikakvih grantova osim implicitnih
+ownerovih (ni `developers`). `to_regclass('rpj_dgu.zupanije')` pada s
+`ERROR: permission denied for schema rpj_dgu`. Cijela adresna kaskada registracijskog formulara
+čita odande:
+
+| Entitet | Tablica |
+| :--- | :--- |
+| `CountyEntity` | `rpj_dgu.zupanije` |
+| `MunicipalityEntity` | `rpj_dgu.gradovi_i_opcine` |
+| `SettlementEntity` | `rpj_dgu.naselja` |
+| poštanski broj | `rpj_dgu.postanski_brojevi` |
+| `StreetEntity` | `eturizam_test.ar_ulice` |
+| `HouseNumberEntity` | `eturizam_test.ar_address` |
+
+**Aplikacija se digne normalno** — ništa od toga ne dira startup — i padaju tek padajući
+izbornici za adresu. Tiha greška koja se otkriva na prvom testu formulara, pa je ovdje
+zapisana.
+
+Rješenje nije u našoj konfiguraciji (nema alternativne role: `shorttermrental` je član samo
+`str_owner`), nego grant od `gis_owner`. **Precedent postoji** — `tustart_owner` je za svoju
+shemu `str` dao točno to, pa se traži isto, a ne šira prava:
+
+```sql
+-- izvršava gis_owner (ili superuser); samo SELECT, te su sheme za nas read-only
+GRANT USAGE  ON SCHEMA rpj_dgu       TO str_owner;
+GRANT USAGE  ON SCHEMA eturizam_test TO str_owner;
+GRANT SELECT ON ALL TABLES IN SCHEMA rpj_dgu       TO str_owner;
+GRANT SELECT ON ALL TABLES IN SCHEMA eturizam_test TO str_owner;
+
+-- da i buduće tablice budu čitljive bez ponovnog granta
+ALTER DEFAULT PRIVILEGES FOR ROLE gis_owner IN SCHEMA rpj_dgu       GRANT SELECT ON TABLES TO str_owner;
+ALTER DEFAULT PRIVILEGES FOR ROLE gis_owner IN SCHEMA eturizam_test GRANT SELECT ON TABLES TO str_owner;
+```
+
+Ponovna provjera nakon granta:
+
+```powershell
+psql "postgresql://shorttermrental@s-str-02.infodom.hr:5431/eturizam?options=-c%20role%3Dstr_owner" `
+  -c "select has_schema_privilege('rpj_dgu','USAGE') as rpj, has_schema_privilege('eturizam_test','USAGE') as etur" `
+  -c "select count(*) from rpj_dgu.zupanije" `
+  -c "select count(*) from eturizam_test.ar_ulice"
+```
+
+**Deploy ne mora čekati grant.** Bez njega rade prijava (NIAS), javna verifikacija, pregled
+registra i akti; ne radi samo unos nove registracije preko formulara. Ako se ide bez granta,
+to treba reći testerima unaprijed, inače će prijaviti „formular ne radi" kao bug.
+
+#### Korisni upiti koje treba znati
+
+- `information_schema.tables` je **filtriran po privilegijama** i broji i poglede — nije mjera
+  postojanja. Za pravo stanje ide `pg_tables` (samo tablice, bez filtriranja). Odatle i razlika
+  `str`: 154 u `information_schema` vs 144 u `pg_tables` = 10 pogleda.
+- `to_regclass('shema.tablica')` vraća `NULL` umjesto greške kad tablice nema — ali **pada** ako
+  na shemi nema `USAGE`. Za sondiranje prava koristiti `has_schema_privilege(...)`, koja čita
+  katalog i ne traži `USAGE`.
+- `nspacl` + `pg_get_userbyid(nspowner)` daju točan zahtjev za DBA-a (kome je što već dano),
+  umjesto traženja širokih prava.
+
+
 ## 3. Keystore na kutiju
 
 Prijenos ide **s laptopa preko VPN-a**; keystore nikad ne ulazi u git (`.gitignore` blokira
@@ -371,11 +450,22 @@ curl -s http://s-str-02.infodom.hr:8086/saml2/service-provider-metadata/nias | h
 SP metadata mora nositi **naš** `entityID` (Subject DN iz certifikata) i ACS na
 `http://s-str-02.infodom.hr:8086/login/saml2/sso/nias`.
 
-Da su podaci pravi, a ne mock:
+Da je Liquibase odradio i da su vanjski podaci pravi:
 
 ```sql
-select count(*) from str_rn.registration_number;   -- produkcijski RB-ovi
-select count(*) from rpj_dgu.zupanije;             -- pravi registar (lokalni mock ima 4)
+-- naša shema: ~60 tablica nakon prvog runa (prije njega je str_rn bio PRAZAN)
+select count(*) from pg_tables where schemaname = 'str_rn';
+
+-- registar starta PRAZAN: dump je produkcija eTurizma, ne STR-ovih podataka.
+-- 0 je ispravan rezultat, ne znak da nešto ne radi.
+select count(*) from str_rn.registration_number;
+
+-- eTurizam objekti — pravi podaci (str shema, 144 tablice u dumpu)
+select count(*) from str.facility;
+
+-- adresni registar: RADI SAMO NAKON GRANTA od gis_owner (vidi §2d).
+-- Bez granta: ERROR: permission denied for schema rpj_dgu — očekivano, nije bug.
+select count(*) from rpj_dgu.zupanije;
 ```
 
 ## 7. Iz browsera
