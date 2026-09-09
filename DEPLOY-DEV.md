@@ -1,5 +1,14 @@
 # Deploy — InfoDom dev okolina (`s-str-02`)
 
+> **STANJE 09.09.2026.: ova okolina je zamijenjena predprodukcijom.** Portovi 8085/8086 na
+> `s-str-02` sad drži `preprod` stack (baza `eturizam` = produkcijski dump, produkcijski NIAS,
+> eGOP ugašen) — vidi `DEPLOY-PREPROD.md`. Dva stacka ne mogu raditi istovremeno jer dijele
+> portove, pa je eGOP testiranje zaustavljeno dok je preprod gore.
+>
+> Ovaj dokument ostaje valjan za **povratak na eGOP**: `docker-compose.yml`, `.env.dev` i
+> `application-dev.properties` su netaknuti. Dovoljno je oboriti preprod
+> (`sudo docker compose -f docker-compose.preprod.yml down`) pa odraditi §5 ispod.
+
 Ovo je **jedina okolina s koje je eGOP dohvatljiv** (eGOP test je na internoj InfoDom mreži,
 `http://egop2builder/EAI_MINT`). CDU ga ne vidi, pa tamo `EGOP_ENABLED` ostaje `false`.
 Za CDU vidi `DEPLOY-CDU.md`.
