@@ -41,11 +41,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.security.KeyStoreException;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.zip.Inflater;
 
@@ -64,12 +67,65 @@ public class NiasSamlConfig {
         try (FileInputStream fis = new FileInputStream(props.keystorePath())) {
             ks.load(fis, props.keystorePassword().toCharArray());
         }
+
         PrivateKey privateKey = (PrivateKey) ks.getKey(props.keyAlias(), props.keystorePassword().toCharArray());
         X509Certificate cert = (X509Certificate) ks.getCertificate(props.keyAlias());
+
+        // Pogrešan alias inače prođe tiho: getKey/getCertificate vrate null, a puca tek
+        // Saml2X509Credential s porukom iz koje se ne vidi da je alias kriv. Keystore obično ima
+        // i CA certifikate (trustedCertEntry) koji NEMAJU privatni ključ, pa je "pogodio sam alias,
+        // ali nije onaj pravi" realan scenarij — zato ispis kandidata.
+        if (privateKey == null || cert == null) {
+            throw new IllegalStateException(
+                    "NIAS keystore '" + props.keystorePath() + "': alias '" + props.keyAlias()
+                            + "' ne daje " + (privateKey == null ? "privatni ključ" : "certifikat")
+                            + ". Aliasi u keystoreu: " + describeAliases(ks)
+                            + ". Ispravi nias.saml.key-alias (NIAS_KEY_ALIAS).");
+        }
+
+        log.info("NIAS SP certifikat: alias={} subjectDN={} vrijedi_do={}",
+                props.keyAlias(), cert.getSubjectX500Principal().getName("RFC1779"), cert.getNotAfter());
+
+        long danaDoIsteka = ChronoUnit.DAYS.between(Instant.now(), cert.getNotAfter().toInstant());
+        if (danaDoIsteka < 0) {
+            log.error("NIAS SP certifikat je ISTEKAO ({}) — prijava preko NIAS-a neće raditi", cert.getNotAfter());
+        } else if (danaDoIsteka < 90) {
+            log.warn("NIAS SP certifikat istječe za {} dana ({}) — zatražiti novi", danaDoIsteka, cert.getNotAfter());
+        }
+
+        // NIAS ne čita SP metadatu; ima hardkodiranu konfiguraciju vezanu uz certifikat, pa
+        // entity-id MORA biti Subject DN tog certifikata. Razlika je najčešći uzrok
+        // "NIAS ne prepoznaje servis", a bez ovoga se ne vidi nigdje.
+        String certDn = cert.getSubjectX500Principal().getName("RFC1779");
+        if (!normalizeDn(certDn).equals(normalizeDn(props.entityId()))) {
+            log.warn("NIAS entity-id se NE poklapa sa Subject DN-om certifikata — NIAS vjerojatno "
+                            + "neće prepoznati servis. entity-id=[{}] certDN=[{}]",
+                    props.entityId(), certDn);
+        }
+
         return new Saml2X509Credential(
                 privateKey, cert,
                 Saml2X509CredentialType.SIGNING,
                 Saml2X509CredentialType.DECRYPTION);
+    }
+
+    /** Aliasi s oznakom ima li unos privatni ključ — samo takav se može koristiti za potpisivanje. */
+    private static String describeAliases(KeyStore ks) {
+        try {
+            List<String> opis = new ArrayList<>();
+            for (Enumeration<String> e = ks.aliases(); e.hasMoreElements(); ) {
+                String alias = e.nextElement();
+                opis.add("'" + alias + "'" + (ks.isKeyEntry(alias) ? " (ima privatni ključ)" : " (samo certifikat)"));
+            }
+            return String.join(", ", opis);
+        } catch (KeyStoreException e) {
+            return "[nije moguće pročitati: " + e.getMessage() + "]";
+        }
+    }
+
+    /** DN se ispisuje u više formata (razmaci nakon zareza, redoslijed nekih atributa) — usporedi grubo. */
+    private static String normalizeDn(String dn) {
+        return dn == null ? "" : dn.replace(" ", "").toUpperCase();
     }
 
     @Bean

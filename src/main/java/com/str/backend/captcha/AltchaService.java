@@ -26,6 +26,17 @@ public class AltchaService {
     private final SecureRandom random = new SecureRandom();
 
     public AltchaService(AltchaProperties props, ObjectMapper mapper) {
+        // Blank je zaseban slučaj od ugrađenog defaulta, i gadniji: `CAPTCHA_HMAC_KEY=` u .env-u je
+        // POSTAVLJENA prazna varijabla koja pregazi Spring default, pa se do sada start uspješno
+        // dizao, a HMAC pucao tek na prvom pozivu formulara — SecretKeySpec odbija prazan ključ, pa
+        // je GET /api/captcha/challenge vraćao 500 i sva 4 javna formulara bila neupotrebljiva bez
+        // ijednog upozorenja u startup logu. Bolje odmah oboriti start s jasnom porukom.
+        if (props.enabled() && (props.hmacKey() == null || props.hmacKey().isBlank())) {
+            throw new IllegalStateException(
+                    "app.captcha.hmac-key is empty or unset — set CAPTCHA_HMAC_KEY (openssl rand -base64 32). "
+                            + "An empty env var overrides the Spring default, so the captcha endpoints would "
+                            + "fail at runtime instead of here");
+        }
         if (props.enabled() && DEFAULT_HMAC_KEY.equals(props.hmacKey())) {
             throw new IllegalStateException(
                     "app.captcha.hmac-key must be overridden via CAPTCHA_HMAC_KEY env var before enabling captcha");

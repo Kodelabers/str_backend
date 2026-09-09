@@ -490,6 +490,55 @@ select count(*) from str.facility;
 select count(*) from rpj_dgu.zupanije;
 ```
 
+### Startup dijagnostika — `startup_*` linije
+
+Nakon dizanja konteksta `StartupDiagnostics` ispisuje jedan blok s efektivnom konfiguracijom i
+stanjem prava na bazi. Postoji zbog toga što se dio problema **inače ne vidi na startupu**, nego
+prvi put pukne kad tester otvori formular.
+
+```bash
+sudo docker logs str-backend-preprod 2>&1 | grep startup_
+```
+
+| Linija | Što potvrđuje / na što pazi |
+| :--- | :--- |
+| `startup_config` | profil, DB URL, liquibase shema i konteksti. Mora pisati `profili=[preprod]` i `liquibase_contexts=preprod` |
+| `startup_db current_user=… session_user=…` | `SET ROLE` je prošao: očekuj `current_user=str_owner`, `session_user=shorttermrental` |
+| `startup_schema_ok tablica=… redova=…` | shema i tablica su čitljive; `str_rn.registration_number redova=0` je **ispravno** na prvom deployu |
+| `startup_schema_missing shema=rpj_dgu` (**ERROR**) | nema `USAGE` → adresna kaskada ne radi. Traži grant (§2d) |
+| `startup_schema_unreadable tablica=…` (**ERROR**) | shema dostupna, tablica nije (nema `SELECT`) |
+| `startup_schema_writeback … UPDATE=false` (WARN) | RB se ne upisuje natrag u eTurizam; RB ostaje valjan |
+| `startup_nias enabled=true entity_id=… alias=…` | vidi se čime se predstavljamo, bez tajni |
+| `startup_nias_urls acs=… slo=…` | usporedi s onim što je NIAS registrirao |
+| `startup_egop enabled=false` | uz napomenu da mock KLASI/URBROJU dodaje prefiks `MOCK-` |
+| `startup_mail enabled=false` | mora biti `false`; uz `true` piše „POZOR: poruke stvarno izlaze" |
+| `startup_captcha hmac_key=postavljen` | `PRAZAN` ili `UGRAĐENI DEFAULT` znači da `.env.preprod` nije primijenjen |
+
+Dijagnostika je zaokružena u `try/catch` i **nikad ne obara start** — greška u sondi je samo
+`startup_*_report_failed` WARN.
+
+### Gdje će prvi deploy najvjerojatnije puknuti
+
+Poredano po vjerojatnosti, s točnim zapisom u logu:
+
+| # | Zapis | Uzrok | Rješenje |
+| :--- | :--- | :--- | :--- |
+| 1 | `app.captcha.hmac-key is empty or unset` | `CAPTCHA_HMAC_KEY` prazan ili nepostavljen | upiši ga u `.env.preprod` (§4) |
+| 2 | `Could not resolve placeholder 'NIAS_ENTITY_ID'` | `.env.preprod` nije primijenjen ili ključ fali | provjeri `env_file` i datoteku |
+| 3 | `alias '…' ne daje privatni ključ. Aliasi u keystoreu: …` | pogrešan `NIAS_KEY_ALIAS` | poruka **ispisuje sve aliase** i tko od njih ima privatni ključ |
+| 4 | `UnrecoverableKeyException` / `keystore password was incorrect` | pogrešan `NIAS_KEYSTORE_PASSWORD` | — |
+| 5 | Pad na `RelyingPartyRegistrations.fromMetadataLocation` | kutija ne vidi `https://nias.gov.hr/metadata` | preflight §2b; privremeno `NIAS_SAML_ENABLED=false` |
+| 6 | `permission denied to set role "str_owner"` | user nije član role | §2c |
+| 7 | Liquibase `ValidationFailedException` | netko je mijenjao već primijenjeni changeset | novi changeset, nikad izmjena starog |
+| 8 | `startup_schema_missing shema=rpj_dgu` (servis RADI) | nema granta na adresne registre | §2d; nije blokada za start |
+
+Uz to, dva upozorenja koja ne ruše start ali mijenjaju ponašanje:
+
+- `NIAS SP certifikat istječe za N dana` — certifikat vrijedi do 08.11.2026.
+- `NIAS entity-id se NE poklapa sa Subject DN-om certifikata` — NIAS tada ne prepoznaje servis;
+  ispisuje obje vrijednosti za usporedbu.
+
+
 ## 7. Iz browsera
 
 ```
