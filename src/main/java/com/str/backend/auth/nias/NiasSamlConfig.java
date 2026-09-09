@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.saml2.core.Saml2X509Credential;
+import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.saml2.core.Saml2X509Credential.Saml2X509CredentialType;
 import org.springframework.security.saml2.provider.service.authentication.DefaultSaml2AuthenticatedPrincipal;
 import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication;
@@ -204,6 +205,23 @@ public class NiasSamlConfig {
     public AuthenticationFailureHandler niasAuthenticationFailureHandler(NiasSamlProperties props) {
         return (request, response, exception) -> {
             jakarta.servlet.http.HttpSession session = request.getSession(false);
+
+            // Bez ovoga se neuspjela prijava vidi samo kao redirect na ?nias_error=true: Spring
+            // Security iznimku iz Saml2WebSsoAuthenticationFiltera ne logira iznad DEBUG-a, pa u
+            // logu ostane jedino OpenSAML-ov WARN o InResponseTo, koji ne kaže ZAŠTO je palo.
+            //
+            // sessionPresent je ovdje glavni podatak, ne usputni: NIAS na ACS šalje CROSS-SITE
+            // POST, a Spring spremljeni AuthnRequest drži u HttpSessionu. Stigne li POST bez
+            // sesijskog cookieja (SameSite=Lax ga na cross-site POST-u ne šalje, a SameSite=None
+            // traži Secure, koji preko plain HTTP-a otpada), AuthnRequest se ne nađe i validacija
+            // padne na InResponseTo. sessionPresent=false znači da je uzrok transport cookieja,
+            // a ne potpis, issuer ili odredište — dvije posve različite dijagnoze.
+            String kod = (exception instanceof Saml2AuthenticationException sae)
+                    ? sae.getSaml2Error().getErrorCode() + " / " + sae.getSaml2Error().getDescription()
+                    : exception.getClass().getSimpleName();
+            log.warn("NIAS prijava nije uspjela: {} | sessionPresent={} | remoteAddr={}",
+                    kod, session != null, request.getRemoteAddr(), exception);
+
             if (session != null) {
                 session.invalidate();
             }
