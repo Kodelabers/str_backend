@@ -6,7 +6,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -122,6 +125,20 @@ public class LessorEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /**
+     * Je li entitet učitan iz baze ili već spremljen. Postavljaju ga JPA callbackovi, ne aplikacijski
+     * kod. Služi isključivo kao brana u {@link #applyContact}.
+     */
+    @Transient
+    @Getter(lombok.AccessLevel.NONE)
+    private boolean managed;
+
+    @PostLoad
+    @PostPersist
+    void markManaged() {
+        this.managed = true;
+    }
+
     public static LessorEntity create(String firstName, String lastName, String street, String streetNumber,
                                       String place, String county, String email) {
         LessorEntity e = new LessorEntity();
@@ -197,6 +214,39 @@ public class LessorEntity {
         this.representativeEmail = representativeEmail;
         this.representativePhone = representativePhone;
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Upisuje kontakt sa zahtjeva za registracijski broj, uključujući e-mail.
+     *
+     * <p>Pozvati <b>prije prve pohrane</b> — {@code email} je {@code updatable = false}, pa se
+     * upisuje samo na INSERT. Isti obrazac kao {@link #applyLegalEntityOwner}: ovo je dovršetak
+     * konstrukcije, ne izmjena, pa se {@code updatedAt} ne dira.
+     *
+     * <p>Postoji jer {@code StrLessorLookupService} gradi iznajmljivača iz {@code str.subject*},
+     * gdje kontakta nema — dosad je e-mail ostajao {@code null} i, budući da je stupac
+     * neizmjenjiv, nije ga se moglo popuniti naknadno. Posljedica je bio prazan kontakt blok u
+     * PDF-u i preskočena obavijest o izdanom RB-u.
+     *
+     * <p>Za već pohranjenog iznajmljivača (non-EU samoregistracija) koristiti
+     * {@link #setContact} — e-mail je ondje identitet računa i ne mijenja se. Poziv na entitetu
+     * učitanom iz baze baca {@link IllegalStateException}: JPA novi e-mail ne bi upisao
+     * ({@code updatable = false}), ali bi ga objekt u memoriji do kraja transakcije prikazivao,
+     * pa bi PDF i obavijest u istoj transakciji pročitali vrijednost koje u bazi nema.
+     *
+     * <p>Granica zaštite: {@code id} se dodjeljuje ručno, pa {@code repository.save()} radi
+     * {@code merge}, a ne {@code persist}. Upravljana postaje <i>kopija</i>, a objekt predan u
+     * {@code save()} ostaje neoznačen — na njemu se poziv ne odbija.
+     */
+    public void applyContact(String email, String contactName, String phoneNumber, String mobileNumber) {
+        if (managed) {
+            throw new IllegalStateException("applyContact na već spremljenom iznajmljivaču " + lessorId
+                    + " — email je updatable=false i ne bi se upisao. Za spremljenog koristiti setContact.");
+        }
+        this.email = email;
+        this.contactName = contactName;
+        this.phoneNumber = phoneNumber;
+        this.mobileNumber = mobileNumber;
     }
 
     public void setContact(String contactName, String phoneNumber, String mobileNumber,

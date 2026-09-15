@@ -115,6 +115,9 @@ public class NiasFacilityService {
                 row.getSettlementName(),
                 row.getStreetName(),
                 row.getHouseNumber(),
+                row.getPostalCode(),
+                row.getContactEmail(),
+                row.getContactPhone(),
                 FacilityClaimVerifier.lockedFields(row));
     }
 
@@ -143,6 +146,8 @@ public class NiasFacilityService {
                     row.getPostalCode(),
                     row.getFullAddress(),
                     rn != null ? rn : ownRns.get(facilityId),
+                    row.getContactEmail(),
+                    row.getContactPhone(),
                     FacilitySource.ETURIZAM));
         }
         return items;
@@ -184,6 +189,8 @@ public class NiasFacilityService {
                 null,
                 null, null, null, null, null, null,
                 d.getAddressText(),
+                null,
+                null,
                 null,
                 FacilitySource.PRIVREMENO_RJESENJE);
     }

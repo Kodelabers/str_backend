@@ -64,7 +64,8 @@ class NiasFacilityControllerTest {
         when(facilityService.list(eq(OIB), any(), any())).thenReturn(new FacilityPageResponse(
                 List.of(new FacilityResponse("153049", "Soba 1", "FS_SOBA", "Soba", "Tri zvjezdice",
                         "Aktivan", 2, null, "Splitsko-dalmatinska", "Makarska", "Makarska",
-                        "Kraljevska", "88", "21300", "Kraljevska 88", null, FacilitySource.ETURIZAM)),
+                        "Kraljevska", "88", "21300", "Kraljevska 88", null,
+                        "soba1@example.com", "021111222", FacilitySource.ETURIZAM)),
                 0, 20, 1));
 
         mvc.perform(get("/api/nias/facilities").param("page", "0").param("size", "20"))

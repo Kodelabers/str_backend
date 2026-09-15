@@ -26,5 +26,13 @@ public record FacilityClaimResponse(
         String naseljeNaziv,
         String ulicaNaziv,
         String kucniBrojNaziv,
+        String postanskiBroj,
+        /**
+         * Kontakt objekta iz eTurizma — predpopuna kontakt bloka (stavke 10-11 sa sastanka
+         * 10.09.2026.). Namjerno <b>nije</b> u {@code zakljucanaPolja}: kontakt je promjenjiv
+         * podatak, ne identitet objekta, pa zastarjeli e-mail mora biti ispravljiv.
+         */
+        String kontaktEmail,
+        String kontaktTelefon,
         List<String> zakljucanaPolja) {
 }

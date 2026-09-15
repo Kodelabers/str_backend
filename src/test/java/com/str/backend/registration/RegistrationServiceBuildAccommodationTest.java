@@ -2,7 +2,9 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyRepository;
+import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementRepository;
 import com.str.backend.domain.OfferType;
@@ -36,10 +38,16 @@ class RegistrationServiceBuildAccommodationTest {
 
     private final AccommodationTypeRepository accommodationTypeRepository =
             mock(AccommodationTypeRepository.class);
+    private final HouseNumberRepository houseNumberRepository = mock(HouseNumberRepository.class);
+
+    /** Kućni broj iz registra na koji zahtjev pokazuje — Marulićeva 5, Split. */
+    private static final long HOUSE_NUMBER_ID = 10051L;
 
     @BeforeEach
     void setUp() {
         lenient().when(accommodationTypeRepository.existsById(1L)).thenReturn(true);
+        lenient().when(houseNumberRepository.findCadastreById(HOUSE_NUMBER_ID))
+                .thenReturn(Optional.of(registryRow("5", "Marulićeva", "337323|430/1", "SPLIT")));
     }
 
     private RegistrationService newService() {
@@ -56,7 +64,18 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(SettlementRepository.class),
                 accommodationTypeRepository,
                 mock(FacilityClaimVerifier.class),
+                new CadastreResolver(houseNumberRepository),
                 mock(ApplicationEventPublisher.class));
+    }
+
+    private static HouseNumberRepository.CadastreRow registryRow(String broj, String ulica,
+                                                                 String kcBroj, String katOpcina) {
+        return new HouseNumberRepository.CadastreRow() {
+            @Override public String getBroj() { return broj; }
+            @Override public String getNazivUlice() { return ulica; }
+            @Override public String getKcBroj() { return kcBroj; }
+            @Override public String getKatOpcinaNaziv() { return katOpcina; }
+        };
     }
 
     private RegistrationRequest fullRequest(Boolean host) {
@@ -67,13 +86,15 @@ class RegistrationServiceBuildAccommodationTest {
         return new RegistrationRequest(
                 "12312312316", "AP1", typeId,
                 7L, "Split", "Meje",
-                "Marulićeva", "5", null, "21000",
+                "Marulićeva", "5", HOUSE_NUMBER_ID, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.PART,
                 true, "3", false, true,
                 Boolean.TRUE, Boolean.TRUE,
                 LocalDate.of(2026, 1, 15), LocalDate.of(2027, 1, 15),
-                host, null, "1448035");
+                host, null, "1448035",
+                "iznajmljivac@example.com", "0991234567", null, null,
+                "430/1");
     }
 
     @Test
@@ -97,6 +118,11 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.isApartments()).isFalse();
         assertThat(e.isLegalized()).isTrue();
         assertThat(e.getLessorResidence()).isTrue();
+        // Katastar dolazi iz registra po kucniBrojId, ne iz zahtjeva: općina zahtjev ni ne nosi,
+        // a šifra je sirova registarska vrijednost s prefiksom katastarske općine.
+        assertThat(e.getCadastralMunicipality()).isEqualTo("SPLIT");
+        assertThat(e.getCadastralParcelNumber()).isEqualTo("430/1");
+        assertThat(e.getHouseNumberCode()).isEqualTo("337323|430/1");
         assertThat(e.getCoOwnerConsent()).isTrue();
         assertThat(e.getConsentDate()).isEqualTo(LocalDate.of(2026, 1, 15));
         assertThat(e.getConsentWithdrawalDate()).isEqualTo(LocalDate.of(2027, 1, 15));

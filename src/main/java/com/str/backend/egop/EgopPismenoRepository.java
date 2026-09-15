@@ -22,6 +22,25 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
     List<EgopPismenoEntity> findByRnOrderByCreatedAtAsc(String rn);
 
     /**
+     * Koliko je pismena u predmetu već <b>urudžbirano</b>. Sljedeći redni broj je ovo + 1 —
+     * sjeme za {@code LocalFilingNumberAllocator} kad eGOP nije uključen.
+     *
+     * <p>{@code urBroj IS NOT NULL} je nosivi uvjet: akti životnog ciklusa se upisuju
+     * <b>prije</b> slanja ({@code EgopPismenoEntity.forAct} ostavlja {@code urBroj} prazan),
+     * pa bi brojanje svih redaka trećem aktu dalo 4 umjesto 3.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT COUNT(p) FROM EgopPismenoEntity p
+            WHERE p.urBroj IS NOT NULL
+              AND p.submissionId IN (SELECT s.submissionId FROM SubmissionEntity s
+                                      WHERE s.egopUredskaGodina = :uredskaGodina
+                                        AND s.egopRbrPredmeta = :rbrPredmeta)
+            """)
+    long countFiledInPredmet(@Param("uredskaGodina") int uredskaGodina,
+                             @Param("rbrPredmeta") int rbrPredmeta);
+
+    /**
      * Dedupe ključ urudžbiranja — poklapa se s unique constraintom
      * {@code uq_egop_pismeno_submission_vrsta_act} (changeset 054). {@code actRef} razrješava
      * ponovljive akte: dvije suspenzije istog RB-a su dva različita akta iste vrste.

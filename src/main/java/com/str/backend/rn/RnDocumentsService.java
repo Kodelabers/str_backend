@@ -8,6 +8,7 @@ import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.dto.RnDocumentDto;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,14 @@ import java.util.UUID;
  *
  * <p>Servis samo čita i sastavlja podatke; sam render i download rade endpointi na
  * {@code RnController}.
+ *
+ * <p><b>{@code str.rn.documents.zahtjev-visible}</b> (default {@code true}) izbacuje zahtjev iz
+ * popisa. Naručitelj traži da se nakon izdavanja RB-a prikaže samo jedna obavijest — ona o
+ * dodjeli. Zastavica je <b>isključivo za popis</b>: podnesak i dalje postoji, nosi urudžbeni
+ * broj 1, ostaje pohranjen na {@code submission.pdf_content} i dohvatljiv na
+ * {@code GET /api/rn/{rn}/documents/zahtjev} te na
+ * {@code GET /api/generateRegistrationNumber/{submissionId}/pdf}. Ne pretvarati je u 404 —
+ * podnesak je po čl. 71. ZUP-a dio spisa.
  */
 @Service
 public class RnDocumentsService {
@@ -44,13 +53,16 @@ public class RnDocumentsService {
     private final RnRepository rnRepository;
     private final SubmissionRepository submissionRepository;
     private final EgopPismenoRepository egopPismenoRepository;
+    private final boolean zahtjevVisible;
 
     public RnDocumentsService(RnRepository rnRepository,
                               SubmissionRepository submissionRepository,
-                              EgopPismenoRepository egopPismenoRepository) {
+                              EgopPismenoRepository egopPismenoRepository,
+                              @Value("${str.rn.documents.zahtjev-visible:true}") boolean zahtjevVisible) {
         this.rnRepository = rnRepository;
         this.submissionRepository = submissionRepository;
         this.egopPismenoRepository = egopPismenoRepository;
+        this.zahtjevVisible = zahtjevVisible;
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +76,7 @@ public class RnDocumentsService {
                 ? submissionRepository.findById(entity.getSubmissionId()).orElse(null)
                 : null;
 
-        if (submission != null && submission.getPdfContent() != null) {
+        if (zahtjevVisible && submission != null && submission.getPdfContent() != null) {
             LocalDate izdano = toLocalDate(submission.getFilingDate() != null
                     ? submission.getFilingDate() : submission.getCreatedAt());
             out.add(new RnDocumentDto(null, StrDocumentType.ZAHTJEV.slug(),

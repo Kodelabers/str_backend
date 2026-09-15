@@ -20,6 +20,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
@@ -151,6 +152,16 @@ public class RnController {
      * je zaštićen dvostruko: {@code SecurityConfig} traži prijavu, a ovdje se iznajmljivača
      * ograničava na vlastite registracijske brojeve. Kad stignu interne role (BX0), voditelj
      * postupka prolazi kroz istu granu kao svaki ne-iznajmljivač.
+     *
+     * <p>{@code Content-Disposition: inline} — dokument se otvara u novom tabu, ne preuzima.
+     * Frontend ga mora otvoriti kao <b>top-level navigaciju</b> ({@code window.open}): tako
+     * sesijski kolačić putuje pod {@code SameSite=Lax} i {@link #requireAccess} prolazi, dok bi
+     * {@code fetch} bez {@code credentials} ili {@code <a download>} dobio 401. {@code <iframe>}
+     * ne radi — vrijedi Springov default {@code X-Frame-Options: DENY}.
+     *
+     * <p>{@code tip=zahtjev} ostaje dostupan i kad je {@code str.rn.documents.zahtjev-visible}
+     * ugašen — ta zastavica skriva podnesak <b>samo iz popisa</b>. Podnesak nosi urudžbeni broj 1
+     * i po ZUP-u je dio spisa, pa ga se ne smije zatvoriti s 404.
      */
     @GetMapping("/{rn}/documents/{tip}")
     public ResponseEntity<byte[]> document(
@@ -170,9 +181,9 @@ public class RnController {
             default -> documentService.render(type, rn, reason);
         };
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
+                .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + type.slug() + "-" + rn + ".pdf\"")
+                        "inline; filename=\"" + type.slug() + "-" + rn + ".pdf\"")
                 .body(pdf);
     }
 
@@ -189,9 +200,9 @@ public class RnController {
         requireAccess(rn, authentication);
         RnDocumentsService.StoredDocument doc = documentsService.storedAktPdf(rn, aktId);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
+                .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + doc.filename() + "\"")
+                        "inline; filename=\"" + doc.filename() + "\"")
                 .body(doc.pdf());
     }
 

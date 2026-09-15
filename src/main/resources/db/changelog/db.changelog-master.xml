@@ -195,4 +195,8 @@
          cross-site POST (vidi komentar u changesetu). -->
     <include file="db/changelog/changes/064-saml-auth-request.xml"/>
 
+    <!-- Katastar lokalno po pravoj shemi: ka_katastar_ko + ar_address.kat_opcina_id, kc_broj u
+         složenom obliku. Ispravlja 109, koji se ne smije mijenjati. -->
+    <include file="db/changelog/changes/124-eturizam-kat-opcina-local.xml"/>
+
 </databaseChangeLog>

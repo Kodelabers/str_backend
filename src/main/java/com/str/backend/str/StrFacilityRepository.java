@@ -56,6 +56,9 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getFullAddress();
         Integer getBeds();
         Integer getAuxiliaryBeds();
+        /** Kontakt objekta iz eTurizma — za predpopunu forme (vidi {@link FacilityOwnershipRow}). */
+        String getContactEmail();
+        String getContactPhone();
     }
 
     String LISTING_FROM = """
@@ -112,6 +115,8 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    coalesce(hn.name, a.house_number)       AS houseNumber,
                    coalesce(a.postal_code, se.postal_code) AS postalCode,
                    a.full_address                          AS fullAddress,
+                   f.email                                 AS contactEmail,
+                   f.phone                                 AS contactPhone,
                    coalesce(
                        (SELECT sum(fc.quantity) FROM str.facility_capacity fc
                           JOIN str.codebook_element ce ON ce.id = fc.type_id
@@ -154,6 +159,27 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getSettlementName();
         String getStreetName();
         String getHouseNumber();
+        String getPostalCode();
+
+        /**
+         * Kontakt objekta iz eTurizma — služi <b>samo</b> za predpopunu forme, ne i za provjeru.
+         * Kontakt je promjenjiv podatak, ne identitet objekta; zaključavanje bi značilo da
+         * korisnik ne može ispraviti zastarjeli e-mail, a naručitelj traži suprotno.
+         *
+         * <p><b>Mjereno 11.09.2026. na obje okoline, uzorak 100 000 aktivnih objekata:</b>
+         * predprodukcija {@code email} 0,2 % / {@code phone} 0,1 %; <b>CDU (test, ondje se
+         * prezentira) {@code email} 0 od 100 000, {@code phone} 28 od 100 000.</b> Predpopuna je
+         * dakle prazna — na test okolini u svih 100 % slučajeva — i kontakt uvijek upisuje
+         * korisnik. To je i razlog zašto su kontakt polja u zahtjevu obvezna. Ne graditi ništa
+         * na pretpostavci da je ovdje podatak.
+         *
+         * <p>Provjereno je i alternativno vrelo: {@code str.document_contact} jest popunjen
+         * (31 % e-mail, 53 % mobitel), ali preko {@code facility.document_id} doseže samo 0,2 %
+         * objekata, pa kao izvor ne valja. Pitanje gdje eTurizam stvarno drži kontakt objekta
+         * otvoreno je prema naručitelju.
+         */
+        String getContactEmail();
+        String getContactPhone();
     }
 
     /**
@@ -188,6 +214,9 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    coalesce(se.name, a.settlement)   AS settlementName,
                    coalesce(stt.name, a.street)      AS streetName,
                    coalesce(hn.name, a.house_number) AS houseNumber,
+                   coalesce(a.postal_code, se.postal_code) AS postalCode,
+                   f.email     AS contactEmail,
+                   f.phone     AS contactPhone,
                    coalesce(
                        (SELECT sum(fc.quantity) FROM str.facility_capacity fc
                           JOIN str.codebook_element ce ON ce.id = fc.type_id

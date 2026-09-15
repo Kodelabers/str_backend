@@ -44,6 +44,9 @@ class StrFacilityListingQueryTest {
         jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS business_status_id BIGINT");
         jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS same_address_subject BOOLEAN");
         jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS registration_number VARCHAR(64)");
+        // Kontakt objekta — čita se za predpopunu kontakt bloka u formi (stavka 11, 10.09.2026.).
+        jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS email VARCHAR(255)");
+        jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS phone VARCHAR(50)");
 
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS str.codebook_element (

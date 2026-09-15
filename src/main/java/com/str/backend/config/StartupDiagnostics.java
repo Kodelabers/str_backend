@@ -90,10 +90,15 @@ public class StartupDiagnostics {
         }
 
         boolean egopEnabled = env.getProperty("hr.infodom.str.integration.egop.enabled", Boolean.class, false);
+        String mockPrefix = env.getProperty("str.egop.mock.filing-prefix", "MOCK-");
         log.info("startup_egop enabled={} base_url={}{}",
                 egopEnabled,
                 env.getProperty("hr.infodom.str.integration.egop.base-url"),
-                egopEnabled ? "" : " (EgopClientMock — KLASA/URBROJ dobivaju prefiks MOCK-)");
+                egopEnabled ? "" : mockPrefix.isEmpty()
+                        // Prazan prefiks je namjeran (demo), ali znači da se izmišljena KLASA/URBROJ
+                        // u bazi ne razlikuju od pravih — log to mora reći naglas.
+                        ? " (EgopClientMock — KLASA/URBROJ BEZ prefiksa, nerazlučivi od pravih)"
+                        : " (EgopClientMock — KLASA/URBROJ dobivaju prefiks " + mockPrefix + ")");
 
         boolean mailEnabled = env.getProperty("app.mail.enabled", Boolean.class, false);
         log.info("startup_mail enabled={} host={} from={}{}",
