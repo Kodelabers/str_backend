@@ -199,4 +199,9 @@
          složenom obliku. Ispravlja 109, koji se ne smije mijenjati. -->
     <include file="db/changelog/changes/124-eturizam-kat-opcina-local.xml"/>
 
+    <!-- E-mail je kontakt podatak za NIAS korisnike, a identifikator samo za non-EU račune —
+         globalni UNIQUE iz 032 je zato blokirao drugi zahtjev istog iznajmljivača. Jedinstvenost
+         računa ostaje na uk_lessor_username (023). -->
+    <include file="db/changelog/changes/065-drop-uq-lessor-email.xml"/>
+
 </databaseChangeLog>

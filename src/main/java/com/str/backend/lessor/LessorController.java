@@ -66,9 +66,14 @@ public class LessorController {
         return registrationService.register(req);
     }
 
+    /**
+     * „Je li ovaj e-mail slobodan za otvaranje računa?" — pita se po {@code username}, jer je to
+     * prijava non-EU iznajmljivača (postavlja se na lowercase e-mail pri samoregistraciji).
+     * E-mail sam po sebi nije jedinstven: NIAS korisnicima je samo kontakt podatak (changeset 065).
+     */
     @GetMapping("/lessor/email-check")
     public ResponseEntity<Void> checkEmail(@RequestParam String email) {
-        boolean taken = lessorRepository.findByEmail(email.trim().toLowerCase()).isPresent();
+        boolean taken = lessorRepository.findByUsername(email.trim().toLowerCase()).isPresent();
         return taken
                 ? ResponseEntity.status(HttpStatus.CONFLICT).build()
                 : ResponseEntity.ok().build();

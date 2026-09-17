@@ -16,11 +16,15 @@ import java.util.UUID;
 
 public interface LessorRepository extends JpaRepository<LessorEntity, UUID> {
 
+    /** Identitet RAČUNA (non-EU samoregistracija): `username` je lowercase e-mail i jedini je
+     *  jedinstven stupac za prijavu — `uk_lessor_username` (changeset 023). Po njemu idu i prijava
+     *  i provjera zauzetosti e-maila.
+     *
+     *  <p>Namjerno NEMA `findByEmail`: e-mail nije jedinstven u tablici (NIAS korisnicima je samo
+     *  kontakt podatak — changeset 065), pa bi metoda koja vraća {@code Optional} bacala
+     *  {@code IncorrectResultSizeDataAccessException} čim dva zapisa podijele e-mail. */
     @Transactional(readOnly = true)
     Optional<LessorEntity> findByUsername(String username);
-
-    @Transactional(readOnly = true)
-    Optional<LessorEntity> findByEmail(String email);
 
     /** NIAS lookup: profile/akcije za prijavljenog NIAS korisnika idu po OIB-u iz
      *  SAML principala (vidi {@link com.str.backend.auth.nias.NiasOibResolver}).

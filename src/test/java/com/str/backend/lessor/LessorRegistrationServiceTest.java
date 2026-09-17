@@ -48,7 +48,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_happyPath_savesLessorAndDocumentAndReturnsUsername() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationResponse response = service.register(validRequest());
 
@@ -70,7 +70,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_normalizesEmailToLowercase() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();
         req.setEmail("  John@Example.COM  ");
@@ -96,7 +96,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_duplicateEmail_throwsGeneric400_beforeAnyWrite() {
-        when(lessorRepository.findByEmail("john@example.com"))
+        when(lessorRepository.findByUsername("john@example.com"))
                 .thenReturn(Optional.of(mock(LessorEntity.class)));
 
         assertThatThrownBy(() -> service.register(validRequest()))
@@ -110,7 +110,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_emptyFrontImage_throws400_beforeAnyWrite() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();
         req.setIspravaPrednja(new MockMultipartFile("ispravaPrednja", new byte[0]));
@@ -126,7 +126,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_backImageAbsent_savesDocumentWithNullBack() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();
         req.setIspravaStraznja(null);
@@ -140,7 +140,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_backImageEmpty_savesDocumentWithNullBack() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();
         req.setIspravaStraznja(new MockMultipartFile("ispravaStraznja", new byte[0]));
@@ -154,7 +154,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_documentFieldsMapped() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         service.register(validRequest());
 
@@ -170,7 +170,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_legalEntityOwner_mapsGroupToEntity() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();
         req.setVlasnikJePravnaOsoba(true);
@@ -194,7 +194,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_residenceCountryNotFound_throws422_beforeAnyWrite() {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
         when(countryRepository.findById(999L)).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();
@@ -211,7 +211,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_residenceCountryInactive_throws422() {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
         CountryEntity inactive = mock(CountryEntity.class);
         when(inactive.isActive()).thenReturn(false);
         when(countryRepository.findById(2L)).thenReturn(Optional.of(inactive));
@@ -229,7 +229,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_residenceCountryIsEuMember_throws422_beforeAnyWrite() {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
         CountryEntity euCountry = mock(CountryEntity.class);
         when(euCountry.isActive()).thenReturn(true);
         when(euCountry.getIso2Alpha()).thenReturn("DE");   // EU member -> rejected
@@ -249,7 +249,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_legalEntitySeatCountryIsEuMember_throws422_beforeAnyWrite() {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
         CountryEntity euCountry = mock(CountryEntity.class);
         when(euCountry.isActive()).thenReturn(true);
         when(euCountry.getIso2Alpha()).thenReturn("IT");   // EU member -> rejected
@@ -273,7 +273,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_legalEntitySeatCountryNotFound_throws422_beforeAnyWrite() {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
         when(countryRepository.findById(999L)).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();   // residence country (1) stays valid via default stub
@@ -294,7 +294,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_legalEntityFlagTrueWithMissingField_throws422_beforeAnyWrite() {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         LessorRegistrationRequest req = validRequest();
         req.setVlasnikJePravnaOsoba(true);
@@ -314,7 +314,7 @@ class LessorRegistrationServiceTest {
 
     @Test
     void register_withoutLegalEntity_leavesGroupUnset() throws IOException {
-        when(lessorRepository.findByEmail("john@example.com")).thenReturn(Optional.empty());
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
 
         service.register(validRequest());
 

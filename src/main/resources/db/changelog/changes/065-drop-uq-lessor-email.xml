@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Miče globalnu jedinstvenost e-maila na str_rn.lessor (uvedenu changesetom 032).
+
+        E-mail nema istu ulogu za dvije vrste iznajmljivača:
+          - NIAS korisnik  → e-mail je KONTAKT PODATAK; prijava ide preko eGrađana (OIB iz SAML
+            assertiona), pa e-mail ne identificira nikoga.
+          - non-EU korisnik → e-mail je IDENTIFIKATOR; njime se prijavljuje (e-mail + lozinka),
+            a `LessorRegistrationService` ga upisuje i u `username` (lowercase).
+
+        Globalni UNIQUE je zato lomio normalan slučaj: iznajmljivač s više objekata podnosi više
+        zahtjeva, svaki put nastaje novi zapis iznajmljivača (StrLessorLookupService.resolveLessor
+        gradi novi entitet iz str.subject_version), pa je drugi zahtjev s istim kontakt e-mailom
+        padao na `uq_lessor_email` — s 500 i nakon izdanog RB-a, koji se onda rollbackao.
+        Iznajmljivač smije imati više registracijskih brojeva; jedina namjerna brana je
+        provjera duplicirane lokacije (DuplicateLocationException).
+
+        Jedinstvenost RAČUNA ne ovisi o ovom constraintu i ostaje netaknuta: `uk_lessor_username`
+        (changeset 023) pokriva `username`, a u PostgreSQL-u UNIQUE dopušta više NULL vrijednosti,
+        pa NIAS zapisi (username IS NULL) ne smetaju. Prijava non-EU korisnika ide preko
+        `LessorUserDetailsService` → `findByUsername`, ne preko e-maila.
+
+        Zamjenski parcijalni indeks se NE uvodi: dva računa ionako ne mogu dijeliti e-mail jer bi
+        im se poklopio `username`.
+
+        NAPOMENA uz rollback: vraćanje UNIQUE-a uspije samo dok duplikata još nema. Čim se izda
+        drugi registracijski broj s istim kontakt e-mailom — a upravo to je svrha ovog changeseta —
+        rollback pada s „could not create unique index". Tada se prvo moraju razriješiti duplikati.
+    -->
+    <changeSet id="065-drop-uq-lessor-email" author="str-backend">
+        <dropUniqueConstraint schemaName="str_rn" tableName="lessor"
+                              constraintName="uq_lessor_email"/>
+
+        <rollback>
+            <addUniqueConstraint schemaName="str_rn" tableName="lessor"
+                                 columnNames="email"
+                                 constraintName="uq_lessor_email"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
