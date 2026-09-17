@@ -1,6 +1,8 @@
 package com.str.backend.address;
 
 import com.str.backend.exception.BusinessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +35,8 @@ import java.util.Locale;
 @Service
 public class CadastreResolver {
 
+    private static final Logger log = LoggerFactory.getLogger(CadastreResolver.class);
+
     /** Katastar za spremanje na {@code accommodation}; bilo koja komponenta smije biti {@code null}. */
     public record Cadastre(String katOpcinaNaziv, String kcCestica, String sifra) {}
 
@@ -46,6 +50,12 @@ public class CadastreResolver {
     public Cadastre resolve(Long kucniBrojId, String street, String streetNumber, String submittedKcBroj) {
         String upisana = blankToNull(submittedKcBroj);
         if (kucniBrojId == null) {
+            // Zahtjev svejedno prolazi, samo bez katastra — zato ovaj trag. Frontend `kucniBrojId`
+            // šalje uvijek (polje je obavezno), pa ovo znači regresiju na fronti ili drugog
+            // klijenta; bez zapisa bi akti tiho izlazili bez katastarske općine i nitko to ne bi
+            // primijetio. Adresa se namjerno NE ispisuje (osobni podatak): za prepoznavanje
+            // regresije dovoljna je učestalost, a pojedinačni slučaj se nađe po vremenu zapisa.
+            log.warn("cadastre_unresolved razlog=nema_kucniBrojId cestica_upisana={}", upisana != null);
             return new Cadastre(null, upisana, null);
         }
 
