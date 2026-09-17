@@ -107,7 +107,7 @@ An `ExternalRegistryException` from MPGI or DGU propagates unhandled through the
 `LessorEntity` is largely immutable after creation (`updatable = false` on identity columns: name, address, email, username). Mutable fields are limited to contact details and `applicationStatus`. Use the static `LessorEntity.create()` / `createNonEu()` factories — no public no-arg constructor exposed for application code (protected for JPA).
 
 ### Registration number
-Format `HR` + 18 decimal digits encoding county code, group code, type code, and 12 digits of randomness, validated by `RegistrationNumber` record (pattern `^HR\d{18}$`). Assigned only on transition to `RnStatus.ACTIVE`. Generation retries up to 5× checking uniqueness before insert — a `DataIntegrityViolationException` on concurrent collision returns 500 (rare, acceptable).
+Format `HR` + 18 decimal digits encoding county code, group code, type code, and 12 digits of randomness, validated by `RegistrationNumber` record (pattern `^HR\d{18}$`). Assigned only on transition to `RnStatus.ACTIVE`. Generation retries up to 5× checking uniqueness before insert — a `DataIntegrityViolationException` on concurrent collision surfaces as 409 with `details.code=DATA_CONFLICT` (rare; `GlobalExceptionHandler` maps SQLState 23505 to 409 and every other integrity violation to 500).
 
 ## Key Constraints
 

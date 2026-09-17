@@ -46,7 +46,12 @@ public class LessorRegistrationService {
         }
 
         String username = req.getEmail().trim().toLowerCase();
-        if (lessorRepository.findByEmail(username).isPresent()) {
+        // Provjera ide po `username`, ne po `email`: pitanje je postoji li već RAČUN s ovom
+        // prijavom. E-mail nije jedinstven u tablici — za NIAS korisnike je samo kontakt podatak
+        // (vidi changeset 065), pa bi `findByEmail` ovdje mogao naći NIAS zapis s istim kontakt
+        // e-mailom i lažno odbiti registraciju, a kod dva takva zapisa bacio bi
+        // IncorrectResultSizeDataAccessException (Optional ne prima dva retka) → 500.
+        if (lessorRepository.findByUsername(username).isPresent()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lessor.registration.invalid");
         }
 
