@@ -1,6 +1,8 @@
 package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.CadastreResolver;
+import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.address.MunicipalityRepository;
@@ -45,7 +47,6 @@ import static org.mockito.Mockito.when;
 class RegistrationServiceDuplicateLocationTest {
 
     private static final String OIB = "12312312316";
-    private static final String HOUSE_NUMBER_CODE = "KC-001";
     private static final String EXISTING_RN = "HR120001000000000001";
     private static final String COUNTY = "Splitsko-dalmatinska županija";
     private static final String CITY = "Split";
@@ -88,7 +89,8 @@ class RegistrationServiceDuplicateLocationTest {
                 lessorRepository, accommodationRepository, submissionRepository,
                 orchestrator, rnService, rnRepository, strLessorLookupService,
                 countyRepository, municipalityRepository, settlementRepository,
-                accommodationTypeRepository, mock(FacilityClaimVerifier.class), eventPublisher);
+                accommodationTypeRepository, mock(FacilityClaimVerifier.class),
+                new CadastreResolver(mock(HouseNumberRepository.class)), eventPublisher);
 
         CountyEntity county = buildCountyEntity(7L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));
@@ -148,20 +150,21 @@ class RegistrationServiceDuplicateLocationTest {
     }
 
     @Test
-    void check_fires_even_when_house_number_code_blank_address_alone_is_enough() {
-        var requestWithBlankKc = new RegistrationRequest(
+    void check_fires_without_house_number_id_address_alone_is_enough() {
+        var requestWithoutHouseNumber = new RegistrationRequest(
                 OIB, "AP1", "1",
                 7L, "Split", "Meje",
-                "Marulićeva", "5", "  ", "21000",
+                "Marulićeva", "5", null, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null,
+                "iznajmljivac@example.com", "0991234567", null, null, null);
         when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(
                 eq(COUNTY), eq(CITY), eq(STREET), eq(STREET_NUMBER), eq(OIB)))
                 .thenReturn(List.of(EXISTING_RN));
 
-        assertThatThrownBy(() -> service.generateRegistrationNumber(requestWithBlankKc))
+        assertThatThrownBy(() -> service.generateRegistrationNumber(requestWithoutHouseNumber))
                 .isInstanceOf(DuplicateLocationException.class)
                 .extracting("existingRegistrationNumber").isEqualTo(EXISTING_RN);
     }
@@ -170,11 +173,12 @@ class RegistrationServiceDuplicateLocationTest {
         return new RegistrationRequest(
                 OIB, "AP1", "1",
                 7L, "Split", "Meje",
-                "Marulićeva", "5", HOUSE_NUMBER_CODE, "21000",
+                "Marulićeva", "5", null, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null, confirm, null);
+                null, null, null, null, null, confirm, null,
+                "iznajmljivac@example.com", "0991234567", null, null, null);
     }
 
     private CountyEntity buildCountyEntity(Long id, String name) {

@@ -63,7 +63,10 @@ class RnDocumentControllerTest {
         mvc.perform(get("/api/rn/{rn}/documents/{tip}", RN, "suspenzija")
                         .principal(internalUser()))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Type", "application/pdf"));
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                // `inline` je zahtjev naručitelja (PDF se otvara u novom tabu, ne preuzima).
+                .andExpect(header().string("Content-Disposition",
+                        "inline; filename=\"suspenzija-" + RN + ".pdf\""));
     }
 
     /** Stari slugovi iz Knjige testiranja moraju i dalje raditi — linkovi su već podijeljeni. */
@@ -195,9 +198,13 @@ class RnDocumentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/pdf"))
                 .andExpect(header().string("Content-Disposition",
-                        "attachment; filename=\"suspenzija-" + RN + ".pdf\""));
+                        "inline; filename=\"suspenzija-" + RN + ".pdf\""));
     }
 
+    /**
+     * Ujedno brana odluke uz {@code str.rn.documents.zahtjev-visible}: zastavica skriva podnesak
+     * iz popisa, ali ovaj endpoint mora ostati 200 — podnesak nosi ur. br. 1 i dio je spisa.
+     */
     @Test
     void document_zahtjev_servesSubmissionPdf_notTemplateRender() throws Exception {
         when(documentsService.zahtjevPdf(RN)).thenReturn(new byte[]{9});

@@ -2,9 +2,11 @@ package com.str.backend.registration.dto;
 
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -19,7 +21,7 @@ public record RegistrationRequest(
         String settlementId,
         @NotBlank String street,
         @NotBlank String streetNumber,
-        String houseNumberCode,
+        @Positive Long kucniBrojId,
         String postalCode,
         @Min(1) int maxBeds,
         @NotNull OfferType offerType,
@@ -34,16 +36,23 @@ public record RegistrationRequest(
         LocalDate consentWithdrawalDate,
         Boolean host,
         Boolean confirmDuplicateLocation,
-        @Size(max = 64) String facilityId
+        @Size(max = 64) String facilityId,
+        @NotBlank @Email @Size(max = 255) String kontaktEmail,
+        @NotBlank @Size(max = 32) String kontaktMobitel,
+        @Size(max = 32) String kontaktTelefon,
+        @Size(max = 128) String kontaktOsoba,
+        @Size(max = 64) String kcBroj
 ) implements AccommodationRequest {
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {
         return new RegistrationRequest(oib, orig.name(), orig.typeId(), orig.countyId(),
                 orig.cityId(), orig.settlementId(), orig.street(), orig.streetNumber(),
-                orig.houseNumberCode(), orig.postalCode(), orig.maxBeds(),
+                orig.kucniBrojId(), orig.postalCode(), orig.maxBeds(),
                 orig.offerType(), orig.offering(), orig.building(), orig.floor(),
                 orig.apartments(), orig.legalized(), orig.lessorResidence(), orig.coOwnerConsent(),
                 orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),
-                orig.confirmDuplicateLocation(), orig.facilityId());
+                orig.confirmDuplicateLocation(), orig.facilityId(),
+                orig.kontaktEmail(), orig.kontaktMobitel(), orig.kontaktTelefon(),
+                orig.kontaktOsoba(), orig.kcBroj());
     }
 }

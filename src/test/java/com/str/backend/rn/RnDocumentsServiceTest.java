@@ -43,8 +43,13 @@ class RnDocumentsServiceTest {
         rnRepository = mock(RnRepository.class);
         submissionRepository = mock(SubmissionRepository.class);
         egopPismenoRepository = mock(EgopPismenoRepository.class);
-        service = new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository);
+        service = new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, true);
         submissionId = UUID.randomUUID();
+    }
+
+    /** Varijanta s ugašenim prikazom podneska — kakva vozi na predprodukciji. */
+    private RnDocumentsService serviceWithoutZahtjev() {
+        return new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, false);
     }
 
     @Test
@@ -60,6 +65,22 @@ class RnDocumentsServiceTest {
         assertThat(docs.get(0).href()).isEqualTo("/api/rn/" + RN + "/documents/zahtjev");
         assertThat(docs.get(1).smjer()).isEqualTo("IZLAZNO");
         assertThat(docs.get(1).href()).isEqualTo("/api/rn/" + RN + "/documents/dodjela");
+    }
+
+    /**
+     * Zastavica skriva podnesak iz popisa, ali ga ne ukida: bajtovi se i dalje serviraju.
+     * Obje polovice te odluke stoje u jednom testu, da ih se ne može razdvojiti nehotice.
+     */
+    @Test
+    void listForRn_zahtjevHidden_onlyDodjelaButPdfStillServed() {
+        stubRn(submissionId, LocalDate.now().minusDays(2));
+        stubSubmission("pdf".getBytes(), Instant.now().minus(3, ChronoUnit.DAYS));
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN)).thenReturn(List.of());
+
+        RnDocumentsService hidden = serviceWithoutZahtjev();
+
+        assertThat(hidden.listForRn(RN)).extracting(RnDocumentDto::slug).containsExactly("dodjela");
+        assertThat(hidden.zahtjevPdf(RN)).isEqualTo("pdf".getBytes());
     }
 
     @Test

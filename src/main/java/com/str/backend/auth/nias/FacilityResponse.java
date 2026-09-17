@@ -27,5 +27,11 @@ public record FacilityResponse(
         String postanskiBroj,
         String punaAdresa,
         String registracijskiBroj,
+        /**
+         * Kontakt objekta iz eTurizma, za predpopunu forme (traženo 10.09.2026., stavka 11).
+         * Nije zaključan podatak — korisnik ga smije ispraviti.
+         */
+        String kontaktEmail,
+        String kontaktTelefon,
         FacilitySource izvor
 ) {}

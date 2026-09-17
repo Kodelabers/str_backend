@@ -91,7 +91,9 @@ public class AddressLookupService {
         return entities.stream()
                 .map(e -> {
                     String kat = katOpcina.get(e.getId());
-                    return new HouseNumberResponse(e.getId(), e.getName(), e.getKcBroj(),
+                    // getKcCestica(), ne getKcBroj(): sirova vrijednost na pravoj bazi nosi
+                    // prefiks katastarske općine ("300071|666/3") koji korisniku ništa ne znači.
+                    return new HouseNumberResponse(e.getId(), e.getName(), e.getKcCestica(),
                             (kat != null && !kat.isBlank()) ? kat : null);
                 })
                 .toList();

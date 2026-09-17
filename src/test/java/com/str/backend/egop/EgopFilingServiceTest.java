@@ -155,6 +155,14 @@ class EgopFilingServiceTest {
         verify(egopClient, times(2)).kreirajPismeno2(pismenoCaptor.capture());
         assertEquals("101", pismenoCaptor.getAllValues().get(0).getVrstaPismena());
         assertEquals("102", pismenoCaptor.getAllValues().get(1).getVrstaPismena());
+        // Oba pismena moraju nositi predmet u koji idu. Kad eGOP nije uključen, urudžbeni broj
+        // dodjeljuje LocalFilingNumberAllocator brojanjem pismena UNUTAR tog predmeta — regresija
+        // na 0/null ovdje tiho svali sve predmete u isti brojač i razbije "podnesak 1, akt 2",
+        // a da nijedan drugi test ne padne.
+        for (KreirajPismeno2 poslano : pismenoCaptor.getAllValues()) {
+            assertEquals(55, poslano.getRbrSpisa());
+            assertEquals((short) 2026, poslano.getUredskaGodina());
+        }
 
         ArgumentCaptor<KreirajDokumentZaPismeno> dokCaptor = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
         verify(egopClient, times(2)).kreirajDokumentZaPismeno(dokCaptor.capture());

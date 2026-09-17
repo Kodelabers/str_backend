@@ -56,6 +56,27 @@ class RegistrationControllerTest {
                 .andExpect(jsonPath("$.submissionId").value(submissionId.toString()));
     }
 
+    /** Kontakt je obvezan od 10.09.2026. — bez njega obavijest o RB-u nema kamo. */
+    @Test
+    void post_returns_400_when_contact_missing() throws Exception {
+        RegistrationRequest bezKontakta = withContact(validRequest(), null, null);
+
+        mvc.perform(post("/api/generateRegistrationNumber")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(bezKontakta)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void post_returns_400_when_contact_email_malformed() throws Exception {
+        RegistrationRequest loseMail = withContact(validRequest(), "nije-mail", "0991234567");
+
+        mvc.perform(post("/api/generateRegistrationNumber")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(loseMail)))
+                .andExpect(status().isBadRequest());
+    }
+
     @Test
     void post_returns_400_when_payload_invalid() throws Exception {
         RegistrationRequest invalid = withMaxBeds(validRequest(), 0);
@@ -129,31 +150,50 @@ class RegistrationControllerTest {
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, null, false, true,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null,
+                "iznajmljivac@example.com", "0991234567", null, null, null);
+    }
+
+    private RegistrationRequest withContact(RegistrationRequest r, String email, String mobitel) {
+        return new RegistrationRequest(
+                r.oib(), r.name(), r.typeId(),
+                r.countyId(), r.cityId(), r.settlementId(),
+                r.street(), r.streetNumber(), r.kucniBrojId(), r.postalCode(),
+                r.maxBeds(),
+                r.offerType(), r.offering(),
+                r.building(), r.floor(), r.apartments(), r.legalized(),
+                r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
+                email, mobitel, r.kontaktTelefon(), r.kontaktOsoba(),
+                r.kcBroj());
     }
 
     private RegistrationRequest withMaxBeds(RegistrationRequest r, int maxBeds) {
         return new RegistrationRequest(
                 r.oib(), r.name(), r.typeId(),
                 r.countyId(), r.cityId(), r.settlementId(),
-                r.street(), r.streetNumber(), r.houseNumberCode(), r.postalCode(),
+                r.street(), r.streetNumber(), r.kucniBrojId(), r.postalCode(),
                 maxBeds,
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
+                r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),
+                r.kcBroj());
     }
 
     private RegistrationRequest withOib(RegistrationRequest r, String oib) {
         return new RegistrationRequest(
                 oib, r.name(), r.typeId(),
                 r.countyId(), r.cityId(), r.settlementId(),
-                r.street(), r.streetNumber(), r.houseNumberCode(), r.postalCode(),
+                r.street(), r.streetNumber(), r.kucniBrojId(), r.postalCode(),
                 r.maxBeds(),
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId());
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
+                r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),
+                r.kcBroj());
     }
 
     private SubmissionEntity submissionWithPdf(UUID id, String filingNumber, byte[] pdf) {

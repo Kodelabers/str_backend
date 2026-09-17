@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.address.MunicipalityEntity;
@@ -58,6 +59,7 @@ public class RegistrationService {
     private final SettlementRepository settlementRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final FacilityClaimVerifier facilityClaimVerifier;
+    private final CadastreResolver cadastreResolver;
     private final ApplicationEventPublisher eventPublisher;
 
     public RegistrationService(LessorRepository lessorRepository,
@@ -72,6 +74,7 @@ public class RegistrationService {
                                SettlementRepository settlementRepository,
                                AccommodationTypeRepository accommodationTypeRepository,
                                FacilityClaimVerifier facilityClaimVerifier,
+                               CadastreResolver cadastreResolver,
                                ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
@@ -85,6 +88,7 @@ public class RegistrationService {
         this.settlementRepository = settlementRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.facilityClaimVerifier = facilityClaimVerifier;
+        this.cadastreResolver = cadastreResolver;
         this.eventPublisher = eventPublisher;
     }
 
@@ -98,6 +102,10 @@ public class RegistrationService {
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
         LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
+        // Kontakt mora biti upisan PRIJE prve pohrane — lessor.email je updatable=false.
+        // resolveLessor vraća još nepohranjen entitet (sprema ga tek commitRegistration).
+        lessor.applyContact(trimmed(req.kontaktEmail()), trimmed(req.kontaktOsoba()),
+                trimmed(req.kontaktTelefon()), trimmed(req.kontaktMobitel()));
         runValidation(accommodation, lessor);
 
         return commitRegistration(lessor, accommodation);
@@ -115,9 +123,38 @@ public class RegistrationService {
         verifyFacilityClaim(lessor.getLessorOib(), accommodation);
         checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
 
+        // Iznajmljivač je već pohranjen (samoregistracija), pa se e-mail ne dira — on je
+        // identitet računa i stupac je updatable=false. Mobitel je obavezan i uvijek se upisuje.
+        applyContact(lessor, req);
         runValidation(accommodation, lessor);
 
         return commitRegistration(lessor, accommodation);
+    }
+
+    /**
+     * Upisuje kontakt na već pohranjenog iznajmljivača (non-EU samoregistracija).
+     *
+     * <p>Mobitel je obavezan i uvijek stiže, pa se uvijek upisuje — time non-EU iznajmljivač ne
+     * može ostati bez ijednog broja, što je do sada bilo moguće jer je telefon na samoregistraciji
+     * bio neobavezan. Ostala polja se, kad nisu poslana, <b>ne brišu</b>: zadržava se zatečena
+     * vrijednost. E-mail se ne dira — {@code updatable = false}, identitet je računa.
+     */
+    private void applyContact(LessorEntity lessor, RegistrationExternalRequest req) {
+        String osoba = trimmed(req.kontaktOsoba());
+        String telefon = trimmed(req.kontaktTelefon());
+        lessor.setContact(osoba != null ? osoba : lessor.getContactName(),
+                telefon != null ? telefon : lessor.getPhoneNumber(),
+                trimmed(req.kontaktMobitel()),
+                lessor.getContactNote());
+    }
+
+    /** Prazan string iz forme je „nije upisano", ne vrijednost — ne spremamo ga kao takvog. */
+    private static String trimmed(String value) {
+        if (value == null) {
+            return null;
+        }
+        String t = value.trim();
+        return t.isEmpty() ? null : t;
     }
 
     /**
@@ -189,10 +226,16 @@ public class RegistrationService {
         entity.setName(req.name());
         entity.setFacilityId(req.facilityId());
         entity.setSettlement(settlementName);
-        entity.setHouseNumberCode(req.houseNumberCode());
         entity.setPostalCode(req.postalCode());
         entity.setFloor(req.floor());
         entity.setLessorResidence(req.lessorResidence());
+        // Katastar iz registra, ne iz zahtjeva — v. CadastreResolver. Ide prije provjere vlasništva
+        // objekta: podmetnut kućni broj je neispravan zahtjev bez obzira na objekt.
+        CadastreResolver.Cadastre katastar = cadastreResolver.resolve(
+                req.kucniBrojId(), req.street(), req.streetNumber(), req.kcBroj());
+        entity.setHouseNumberCode(katastar.sifra());
+        entity.setCadastralMunicipality(katastar.katOpcinaNaziv());
+        entity.setCadastralParcelNumber(katastar.kcCestica());
         entity.setConsent(req.coOwnerConsent(), req.consentDate(), req.consentWithdrawalDate());
         if (req.host() != null) {
             entity.markHost(req.host());

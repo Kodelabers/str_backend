@@ -43,7 +43,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Mock eGOP klijenta — aktivan kad je {@code hr.infodom.str.integration.egop.enabled}
@@ -61,31 +60,18 @@ class EgopClientMock implements EgopClient {
     private static final Logger log = LoggerFactory.getLogger(EgopClientMock.class);
 
     /**
-     * Mock je aktivan uz {@code matchIfMissing = true}, pa tipfeler u {@code EGOP_ENABLED}
-     * tiho vraća izmišljene podatke. Bez prefiksa bi izmišljena KLASA/URBROJ u
-     * {@code submission.egop_klasa} bili nerazlučivi od pravih.
+     * KLASA i URBROJ se ne izmišljaju ovdje — dodjeljuje ih {@link LocalFilingNumberAllocator},
+     * koji ih broji iz baze da prežive restart i da urudžbeni broj bude redni broj pismena
+     * unutar predmeta (podnesak 1, obavijest o dodjeli 2). Mock ostaje puki prevoditelj
+     * SOAP DTO-a.
      */
-    private static final String MOCK_PREFIX = "MOCK-";
-
-    /**
-     * Sekvence kreću od vrijednosti izvedene iz vremena pokretanja, ne od fiksne konstante.
-     *
-     * <p>S fiksnim početkom svaki restart kontejnera davao je opet predmet 101 i pismeno 1001,
-     * pa je druga registracija na istoj bazi dobila isti {@code KLASA + URBROJ} kao ona iz
-     * prethodnog runa i pala na {@code uq_submission_filing_number} — dakle mock je rušio
-     * upravo ono ponovljeno testiranje zbog kojeg postoji. Pravi eGOP klasu nikad ne ponavlja.
-     *
-     * <p>Minute od epohe daju vrijednost koja raste kroz restarte i ostaje čitljivo mala.
-     */
-    private static final int SEQ_SEED = (int) (System.currentTimeMillis() / 60_000L % 1_000_000L);
-
-    private static final AtomicInteger PREDMET_SEQ = new AtomicInteger(SEQ_SEED);
-    /** Urudžbeni broj je redni broj pismena unutar predmeta, pa kreće od nule u svakom runu. */
-    private static final AtomicInteger PISMENO_SEQ = new AtomicInteger(0);
+    private final LocalFilingNumberAllocator allocator;
 
     private final boolean egopEnabled;
 
-    EgopClientMock(@Value("${hr.infodom.str.integration.egop.enabled:false}") boolean egopEnabled) {
+    EgopClientMock(LocalFilingNumberAllocator allocator,
+                   @Value("${hr.infodom.str.integration.egop.enabled:false}") boolean egopEnabled) {
+        this.allocator = allocator;
         this.egopEnabled = egopEnabled;
     }
 
@@ -185,12 +171,12 @@ class EgopClientMock implements EgopClient {
     public PredmetBasicInfo2 kreirajPredmet2(KreirajPredmet2 request) {
         log.info("Mock eGOP kreirajPredmet2 called: vrsta={}, subjektOznaka={}",
                 request.getVrstaPredmeta(), request.getSubjektOznaka());
-        int rbr = PREDMET_SEQ.incrementAndGet();
+        LocalFilingNumberAllocator.Predmet predmet = allocator.nextPredmet();
         PredmetBasicInfo2 mockResponse = new PredmetBasicInfo2();
         mockResponse.setOperationSucceeded(true);
-        mockResponse.setUredskaGodina(LocalDateTime.now().getYear());
-        mockResponse.setRbrPredmeta(rbr);
-        mockResponse.setKlasifikacijskaOznaka(MOCK_PREFIX + "334-01/" + (LocalDateTime.now().getYear() % 100) + "-01/" + rbr);
+        mockResponse.setUredskaGodina(predmet.uredskaGodina());
+        mockResponse.setRbrPredmeta(predmet.rbrPredmeta());
+        mockResponse.setKlasifikacijskaOznaka(predmet.klasa());
         return mockResponse;
     }
 
@@ -198,9 +184,9 @@ class EgopClientMock implements EgopClient {
     public List<PredmetInfo2> dohvatiPredmeteZaKorisnikaURjesavanju(DohvatiPredmeteZaKorisnikaURjesavanju request) {
         log.info("Mock eGOP dohvatiPredmeteZaKorisnikaURjesavanju called for username: {}", request.getUsername());
         List<PredmetInfo2> predmeti = new ArrayList<>();
-        predmeti.add(mockPredmet(2025, 101, "NP", MOCK_PREFIX + "334-01/25-01/101",
+        predmeti.add(mockPredmet(2025, 101, "NP", allocator.klasa(2025, 101),
                 "Izdavanje Registracijskog broja - Mock 1", "1", LocalDateTime.of(2025, 3, 10, 9, 0)));
-        predmeti.add(mockPredmet(2025, 102, "NP", MOCK_PREFIX + "334-01/25-01/102",
+        predmeti.add(mockPredmet(2025, 102, "NP", allocator.klasa(2025, 102),
                 "Izdavanje Registracijskog broja - Mock 2", "1", LocalDateTime.of(2025, 4, 2, 11, 30)));
         return predmeti;
     }
@@ -231,20 +217,27 @@ class EgopClientMock implements EgopClient {
     }
 
     /**
-     * URBROJ mora biti različit po pismenu — u eGOP-u je to redni broj unutar predmeta.
-     * Ranije je zadnji segment bio zakucan na {@code -1}, pa su ulazno i izlazno pismeno
-     * dobivali isti urudžbeni broj i mock je skrivao pogrešno vezanje dokumenta uz pismeno.
+     * URBROJ mora biti različit po pismenu — u eGOP-u je to redni broj <b>unutar predmeta</b>,
+     * pa kreće od 1 u svakom predmetu (podnesak 1, obavijest o dodjeli 2). Broji ga
+     * {@link LocalFilingNumberAllocator} iz baze; raniji globalni brojač u ovom razredu davao je
+     * 1 i 2 samo prvoj registraciji nakon pokretanja, a sljedećima 3, 4, …
+     *
+     * <p>{@code jop} se izvodi iz rednog broja predmeta i rednog broja pismena. S globalnim
+     * brojačem je bio jedinstven po konstrukciji ({@code 1000 + n}); po predmetu bi se
+     * {@code 1000 + 1} ponavljao za svaki predmet. Nad {@code egop_pismeno.jop} nema unique
+     * indeksa, pa to nije kvar podataka — ali ponovljeni {@code jop} čini tragove
+     * {@code attachPdfOnce} nečitljivima baš kad se demo debugira.
      */
     @Override
     public PismenoBasicInfo2 kreirajPismeno2(KreirajPismeno2 request) {
         log.info("Mock eGOP kreirajPismeno2 called: vrsta={}, rbrSpisa={}, uredskaGodina={}",
                 request.getVrstaPismena(), request.getRbrSpisa(), request.getUredskaGodina());
-        int redni = PISMENO_SEQ.incrementAndGet();
+        LocalFilingNumberAllocator.UrBroj urBroj =
+                allocator.nextUrBroj(request.getUredskaGodina(), request.getRbrSpisa());
         PismenoBasicInfo2 mockResponse = new PismenoBasicInfo2();
         mockResponse.setOperationSucceeded(true);
-        mockResponse.setJop(1000 + redni);
-        mockResponse.setUrBroj(MOCK_PREFIX + "529-06/" + (LocalDateTime.now().getYear() % 100)
-                + "-" + redni);
+        mockResponse.setJop(request.getRbrSpisa() * 100 + urBroj.redni());
+        mockResponse.setUrBroj(urBroj.vrijednost());
         return mockResponse;
     }
 
@@ -293,7 +286,7 @@ class EgopClientMock implements EgopClient {
         predmet.setUredskaGodina(request.getUredskaGodina());
         predmet.setRbrPredmeta(request.getRbrPredmeta());
         predmet.setUpisnaKnjiga("NP");
-        predmet.setKlasa(MOCK_PREFIX + "334-01/25-01/" + request.getRbrPredmeta());
+        predmet.setKlasa(allocator.klasa(request.getUredskaGodina(), request.getRbrPredmeta()));
         predmet.setNazivPredmeta("Izdavanje Registracijskog broja - Mock");
         predmet.setStatusPredmeta("Otvoren");
         predmet.setDatumOtvaranja(EgopDates.toXml(LocalDateTime.of(2025, 3, 10, 9, 0)));

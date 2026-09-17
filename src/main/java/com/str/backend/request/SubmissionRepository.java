@@ -22,6 +22,17 @@ public interface SubmissionRepository extends JpaRepository<SubmissionEntity, UU
 
     List<SubmissionEntity> findByLessorId(UUID lessorId);
 
+    /**
+     * Najveći dodijeljeni redni broj predmeta u uredskoj godini — sjeme brojača u
+     * {@code LocalFilingNumberAllocator}. Bez njega mock nakon restarta ponavlja KLASU, a KLASA
+     * je jedino što nosi jedinstvenost {@code uq_submission_filing_number} otkad je urudžbeni
+     * broj redni broj unutar predmeta (ULAZNO je uvijek 1).
+     */
+    @Transactional(readOnly = true)
+    @Query("SELECT COALESCE(MAX(s.egopRbrPredmeta), 0) FROM SubmissionEntity s"
+            + " WHERE s.egopUredskaGodina = :godina")
+    int maxEgopRbrPredmeta(@Param("godina") int godina);
+
     /** eGOP retry job: submissioni koji nisu urudžbirani (nedovršen ili neuspio sync),
      *  a nisu iscrpili pokušaje ni stariji od window-a; grace period izbjegava utrku
      *  s in-flight prvim pokušajem, a egopNextAttemptAt provodi eksponencijalni backoff

@@ -414,14 +414,14 @@ URL-ovi **nisu** u `.env.preprod`; dolaze iz defaulta u `application-preprod.pro
 | IdP metadata | `https://nias.gov.hr/metadata` |
 | SSO odredište (AuthnRequest) | `https://nias.gov.hr/sso-http` — **iz metadate, ne konfigurira se** |
 | SLO odredište | `https://nias.gov.hr/ssout-http` (+ SOAP `…/ssout-soap`) — isto iz metadate |
-| Naš ACS | `http://s-str-02.infodom.hr:8086/login/saml2/sso/nias` |
-| Naš SLO (HTTP) | `http://s-str-02.infodom.hr:8086/logout/saml2/slo/nias` |
-| Naš SLO (SOAP) | `http://s-str-02.infodom.hr:8086/logout/saml2/soap/nias` |
+| Naš ACS | `http://s-str-02.infodom.hr:8085/login/saml2/sso/nias` |
+| Naš SLO (HTTP) | `http://s-str-02.infodom.hr:8085/logout/saml2/slo/nias` |
+| Naš SLO (SOAP) | `http://s-str-02.infodom.hr:8085/logout/saml2/soap/nias` |
 | Nakon prijave | `http://s-str-02.infodom.hr:8085/registration-number` |
 | Nakon neuspjele prijave | `http://s-str-02.infodom.hr:8085/?nias_error=true` |
 | Nakon odjave | `http://s-str-02.infodom.hr:8085/` |
 | CORS / frontend base | `http://s-str-02.infodom.hr:8085` |
-| Frontend → backend (`VITE_API_URL`) | `http://s-str-02.infodom.hr:8086` (build arg, ne runtime) |
+| Frontend → backend (`VITE_API_URL`) | `http://s-str-02.infodom.hr:8085` (build arg, ne runtime) — isti origin, nginx u frontend kontejneru proxyja `/api/`, `/saml2/`, `/login/saml2/`, `/logout/saml2/` na `backend:8080` |
 
 Dirati ih treba **samo** ako NIAS uz certifikat ima registrirane druge — tada se u
 `.env.preprod` odkomentiraju `NIAS_ACS_URL` / `NIAS_SLO_URL` / `NIAS_*_REDIRECT_URL` i upišu te

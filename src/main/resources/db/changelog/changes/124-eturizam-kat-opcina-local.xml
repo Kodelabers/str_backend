@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Usklađuje lokalni mock katastra s pravom eTurizam shemom.
+
+      Changeset 109 je denormalizirao naziv katastarske općine u `ar_address.kat_opcina_naziv` i
+      seedao čestice kao goli broj ("1201/1"). Mjerenje na predprodukciji (11.09.2026.) pokazuje da
+      prava shema izgleda drukčije:
+
+        * `ar_address.kat_opcina_id`  -> `eturizam_test.ka_katastar_ko(id, naziv, the_geom)`
+          U uzorku od 200 000 redaka svi imaju `kat_opcina_id` i svi se razrješavaju (0 promašaja).
+        * `ar_address.kc_broj` je SLOŽENA oznaka `<MB katastarske općine>|<broj čestice>`,
+          npr. `300071|666/3`. Svih 200 000 redaka iz uzorka ima taj oblik; 578 različitih
+          prefiksa, svaki 1:1 s jednim `kat_opcina_id`.
+
+      Zbog toga je upit koji je čitao `kat_opcina_naziv` radio samo lokalno, a na pravoj bazi bi
+      pucao s "column does not exist" čim se `app.cadastral.enabled` upali.
+
+      109 se ne smije mijenjati (primijenjen je), pa se ispravak radi ovdje. `kat_opcina_naziv`
+      se namjerno NE briše — stari lokalni podaci ostaju čitljivi, samo ih više nitko ne čita.
+
+      the_geom se ne replicira: PostGIS lokalno nema, a geometrija se nigdje ne koristi.
+    -->
+
+    <changeSet id="124-ka-katastar-ko-table" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="eturizam_test" tableName="ka_katastar_ko"/></not>
+        </preConditions>
+        <createTable schemaName="eturizam_test" tableName="ka_katastar_ko">
+            <column name="id" type="VARCHAR(32)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="naziv" type="VARCHAR(255)"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="124-ar-address-kat-opcina-id" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="eturizam_test" tableName="ar_address" columnName="kat_opcina_id"/></not>
+        </preConditions>
+        <addColumn schemaName="eturizam_test" tableName="ar_address">
+            <column name="kat_opcina_id" type="VARCHAR(32)"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Seed katastarskih općina za lokalne adrese. Id-evi i MB-ovi su izmišljeni, ali oblika kakav
+      ima pravi registar (šesteroznamenkasti), da se lokalno testira isti kod koji vozi na dev-u.
+    -->
+    <changeSet id="124-ka-katastar-ko-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM eturizam_test.ka_katastar_ko
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO eturizam_test.ka_katastar_ko (id, naziv) VALUES
+                ('335096', 'GRAD ZAGREB'),
+                ('335118', 'MAKSIMIR'),
+                ('335134', 'TREŠNJEVKA'),
+                ('337323', 'SPLIT'),
+                ('337331', 'STOBREČ'),
+                ('337412', 'TROGIR'),
+                ('336718', 'PULA'),
+                ('335762', 'OPATIJA'),
+                ('336017', 'RIJEKA'),
+                ('336955', 'ROVINJ');
+        </sql>
+    </changeSet>
+
+    <!--
+      Preslikava postojeći denormalizirani naziv na kat_opcina_id i prepisuje kc_broj u složeni
+      oblik `<MB>|<čestica>`. Radi se samo nad retcima koji još nisu migrirani (kc_broj bez '|'),
+      pa je ponovno pokretanje bezopasno.
+    -->
+    <changeSet id="124-ar-address-migrate-cadastral" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <columnExists schemaName="eturizam_test" tableName="ar_address" columnName="kat_opcina_naziv"/>
+        </preConditions>
+        <sql>
+            -- Mapiranje ide po točnim nazivima iz seeda 109, a ne preko upper(): upper() nad
+            -- 'š'/'č' ovisi o LC_CTYPE baze, pa bi na bazi s C lokalom Trešnjevka i Stobreč tiho
+            -- ostali bez općine. Popis mora pokriti svih 10 naziva koje 109 upisuje.
+            UPDATE eturizam_test.ar_address ad
+               SET kat_opcina_id = m.id
+              FROM (VALUES ('Grad Zagreb', '335096'),
+                           ('Maksimir',    '335118'),
+                           ('Trešnjevka',  '335134'),
+                           ('Split',       '337323'),
+                           ('Stobreč',     '337331'),
+                           ('Trogir',      '337412'),
+                           ('Pula',        '336718'),
+                           ('Opatija',     '335762'),
+                           ('Rijeka',      '336017'),
+                           ('Rovinj',      '336955')) AS m(naziv, id)
+             WHERE ad.kat_opcina_naziv = m.naziv
+               AND ad.kat_opcina_id IS NULL;
+
+            UPDATE eturizam_test.ar_address
+               SET kc_broj = kat_opcina_id || '|' || kc_broj
+             WHERE kat_opcina_id IS NOT NULL
+               AND kc_broj IS NOT NULL
+               AND position('|' IN kc_broj) = 0;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
