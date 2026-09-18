@@ -1,14 +1,19 @@
 -- Provjera sheme za CDU predprodukciju (172.20.8.212:5432/eturizam), prije dizanja backenda.
 --
--- ZAŠTO NE KREIRA SHEMU, iako se baza resetira svake noći:
---   izmjereno 18.09.2026., `has_database_privilege(current_database(),'CREATE')` = FALSE
---   i kao `shorttermrental` i kao `str_owner`. Nemamo pravo kreirati shemu u toj bazi.
---   `CREATE SCHEMA` bi zato pao — a u najgorem slučaju pao bi na provjeri prava i onda kad
---   shema POSTOJI, pa bi rušio jutarnju skriptu svaki dan bez stvarnog razloga.
+-- KAKO RADI NOĆNI RESET (potvrdio DBA 18.09.2026.):
+--   „tablice će bit dropane, ostat će shema i role. Kod startanja STR-a treba rekreirati tablice
+--   i popuniti inicijalnim podacima ako su potrebni."
+--   Dakle `str_rn` ostaje, a prazni se. Liquibase pri jutarnjem restartu gradi tablice od nule
+--   (changelog je također dropan) i seed changeseti bez konteksta pune inicijalne podatke.
 --
--- Zato ova skripta samo PROVJERAVA i, ako sheme nema, **namjerno puca** s uputom. To je
--- ispravan ishod: bolje da jutarnji oporavak stane ovdje, nego da restarta backend u bazu bez
--- sheme, gdje Liquibase ionako pada pri dizanju konteksta.
+-- ZAŠTO SKRIPTA IPAK NE KREIRA SHEMU:
+--   izmjereno 18.09.2026., `has_database_privilege(current_database(),'CREATE')` = FALSE
+--   i kao `shorttermrental` i kao `str_owner`. Da shema ikad ipak nestane, ne bismo je mogli
+--   vratiti — zato je provjera ostala kao zaštita, iako po dogovoru taj slučaj ne bi trebao doći.
+--
+-- Skripta samo PROVJERAVA i, u dva slučaja, **namjerno puca** s uputom. To je ispravan ishod:
+-- bolje da jutarnji oporavak stane ovdje, nego da restarta backend u bazu iz koje ionako ne
+-- može poslužiti ni jedan upit.
 --
 -- Izmjereno stanje 18.09.2026. (user `shorttermrental`, uz `SET ROLE str_owner`):
 --   str_rn        postoji, vlasnik str_owner, 0 tablica, CREATE na shemi = t  → Liquibase prolazi
@@ -39,6 +44,39 @@ BEGIN
             'Noćni reset ju je obrisao. Traži od DBA jedno od: (1) izuzmi str_rn iz reseta, '
             '(2) neka reset skripta radi CREATE SCHEMA str_rn AUTHORIZATION str_owner uz grantove, '
             '(3) daj nam CREATE na bazi eturizam. Backend se do tada NE SMIJE dizati.';
+    END IF;
+END $$;
+
+-- 1b. Je li stanje sheme KONZISTENTNO?
+--     Reset koji dropa "sve tablice" briše i Liquibaseov `databasechangelog` — tada je shema
+--     prazna i Liquibase uredno gradi sve od nule. Problem je asimetričan slučaj: podatkovne
+--     tablice obrisane, a `databasechangelog` ostao. Liquibase tada zaključi da je sve već
+--     primijenjeno, NE kreira ništa, a backend se digne nad praznom shemom i svaki upit puca —
+--     pritom u logu nema nijedne greške na startu, pa se kvar otkrije tek kad tester otvori
+--     formular.
+--     Ovo je jedini popravak koji je U NAŠIM RUKAMA (vlasnici smo str_rn): obrisati changelog
+--     tablice da Liquibase ponovno odradi cijeli changelog. Namjerno se NE izvršava automatski —
+--     DROP je destruktivan, a skripta se vrti bez nadzora.
+DO $$
+DECLARE
+    ima_changelog boolean;
+    ima_tablice   boolean;
+BEGIN
+    SELECT EXISTS (SELECT 1 FROM pg_tables
+                    WHERE schemaname = 'str_rn' AND tablename = 'databasechangelog')
+      INTO ima_changelog;
+    SELECT EXISTS (SELECT 1 FROM pg_tables
+                    WHERE schemaname = 'str_rn' AND tablename = 'registration_number')
+      INTO ima_tablice;
+
+    IF ima_changelog AND NOT ima_tablice THEN
+        RAISE EXCEPTION
+            'NEKONZISTENTNA SHEMA: databasechangelog postoji, ali registration_number ne. '
+            'Reset je obrisao podatkovne tablice a changelog ostavio, pa Liquibase nece nista '
+            'kreirati i backend bi radio nad praznom shemom. Popravak (mi smo vlasnici str_rn): '
+            'DROP TABLE IF EXISTS str_rn.databasechangelog, str_rn.databasechangeloglock; '
+            'pa ponovno pokreni oporavak. Ako se ponavlja svako jutro, trazi od DBA da drop '
+            'pokriva SVE tablice u str_rn (vidi DEPLOY-CDU-PREPROD.md A1/6b).';
     END IF;
 END $$;
 

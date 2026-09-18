@@ -1,11 +1,13 @@
 # CDU predprodukcija — `str-preprod-eturizam.gov.hr` (PLAN)
 
-> **Status 18.09.2026.: sve je spremno za instalaciju, čeka se jedna tajna.**
-> Recon kutije i baze je odrađen, konfiguracija je u repou (grana `feat/cdu-preprod-okolina`),
-> a **§C6 je izvršni runbook korak po korak**. Tvrdo blokira samo lozinka NIAS keystorea (Simon)
-> — i nju se može zaobići s `NIAS_SAML_ENABLED=false`, uz gubitak samo prijave eGrađanima.
-> Darkova pitanja (§A1) tiču se **preživljavanja nakon prve noći**, ne samog `up`-a.
-> Kad okolina proradi, ovaj dokument prelazi u oblik kakav ima `DEPLOY-CDU.md`.
+> **Status 18.09.2026.: instalacija se može pokrenuti.**
+> Recon kutije i baze je odrađen, DBA je potvrdio kako radi noćni reset (tablice se dropaju,
+> shema i role ostaju), konfiguracija je u repou (grana `feat/cdu-preprod-okolina`), a **§C6 je
+> izvršni runbook korak po korak**. Tvrdo blokira samo lozinka NIAS keystorea (Simon) — i nju se
+> zaobilazi s `NIAS_SAML_ENABLED=false`, uz gubitak samo prijave eGrađanima.
+> Za **dan poslije** još fale: vrijeme reset prozora (bez njega nema crona) i potvrda da tablični
+> `SELECT` grantovi prežive reset. Kad okolina proradi, ovaj dokument prelazi u oblik kakav ima
+> `DEPLOY-CDU.md`.
 
 Nova okolina je **druga kutija na istom državnom VPN-u** kao CDU test. Nije nastavak
 InfoDomove predprodukcije (`s-str-02`) — s njom dijeli samo riječ „predprodukcija".
@@ -90,19 +92,31 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 3. ~~Postoji li shema?~~ **Postoji, vlasnik je `str_owner`, i prazna je (0 tablica).** Liquibase
    ima `CREATE` **na shemi** (`has_schema_privilege('str_rn','CREATE')=t`), pa migracije prolaze;
    prvi deploy vrti cijeli changelog od nule i registar starta bez ijednog RB-a — to je ispravno.
-4. ⛔ **BLOKADA — što točno noćni reset radi?** Drop/restore cijele baze `eturizam`, ili samo
-   njihovih shema (`str`, `rpj_dgu`, `eturizam_test`)? Briše li i `str_rn`?
-   **Zašto je ovo blokada, a ne administrativno pitanje:** izmjereno je
-   `has_database_privilege(current_database(),'CREATE') = f` — **i kao `shorttermrental` i kao
-   `str_owner`**. Ako reset obriše `str_rn`, mi je **ne možemo vratiti**; okolina ujutro ostaje
-   mrtva i nijedna naša skripta to ne rješava. Tri izlaza, po poželjnosti:
-   - **`str_rn` se izuzme iz reseta** (najjeftinije — preživljavaju i podaci testera);
-   - njihova reset skripta sama vrati `CREATE SCHEMA str_rn AUTHORIZATION str_owner;`
-     (uz grantove iz t. 7, koji tada također moraju biti dio reseta);
-   - nama se da `CREATE` na bazi, pa se oporavak odradi u `tools/cdupreprod-bootstrap.sql`.
-5. **U koje vrijeme i koliko traje** reset? Treba nam prozor za jutarnji oporavak.
-6. **Preživljavaju li grantovi reset?** Ako se sheme recreiraju iz dumpa, ACL-ovi dolaze iz dumpa
-   i naši grantovi nestaju svake noći.
+4. ~~Što točno noćni reset radi?~~ **Odgovoreno (18.09.): tablice se dropaju, shema i role
+   ostaju.** „Kod startanja STR-a treba rekreirati tablice i popuniti inicijalnim podacima."
+   **Blokada je time pala** — nedostatak `CREATE` na bazi više ne smeta jer shemu nitko ne briše,
+   a unutar `str_rn` imamo `CREATE` i vlasništvo. Praktično:
+   - Liquibase pri svakom jutarnjem restartu vrti **cijeli changelog od nule** i ponovno gradi
+     tablice; inicijalne podatke pokrivaju seed changeseti bez konteksta (vrste smještaja,
+     platforme). Demo seedovi (`context="cdu"`, `"dev"`, `"local"`) se **ne** primjenjuju.
+   - **Jutarnji restart je time obavezan svaki dan**, ne samo mjera opreza → cron u §C8.
+   - Sve što testeri unesu tijekom dana **nestaje preko noći**: RB-ovi, skice, sesije.
+5. ⚠️ **U koje vrijeme reset kreće i koliko traje?** Jedino što još nedostaje za §C8. Bez toga se
+   cron ne postavlja — skripta bi lako krenula usred njihovog prozora.
+6. ⚠️ **Preživljavaju li TABLIČNI grantovi?** Shema i role ostaju, pa `USAGE` na `str`, `rpj_dgu`
+   i `eturizam_test` preživljava. Ali `GRANT SELECT` se veže **uz tablicu**, a ne uz shemu — ako
+   se i njihove tablice dropaju i rekreiraju, naši `SELECT` grantovi **nestaju s njima**, osim ako
+   postoji `ALTER DEFAULT PRIVILEGES` ili ih reset skripta ponovno dodijeli.
+   Simptom bi bio: aplikacija se digne, ali se ujutro u logu pojavi `startup_schema_unreadable` i
+   **adresna kaskada u formularu ne radi**, iako je večer prije radila. Pitanje za Darka glasi:
+   jesu li `SELECT` grantovi za `str_owner` dio reset skripte ili je postavljen
+   `ALTER DEFAULT PRIVILEGES`?
+6b. ⚠️ **Dropa li se i `databasechangelog`?** Ako se dropaju **sve** tablice u `str_rn`
+   (uključujući `databasechangelog` i `databasechangeloglock`), Liquibase uredno gradi shemu od
+   nule — to je ispravan slučaj. Ako se pak obrišu samo „podatkovne" tablice a `databasechangelog`
+   **ostane**, Liquibase zaključi da je sve već primijenjeno, **ne kreira ništa**, i aplikacija se
+   digne nad praznom shemom. Popravak je u našim rukama (vlasnici smo `str_rn`) i opisan je u
+   `tools/cdupreprod-bootstrap.sql`, ali je bolje unaprijed potvrditi da drop pokriva i te dvije.
 7. ~~Grantovi na vanjske sheme?~~ **Već su na mjestu.** `USAGE` na `str`, `rpj_dgu` i
    `eturizam_test` je `t`, a `SELECT` prolazi na `str.facility`, `str.subject`, `str.country`,
    `rpj_dgu.zupanije` i `eturizam_test.ar_ulice`. **Blokada koja je zaustavila InfoDom
@@ -131,7 +145,11 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 
 13. **Je li gateway pravilo postavljeno?** Treba potvrda da `443 → 172.20.8.143:8085` radi.
     Certifikat je riješen (wildcard `*.gov.hr`).
-14. Što znači `16:8085` iz njihove tablice? Pretpostavka je interni port 8085; ne nagađamo.
+14. ~~Što znači `16:8085`?~~ **Odgovoreno: 8085 je port na kojem front STR-a mora biti izložen**
+    („docker-compose ima konfiguraciju porta, npr. `ports: - 8085:3000`"). Naš compose to već
+    ispunjava s `8085:80` — lijeva strana je host port i mora biti 8085, desna je port **unutar**
+    kontejnera, a naš nginx sluša na 80 (`PORT: "80"`). Njihov `3000` je samo primjer iz druge
+    aplikacije; ne prepisivati ga.
 15. ~~Ima li kutija izlaz prema internetu?~~ **Odgovoreno: ima na 443** (GitHub 200, Docker Hub
     pull prolazi), a **SSH prema `github.com:22` je zatvoren**.
 16. *(neobavezno)* Može li se otvoriti izlaz na `github.com:22`? Time bi deploy ključ postao
@@ -335,16 +353,23 @@ psql "postgresql://<user>@172.20.8.212:5432/eturizam" `
 
 ## C3. Noćni reset — srce ove okoline
 
-Što se dogodi kad baza nestane pod aplikacijom koja radi:
+**Potvrđeno 18.09.:** reset **dropa tablice**, a **shema `str_rn` i role ostaju**. To je najbolji
+mogući ishod za nas — shemu ne bismo mogli vratiti (`CREATE` na bazi = `f`), a tablice unutar nje
+možemo, jer smo vlasnici (`str_owner`) i imamo `CREATE` na shemi.
 
 | Posljedica | Zašto |
 | :--- | :--- |
-| `str_rn` nestane | shemu na ovom profilu **nitko ne kreira** (`LocalDatabaseConfig` je `local`/`mock`) |
-| `databasechangelog` nestane | idući start vrti **cijeli changelog od nule** → registar je ujutro prazan |
+| Sve naše tablice nestanu | reset ih dropa; shema ostaje prazna |
+| `databasechangelog` nestane s njima | idući start vrti **cijeli changelog od nule** → tablice i inicijalni podaci se ponovno grade |
 | Aplikacija radi protiv prazne sheme | **Liquibase se vrti samo pri dizanju konteksta.** Konekcije se oporave same (Hikari validira pri posudbi), ali tablice ne — vraća ih tek restart |
 | Sesije nestanu (`str_rn.spring_session`) | svi prijavljeni testeri su odjavljeni |
-| Skice nestanu | `DRAFT_ENC_KEY` ostaje isti (u `.env`), ali podaci ne |
-| Grantovi možda nestanu | ako se sheme recreiraju iz dumpa, ACL dolazi iz dumpa (→ A1/6) |
+| RB-ovi i skice nestanu | `DRAFT_ENC_KEY` ostaje isti (u `.env`), ali podaci ne |
+| Tablični grantovi možda nestanu | `SELECT` se veže uz tablicu; ako se dropaju i njihove, grant ide s njima (→ A1/6) |
+
+**Jutarnji restart je time obavezan svaki dan**, ne mjera opreza: bez njega aplikacija cijeli dan
+radi nad praznom shemom. Inicijalne podatke („popuniti inicijalnim podacima ako su potrebni" iz
+njihovog odgovora) pokrivaju seed changeseti bez konteksta — vrste smještaja i platforme; demo
+seedovi se ne primjenjuju jer `contexts=cdupreprod` ne uključuje `cdu`/`dev`/`local`.
 
 Redoslijed jutarnjeg oporavka (`tools/cdupreprod-nightly.sh`, cron **nakon** njihovog prozora):
 
@@ -364,8 +389,9 @@ Redoslijed jutarnjeg oporavka (`tools/cdupreprod-nightly.sh`, cron **nakon** nji
   `docker pull postgres:16-alpine` jednokratni preduvjet — inače skripta javi da shemu nakon
   reseta netko mora kreirati ručno.
 - Skripta mora biti **idempotentna** — pušta se i ručno, i po dva puta.
-- Ako Darko potvrdi da se `str_rn` **može izuzeti** iz reseta (A1/4), cijela faza se svede na
-  „restart ujutro" i podaci testera preživljavaju. **Prvo tražiti to.**
+- **Ako `databasechangelog` preživi drop, a ostale tablice ne**, Liquibase neće ništa kreirati i
+  aplikacija se digne nad praznom shemom (vidi A1/6b). `bootstrap` to otkriva i javlja s točnim
+  popravkom; popravak je u našoj nadležnosti jer smo vlasnici sheme.
 
 ## C4. Repo rad — ✅ napravljeno
 
@@ -575,10 +601,16 @@ stari `index.html` koji traži hash kojeg u novom buildu više nema.
 ## C8. Automatizacija + primopredaja
 
 - [ ] `docker pull postgres:16-alpine` (preduvjet nightly skripte)
-- [ ] cron za `cdupreprod-nightly.sh`, log u datoteku
+- [ ] **doznati vrijeme reset prozora od Darka** (A1/5) — bez toga cron ne ide
+- [ ] cron za `cdupreprod-nightly.sh`, log u datoteku. **Obavezan je**, nije mjera opreza:
+      tablice se dropaju svake noći, pa bez jutarnjeg restarta aplikacija cijeli dan radi nad
+      praznom shemom
+- [ ] prvo jutro **provjeriti tablične grantove** (A1/6): `docker logs … | grep startup_schema`
+      — ako se pojavi `startup_schema_unreadable`, `SELECT` grantovi nisu preživjeli reset i
+      adresna kaskada je mrtva, iako je večer prije radila
 - [ ] tri jutra zaredom provjeriti log prije nego se okolina proglasi stabilnom
-- [ ] testerima napisati **što nakon reseta nestaje** (RB-ovi, skice, sesije) — inače to dolazi
-      kao prijavljeni bug
+- [ ] testerima napisati **što nakon reseta nestaje** — RB-ovi, skice, sesije, dakle **sve što
+      unesu tijekom dana**. Inače to dolazi kao prijavljeni bug svako jutro
 - [ ] ovaj dokument prepisati iz plana u postupak + dodati `Update-only` odjeljak
 
 ---
@@ -590,7 +622,9 @@ Prvo one koje na **ovoj** okolini vrijede:
 | Simptom | Uzrok | Rješenje |
 | :--- | :--- | :--- |
 | Ujutro svaki upit puca, kontejner „Up" | tablice su nestale s resetom, a Liquibase se vrti samo pri startu (konekcije nisu krive — Hikari ih sam obnavlja) | restart backenda u nightly skripti |
-| Puna migracija svaki dan, registar prazan | reset briše `str_rn` i `databasechangelog` | očekivano; tražiti izuzimanje `str_rn` iz reseta |
+| Puna migracija svaki dan, registar prazan | reset dropa tablice (potvrđeno) — Liquibase ih gradi od nule | **očekivano i ispravno**; testerima reći da dnevni unos ne preživljava noć |
+| Backend „Up", ali svaki upit puca na nepostojećoj tablici, bez greške na startu | `databasechangelog` preživio drop, ostale tablice nisu → Liquibase ne kreira ništa | bootstrap to otkriva i javlja; popravak je drop changelog tablica (A1/6b) |
+| Ujutro `startup_schema_unreadable`, adresna kaskada mrtva | tablični `SELECT` grant nestao s dropanom tuđom tablicom | A1/6 — traži `ALTER DEFAULT PRIVILEGES` ili re-grant u njihovoj reset skripti |
 | `permission denied for schema rpj_dgu` (servis radi) | grant nestao s resetom | grant traži vlasnik sheme; mi ga ne možemo dati |
 | Ujutro `Shema str_rn ne postoji` i oporavak stane | reset ju je obrisao, a nemamo `CREATE` na bazi | namjeran prekid — backend se ne restarta; rješenje je kod DBA (A1/4) |
 | `permission denied to set role` | user nije član role | A1/2 |
