@@ -18,6 +18,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -132,9 +133,9 @@ public class RnDocumentsService {
     }
 
     /**
-     * Urudžbene oznake obavijesti o dodjeli — KLASA s predmeta, URBROJ s izlaznog pismena
-     * registracije (isti broj koji je poslan eGOP-u). Kad urudžbiranje nije (uspješno) provedeno,
-     * URBROJ ostaje prazan i akt se renderira samo s KLASOM.
+     * Urudžbene oznake obavijesti o dodjeli — KLASA s predmeta, URBROJ i JOP s izlaznog
+     * pismena registracije (isti brojevi kao na verziji poslanoj eGOP-u). Kad urudžbiranje nije
+     * (uspješno) provedeno, URBROJ i JOP ostaju prazni i akt se renderira samo s KLASOM.
      */
     @Transactional(readOnly = true)
     public FilingReference dodjelaFiling(String rn) {
@@ -146,11 +147,13 @@ public class RnDocumentsService {
         }
         String klasa = submissionRepository.findById(submissionId)
                 .map(SubmissionEntity::getEgopKlasa).orElse(null);
-        String urBroj = egopPismenoRepository.findBySubmissionIdAndVrstaPismenaNazivAndActRef(
+        Optional<EgopPismenoEntity> izlazno =
+                egopPismenoRepository.findBySubmissionIdAndVrstaPismenaNazivAndActRef(
                         submissionId, StrDocumentType.DODJELA.vrstaPismenaNaziv(),
-                        EgopPismenoEntity.ACT_REF_REGISTRACIJA)
-                .map(EgopPismenoEntity::getUrBroj).orElse(null);
-        return new FilingReference(klasa, urBroj);
+                        EgopPismenoEntity.ACT_REF_REGISTRACIJA);
+        return new FilingReference(klasa,
+                izlazno.map(EgopPismenoEntity::getUrBroj).orElse(null),
+                izlazno.map(EgopPismenoEntity::getJop).orElse(null));
     }
 
     /** npr. {@code suspenzija-HR180000123456789001.pdf}; padne na {@code akt} ako vrsta nije poznata. */

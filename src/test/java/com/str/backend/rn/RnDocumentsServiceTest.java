@@ -183,6 +183,8 @@ class RnDocumentsServiceTest {
         FilingReference filing = service.dodjelaFiling(RN);
         assertEquals("334-01/26-01/55", filing.klasa());
         assertEquals("529-06/26-2", filing.urBroj());
+        // JOP ide u desni kut zaglavlja („P/1002") — isti kao na verziji priloženoj eGOP-u.
+        assertEquals(1002, filing.jop());
     }
 
     @Test
@@ -197,6 +199,7 @@ class RnDocumentsServiceTest {
         FilingReference filing = service.dodjelaFiling(RN);
         assertEquals("334-01/26-01/55", filing.klasa());
         assertThat(filing.urBroj()).isNull();
+        assertThat(filing.jop()).isNull();
     }
 
     @Test

@@ -19,6 +19,12 @@ import java.util.Set;
  * provjerava na startu. Sadržaj sekcije određuje predložak; ovaj popis samo brani da akt
  * ostane bez sekcije koju ZUP traži — npr. rješenje bez upute o pravnom lijeku, što po čl. 111.
  * ide na štetu tijela, ne stranke.
+ *
+ * <p>Sve obavijesti tijela imaju <b>istu strukturu</b> kao obavijest o dodjeli, po predlošku
+ * MINT-a od 11.09.2026.: uvod, naslov akta, izreka bez naslova, a obrazloženje i uputa samo
+ * tamo gdje ih ZUP traži. Adresat, prilozi i dostavna lista ne ispisuju se nigdje.
+ * Podnesak stranke ({@link #PRIGOVOR}) nije obavijest i zadržava vlastitu strukturu po
+ * čl. 71.
  */
 public enum StrDocumentType {
 
@@ -32,17 +38,20 @@ public enum StrDocumentType {
     /**
      * Potvrda o činjenici iz službene evidencije (čl. 159.) — nema obrazloženja ni upute
      * o pravnom lijeku jer ništa ne dira u prava stranke.
+     *
+     * <p>Adresat i dostavna lista nisu obvezni: naručitelj ih je izbacio iz predloška
+     * (predložak MINT-a od 11.09.2026.), jer se obavijest dostavlja u korisnički pretinac
+     * stranke koja je u uvodu već imenovana. Isto vrijedi za sve ostale obavijesti — svaka
+     * ima istu strukturu kao ova.
      */
     DODJELA("dodjela", "Obavijest o dodjeli registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O DODJELI REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
-                    ZupSection.DOSTAVNA_LISTA)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /** Opoziv na zahtjev samog iznajmljivača — evidencijska obavijest, bez pravnog lijeka. */
     OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O OPOZIVU REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
-                    ZupSection.DOSTAVNA_LISTA)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
      * Poziv na izjašnjavanje prije nepovoljne odluke (čl. 30. st. 2). Nije rješenje, pa nema
@@ -52,22 +61,19 @@ public enum StrDocumentType {
     PRIJEDLOG_SUSPENZIJE("prijedlog-suspenzije",
             "Obavijest o prijedlogu suspenzije registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O PRIJEDLOGU SUSPENZIJE REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
-                    ZupSection.OBRAZLOZENJE, ZupSection.DOSTAVNA_LISTA)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE)),
 
     /** Odluka koja dira u prava stranke → puna struktura čl. 98., uključujući uputu. */
     SUSPENZIJA("suspenzija", "Obavijest o suspenziji registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O SUSPENZIJI REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
-                    ZupSection.OBRAZLOZENJE, ZupSection.UPUTA_O_PRAVNOM_LIJEKU,
-                    ZupSection.DOSTAVNA_LISTA)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
+                    ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
 
     /** Kao suspenzija, ali trajno (WITHDRAWN je terminalan) — uputa je time još važnija. */
     POVLACENJE("povlacenje", "Obavijest o povlačenju registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O POVLAČENJU REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
-                    ZupSection.OBRAZLOZENJE, ZupSection.UPUTA_O_PRAVNOM_LIJEKU,
-                    ZupSection.DOSTAVNA_LISTA)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
+                    ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
 
     /**
      * Podnesak stranke (čl. 71. + čl. 122.) — nema izreke ni upute; tijelo prigovora ide u
@@ -87,8 +93,7 @@ public enum StrDocumentType {
      */
     REAKTIVACIJA("reaktivacija", "Obavijest o reaktivaciji registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O REAKTIVACIJI REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
-                    ZupSection.DOSTAVNA_LISTA)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
      * Postupak suspenzije obustavljen jer je stranka postupila po prijedlogu. Kao i
@@ -102,8 +107,7 @@ public enum StrDocumentType {
     OBUSTAVA_SUSPENZIJE("obustava-suspenzije",
             "Obavijest o obustavi postupka suspenzije registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O OBUSTAVI POSTUPKA SUSPENZIJE REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.IZREKA,
-                    ZupSection.DOSTAVNA_LISTA));
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA));
 
     /** Smjer pismena u urudžbenom zapisniku. Preslikava se na {@code EgopPismenoEntity.Smjer}. */
     public enum Smjer { ULAZNO, IZLAZNO }

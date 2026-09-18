@@ -138,9 +138,9 @@ public class EgopFilingService {
         return new FilingResult(filingNumber, zahtjevPdf);
     }
 
-    /** KLASA je zajednička svim pismenima predmeta, URBROJ je pojedinačan. */
+    /** KLASA je zajednička svim pismenima predmeta, URBROJ i JOP su pojedinačni. */
     private static FilingReference filing(SubmissionEntity submission, EgopPismenoEntity pismeno) {
-        return new FilingReference(submission.getEgopKlasa(), pismeno.getUrBroj());
+        return new FilingReference(submission.getEgopKlasa(), pismeno.getUrBroj(), pismeno.getJop());
     }
 
     /** Oblik koji se sprema na {@code submission.filing_number} i prikazuje korisniku. */

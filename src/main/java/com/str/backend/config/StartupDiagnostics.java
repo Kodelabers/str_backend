@@ -111,6 +111,21 @@ public class StartupDiagnostics {
                 env.getProperty("app.captcha.enabled", Boolean.class, false),
                 describeSecret(env.getProperty("app.captcha.hmac-key"), "change-me-in-production"));
 
+        // Identitet tijela na aktima. Nekonfigurirano polje vidi se inače tek na izdanom aktu, u
+        // obliku „[nije konfigurirano: …]" — a tada je akt već otišao stranci. Prazna vrijednost u
+        // .env-u pregazi default iz application.properties, pa je ovo prva provjera nakon deploya.
+        boolean epecat = env.getProperty("str.documents.epecat.enabled", Boolean.class, false);
+        log.info("startup_documents tijelo={} oib={} propis={} potpisnik={} epecat={}{}",
+                env.getProperty("str.documents.tijelo.naziv"),
+                popunjeno(env.getProperty("str.documents.tijelo.oib")),
+                popunjeno(env.getProperty("str.documents.tijelo.propis-nadleznosti")),
+                popunjeno(env.getProperty("str.documents.potpisnik.ime")),
+                epecat,
+                epecat
+                        ? " (certifikat=" + popunjeno(env.getProperty("str.documents.epecat.naziv-certifikata"))
+                                + " url_provjere=" + popunjeno(env.getProperty("str.documents.epecat.url-provjere")) + ")"
+                        : " — blok e-pečata se ne ispisuje");
+
         log.info("startup_web frontend_base={} cors={}",
                 env.getProperty("app.frontend.base-url"),
                 env.getProperty("app.cors.allowed-origins"));
@@ -182,6 +197,14 @@ public class StartupDiagnostics {
     }
 
     /** Stanje tajne bez ispisa vrijednosti. */
+    /** Je li polje akta uopće popunjeno — prazno u .env-u pregazi default iz properties datoteke. */
+    private static String popunjeno(String value) {
+        if (value == null) {
+            return "NEPOSTAVLJEN";
+        }
+        return value.isBlank() ? "PRAZAN (pregazio je default — provjeri .env)" : "postavljen";
+    }
+
     private static String describeSecret(String value, String builtInDefault) {
         if (value == null) {
             return "NEPOSTAVLJEN";
