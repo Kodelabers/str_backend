@@ -115,16 +115,27 @@ public class StartupDiagnostics {
         // obliku „[nije konfigurirano: …]" — a tada je akt već otišao stranci. Prazna vrijednost u
         // .env-u pregazi default iz application.properties, pa je ovo prva provjera nakon deploya.
         boolean epecat = env.getProperty("str.documents.epecat.enabled", Boolean.class, false);
+        String tijeloNaziv = env.getProperty("str.documents.tijelo.naziv");
         log.info("startup_documents tijelo={} oib={} propis={} potpisnik={} epecat={}{}",
-                env.getProperty("str.documents.tijelo.naziv"),
+                tijeloNaziv,
                 popunjeno(env.getProperty("str.documents.tijelo.oib")),
                 popunjeno(env.getProperty("str.documents.tijelo.propis-nadleznosti")),
-                popunjeno(env.getProperty("str.documents.potpisnik.ime")),
+                // Ime službene osobe je neobavezno — potpis je naziv tijela.
+                neobavezno(env.getProperty("str.documents.potpisnik.ime")),
                 epecat,
                 epecat
                         ? " (certifikat=" + popunjeno(env.getProperty("str.documents.epecat.naziv-certifikata"))
                                 + " url_provjere=" + popunjeno(env.getProperty("str.documents.epecat.url-provjere")) + ")"
                         : " — blok e-pečata se ne ispisuje");
+
+        // Naziv tijela otvara rečenicu uvoda („<naziv>, OIB: …, na temelju …, izdaje"), pa malim
+        // početnim slovom akt počinje malim slovom. Zaglavlje i potpis ga pišu velikim slovima
+        // sami, zato se greška ne vidi na njima.
+        if (tijeloNaziv != null && !tijeloNaziv.isBlank()
+                && !Character.isUpperCase(tijeloNaziv.codePointAt(0))) {
+            log.warn("startup_documents_naziv_pocinje_malim_slovom naziv={} — uvod svakog akta"
+                    + " počinje tim nazivom kao rečenicom; ispravi STR_TIJELO_NAZIV", tijeloNaziv);
+        }
 
         log.info("startup_web frontend_base={} cors={}",
                 env.getProperty("app.frontend.base-url"),
@@ -203,6 +214,11 @@ public class StartupDiagnostics {
             return "NEPOSTAVLJEN";
         }
         return value.isBlank() ? "PRAZAN (pregazio je default — provjeri .env)" : "postavljen";
+    }
+
+    /** Polje koje smije ostati prazno — prazno nije kvar pa se ne prijavljuje kao da jest. */
+    private static String neobavezno(String value) {
+        return value == null || value.isBlank() ? "nije postavljen (neobavezno)" : "postavljen";
     }
 
     private static String describeSecret(String value, String builtInDefault) {
