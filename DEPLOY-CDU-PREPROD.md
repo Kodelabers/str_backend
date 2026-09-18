@@ -2,7 +2,7 @@
 
 > **Status 18.09.2026.: instalacija se može pokrenuti.**
 > Recon kutije i baze je odrađen, DBA je potvrdio kako radi noćni reset (tablice se dropaju,
-> shema i role ostaju), konfiguracija je u repou (grana `feat/cdu-preprod-okolina`), a **§C6 je
+> shema i role ostaju), konfiguracija je u `develop`-u (PR #84 spojen 18.09.), a **§C6 je
 > izvršni runbook korak po korak**. Tvrdo blokira samo lozinka NIAS keystorea (Simon) — i nju se
 > zaobilazi s `NIAS_SAML_ENABLED=false`, uz gubitak samo prijave eGrađanima.
 > Za **dan poslije** još fale: vrijeme reset prozora (bez njega nema crona) i potvrda da tablični
@@ -209,7 +209,7 @@ okolina je **bliža CDU testu** (HTTPS iza gatewaya, jedan origin, captcha radi)
 Novi profil je jeftin: `@Profile` se u kodu pojavljuje **dva puta** (`NonEuTestLessorSeeder` na
 `local/mock/dev`, `StartupDiagnostics` na `!test`), sve ostalo ide kroz `${ENV:...}`.
 
-U repou (grana `feat/cdu-preprod-okolina`):
+U repou (`develop`, stiglo kroz PR #84):
 
 | Datoteka | Sadržaj |
 | :--- | :--- |
@@ -236,6 +236,29 @@ nema, pa bi ionako ubacio nula redaka.
 Ovo je bitna razlika prema CDU testu, gdje je deploy u **tuđem** home-u (`/home/vviskov/str-rn`)
 kroz grupu `kodelab-d`. Odatle dolaze `Permission denied` na `scp`-u, nečitljivi modovi za nginx
 i onaj bijeli ekran. Ovdje toga nema: vlastiti home, vlastite datoteke, `docker` bez `sudo`.
+
+Na kutiji je (18.09.) potvrđeno da drukčije ionako ne ide: `/home/vviskov` je nedostupan
+(`Permission denied`), pa se raspored s testa ne može ponoviti ni da želimo.
+
+### Cijena te odluke: stack nije timski upravljiv
+
+Homovi su zatvoreni, pa kolege (`gcolic`, `kkovacevic`, `sroncevic`, `vviskov`) neće moći ući u
+`~/str-rn`. Kroz `docker` grupu i dalje mogu `docker ps`, `logs` i `restart` — ali **ne**
+`docker compose up --build`, jer im compose datoteka i `.env` nisu čitljivi.
+
+Za jednu okolinu koju deploya jedna osoba to je u redu i **preporuka je krenuti ovako** (manje
+pomičnih dijelova pri prvoj instalaciji). Ako se poslije pokaže da stack mora dizati više ljudi,
+najjeftinije rješenje koristi **grupu `docker`**, u kojoj su ionako svi koji smiju deployati:
+
+```bash
+chmod 711 /home/mhangi                 # ulazak u home, bez listanja sadržaja
+chgrp -R docker ~/str-rn && chmod -R g+rX ~/str-rn
+find ~/str-rn -type d -exec chmod g+s {} \;   # nove datoteke zadržavaju grupu
+chmod 640 ~/str-rn/str_backend/.env.cdupreprod ~/str-rn/secrets/*   # tajne ostaju uže
+```
+
+**Ne raditi ovo unaprijed.** `chmod 711` na home je popuštanje privatnosti vlastitog direktorija
+i ima smisla tek kad postoji stvarna potreba; do tada je manje izloženosti bolji default.
 
 ## B3. Build ide NA KUTIJI
 
@@ -425,7 +448,8 @@ Redoslijed jutarnjeg oporavka (`tools/cdupreprod-nightly.sh`, cron **nakon** nji
 
 ## C4. Repo rad — ✅ napravljeno
 
-Grana `feat/cdu-preprod-okolina` (PR na `develop`; nikad push na `develop`, nikad PR na `main`).
+Stiglo kroz granu `feat/cdu-preprod-okolina` → PR #84 → `develop` (nikad push na `develop`,
+nikad PR na `main`).
 
 **Zamka:** `VITE_API_URL` ide **bez** `/api` sufiksa — `backendApi.ts` uzima `VITE_API_URL` kao
 `baseURL`, a putanje već počinju s `/api/…`. U repou postoji i suprotan primjer
@@ -485,30 +509,40 @@ bazu. Rezerva ako je datoteka u međuvremenu mijenjana:
 Repozitoriji su privatni, a `github.com:22` je s kutije zatvoren, pa ide `git bundle` (§B6).
 Bundle se radi iz **lokalnog** checkouta, pa mora biti na željenoj grani.
 
+**PRIJE VPN-a** (na VPN-u nema interneta, pa se repo više ne može osvježiti):
 ```powershell
-git -C C:\Users\MladenHangi\str_backend bundle create C:\Users\MladenHangi\str_backend.bundle feat/cdu-preprod-okolina
+git -C C:\Users\MladenHangi\str_backend pull; git -C C:\Users\MladenHangi\str_frontend pull
+```
+```powershell
+git -C C:\Users\MladenHangi\str_backend bundle create C:\Users\MladenHangi\str_backend.bundle develop
 ```
 ```powershell
 git -C C:\Users\MladenHangi\str_frontend bundle create C:\Users\MladenHangi\str_frontend.bundle develop
 ```
+
+> `git bundle` pakira **ref**, ne radnu kopiju — radi i kad je lokalni checkout na drugoj grani.
+> Od PR-a #84 (18.09.) sve je u `develop`, pa se bundla `develop`; prije toga se bundlala grana
+> `feat/cdu-preprod-okolina`.
+
+**NA VPN-u:**
 ```powershell
 scp C:\Users\MladenHangi\str_backend.bundle C:\Users\MladenHangi\str_frontend.bundle cdu-preprod:~/
 ```
-
-Na kutiji (jedan redak):
 ```powershell
-ssh cdu-preprod "mkdir -p ~/str-rn/secrets && cd ~/str-rn && git clone -b feat/cdu-preprod-okolina ~/str_backend.bundle str_backend && git clone -b develop ~/str_frontend.bundle str_frontend && ls -la ~/str-rn"
+ssh cdu-preprod "mkdir -p ~/str-rn/secrets && cd ~/str-rn && git clone -b develop ~/str_backend.bundle str_backend && git clone -b develop ~/str_frontend.bundle str_frontend && ls -la ~/str-rn"
 ```
-
-> **Napomena:** dok PR nije spojen, backend ide s grane `feat/cdu-preprod-okolina` (ondje su
-> compose, profil i skripte). Nakon mergea u `develop` bundle se radi s `develop`.
->
-> Grana je od 18.09. i na `origin`, pa bundle možeš napraviti i iz svježeg klona ako lokalni
-> checkout u međuvremenu ode na drugu granu — `git bundle create … feat/cdu-preprod-okolina`
-> radi neovisno o tome što je trenutno odjavljeno, jer pakira **ref**, ne radnu kopiju.
 
 **Kontrolna točka:** `~/str-rn/` sadrži `str_backend/`, `str_frontend/` i `secrets/`. Frontend
 **mora** biti susjedni direktorij — compose ga gradi preko `context: ../str_frontend`.
+
+> **Provjereno na kutiji 18.09.:** `/home/mhangi` je **prazan**, a `/home/vviskov` nam je
+> nedostupan (`Permission denied`). Raspored s CDU testa — gdje deploy živi u tuđem home-u i piše
+> se kroz grupu `kodelab-d` — ovdje dakle **nije ni moguć**, a i ne treba: `~/str-rn` je naš,
+> `docker` radi bez `sudo`, i cijela klasa kvarova s pravima na datotekama otpada.
+> Posljedica koju treba znati: kolege (`gcolic`, `kkovacevic`, `sroncevic`, `vviskov`) **neće
+> moći pokretati `docker compose`** nad ovim stackom jer im `~/str-rn` nije čitljiv — mogu samo
+> `docker ps` / `logs` / `restart` kroz `docker` grupu. Ako stack treba biti timski upravljiv,
+> vidi §B2.
 
 ### C6.3 · KORAK 3 — NIAS keystore (preskočivo)
 
