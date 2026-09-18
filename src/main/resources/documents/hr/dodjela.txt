@@ -5,28 +5,19 @@
 # dakle javna isprava. Aktom se stranci ništa ne uskraćuje, pa nema ni obrazloženja ni
 # upute o pravnom lijeku.
 #
+# Izgled i tekst su po predlošku MINT-a od 11.09.2026. (Obavijest o dodjeli RB IP DŠ.docx):
+# bez adresata, bez naslova „I Z R E K A" (StrDocumentType.ispisujeNaslovIzreke), bez
+# priloga i dostavne liste.
+#
 # Katalog placeholdera: docs/ZUP-predlosci.md
 # Redak koji nakon zamjene ostane prazan ne ispisuje se.
 
-[NASLOV]
-${stranka.naziv}
-${stranka.zastupnik}
-${stranka.adresa}
-${stranka.postanskiBroj} ${stranka.mjesto}
-
 [UVOD]
-${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, u postupku pokrenutom na zahtjev stranke ${stranka.naziv}, ${stranka.identifikator}, u predmetu registracije smještajne jedinice kratkoročnog najma, izdaje
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, na zahtjev ${stranka.naziv}, ${stranka.identifikator}, izdaje
 
 [IZREKA]
-1. Utvrđuje se da je smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, dodijeljen registracijski broj ${rn.broj}.
+1. Smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, dodijeljen je registracijski broj ${rn.broj}.
 
-2. Registracijski broj upisan je u registar dana ${rn.datumIzdavanja} i od toga je dana važeći.
+2. Registracijski broj upisan je u integrirani informacijski sustav turizma dana ${rn.datumIzdavanja} godine.
 
 3. Registracijski broj obvezno se navodi u svakom oglasu smještajne jedinice na internetskim platformama za kratkoročni najam.
-
-[PRILOZI]
-1. Zahtjev za registracijski broj
-
-[DOSTAVNA_LISTA]
-1. ${stranka.naziv} — u korisnički pretinac
-2. Pismohrana, ovdje

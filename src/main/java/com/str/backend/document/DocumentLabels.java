@@ -41,6 +41,15 @@ public class DocumentLabels {
         return value;
     }
 
+    /**
+     * Natpis ili {@code null} — za ključeve koje pozivatelj gradi iz podataka (npr. šifra skupine
+     * iz registracijskog broja), gdje nepostojeći ključ nije tipfeler nego nov podatak i
+     * pozivatelj sam odlučuje što s njim.
+     */
+    public String find(String key) {
+        return labels.getProperty(key);
+    }
+
     public String format(String key, Object... args) {
         return String.format(get(key), args);
     }

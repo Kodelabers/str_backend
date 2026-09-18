@@ -40,13 +40,23 @@ class AktPreviewGenerator {
     private static final String RN = "HR180000123456789001";
     private static final Path OUT = Path.of("target", "preview");
 
+    /**
+     * Vrijednosti su iz predloška MINT-a od 11.09.2026., a pečat je uključen s primjerom podataka
+     * po uzoru na Poreznu upravu — da preview pokaže cijeli ciljani izgled, i blok koji je u
+     * aplikaciji ugašen dok ne stigne FINA certifikat.
+     */
     private static final DocumentProperties PROPS = new DocumentProperties(
             new DocumentProperties.Tijelo(
-                    "MINISTARSTVO TURIZMA I SPORTA", "87892589782",
+                    "Ministarstvo turizma i sporta", "87892589782",
                     "Prisavlje 14", "Zagreb", "Uprava za turizam",
-                    "članka 12. Zakona o pružanju usluga u turizmu"),
-            new DocumentProperties.Potpisnik("Ivana Ivić", "Voditeljica postupka"),
-            new DocumentProperties.Epecat(false, ""),
+                    "članka 46. Zakona o ugostiteljskoj djelatnosti (Narodne novine, broj ___)"),
+            new DocumentProperties.Potpisnik(null, null),
+            new DocumentProperties.Epecat(true, "CN=Fina RDC 2020,O=Financijska agencija,C=HR",
+                    "SERIALNUMBER=00000000000.000.00, CN=KVALIFICIRANI ELEKTRONIČKI PEČAT"
+                            + " MINISTARSTVA TURIZMA I SPORTA, L=ZAGREB,"
+                            + " OID.2.5.4.97=VATHR-87892589782,"
+                            + " O=MINISTARSTVO TURIZMA I SPORTA, C=HR",
+                    "SHA256withRSA", "https://str-test-eturizam.gov.hr/provjera"),
             Map.of(
                     "suspenzija", "nije dopuštena žalba, ali se može pokrenuti upravni spor tužbom"
                             + " Upravnom sudu u Zagrebu u roku od 30 dana od dana dostave ove Obavijesti.",
@@ -54,7 +64,9 @@ class AktPreviewGenerator {
                             + " Upravnom sudu u Zagrebu u roku od 30 dana od dana dostave ove Obavijesti."),
             false);
 
-    @Disabled("Alat, ne test — pokrenuti ručno: mvn test -Dtest=AktPreviewGenerator nakon izmjene predloška")
+    // JUnit poštuje @Disabled i uz -Dtest, pa pokretanje traži i isključen DisabledCondition:
+    // mvn test -Dtest=AktPreviewGenerator "-Djunit.jupiter.conditions.deactivate=org.junit.*DisabledCondition"
+    @Disabled("Alat, ne test — pokrenuti ručno nakon izmjene predloška (naredba u komentaru iznad)")
     @Test
     void generate() throws IOException {
         Files.createDirectories(OUT);
@@ -88,7 +100,12 @@ class AktPreviewGenerator {
                 case PRIGOVOR -> "suglasnost suvlasnika je pribavljena i dostavlja se u privitku";
                 default -> null;
             };
-            byte[] pdf = service.render(type, RN, razlog);
+            // Urudžbene oznake u obliku iz predloška; JOP i URBROJ ima samo dodjela, jer se akti
+            // životnog ciklusa renderiraju prije urudžbiranja.
+            FilingReference filing = type == StrDocumentType.DODJELA
+                    ? new FilingReference("334-06/26-10/1", "529-06-03/01-26-2", 21748084)
+                    : new FilingReference("334-06/26-10/1", null);
+            byte[] pdf = service.render(type, RN, razlog, filing);
             Files.write(OUT.resolve(type.slug() + ".pdf"), pdf);
         }
     }

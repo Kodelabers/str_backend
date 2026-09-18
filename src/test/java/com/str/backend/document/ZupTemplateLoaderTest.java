@@ -74,6 +74,41 @@ class ZupTemplateLoaderTest {
     }
 
     /**
+     * Predložak MINT-a od 11.09.2026. izbacio je adresata, naslov izreke, priloge i dostavnu
+     * listu — i to vrijedi za <b>svaku</b> obavijest tijela, ne samo za dodjelu. Podnesak stranke
+     * (prigovor) nije obavijest i zadržava adresata po čl. 71. st. 2.
+     */
+    @ParameterizedTest
+    @MethodSource("obavijesti")
+    void everyNotice_hasNoAddresseeOrDistributionList(StrDocumentType type) {
+        assertThat(type.requiredSections())
+                .doesNotContain(ZupSection.NASLOV, ZupSection.PRILOZI, ZupSection.DOSTAVNA_LISTA);
+        ZupTemplate template = loader.get(type);
+        assertThat(template.has(ZupSection.NASLOV)).isFalse();
+        assertThat(template.has(ZupSection.PRILOZI)).isFalse();
+        assertThat(template.has(ZupSection.DOSTAVNA_LISTA)).isFalse();
+    }
+
+    /** Izreka se nigdje ne naslovljuje; naslovi ostaju samo obrazloženju i uputi. */
+    @Test
+    void dispositionHasNoHeading() {
+        assertThat(ZupSection.IZREKA.hasHeading()).isFalse();
+        assertThat(ZupSection.OBRAZLOZENJE.hasHeading()).isTrue();
+        assertThat(ZupSection.UPUTA_O_PRAVNOM_LIJEKU.hasHeading()).isTrue();
+    }
+
+    @Test
+    void partySubmission_keepsAddressee() {
+        assertThat(StrDocumentType.PRIGOVOR.requiredSections()).contains(ZupSection.NASLOV);
+        assertThat(loader.get(StrDocumentType.PRIGOVOR).has(ZupSection.NASLOV)).isTrue();
+    }
+
+    static java.util.stream.Stream<StrDocumentType> obavijesti() {
+        return StrDocumentType.templateBackedTypes().stream()
+                .filter(t -> t.smjer() == StrDocumentType.Smjer.IZLAZNO);
+    }
+
+    /**
      * Renderer prolazi kroz {@code ZupSection.values()}, pa poredak konstanti mora biti poredak
      * na papiru. Ako netko premjesti konstantu, ovaj test padne prije nego akt izađe s izrekom
      * iza obrazloženja.

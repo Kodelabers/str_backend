@@ -111,8 +111,9 @@ je samo CA — produkcijski `Fina RDC 2020` umjesto demo. Što to znači:
   certifikat i logout callback šalje na URL registriran uz taj cert, tj. InterniTurizamu. Ne
   trošiti vrijeme na debug; treba vlastiti FINA certifikat + zasebna registracija STR-a na
   NIAS-u (InfoDom / MINTS).
-- **`STR_TIJELO_OIB` ostaje prazan.** `HR87892589782` je OIB posuđenog identiteta, ne MINTS-ov
-  potvrđeni — akti bi ga inače nosili kao OIB tijela.
+- **`STR_TIJELO_OIB` se ne postavlja.** `87892589782` je OIB ministarstva (organizacijski
+  identifikator iz DN-a); MINT ga je upisao u predložak akta od 11.09.2026., pa je default u
+  `application.properties`. Prazna vrijednost u `.env.preprod` pregazila bi default.
 - **Rok: 08.11.2026.** Vlastiti certifikat tražiti prije toga, inače prijava prestane raditi.
 
 ## 1. Zeleno svjetlo + kod na `develop`

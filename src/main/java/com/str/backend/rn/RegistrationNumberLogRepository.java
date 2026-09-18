@@ -15,4 +15,12 @@ public interface RegistrationNumberLogRepository extends JpaRepository<Registrat
      * od {@code ?reason=} parametra na zahtjevu, koji nitko ne provjerava.
      */
     Optional<RegistrationNumberLogEntity> findFirstByRnOrderByOccurredAtDesc(String rn);
+
+    /**
+     * Zadnji prijelaz u zadani status. Suspenzija je dvofazna, pa materijalni razlog (istek
+     * suglasnosti, nalaz nadzora…) stoji na prijelazu u {@code SUSPENSION_PROPOSED}, a ne na
+     * zadnjem prijelazu — taj nosi samo procesni okidač (istek roka, obustava).
+     */
+    Optional<RegistrationNumberLogEntity> findFirstByRnAndToStatusOrderByOccurredAtDesc(
+            String rn, String toStatus);
 }

@@ -18,17 +18,26 @@ import com.lowagie.text.Element;
  */
 public enum ZupSection {
 
-    /** Grb, naziv tijela, ustrojstvena jedinica, KLASA, URBROJ, mjesto i datum. */
-    ZAGLAVLJE(null, Mode.BLOK, Element.ALIGN_LEFT, 0f),
+    /**
+     * Grb, naziv tijela i eGOP oznake pismena (uvijek iz renderera), zatim urudžbeni blok —
+     * KLASA, URBROJ, mjesto i datum. Predložak smije nadjačati samo urudžbeni blok.
+     */
+    ZAGLAVLJE(null, Mode.BLOK, Element.ALIGN_LEFT, 24f),
 
     /** Adresat (stranka kojoj se akt dostavlja). */
     NASLOV(null, Mode.BLOK, Element.ALIGN_RIGHT, 18f),
 
     /** Čl. 98. st. 2 — tijelo, propis o nadležnosti, stranka, oznaka predmeta, način pokretanja. */
-    UVOD(null, Mode.PROZA, Element.ALIGN_JUSTIFIED, 18f),
+    UVOD(null, Mode.PROZA, Element.ALIGN_JUSTIFIED, 32f),
 
-    /** Čl. 98. st. 3–4 — sama odluka, kratka i određena, u numeriranim točkama. */
-    IZREKA("I Z R E K A", Mode.PROZA, Element.ALIGN_JUSTIFIED, 4f),
+    /**
+     * Čl. 98. st. 3–4 — sama odluka, kratka i određena, u numeriranim točkama.
+     *
+     * <p><b>Bez naslova.</b> Naručitelj je „I Z R E K A" izbacio iz predloška (11.09.2026.), pa
+     * ga ne nosi nijedna obavijest; ZUP naslov ne traži, traži samo izreku kao sastavni dio.
+     * Točke slijede odmah iza naslova akta.
+     */
+    IZREKA(null, Mode.PROZA, Element.ALIGN_JUSTIFIED, 0f),
 
     /** Čl. 98. st. 5 — činjenično stanje, ocjena dokaza i propisi na temelju kojih je riješeno. */
     OBRAZLOZENJE("Obrazloženje", Mode.PROZA, Element.ALIGN_JUSTIFIED, 14f),
@@ -38,8 +47,11 @@ public enum ZupSection {
 
     PRILOZI("Prilozi", Mode.BLOK, Element.ALIGN_LEFT, 14f),
 
-    /** Čl. 98. st. 7–8 — ovlaštena službena osoba i ovjera. */
-    POTPISNIK(null, Mode.BLOK, Element.ALIGN_RIGHT, 26f),
+    /**
+     * Čl. 98. st. 7–8 — naziv tijela (i službena osoba, ako je konfigurirana). Lijevo poravnat
+     * od uvlake u desnoj polovici stranice, kao u predlošku MINT-a.
+     */
+    POTPISNIK(null, Mode.BLOK, Element.ALIGN_LEFT, 24f),
 
     /** Uredsko poslovanje: dolazi ispod potpisa, uz lijevi rub. */
     DOSTAVNA_LISTA("Dostaviti", Mode.BLOK, Element.ALIGN_LEFT, 20f);
