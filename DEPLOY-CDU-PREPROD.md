@@ -43,6 +43,20 @@ još nema živog upstreama; to je očekivano dok ne deployamo.
 | NIAS produkcijski | `https://nias.gov.hr/metadata` vraća **punu, potpisanu metadatu** (`CN=niasap`, SSO `/sso-http`, Fina RDC 2020) | najvažniji preflight prošao — bez njega aplikacija ne bi ni startala |
 | Baza | TCP `172.20.8.212:5432` **dohvatljiv s kutije** | ostaje samo autentikacija i prava |
 
+## Izmjereno na bazi (18.09.2026.)
+
+User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi JDBC URL):
+
+| Provjera | Nalaz | Posljedica |
+| :--- | :--- | :--- |
+| `current_user` / `session_user` | `str_owner` / `shorttermrental` | `SET ROLE` prolazi **na handshakeu** → URL s `options=-c%20role%3Dstr_owner` je točan |
+| `str_rn` | postoji, vlasnik `str_owner`, **0 tablica** | ne treba je kreirati; prvi deploy vrti cijeli changelog, registar starta prazan |
+| `has_schema_privilege('str_rn','CREATE')` | `t` | Liquibase smije kreirati tablice |
+| `has_database_privilege(…,'CREATE')` | **`f`** — i bez role i s rolom | ⛔ **shemu ne možemo vratiti ako je reset obriše** (vidi A1/4) |
+| `SELECT` na `str.facility`, `str.subject`, `str.country` | `t` | popis objekata, OIB lookup i izbornik država rade |
+| `SELECT` na `rpj_dgu.zupanije`, `eturizam_test.ar_ulice` | `t` | **adresna kaskada radi** — InfoDom blokada ovdje ne postoji |
+| `UPDATE` na `str.facility` | `f` | RB se ne upisuje natrag u eTurizam → tuStart handoff nije testabilan end-to-end |
+
 ## Tri okoline jedna uz drugu
 
 | | CDU test (radi) | **CDU preprod (nova)** | InfoDom preprod |
@@ -65,33 +79,40 @@ još nema živog upstreama; to je očekivano dok ne deployamo.
 
 ## A1. Darko Bosnar / DBA (baza `172.20.8.212`) — najveći ostatak
 
-1. **Kako se točno zove shema i rola?** Uputa je došla s `currentSchema=xxx` i `role=xxx_owner`.
-   Na CDU testu je URL **bez** `currentSchema` i **bez** `SET ROLE`, na InfoDom preprodu je
-   `str_rn` + `str_owner`. „Ista priča kao test" pokriva korisnika i lozinku, ali ne i ovo.
-2. **Je li aplikacijski user član role?** Bez članstva konekcija pada **već na handshakeu**, ne
-   na prvom upitu.
-3. **Postoji li shema već?** Na `cdupreprod` profilu je **nitko ne kreira** —
-   `LocalDatabaseConfig` radi samo na `local`/`mock`. Ako je nema:
-   `CREATE SCHEMA <shema> AUTHORIZATION <rola>;`
-4. **Što točno noćni reset radi** — drop/restore cijele baze `eturizam`, ili samo njihovih shema
-   (`str`, `rpj_dgu`, `eturizam_test`)? **Ovo mijenja cijeli §C3.**
-   - briše li i `str_rn` (naša shema, naši podaci i `databasechangelog`)?
-   - **može li se `str_rn` izuzeti iz reseta?** Najjeftinije rješenje za sve.
+1. ~~Kako se zove shema i rola?~~ **Izmjereno: `str_rn` + `str_owner`** — kao na InfoDom
+   preprodu, a **ne** kao na CDU testu (ondje URL nema ni `currentSchema` ni `SET ROLE`).
+   `CDUPREPROD_DB_URL` s `?currentSchema=str_rn&options=-c%20role%3Dstr_owner` je točan.
+2. ~~Je li user član role?~~ **Jest.** Uz `PGOPTIONS=-c role=str_owner` konekcija daje
+   `current_user=str_owner`, `session_user=shorttermrental` — dakle `SET ROLE` prolazi već na
+   handshakeu, kako aplikacija i radi.
+3. ~~Postoji li shema?~~ **Postoji, vlasnik je `str_owner`, i prazna je (0 tablica).** Liquibase
+   ima `CREATE` **na shemi** (`has_schema_privilege('str_rn','CREATE')=t`), pa migracije prolaze;
+   prvi deploy vrti cijeli changelog od nule i registar starta bez ijednog RB-a — to je ispravno.
+4. ⛔ **BLOKADA — što točno noćni reset radi?** Drop/restore cijele baze `eturizam`, ili samo
+   njihovih shema (`str`, `rpj_dgu`, `eturizam_test`)? Briše li i `str_rn`?
+   **Zašto je ovo blokada, a ne administrativno pitanje:** izmjereno je
+   `has_database_privilege(current_database(),'CREATE') = f` — **i kao `shorttermrental` i kao
+   `str_owner`**. Ako reset obriše `str_rn`, mi je **ne možemo vratiti**; okolina ujutro ostaje
+   mrtva i nijedna naša skripta to ne rješava. Tri izlaza, po poželjnosti:
+   - **`str_rn` se izuzme iz reseta** (najjeftinije — preživljavaju i podaci testera);
+   - njihova reset skripta sama vrati `CREATE SCHEMA str_rn AUTHORIZATION str_owner;`
+     (uz grantove iz t. 7, koji tada također moraju biti dio reseta);
+   - nama se da `CREATE` na bazi, pa se oporavak odradi u `tools/cdupreprod-bootstrap.sql`.
 5. **U koje vrijeme i koliko traje** reset? Treba nam prozor za jutarnji oporavak.
 6. **Preživljavaju li grantovi reset?** Ako se sheme recreiraju iz dumpa, ACL-ovi dolaze iz dumpa
    i naši grantovi nestaju svake noći.
-7. **Grantovi koji nam trebaju** (isti zahtjev kao na InfoDom preprodu, gdje je ovo bila blokada
-   — `DEPLOY-PREPROD.md` §2d). Bez njih se **aplikacija digne**, a padne samo adresna kaskada:
-   ```sql
-   GRANT USAGE  ON SCHEMA rpj_dgu, eturizam_test TO <rola>;
-   GRANT SELECT ON ALL TABLES IN SCHEMA rpj_dgu       TO <rola>;
-   GRANT SELECT ON ALL TABLES IN SCHEMA eturizam_test TO <rola>;
-   -- plus str shema: SELECT na facility, subject, country
-   ```
-8. **Je li u `str` shemi produkcijski dump** (prave adrese i e-mailovi)? Odgovor određuje smije
-   li se ikad upaliti e-pošta i smije li se okolina koristiti za prezentaciju.
-9. Treba li `GRANT UPDATE (registration_number) ON str.facility` — bez toga se **tuStart handoff
-   ne može testirati end-to-end**.
+7. ~~Grantovi na vanjske sheme?~~ **Već su na mjestu.** `USAGE` na `str`, `rpj_dgu` i
+   `eturizam_test` je `t`, a `SELECT` prolazi na `str.facility`, `str.subject`, `str.country`,
+   `rpj_dgu.zupanije` i `eturizam_test.ar_ulice`. **Blokada koja je zaustavila InfoDom
+   predprodukciju ovdje ne postoji** — adresna kaskada radi od prvog dana. Ostaje samo pitanje
+   preživljavaju li ti grantovi noćni reset (t. 6).
+8. **Je li u `str` shemi produkcijski dump** (prave adrese i e-mailovi)? Čitanje radi, ali ne
+   znamo čije su to osobe. Odgovor određuje smije li se ikad upaliti e-pošta i smije li se
+   okolina koristiti za prezentaciju. Do odgovora vrijedi `APP_MAIL_ENABLED=false`.
+9. ~~Treba li `GRANT UPDATE (registration_number) ON str.facility`?~~ **Izmjereno: `UPDATE = f`.**
+   Nije blokada za deploy — `FacilityRegistrationNumberWriteBack` guta grešku i logira
+   `facility_writeback_failed`, RB ostaje valjan. Posljedica: **tuStart handoff se ne može
+   testirati end-to-end**. Ako taj tok ulazi u opseg testiranja, tražiti grant od `tustart_owner`.
 
 ## A2. Simon / InfoDom (NIAS)
 
@@ -432,7 +453,8 @@ Prvo one koje na **ovoj** okolini vrijede:
 | :--- | :--- | :--- |
 | Ujutro svaki upit puca, kontejner „Up" | Hikari drži konekcije na resetiranu bazu | restart backenda u nightly skripti |
 | Puna migracija svaki dan, registar prazan | reset briše `str_rn` i `databasechangelog` | očekivano; tražiti izuzimanje `str_rn` iz reseta |
-| `permission denied for schema rpj_dgu` (servis radi) | grant nestao s resetom | grant u bootstrap skriptu ili u njihov reset |
+| `permission denied for schema rpj_dgu` (servis radi) | grant nestao s resetom | grant traži vlasnik sheme; mi ga ne možemo dati |
+| Ujutro `Shema str_rn ne postoji` i oporavak stane | reset ju je obrisao, a nemamo `CREATE` na bazi | namjeran prekid — backend se ne restarta; rješenje je kod DBA (A1/4) |
 | `permission denied to set role` | user nije član role | A1/2 |
 | `app.captcha.hmac-key is empty or unset` → backend ne starta | `CAPTCHA_HMAC_KEY` prazan ili nepostavljen | postaviti ključ; `AltchaService` namjerno obara start umjesto tihog 500 na formularima |
 | Prijava radi, odjava ne | posuđeni „InterniTurizam" certifikat | ne debugirati; vlastiti cert + registracija (A2) |

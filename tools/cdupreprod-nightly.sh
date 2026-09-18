@@ -59,11 +59,13 @@ else
   fail "nema ni 'docker compose' ni 'docker-compose'"
 fi
 
-# psql ne mora postojati na kutiji. Rezerva je psql iz postgres imagea, ali SAMO ako je već u
-# lokalnom cacheu — CDU mreža nema pristup Docker Hubu, pa se pull neće dogoditi.
+# psql na kutiji NE POSTOJI (izmjereno 18.09.: nema ni mvn/npm/java), pa rezerva nije rezerva
+# nego glavni put: psql iz postgres imagea. Docker Hub je s ove kutije dohvatljiv (provjereno
+# `docker pull nginx:alpine`), pa se image po potrebi i povuče — jednokratno, pri prvom radu.
 if command -v psql >/dev/null 2>&1; then
   run_psql() { PGPASSWORD="$DB_PASSWORD" psql "postgresql://${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}" -v ON_ERROR_STOP=1 "$@"; }
-elif docker image inspect postgres:16-alpine >/dev/null 2>&1; then
+elif docker image inspect postgres:16-alpine >/dev/null 2>&1 \
+     || docker pull postgres:16-alpine >/dev/null 2>&1; then
   run_psql() { docker run --rm --network host -e PGPASSWORD="$DB_PASSWORD" -v "${PROJECT_DIR}/tools:/tools:ro" \
       postgres:16-alpine psql "postgresql://${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}" -v ON_ERROR_STOP=1 "$@"; }
   BOOTSTRAP_SQL="/tools/$(basename "$BOOTSTRAP_SQL")"
@@ -85,8 +87,16 @@ done
 log "baza prihvaća konekcije"
 
 # --- 2. shema ------------------------------------------------------------------------------
-log "bootstrap sheme…"
-run_psql -f "$BOOTSTRAP_SQL" 2>&1 | tee -a "$LOG_FILE"
+# Skripta NE kreira shemu — nemamo CREATE na bazi (izmjereno 18.09., vrijedi i uz SET ROLE).
+# Ona samo provjerava i puca ako sheme nema. Taj pad je namjeran i ovdje se mora zaustaviti
+# cijeli oporavak: restart backenda u bazu bez sheme znači pad na Liquibaseu i restart petlju.
+log "provjera sheme…"
+if ! run_psql -f "$BOOTSTRAP_SQL" 2>&1 | tee -a "$LOG_FILE"; then
+  log "PREKID: shema str_rn nije dostupna, a ne možemo je kreirati."
+  log "        Backend NIJE restartan — ostaje na staroj konekciji umjesto da uđe u restart petlju."
+  log "        Traži od DBA da str_rn izuzme iz noćnog reseta (vidi tools/cdupreprod-bootstrap.sql)."
+  exit 1
+fi
 
 # --- 3. restart backenda -------------------------------------------------------------------
 # Restart, ne `up -d`: image se ne rebuilda (kod se nije mijenjao), ali se ruše mrtve konekcije i
