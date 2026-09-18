@@ -1,9 +1,11 @@
 # CDU predprodukcija — `str-preprod-eturizam.gov.hr` (PLAN)
 
-> **Status 18.09.2026.: recon kutije je odrađen, okolina još nije deployana.** Build strategija
-> je time odlučena (build-on-box), a otvoreno je ostalo troje: DB kredencijali i potvrda
-> sheme/role, lozinka produkcijskog NIAS keystorea i potvrda gateway pravila. Kad okolina
-> proradi, ovaj dokument prelazi u oblik kakav ima `DEPLOY-CDU.md` (koraci + zamke).
+> **Status 18.09.2026.: sve je spremno za instalaciju, čeka se jedna tajna.**
+> Recon kutije i baze je odrađen, konfiguracija je u repou (grana `feat/cdu-preprod-okolina`),
+> a **§C6 je izvršni runbook korak po korak**. Tvrdo blokira samo lozinka NIAS keystorea (Simon)
+> — i nju se može zaobići s `NIAS_SAML_ENABLED=false`, uz gubitak samo prijave eGrađanima.
+> Darkova pitanja (§A1) tiču se **preživljavanja nakon prve noći**, ne samog `up`-a.
+> Kad okolina proradi, ovaj dokument prelazi u oblik kakav ima `DEPLOY-CDU.md`.
 
 Nova okolina je **druga kutija na istom državnom VPN-u** kao CDU test. Nije nastavak
 InfoDomove predprodukcije (`s-str-02`) — s njom dijeli samo riječ „predprodukcija".
@@ -339,7 +341,7 @@ psql "postgresql://<user>@172.20.8.212:5432/eturizam" `
 | :--- | :--- |
 | `str_rn` nestane | shemu na ovom profilu **nitko ne kreira** (`LocalDatabaseConfig` je `local`/`mock`) |
 | `databasechangelog` nestane | idući start vrti **cijeli changelog od nule** → registar je ujutro prazan |
-| Hikari drži mrtve konekcije | kontejner je „Up", ali svaki upit puca dok se ne restarta |
+| Aplikacija radi protiv prazne sheme | **Liquibase se vrti samo pri dizanju konteksta.** Konekcije se oporave same (Hikari validira pri posudbi), ali tablice ne — vraća ih tek restart |
 | Sesije nestanu (`str_rn.spring_session`) | svi prijavljeni testeri su odjavljeni |
 | Skice nestanu | `DRAFT_ENC_KEY` ostaje isti (u `.env`), ali podaci ne |
 | Grantovi možda nestanu | ako se sheme recreiraju iz dumpa, ACL dolazi iz dumpa (→ A1/6) |
@@ -348,7 +350,7 @@ Redoslijed jutarnjeg oporavka (`tools/cdupreprod-nightly.sh`, cron **nakon** nji
 
 ```
 1. čekaj da baza prihvaća konekcije      (retry — ne pretpostavljaj da je reset gotov)
-2. psql -f cdupreprod-bootstrap.sql      (CREATE SCHEMA IF NOT EXISTS + ispis prava)
+2. psql -f cdupreprod-bootstrap.sql      (PROVJERA sheme + ispis prava; ne kreira — nemamo CREATE)
 3. docker compose -f docker-compose.cdupreprod.yml restart backend
 4. čekaj "Started StrBackendApplication" u logu, s timeoutom
 5. smoke: /api/captcha/challenge + startup_ linije
@@ -390,24 +392,160 @@ Grana `feat/cdu-preprod-okolina` (PR na `develop`; nikad push na `develop`, nika
 **Zamka:** ako registracija ne stigne na vrijeme, okolina se **svejedno diže** s
 `NIAS_SAML_ENABLED=false` — radi sve osim prijave eGrađanima. Bolji ishod od čekanja.
 
-## C6. Prvi deploy — build na kutiji
+## C6. Prvi deploy — korak po korak
 
-```bash
-cd ~/str-rn/str_backend
-cp .env.cdupreprod.example .env.cdupreprod
-nano .env.cdupreprod      # 5 vrijednosti: DB user/pass, DRAFT_ENC_KEY, CAPTCHA_HMAC_KEY, NIAS_KEYSTORE_PASSWORD
-#   openssl rand -base64 32   ← za oba ključa, generirati jednom i ne rotirati
+> **Pravilo za cijeli odjeljak:** svaku `ssh` naredbu piši u **jednom retku**. Kad je PowerShell
+> prelomi, udaljeni bash svaki fragment izvrši kao zasebnu naredbu — danas nas je to koštalo tri
+> pogrešna zaključka. Naredbe ispod su namjerno jednoredne.
 
-docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build
-docker compose -f docker-compose.cdupreprod.yml logs -f backend
+### C6.0 Preduvjeti — bez ovoga se ne kreće
+
+| # | Što | Odakle | Ako fali |
+| :--- | :--- | :--- | :--- |
+| 1 | Državni VPN gore | — | ništa dalje ne radi |
+| 2 | DB lozinka | s test kutije, korak C6.1 | **blokada** |
+| 3 | Lozinka `nias-prod.p12` | Simon | **nije blokada** → `NIAS_SAML_ENABLED=false`, sve osim prijave radi |
+| 4 | Datoteka `nias-prod.p12` | lokalno (ista kao InfoDom preprod) | isto kao gore |
+| 5 | Gateway `443 → .143:8085` | mrežni tim | nije blokada — provjerava se lokalno na kutiji |
+| 6 | Vrijeme noćnog reseta | Darko | nije blokada za `up`; blokira samo postavljanje crona (C8) |
+
+Trajanje: ~15 min rada + 10–20 min prvog builda.
+
+### C6.1 VPN, pristup i DB lozinka
+
+```powershell
+ssh -o StrictHostKeyChecking=accept-new cdu-preprod "hostname; id"
+```
+Očekuj `eturizam-0016` i `groups=...,988(docker)`. Ako traži lozinku, ključ nije prihvaćen.
+
+```powershell
+ssh cdu "grep CDU_DB ~/str-rn/str_backend/.env.cdu"
+```
+Odatle prepiši `CDU_DB_USERNAME` (`shorttermrental`) i `CDU_DB_PASSWORD` — isti vrijede za novu
+bazu. Rezerva ako je datoteka u međuvremenu mijenjana:
+`ssh cdu "docker exec str-backend-cdu env | grep CDU_DB"`.
+
+**Kontrolna točka:** imaš hostname, `docker` grupu i DB lozinku.
+
+### C6.2 Repozitoriji na kutiju
+
+Repozitoriji su privatni, a `github.com:22` je s kutije zatvoren, pa ide `git bundle` (§B6).
+Bundle se radi iz **lokalnog** checkouta, pa mora biti na željenoj grani.
+
+```powershell
+git -C C:\Users\MladenHangi\str_backend bundle create C:\Users\MladenHangi\str_backend.bundle feat/cdu-preprod-okolina
+```
+```powershell
+git -C C:\Users\MladenHangi\str_frontend bundle create C:\Users\MladenHangi\str_frontend.bundle develop
+```
+```powershell
+scp C:\Users\MladenHangi\str_backend.bundle C:\Users\MladenHangi\str_frontend.bundle cdu-preprod:~/
+```
+
+Na kutiji (jedan redak):
+```powershell
+ssh cdu-preprod "mkdir -p ~/str-rn/secrets && cd ~/str-rn && git clone -b feat/cdu-preprod-okolina ~/str_backend.bundle str_backend && git clone -b develop ~/str_frontend.bundle str_frontend && ls -la ~/str-rn"
+```
+
+> **Napomena:** dok PR nije spojen, backend ide s grane `feat/cdu-preprod-okolina` (ondje su
+> compose, profil i skripte). Nakon mergea u `develop` bundle se radi s `develop`.
+
+**Kontrolna točka:** `~/str-rn/` sadrži `str_backend/`, `str_frontend/` i `secrets/`. Frontend
+**mora** biti susjedni direktorij — compose ga gradi preko `context: ../str_frontend`.
+
+### C6.3 NIAS keystore
+
+Preskoči cijeli korak ako lozinka još nije stigla (vidi C6.4, varijanta B).
+
+```powershell
+& "C:\Program Files\Java\jdk-21.0.10\bin\keytool.exe" -list -v -keystore nias-prod.p12 -storetype PKCS12
+```
+Iz ispisa provjeri da se `Alias name` i `Owner` poklapaju s `NIAS_KEY_ALIAS` i `NIAS_ENTITY_ID`
+u `.env.cdupreprod.example`. Pogrešan alias = `null` privatni ključ i kontekst pada na dizanju.
+
+```powershell
+scp nias-prod.p12 cdu-preprod:/tmp/
+```
+```powershell
+ssh cdu-preprod "install -m 600 /tmp/nias-prod.p12 ~/str-rn/secrets/nias-prod.p12 && rm /tmp/nias-prod.p12 && ls -l ~/str-rn/secrets/"
+```
+
+**Kontrolna točka:** `-rw------- nias-prod.p12` u `~/str-rn/secrets/`.
+
+### C6.4 `.env.cdupreprod`
+
+```powershell
+ssh cdu-preprod 'cd ~/str-rn/str_backend && cp .env.cdupreprod.example .env.cdupreprod && chmod 600 .env.cdupreprod && echo DRAFT_ENC_KEY=$(openssl rand -base64 32) && echo CAPTCHA_HMAC_KEY=$(openssl rand -base64 32)'
+```
+
+> **Navodnici su ovdje bitni:** JEDNOSTRUKI. U dvostrukima bi PowerShell `$(openssl …)` izvršio
+> **lokalno** prije slanja — a `openssl` na Windowsu najčešće nije na PATH-u, pa naredba padne
+> (ili, gore, ključ nastane na krivom stroju). U jednostrukima niz putuje netaknut i generira ga
+> bash na kutiji.
+
+Ispisane vrijednosti prepiši u datoteku (`nano ~/str-rn/str_backend/.env.cdupreprod`). Postavlja
+se **pet** vrijednosti; ostalo je u predlošku već popunjeno:
+
+| Ključ | Vrijednost |
+| :--- | :--- |
+| `CDUPREPROD_DB_USERNAME` | `shorttermrental` (iz C6.1) |
+| `CDUPREPROD_DB_PASSWORD` | iz C6.1 |
+| `DRAFT_ENC_KEY` | generirano gore |
+| `CAPTCHA_HMAC_KEY` | generirano gore |
+| `NIAS_KEYSTORE_PASSWORD` | od Simona |
+
+**Varijanta B — lozinka keystorea još nije stigla:** u `.env.cdupreprod` postavi
+`NIAS_SAML_ENABLED=false` i `NIAS_KEYSTORE_PASSWORD` ostavi **zakomentiran**. Okolina radi sve
+osim prijave eGrađanima. Kad lozinka stigne: upiši je, vrati `NIAS_SAML_ENABLED=true` i
+restartaj backend — rebuild nije potreban.
+
+**Dvije zamke koje ovdje najviše koštaju:**
+- `.env.cdupreprod` **mora postojati** prije `up`, inače compose puca na `env_file`.
+- Ključ koji ne postavljaš **zakomentiraj**, ne ostavljaj prazan. Prazna vrijednost je
+  *postavljena* vrijednost i pregazi Spring default. Najgori slučaj je `CAPTCHA_HMAC_KEY=`:
+  nepostavljen obori start s jasnom porukom, a **prazan pusti start** pa tek
+  `/api/captcha/challenge` vrati 500 i sva 4 javna formulara su mrtva bez traga u logu.
+
+**Kontrolna točka:** `ssh cdu-preprod "grep -c '^[A-Z]' ~/str-rn/str_backend/.env.cdupreprod"`
+vraća broj > 10, a `ls -l` pokazuje `-rw-------`.
+
+### C6.5 Build i podizanje
+
+Prije builda oslobodi prostor (8,5 GB slobodno, prvi build povlači ~2–3 GB):
+```powershell
+ssh cdu-preprod "docker system df; df -h / | tail -1"
+```
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build"
 ```
 
 Prvi build traje najdulje — povlače se `maven`, `node`, `eclipse-temurin:21-jre` i `nginx:alpine`
 (na kutiji je cacheiran samo temurin **11**). Sljedeći su znatno brži.
 
-**Zamka:** `.env.cdupreprod` **mora postojati** prije `up` — bez nje compose puca na `env_file`.
-**Zamka:** ključ koji ne postavljaš **zakomentiraj**, ne ostavljaj prazan. Prazna vrijednost je
-postavljena vrijednost i pregazi Spring default.
+Praćenje:
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml logs -f backend"
+```
+
+**Kontrolna točka:** `docker ps` pokazuje `str-backend-cdupreprod` i `str-frontend-cdupreprod` kao
+`Up`, a tuđi `str2-*` kontejneri su **netaknuti**. Zatim ide C7.
+
+### C6.6 Ako pođe po zlu
+
+Rušenje **samo našeg** stacka (`name: str-cdupreprod` ga izolira od `str2-*`):
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod down"
+```
+
+| Simptom | Prvo provjeri |
+| :--- | :--- |
+| Backend se diže pa ruši u petlji | `docker logs str-backend-cdupreprod 2>&1 \| head -50` — pad je gotovo uvijek NIAS keystore, captcha ključ ili baza |
+| `Could not resolve placeholder` | `.env.cdupreprod` nije primijenjen ili ključ fali |
+| Build stane na „no space left" | `docker system prune -f` pa ponovi |
+| `permission denied` na `/var/run/docker.sock` | nisi u grupi `docker` — odjavi se i prijavi ponovno |
+
+Ništa od ovoga ne dira bazu: mi u njoj samo kreiramo **svoje** tablice kroz Liquibase.
 
 ## C7. Verifikacija
 
@@ -451,7 +589,7 @@ Prvo one koje na **ovoj** okolini vrijede:
 
 | Simptom | Uzrok | Rješenje |
 | :--- | :--- | :--- |
-| Ujutro svaki upit puca, kontejner „Up" | Hikari drži konekcije na resetiranu bazu | restart backenda u nightly skripti |
+| Ujutro svaki upit puca, kontejner „Up" | tablice su nestale s resetom, a Liquibase se vrti samo pri startu (konekcije nisu krive — Hikari ih sam obnavlja) | restart backenda u nightly skripti |
 | Puna migracija svaki dan, registar prazan | reset briše `str_rn` i `databasechangelog` | očekivano; tražiti izuzimanje `str_rn` iz reseta |
 | `permission denied for schema rpj_dgu` (servis radi) | grant nestao s resetom | grant traži vlasnik sheme; mi ga ne možemo dati |
 | Ujutro `Shema str_rn ne postoji` i oporavak stane | reset ju je obrisao, a nemamo `CREATE` na bazi | namjeran prekid — backend se ne restarta; rješenje je kod DBA (A1/4) |

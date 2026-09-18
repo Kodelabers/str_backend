@@ -2,13 +2,17 @@
 # Jutarnji oporavak CDU predprodukcije nakon noćnog reseta baze.
 #
 # ŠTO SE DOGODI NOĆU: baza 172.20.8.212/eturizam se resetira. Ako reset briše i shemu `str_rn`,
-# s njom nestaju naše tablice, sesije i Liquibaseov `databasechangelog`. Backend to ne primijeti:
-# kontejner ostaje "Up", Hikari drži konekcije na nepostojeće objekte i SVAKI upit puca dok se
-# aplikacija ne restarta. Zato redoslijed nije proizvoljan:
+# s njom nestaju naše tablice, sesije i Liquibaseov `databasechangelog`.
+#
+# ZAŠTO JE POTREBAN RESTART: ne zbog konekcija — HikariCP validira konekciju pri posudbi i sam
+# zamijeni pokvarenu, pa se povezivanje oporavlja bez nas. Problem je što se **Liquibase vrti
+# samo pri dizanju konteksta**: aplikacija koja je startala prije reseta nastavlja raditi protiv
+# prazne sheme i svaki upit puca na nepostojećoj tablici. Jedino restart ponovno izgradi tablice
+# iz changeloga. Zato redoslijed nije proizvoljan:
 #
 #   1. čekaj da baza uopće prihvaća konekcije   (reset možda još traje)
-#   2. kreiraj shemu ako je nema                (na ovom profilu je nitko drugi ne kreira)
-#   3. restartaj backend                        (Liquibase ponovno izgradi shemu iz changeloga)
+#   2. provjeri postoji li shema                (NE kreira je — nemamo CREATE na bazi)
+#   3. restartaj backend                        (Liquibase ponovno izgradi tablice iz changeloga)
 #   4. čekaj "Started StrBackendApplication"
 #   5. smoke test
 #
