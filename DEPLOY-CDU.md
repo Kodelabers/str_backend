@@ -87,7 +87,10 @@ Dopiši na kraj:
 ```bash
 # --- uredsko poslovanje: identitet tijela na aktima (čl. 98. st. 2 ZUP-a) ---
 # Bez ovih vrijednosti svaki akt vidljivo ispisuje "[nije konfigurirano: ...]".
-# Naziv se piše kako stoji u uvodu akta; zaglavlje i potpis ga sami pišu velikim slovima.
+# Naziv otvara rečenicu uvoda akta, pa ide velikim POČETNIM slovom i ostatkom malim:
+# Ministarstvo turizma i sporta. NE cijeli velikim slovima — zaglavlje i potpis ga sami
+# pišu velikim. Mali početak znači da akt počinje malim slovom; StartupDiagnostics
+# to prijavi WARN-om startup_documents_naziv_pocinje_malim_slovom.
 STR_TIJELO_NAZIV=Ministarstvo turizma i sporta
 # OIB i propis o nadležnosti imaju default u application.properties, iz predloška akta koji je
 # MINT poslao 11.09.2026. NE postavljati ih ovdje praznima — prazna vrijednost pregazi default.
