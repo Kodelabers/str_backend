@@ -12,22 +12,29 @@
 #   4. čekaj "Started StrBackendApplication"
 #   5. smoke test
 #
-# Instalacija na kutiji (kao root):
-#   install -m 700 cdupreprod-nightly.sh /srv/str-preprod/cdupreprod-nightly.sh
-#   crontab -e   →   30 4 * * *  /srv/str-preprod/cdupreprod-nightly.sh
-#                    ^ vrijeme NAKON njihovog reset prozora (potvrditi s DBA prije postavljanja)
+# Instalacija na kutiji (kao VLASTITI korisnik — `mhangi` je u grupi `docker`, sudo ne treba):
+#   chmod +x ~/str-rn/str_backend/tools/cdupreprod-nightly.sh
+#   crontab -e   →   30 4 * * *  $HOME/str-rn/str_backend/tools/cdupreprod-nightly.sh
+#                    ^ vrijeme NAKON njihovog reset prozora — TRAŽI GA OD DBA prije postavljanja;
+#                      dok se ne zna, cron se NE postavlja (skripta bi krenula usred reseta).
 #
 # Skripta je idempotentna — smije se pokrenuti i ručno, i dvaput.
 set -euo pipefail
 
 # --- konfiguracija -------------------------------------------------------------------------
-PROJECT_DIR="${PROJECT_DIR:-/srv/str-preprod/str_backend}"
+# Putanje se izvode iz mjesta same skripte (`<repo>/tools/`), pa rade za bilo kojeg korisnika i
+# bilo koji checkout. Deploy ide u VLASTITI home (~/str-rn), ne u /srv — kutiji se pristupa
+# osobnim korisnikom, ne rootom.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.cdupreprod.yml}"
 ENV_FILE="${ENV_FILE:-.env.cdupreprod}"
 BOOTSTRAP_SQL="${BOOTSTRAP_SQL:-${PROJECT_DIR}/tools/cdupreprod-bootstrap.sql}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-str-backend-cdupreprod}"
 FRONTEND_PORT="${FRONTEND_PORT:-8085}"
-LOG_FILE="${LOG_FILE:-/var/log/str-preprod-nightly.log}"
+# NE u /var/log: skripta se vrti kao običan korisnik i ondje nema pravo pisanja, a `log()` piše
+# kroz `tee -a` — uz `set -euo pipefail` prvi bi zapis srušio cijeli oporavak prije ijedne radnje.
+LOG_FILE="${LOG_FILE:-$(dirname "$PROJECT_DIR")/nightly.log}"
 
 # libpq parametri (JDBC URL iz .env-a se NE može dati psql-u — drugi format).
 DB_HOST="${DB_HOST:-172.20.8.212}"

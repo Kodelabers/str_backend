@@ -75,6 +75,9 @@ Sustav koristi dvije PostgreSQL sheme s eksplicitno odvojenim ovlastima:
 | `local` | `localhost:5432/str_db` | `local` | `LocalDatabaseConfig` automatski kreira bazu pri startu; učitava i `002-core-objekt.xml` |
 | `test` | `TEST_DB_URL/USERNAME/PASSWORD` | bez konteksta | preskače kreiranje `core.objekt` (vlasnik je core servis) |
 | `prod` | `PROD_DB_URL/USERNAME/PASSWORD` | bez konteksta | identično `test` profilu |
+| `cdu` | `172.20.8.196:5432/eturizam` | `cdu,!local,!dev` | CDU **test**, `https://str-test-eturizam.gov.hr`; NIAS test (demo cert), eGOP ugašen. `DEPLOY-CDU.md` |
+| `preprod` | `s-str-02.infodom.hr:5431/eturizam` | `preprod` | InfoDom predprodukcija, plain HTTP → captcha ugašena, `nias.saml.request-store=database`. `DEPLOY-PREPROD.md` |
+| `cdupreprod` | `172.20.8.212:5432/eturizam` | `cdupreprod` | CDU **predprodukcija**, `https://str-preprod-eturizam.gov.hr`; NIAS produkcijski, eGOP ugašen, captcha uključena. **Baza se resetira svake noći** (`tools/cdupreprod-nightly.sh`). `DEPLOY-CDU-PREPROD.md` |
 
 JUnit testovi (`@ActiveProfiles("test")`) override-aju konfiguraciju kroz `src/test/resources/application-test.properties` i koriste H2 in-memory bazu.
 

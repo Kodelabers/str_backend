@@ -6,12 +6,18 @@
 # se servisi `backend`/`frontend` poklopili s drugim stackom u istom checkoutu i `up` bi rekreirao
 # tuđe kontejnere umjesto da digne nove.
 #
-# Preduvjeti na kutiji:
-#   1. Repos u /srv/str-preprod/str_backend i /srv/str-preprod/str_frontend
+# Preduvjeti na kutiji (sve u VLASTITOM home-u; kutiji se pristupa osobnim korisnikom, ne rootom,
+# a `mhangi` je u grupi `docker` pa `sudo` ne treba):
+#   ~/str-rn/
+#     str_backend/   ← ovaj repo, grana develop (+ .env.cdupreprod, nije u gitu)
+#     str_frontend/  ← build context za frontend (`context: ../str_frontend` niže)
+#     secrets/       ← nias-prod.p12, chmod 600
+#
+#   1. Oba repoa na mjestu (privatni su, a github.com:22 je zatvoren — vidi DEPLOY-CDU-PREPROD.md §B6)
 #   2. cp .env.cdupreprod.example .env.cdupreprod pa upisati tajne (5 vrijednosti)
-#   3. Produkcijski NIAS keystore u /srv/str-preprod/secrets/nias-prod.p12
-#   4. Shema `str_rn` postoji u bazi (na ovom profilu je NITKO ne kreira — vidi
-#      tools/cdupreprod-bootstrap.sql i DEPLOY-CDU-PREPROD.md §C3)
+#   3. Produkcijski NIAS keystore u ~/str-rn/secrets/nias-prod.p12
+#   4. Shema `str_rn` postoji u bazi — izmjereno 18.09.: postoji, vlasnik `str_owner`, prazna.
+#      NITKO je ne kreira, a nemamo ni pravo (CREATE na bazi = f) — vidi §C3 i bootstrap SQL.
 #
 # Pokretanje:
 #   docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build
@@ -54,7 +60,10 @@ services:
       # KLASU/URBROJ (bez prefiksa, vidi application-cdupreprod.properties).
       EGOP_ENABLED: "false"
     volumes:
-      - ${CDUPREPROD_SECRETS_DIR:-/srv/str-preprod/secrets}:/secrets:ro
+      # Relativna putanja se razrješava prema mjestu ove compose datoteke, pa je
+      # `../secrets` = ~/str-rn/secrets uz raspored iz zaglavlja. Namjerno bez apsolutne
+      # putanje s korisničkim imenom — deploy ide u vlastiti home, koji nije svima isti.
+      - ${CDUPREPROD_SECRETS_DIR:-../secrets}:/secrets:ro
 
   frontend:
     build:
