@@ -5,8 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.Map;
 
 /**
- * Sve što u aktu dolazi iz konfiguracije, a ne iz baze: identitet tijela, potpisnik, ovjera
- * i tekst upute o pravnom lijeku.
+ * Sve što u aktu dolazi iz konfiguracije, a ne iz baze: identitet tijela, potpisnik, podaci
+ * e-pečata i tekst upute o pravnom lijeku.
  *
  * <p>Uputa je namjerno property, a ne dio predloška: pravna narav akata (upravni postupak sa
  * žalbom / upravnim sporom, ili neupravni s prigovorom čelniku) nije potvrđena s MINT-om, a
@@ -42,15 +42,25 @@ public record DocumentProperties(
 
     /**
      * Ovjera po čl. 98. st. 8: akt izdan iz informacijskog sustava smije se ovjeriti
-     * <b>samo</b> kvalificiranim elektroničkim pečatom. Dok pečata nema, klauzula se ne
+     * <b>samo</b> kvalificiranim elektroničkim pečatom. Dok pečata nema, blok e-pečata se ne
      * ispisuje — tvrdnja o ovjeri na nepečaćenom PDF-u bila bi neistinita izjava na aktu.
+     *
+     * <p>Podaci o certifikatu su zasad konfiguracija, jer pečatiranje još ne postoji. Kad dođe
+     * FINA certifikat, čitat će se iz njega, a {@code urlProvjere} vodi na portal za provjeru
+     * izvornika (broj zapisa + kontrolni broj), koji je dio iste faze.
      */
-    public record Epecat(boolean enabled, String klauzula) {}
+    public record Epecat(
+            boolean enabled,
+            String izdavateljCertifikata,
+            String nazivCertifikata,
+            String algoritam,
+            String urlProvjere
+    ) {}
 
     public DocumentProperties {
         tijelo = tijelo == null ? new Tijelo(null, null, null, null, null, null) : tijelo;
         potpisnik = potpisnik == null ? new Potpisnik(null, null) : potpisnik;
-        epecat = epecat == null ? new Epecat(false, null) : epecat;
+        epecat = epecat == null ? new Epecat(false, null, null, null, null) : epecat;
         uputa = uputa == null ? Map.of() : Map.copyOf(uputa);
     }
 

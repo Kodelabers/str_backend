@@ -40,7 +40,7 @@ Dvije posljedice koje su oblikovale kod:
 1. **Mail nije dostava.** Svaki mail životnog ciklusa nosi klauzulu da je akt dostavljen u
    korisnički pretinac i da rokovi teku odande. Bez toga bi stranka rok računala od maila —
    dakle od krivog dana.
-2. **Klauzula o pečatu se ne ispisuje dok pečata nema.** Tvrdnja o ovjeri na nepečaćenom PDF-u
+2. **Blok e-pečata se ne ispisuje dok pečata nema.** Tvrdnja o ovjeri na nepečaćenom PDF-u
    bila bi neistinita izjava na pravnom aktu. Ispis je iza `str.documents.epecat.enabled`.
 
 ---
@@ -53,14 +53,14 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | slug | Vrsta pismena (eGOP) | Smjer | Obvezne sekcije | Okidač |
 | :--- | :--- | :--- | :--- | :--- |
 | `zahtjev` | Zahtjev za registracijski broj | ulazno | čl. 71. — vlastiti generator | registracija |
-| `dodjela` | Obavijest o dodjeli registracijskog broja | izlazno | naslov, uvod, izreka, dostavna lista | registracija |
-| `opoziv` | Obavijest o opozivu registracijskog broja | izlazno | isto kao `dodjela` | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
+| `dodjela` | Obavijest o dodjeli registracijskog broja | izlazno | uvod, izreka | registracija |
+| `opoziv` | Obavijest o opozivu registracijskog broja | izlazno | uvod, izreka | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
 | `prijedlog-suspenzije` | Obavijest o prijedlogu suspenzije registracijskog broja | izlazno | + obrazloženje; **rok u izreci** | `RnService.suspend` |
 | `suspenzija` | Obavijest o suspenziji registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `SuspensionDeadlineJob` (istek roka) |
-| `obustava-suspenzije` | Obavijest o obustavi postupka suspenzije registracijskog broja | izlazno | kao `dodjela` | `RnService.revokeProposal` |
+| `obustava-suspenzije` | Obavijest o obustavi postupka suspenzije registracijskog broja | izlazno | kao `opoziv` | `RnService.revokeProposal` |
 | `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `RnService.withdraw` |
 | `prigovor` | Prigovor na prijedlog suspenzije | **ulazno** | čl. 71. — podnesak stranke | ❌ nema |
-| `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `dodjela` | `RnService.reactivate` |
+| `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `opoziv` | `RnService.reactivate` |
 
 Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i šalje poziv na
 izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku roka prelazi u
@@ -111,9 +111,66 @@ ${stranka.adresa}
 - **Prazan redak dijeli odlomke.** U sekcijama tipa `PROZA` (uvod, izreka, obrazloženje, uputa)
   prelomi unutar odlomka spajaju se u razmak; u `BLOK` sekcijama (naslov, prilozi, dostavna lista)
   ostaju kako su napisani.
-- **Redak koji nakon zamjene ostane prazan izbacuje se** — neobavezni podaci (zastupnik, poštanski
-  broj) ne ostavljaju rupu u adresnom bloku.
+- **Redak koji nakon zamjene ostane prazan izbacuje se** — neobavezni podaci (URBROJ prije
+  urudžbiranja, zastupnik, poštanski broj) ne ostavljaju rupu ni prelom odlomka
+  (`ZupDocumentRenderer.vezi`). Prazni redci samog predloška i dalje dijele odlomke.
 - `ZAGLAVLJE` i `POTPISNIK` renderer zna složiti sam iz konfiguracije; predložak ih smije nadjačati.
+  Nadjačano `ZAGLAVLJE` mijenja samo urudžbeni blok (KLASA, URBROJ, mjesto i datum) — grb i naziv
+  tijela uvijek crta renderer.
+
+### Okvir akta (predložak MINT-a od 11.09.2026.)
+
+Naručitelj je 11.09.2026. vratio naš PDF obavijesti o dodjeli s praćenim izmjenama
+(„Obavijest o dodjeli RB IP DŠ.docx"). Okvir iz tog predloška vrijedi za **sve akte tijela**
+(smjer `IZLAZNO`); razmaci u `ZupDocumentRenderer` izmjereni su na njemu i ne treba ih
+„zaokruživati" bez usporedbe:
+
+- **Zaglavlje:** tablica bez okvira. Lijevo grb (`documents/grb-rh.png`, 46×58 pt), ispod
+  „REPUBLIKA HRVATSKA" i naziv tijela velikim slovima; desno `P/<jop>` (eGOP JOP izlaznog
+  pismena) ispod retka rezerviranog za barkod jedinstvene oznake pismena. Bez ustrojstvene
+  jedinice i bez crte ispod zaglavlja.
+- **Urudžbeni blok** ispod zaglavlja: `KLASA: …`, `URBROJ: …`, `Zagreb, 10. rujna 2026.`
+- **Potpis:** naziv tijela velikim slovima (od x≈321 pt), ime službene osobe ispod samo ako je
+  konfigurirano. Funkcija se ne ispisuje.
+- **Blok e-pečata** po uzoru na Poreznu upravu (grb i tijelo | podaci o certifikatu, broj zapisa,
+  kontrolni broj | QR i tekst provjere) — **samo uz `str.documents.epecat.enabled=true`**.
+- **Podnožje samo na aktu s više stranica:** „KLASA: … · stranica 1 od 2". Predložak naručitelja
+  je jednostranični i podnožje ne nosi, ali akt s obrazloženjem i uputom ide na dvije stranice, a
+  odvojen list bez KLASE i broja stranice ne može se povezati s predmetom. Ukupan broj stranica
+  zna se tek na kraju, pa se na svaku stranicu ostavi prazan `PdfTemplate` i ispuni u
+  `onCloseDocument` — ili ostane prazan kad akt stane na jednu stranicu.
+- **Datum u zaglavlju** je datum izdavanja RB-a za obavijest o dodjeli (renderira se na zahtjev
+  i mjesecima kasnije), a datum rendera za akte životnog ciklusa, koji nastaju u trenutku
+  prijelaza i kojima se PDF sprema.
+
+Podnesak stranke (`PRIGOVOR`, smjer `ULAZNO`) nije akt tijela: nema grb ni naziv tijela u
+zaglavlju, potpisuje ga podnositelj (`${stranka.naziv}`), a pečat tijela se na njega ne stavlja.
+
+### Struktura je ista na svim obavijestima
+
+Sadržajne izmjene iz istog predloška vrijede za **sve obavijesti tijela**, ne samo za dodjelu:
+
+- **nema adresata** (`[NASLOV]`) — stranka je imenovana u uvodu, a dostava ide u korisnički pretinac;
+- **nema naslova „I Z R E K A"** — `ZupSection.IZREKA` više nema naslov; točke idu odmah iza
+  naslova akta. ZUP naslov i ne traži, traži izreku kao sastavni dio;
+- **nema priloga ni dostavne liste** (`[PRILOZI]`, `[DOSTAVNA_LISTA]`) — uz PDF se ionako ništa ne
+  prilaže, a dostava je evidentirana u eGOP-u;
+- **uvod** je skraćen kao u predlošku: bez „u postupku pokrenutom" i bez „u predmetu …". Ostaje
+  način pokretanja (na zahtjev / po službenoj dužnosti), koji čl. 98. st. 2 traži; predmet je u
+  naslovu akta i u izreci;
+- **objekt** se identificira skupinom i vrstom (`${objekt.skupina}`, `${objekt.vrsta}`);
+- **naš registar** se u svim aktima zove „integrirani informacijski sustav turizma", ne „registar".
+
+Što ostaje razlika, i zašto: **obrazloženje** (čl. 98. st. 5) nose prijedlog suspenzije,
+suspenzija i povlačenje, a **uputa o pravnom lijeku** (čl. 98. st. 6) suspenzija i povlačenje —
+to su ZUP-ovi sastavni dijelovi, ne uredski ukras, i po čl. 111. njihov izostanak ide na štetu
+tijela. Zbog njih su ta tri akta duga dvije stranice: prva je puna teksta, a potpis i blok
+e-pečata idu zajedno na drugu (ne razdvajaju se, jer pečat pripada uz potpis). Ostale četiri
+obavijesti staju na jednu stranicu.
+
+`StrDocumentServiceTest.everyNotice_hasSameStructureAsDodjela` i
+`ZupTemplateLoaderTest.everyNotice_hasNoAddresseeOrDistributionList` drže to na svim vrstama, pa
+nova obavijest ne može ispasti iz formata.
 
 Renderer prolazi kroz `ZupSection.values()`, ne kroz ručni popis poziva — nova konstanta time
 automatski dobiva svoje mjesto na papiru. S ručnim popisom bi se sekcija mogla dodati u enum,
@@ -136,24 +193,32 @@ i mora biti izričito u kontekstu.
 | Oznaka | Izvor | Napomena |
 | :--- | :--- | :--- |
 | `${tijelo.naziv}`, `${tijelo.oib}` | `str.documents.tijelo.*` | čl. 98. st. 2; nekonfigurirano → vidljiva oznaka + ERROR u logu |
+| `${tijelo.nazivVelikim}` | izvedeno iz `tijelo.naziv` | zaglavlje i potpis |
 | `${tijelo.adresa}`, `${tijelo.mjesto}`, `${tijelo.ustrojstvenaJedinica}` | isto | neobavezno |
 | `${tijelo.propisNadleznosti}` | `str.documents.tijelo.propis-nadleznosti` | čl. 98. st. 2 |
-| `${potpisnik.ime}`, `${potpisnik.funkcija}` | `str.documents.potpisnik.*` | čl. 98. st. 7 |
+| `${potpisnik.ime}`, `${potpisnik.funkcija}` | `str.documents.potpisnik.*` | čl. 98. st. 7; neobavezno — potpis je naziv tijela |
 | `${akt.naslov}` | `StrDocumentType.naslov()` | |
 | `${akt.klasa}`, `${akt.urbroj}` | `submission.egop_klasa` + `egop_pismeno.ur_broj` | prazno prije urudžbiranja |
 | `${akt.klasaRedak}`, `${akt.urbrojRedak}`, `${akt.mjestoDatum}` | izvedeno | gotovi redci zaglavlja; prazni kad nema oznaka |
-| `${akt.datum}` | današnji datum | |
+| `${akt.jopRedak}` | `egop_pismeno.jop` | „P/21748084"; prazno prije urudžbiranja (akti životnog ciklusa ga zato nemaju) |
+| `${akt.datum}` | datum izdavanja RB-a za dodjelu, inače današnji | svi datumi u obliku „10. rujna 2026." (genitiv, `ZupContextFactoryTest`) |
 | `${stranka.naziv}` | `lessorLegalEntityName` → `firstName lastName` | |
 | `${stranka.identifikator}` | OIB ili „bez dodijeljenog OIB-a" | non-EU iznajmljivač nema OIB |
 | `${stranka.oib}` | `RnDetailDto.lessorOib` | sirova vrijednost |
 | `${stranka.zastupnik}` | `legalRepresentativeName` + OIB | prazno kad ga nema |
 | `${stranka.adresa}`, `${stranka.mjesto}` | `LessorEntity.street/streetNumber/place` | |
+| `${stranka.adresaRedak}` | izvedeno | gotov redak „Adresa: …"; prazan kad adrese nema, pa ne ostaje goli natpis |
 | `${stranka.postanskiBroj}` | — | **uvijek prazno**, vidi niže |
 | `${rn.broj}`, `${rn.status}`, `${rn.datumIzdavanja}` | `RnDetailDto` | |
 | `${rn.razlog}` | parametar → revizijski trag → natpis okidača | |
 | `${objekt.naziv}`, `${objekt.adresa}`, `${objekt.mjesto}`, `${objekt.zupanija}`, `${objekt.vrsta}`, `${objekt.kapacitet}` | `RnDetailDto` | |
+| `${objekt.skupina}` | šifra skupine **iz RB-a** → `labels.properties` (`objekt.skupina.<kod>`) | danas samo `00` = domaćinstvo; nepoznata šifra daje vidljivu oznaku + ERROR, ne tiho domaćinstvo |
 | `${rok.ispravak}` | `RnEntity.suspensionDeadline` | bez roka → `rok.default` iz `labels.properties` |
 | `${uputa.tekst}` | `str.documents.uputa.<slug>` | vidi §6 |
+
+**Adresni placeholderi su ostali samo prigovoru.** `${stranka.zastupnik}`, `${stranka.adresa}`,
+`${stranka.postanskiBroj}` i `${stranka.mjesto}` koristi još samo podnesak stranke — obavijesti
+nemaju adresata (§3). Ključevi ostaju u katalogu jer ih predložak smije vratiti.
 
 **`${stranka.postanskiBroj}` je uvijek prazan.** `LessorEntity` nema poštanski broj — poznata rupa
 (`eGOP-endpoint-analiza.md` §15.2). Prihvatljivo jer dostava ide u korisnički pretinac, ne poštom.
@@ -168,10 +233,19 @@ nije uvezan u `MessageSource` i pisan je bez dijakritike.
 razlog traži ovim redom:
 
 1. parametar poziva (`?reason=` na endpointu, ili proslijeđen iz listenera),
-2. `reason` iz zadnjeg zapisa u `registration_number_log`,
+2. `reason` iz odgovarajućeg zapisa u `registration_number_log`,
 3. hrvatski natpis okidača iz `labels.properties`.
 
 Revizijski trag je pouzdaniji izvor od `?reason=` parametra, koji nitko ne provjerava.
+
+**Koji zapis — suspenzija i obustava čitaju s prijedloga.** Suspenzija je dvofazna, pa zadnji
+zapis nosi samo procesni okidač: `DEADLINE_EXCEEDED` za suspenziju, `REVOKE_PROPOSAL` za obustavu.
+Iz njega je obustava ispisivala samu sebe („pokrenut zbog sljedećeg razloga: obustava postupka
+suspenzije"), a suspenzija rok umjesto razloga („zbog sljedećeg razloga: istek roka za
+očitovanje") — procesni okidač na mjestu gdje čl. 98. st. 3 i 5 traže materijalni razlog. Zato
+`SUSPENZIJA` i `OBUSTAVA_SUSPENZIJE` razlog čitaju sa zapisa prijelaza u `SUSPENSION_PROPOSED`
+(`findFirstByRnAndToStatusOrderByOccurredAtDesc`), a ostali akti sa svog, zadnjeg prijelaza.
+Nema li prijedloga u tragu (jednofazna suspenzija iz starijih podataka), vrijedi zadnji zapis.
 
 ---
 
@@ -215,13 +289,34 @@ renderiraju na zahtjev, pa **nema Liquibase changeseta**.
 
 ```properties
 str.documents.tijelo.naziv=${STR_TIJELO_NAZIV:Ministarstvo turizma i sporta}
-str.documents.tijelo.oib=${STR_TIJELO_OIB:}
-str.documents.tijelo.propis-nadleznosti=${STR_TIJELO_PROPIS:}
+str.documents.tijelo.oib=${STR_TIJELO_OIB:87892589782}
+str.documents.tijelo.propis-nadleznosti=${STR_TIJELO_PROPIS:<čl. 46. Zakona o ugostiteljskoj djelatnosti (NN ___)>}
 str.documents.potpisnik.ime=${STR_POTPISNIK_IME:}
 str.documents.epecat.enabled=${STR_EPECAT_ENABLED:false}
+str.documents.epecat.izdavatelj-certifikata=${STR_EPECAT_IZDAVATELJ:}
+str.documents.epecat.naziv-certifikata=${STR_EPECAT_NAZIV_CERTIFIKATA:}
+str.documents.epecat.algoritam=${STR_EPECAT_ALGORITAM:SHA256withRSA}
+str.documents.epecat.url-provjere=${STR_EPECAT_URL_PROVJERE:}
 str.documents.uputa.suspenzija=...
 str.documents.reload=${STR_DOCUMENTS_RELOAD:false}
 ```
+
+**Dijakritika u vrijednostima ide kao `\uXXXX` escape.** Spring Boot `.properties` čita kao
+ISO-8859-1, pa izravno upisani UTF-8 („dopuštena žalba") na aktu izlazi kao „dopuÅ¡tena Å¾alba".
+Tako je bilo s uputom o pravnom lijeku do 18.09.2026. Komentari smiju imati dijakritiku.
+
+**E-pečat.** Uz `enabled=true` akt dobiva blok e-pečata; nedostaje li izdavatelj, naziv
+certifikata ili URL provjere, u bloku stoji vidljiva oznaka i u log ide ERROR. **QR se ne crta
+dok URL portala nije postavljen** — skenirajući kod koji vodi na oznaku „nije konfigurirano" gori
+je od nikakvog (`EpecatBlokTest` ga dekodira natrag da ne ostane necitljiv). Pečat je pečat
+tijela, pa se podaci ne grade za podnesak stranke.
+
+**Provjera nakon deploya.** `StartupDiagnostics` ispiše redak `startup_documents` s
+naziv/oib/propis/potpisnik/epecat; `PRAZAN (pregazio je default — provjeri .env)` znači da je
+ključ u `.env`-u postavljen na prazno i da će akt nositi oznaku „nije konfigurirano". Broj zapisa (UUID)
+i kontrolni broj (8 znamenki) zasad se samo generiraju pri renderu — trajni zapis para uz PDF i
+portal za provjeru izvornika dio su faze pečatiranja. Do tada `enabled` ostaje `false` u svim
+okruženjima, jer bi inače van išli brojevi koje nitko ne može provjeriti.
 
 `str.documents.reload=true` čita predloške pri svakom renderu — tekst se mijenja bez restarta.
 Za produkciju ostaje `false`.
@@ -271,14 +366,15 @@ Javni pregled RB-a ostaje otvoren; zatvoren je samo put do akata.
    prigovor čelniku (čl. 122.), a ne žalbu ni upravni spor. Naručiteljev zahtjev ipak izrijekom
    traži sekciju „Uputa o pravnom lijeku". Isporučeno konfigurabilno, s defaultom
    „upravni spor, 30 dana". **Treba potvrdu pravne službe MINT-a** — čl. 111.
-2. **Identitet tijela.** Naziv, **OIB**, adresa, ustrojstvena jedinica, ime i funkcija potpisnika.
-   OIB `HR87892589782` čita se iz DN-a NIAS certifikata u `application-cdu.properties:60`, ali je
-   **taj certifikat posuđen od InterniTurizam** — vrijednost treba potvrditi, ne prepisati. Do tada
-   `str.documents.tijelo.oib` namjerno nema default.
-3. **Propis o nadležnosti** (čl. 98. st. 2) — točan naziv i članak propisa koji MINT-u daje
-   nadležnost za registracijski broj. Danas se citira samo čl. 6. Uredbe (EU) 2024/1028.
-4. **ePečat.** Tko izdaje kvalificirani certifikat, gdje stoji (HSM?), koji format (PAdES). Do tada
-   je klauzula ugašena i akt ovjeru ne tvrdi.
+2. **Identitet tijela.** OIB `87892589782` upisao je naručitelj u predložak od 11.09.2026., pa je
+   postavljen kao default. Ime službene osobe (neobavezno, ispisuje se ispod naziva tijela) još
+   nije dostavljeno.
+3. **Propis o nadležnosti** (čl. 98. st. 2) — predložak od 11.09.2026. navodi „članka 46. Zakona o
+   ugostiteljskoj djelatnosti (Narodne novine, broj ___)". **Brojevi Narodnih novina nedostaju**;
+   default je doslovno naručiteljev tekst dok ne stignu.
+4. **ePečat.** Vizualni blok je gotov (vidi §6). Nedostaju: izdavatelj i naziv kvalificiranog
+   certifikata (FINA), gdje stoji (HSM?), format (PAdES), URL portala za provjeru izvornika, te
+   potvrda da smijemo preuzeti tekst Porezne uprave uz zamjenu tijela.
 5. **Predlošci InfoDoma.** Mail od 22.07. najavljuje predloške „tijekom dana" — nisu stigli. Naši su
    izvedeni iz ZUP-a; kad njihovi dođu, mijenja se sadržaj `.txt` datoteka, ne kod.
 6. **„Obavijest o suspenziji (s Nalogom)"** iz Knjige sugerira dva dokumenta (obavijest + priloženi
@@ -287,6 +383,22 @@ Javni pregled RB-a ostaje otvoren; zatvoren je samo put do akata.
    `vrstaPismena` šifru. Model ih podnosi: jedna enum konstanta + jedna `.txt` datoteka.
 8. **Dvofazna suspenzija i prigovor** — bez njih dva predloška nemaju okidač. Traži ih
    TC-STR-2.1-001; zabilježeno kao B11/B12 u `STR-NEDOSTAJUCE-FUNKCIONALNOSTI.md`.
+9. **Grb u visokoj rezoluciji.** `documents/grb-rh.png` je bitmapa iz naručiteljevog predloška
+   (79×100 px, ≈124 dpi na 16×20 mm) — u tisku je mekan. Treba vektor ili PNG ≥ 300 px širine.
+10. **Barkod jedinstvene oznake pismena** u desnom kutu zaglavlja (u predlošku font
+    IDAutomationC93M, Code 93). Vrijednost je eGOP-ov `jedinstvenaOznakaPismena`, koju legacy
+    `KreirajPismeno2` ne vraća (vraćaju ga `KreirajPismenoPoUredbi` i `PismenoPoKriterijima3`).
+    Treba li uopće, kad dostava ide elektronički? Redak mu je rezerviran.
+11. **KLASA i URBROJ** u predlošku: `334-06/26-10/…` i `529-06-03/01-26-TUREGBROJ-2`. Oznake
+    dodjeljuje eGOP — što je „TUREGBROJ"? Mock alokator (`LocalFilingNumberAllocator`) još koristi
+    `334-01/…-01/…` i `529-06/…`.
+12. **Datum:** „09. rujna" s vodećom nulom (kao u predlošku) ili „9. rujna" (pravopis)? Jedna
+    konstanta u `ZupContextFactory`.
+13. **Potpis:** samo naziv tijela (kao u predlošku) ili i ime službene osobe?
+14. **Padež uz ime stranke.** Ime se ne može deklinirati programski, pa akti po službenoj dužnosti
+    koriste neutralan oblik „po službenoj dužnosti, stranka: Ana Anić, OIB: …". Dodjela i opoziv
+    zadržali su naručiteljev oblik „na zahtjev Ana Anić, OIB: …" (nominativ). Ako pravna služba
+    traži genitiv, treba nam polje s imenom u genitivu — iz podataka se ne može izvesti.
 
 ---
 

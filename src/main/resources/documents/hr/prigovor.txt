@@ -23,7 +23,7 @@ Podnositelj: ${stranka.naziv}, ${stranka.identifikator}
 
 ${stranka.zastupnik}
 
-Adresa: ${stranka.adresa}, ${stranka.postanskiBroj} ${stranka.mjesto}
+${stranka.adresaRedak}
 
 Predmet: prigovor na prijedlog suspenzije registracijskog broja ${rn.broj}
 

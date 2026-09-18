@@ -130,10 +130,10 @@ class EgopFilingServiceTest {
                 });
 
         assertEquals("KLASA: 334-01/26-01/55, URBROJ: 529-06/26-1", result.filingNumber());
-        assertEquals(new FilingReference("334-01/26-01/55", "529-06/26-1"), seenZahtjev.get());
+        assertEquals(new FilingReference("334-01/26-01/55", "529-06/26-1", 1001), seenZahtjev.get());
         // Izlazno pismeno ima vlastiti URBROJ — dokument mu se mora graditi na toj oznaci,
         // ne na oznaci zahtjeva (raniji kod je prilagao istu datoteku oba puta).
-        assertEquals(new FilingReference("334-01/26-01/55", "529-06/26-2"), seenDodjela.get());
+        assertEquals(new FilingReference("334-01/26-01/55", "529-06/26-2", 1002), seenDodjela.get());
         assertEquals(EgopSyncStatus.SYNCED, submission.getEgopSyncStatus());
         assertEquals(42, lessor.getEgopSubjektOznaka());
         assertEquals("334-01/26-01/55", submission.getEgopKlasa());

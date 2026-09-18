@@ -1,5 +1,6 @@
 package com.str.backend.document;
 
+import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
@@ -92,8 +93,8 @@ public class StrDocumentService {
         FilingReference oznake = filing != null ? filing
                 : new FilingReference(klasaZa(detail), null);
 
-        Map<String, String> ctx =
-                contextFactory.forRn(type, detail, razlog != null ? razlog : razlogIzTraga(rn), oznake);
+        Map<String, String> ctx = contextFactory.forRn(
+                type, detail, razlog != null ? razlog : razlogIzTraga(type, rn), oznake);
         dopuniAdresu(ctx, detail);
 
         byte[] pdf = renderer.render(templates.get(type), ctx);
@@ -113,17 +114,31 @@ public class StrDocumentService {
     }
 
     /**
-     * Razlog iz zadnjeg zapisa u {@code registration_number_log}. {@code RnService.suspend}
-     * ne prosljeđuje slobodan tekst, pa u praksi ostaje natpis okidača — što je i točnije od
-     * proizvoljnog {@code ?reason=} parametra sa zahtjeva.
+     * Razlog iz {@code registration_number_log}. {@code RnService.suspend} ne prosljeđuje
+     * slobodan tekst, pa u praksi ostaje natpis okidača — što je i točnije od proizvoljnog
+     * {@code ?reason=} parametra sa zahtjeva.
+     *
+     * <p><b>Koji zapis.</b> Suspenzija je dvofazna: materijalni razlog (istek suglasnosti, nalaz
+     * nadzora…) zapisan je na prijelazu u {@code SUSPENSION_PROPOSED}, a zadnji prijelaz nosi samo
+     * procesni okidač — {@code DEADLINE_EXCEEDED} za suspenziju, {@code REVOKE_PROPOSAL} za
+     * obustavu. Iz zadnjeg zapisa je zato obustava ispisivala „pokrenut zbog sljedećeg razloga:
+     * obustava postupka suspenzije", a suspenzija „zbog sljedećeg razloga: istek roka za
+     * očitovanje" — procesni okidač na mjestu na kojem čl. 98. st. 3 i 5 traže materijalni razlog.
+     * Zato ta dva akta razlog čitaju s prijedloga, a ostali sa svog (zadnjeg) prijelaza.
      */
-    private String razlogIzTraga(String rn) {
-        Optional<RegistrationNumberLogEntity> zadnji =
-                logRepository.findFirstByRnOrderByOccurredAtDesc(rn);
-        if (zadnji.isEmpty()) {
+    private String razlogIzTraga(StrDocumentType type, String rn) {
+        Optional<RegistrationNumberLogEntity> zapisi = switch (type) {
+            case SUSPENZIJA, OBUSTAVA_SUSPENZIJE -> logRepository
+                    .findFirstByRnAndToStatusOrderByOccurredAtDesc(
+                            rn, RnStatus.SUSPENSION_PROPOSED.name())
+                    // Jednofazna suspenzija iz starijih podataka nema prijedlog u tragu.
+                    .or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn));
+            default -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn);
+        };
+        if (zapisi.isEmpty()) {
             return null;
         }
-        RegistrationNumberLogEntity zapis = zadnji.get();
+        RegistrationNumberLogEntity zapis = zapisi.get();
         if (zapis.getReason() != null && !zapis.getReason().isBlank()) {
             return zapis.getReason();
         }

@@ -137,14 +137,22 @@ Dopiši na kraj:
 ```bash
 # --- uredsko poslovanje: identitet tijela na aktima (čl. 98. st. 2 ZUP-a) ---
 # Bez ovih vrijednosti svaki akt vidljivo ispisuje "[nije konfigurirano: ...]".
-STR_TIJELO_NAZIV=MINISTARSTVO TURIZMA I SPORTA
-STR_TIJELO_OIB=
+# Naziv otvara rečenicu uvoda akta, pa ide velikim POČETNIM slovom i ostatkom malim:
+# Ministarstvo turizma i sporta. NE cijeli velikim slovima — zaglavlje i potpis ga sami
+# pišu velikim. Mali početak znači da akt počinje malim slovom; StartupDiagnostics
+# to prijavi WARN-om startup_documents_naziv_pocinje_malim_slovom.
+STR_TIJELO_NAZIV=Ministarstvo turizma i sporta
+# OIB i propis o nadležnosti imaju default u application.properties, iz predloška akta koji je
+# MINT poslao 11.09.2026. NE postavljati ih ovdje praznima — prazna vrijednost pregazi default.
+# STR_TIJELO_OIB=87892589782
 STR_TIJELO_ADRESA=Prisavlje 14
 STR_TIJELO_MJESTO=Zagreb
 STR_TIJELO_USTROJ=Uprava za turizam
-STR_TIJELO_PROPIS=
+# Propis o nadležnosti: default je tekst iz predloška MINT-a; brojevi Narodnih novina još nedostaju.
+# STR_TIJELO_PROPIS=
 STR_POTPISNIK_IME=
-STR_POTPISNIK_FUNKCIJA=Voditelj postupka
+# Funkcija se u ugradenom potpisu NE ispisuje (potpis je naziv tijela).
+# STR_POTPISNIK_FUNKCIJA=Voditelj postupka
 STR_EPECAT_ENABLED=false
 STR_DOCUMENTS_RELOAD=false
 
@@ -157,7 +165,9 @@ APP_MAIL_ENABLED=false
 
 **Ključ koji ne postavljaš zakomentiraj, nemoj ostaviti prazan** — prazna vrijednost je
 postavljena vrijednost i pregazi default iz `application.properties`. Iznimka su ključevi
-čiji je default ionako prazan (`STR_TIJELO_OIB`, `STR_TIJELO_PROPIS`, `STR_POTPISNIK_IME`).
+čiji je default ionako prazan (`STR_POTPISNIK_IME`). **`STR_TIJELO_OIB` i `STR_TIJELO_PROPIS` od
+18.09.2026. imaju default** — `.env.cdu` koji ih postavlja praznima treba ispraviti, inače akti i
+dalje nose „[nije konfigurirano]".
 
 Postavke koje CDU drži u `application-cdu.properties` (ne treba ih u `.env.cdu`, ali je dobro
 znati da postoje): `str.rn.documents.zahtjev-visible=false`, prazan `str.egop.mock.filing-prefix`
@@ -191,6 +201,15 @@ docker exec str-backend-cdu env | grep -E "STR_TIJELO|EGOP_" | sort
 
 Ako `STR_TIJELO_NAZIV` nije na popisu, `env_file` nije primijenjen i akti će nositi oznaku
 „nije konfigurirano".
+
+Nakon starta isto piše i u logu, pa ne treba čekati prvi izdani akt:
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep startup_documents
+```
+
+Očekivano: `oib=postavljen propis=postavljen epecat=false`. Stoji li `PRAZAN (pregazio je
+default — provjeri .env)`, ključ je u `.env.cdu` postavljen na prazno i treba ga zakomentirati.
 
 ## 6. Server — prava na artefaktima (prije builda!)
 
@@ -244,7 +263,9 @@ docker ps                                        # str-backend-cdu + str-fronten
 curl -I http://localhost:8085                    # očekivan 200 OK
 docker exec str-frontend-cdu ls -l /usr/share/nginx/html/assets   # mora biti -rw-r--r--
 docker logs str-backend-cdu 2>&1 | tail -30      # očekuj "Started StrBackendApplication"
+docker logs str-backend-cdu 2>&1 | grep startup_documents   # identitet tijela na aktima
 docker logs str-frontend-cdu 2>&1 | tail -20     # NE smije biti "Permission denied"
+docker logs -f str-backend-cdu                   # live praćenje (Ctrl+C za izlaz)
 ```
 
 Najbrža potvrda da je fronta stvarno poslužena, a ne samo `index.html`:
