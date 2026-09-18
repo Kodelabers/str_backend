@@ -1,0 +1,22 @@
+# Thin image za okoline bez maven repozitorija i bez pristupa Docker Hubu (CDU mreža).
+# NE buildA aplikaciju — očekuje da je jar već napravljen i da leži u target/:
+#
+#   lokalno:  mvn package -DskipTests
+#   pa:       scp target/str-backend-0.0.1-SNAPSHOT.jar <kutija>:/srv/str-preprod/str_backend/target/
+#
+# Bira se retkom BACKEND_DOCKERFILE=Dockerfile.artifact u .env.cdupreprod.
+#
+# Tag je `-jammy` jer je upravo taj base image na CDU kutijama već u lokalnom cacheu; `21-jre`
+# bez sufiksa bi zatražio pull koji na odsječenoj mreži ne prolazi.
+FROM eclipse-temurin:21-jre-jammy
+WORKDIR /app
+
+COPY target/*.jar app.jar
+
+# scp s Windowsa donosi modove bez POSIX prava, a COPY ih prenese u image kakvi jesu. Bez ovoga
+# jar zna biti nečitljiv procesu u kontejneru. Popravak je u imageu namjerno — tako deploy ne
+# ovisi o tome kakve je modove scp donio (na CDU testu je to bio ručni korak koji se zaboravljao).
+RUN chmod a+r /app/app.jar
+
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

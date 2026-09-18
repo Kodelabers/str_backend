@@ -1,0 +1,10 @@
+# Skripte koje se izvršavaju na Linux kutijama MORAJU imati LF završetke redaka.
+#
+# Zašto: Git for Windows u sistemskom gitconfigu ima `core.autocrlf=true`, pa se pri checkoutu
+# na Windowsu tekstualne datoteke pretvaraju u CRLF. Deploy na CDU ide scp-om S WINDOWSA, a
+# bash na kutiji tada shebang čita kao `/usr/bin/env bash^M` i javlja
+# `bad interpreter: No such file or directory` — greška koja izgleda kao da bash ne postoji.
+#
+# `text eol=lf` znači: u repou LF (kao i dosad), i u radnoj kopiji LF bez obzira na platformu.
+*.sh text eol=lf
+*.sql text eol=lf

@@ -16,7 +16,7 @@ mvn package                             # build fat JAR
 
 ## Environments & Profiles
 
-Five Spring profiles — `local` (default), `mock`, `dev`, `test`, `prod`. Override via `SPRING_PROFILES_ACTIVE` env var.
+Eight Spring profiles — `local` (default), `mock`, `dev`, `test`, `prod`, plus three deployed environments: `cdu`, `preprod`, `cdupreprod`. Override via `SPRING_PROFILES_ACTIVE` env var.
 
 | Profile | DB | Notes |
 |---|---|---|
@@ -25,6 +25,9 @@ Five Spring profiles — `local` (default), `mock`, `dev`, `test`, `prod`. Overr
 | `dev` | shared dev PostgreSQL `s-str-02.infodom.hr:5431/str2` | `str`, `rpj_dgu`, `eturizam_test` schemas are owned by other services — read-only; Liquibase only manages `str_rn` |
 | `test` | real PostgreSQL via `TEST_DB_URL/USERNAME/PASSWORD` env vars | Liquibase runs migrations only |
 | `prod` | real PostgreSQL via `PROD_DB_URL/USERNAME/PASSWORD` env vars | same as test |
+| `cdu` | CDU test box `172.20.8.196:5432/eturizam` | Public `https://str-test-eturizam.gov.hr`, single origin via frontend nginx. NIAS **test** (`niastst.fina.hr`, demo FINA cert), eGOP off, mail off. Liquibase `contexts=cdu,!local,!dev` (UAT activity seed 120). See `DEPLOY-CDU.md` |
+| `preprod` | InfoDom `s-str-02.infodom.hr:5431/eturizam` | Plain HTTP, so captcha is off and `nias.saml.request-store=database`. NIAS **production**, eGOP off. See `DEPLOY-PREPROD.md` |
+| `cdupreprod` | CDU preprod box `172.20.8.212:5432/eturizam` | Public `https://str-preprod-eturizam.gov.hr`, single origin, captcha on. NIAS **production**, eGOP off. **The DB is reset nightly** — `str_rn` and its `databasechangelog` disappear, so the schema is recreated and the backend restarted every morning (`tools/cdupreprod-nightly.sh`). Liquibase `contexts=cdupreprod`. See `DEPLOY-CDU-PREPROD.md` |
 
 Unit tests (`@ActiveProfiles("test")`) use H2 from `src/test/resources/application-test.properties` — the test classpath file overrides the main one, so JUnit tests are unaffected by the real `test` env config.
 
