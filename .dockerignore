@@ -1,4 +1,9 @@
 target
+# Iznimka za Dockerfile.artifact (okoline bez maven repozitorija — CDU): ondje jar NIJE rezultat
+# builda u kontejneru, nego ulazni artefakt koji se donese scp-om u target/. Bez ovog retka
+# `COPY target/*.jar` puca s "no source files were specified", jer je cijeli target isključen iz
+# build konteksta. Obični (build-on-box) Dockerfile kopira samo pom.xml i src, pa mu ovo ne smeta.
+!target/*.jar
 .idea
 *.iml
 .git
