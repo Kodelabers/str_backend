@@ -688,7 +688,144 @@ stari `index.html` koji traži hash kojeg u novom buildu više nema.
 - [ ] tri jutra zaredom provjeriti log prije nego se okolina proglasi stabilnom
 - [ ] testerima napisati **što nakon reseta nestaje** — RB-ovi, skice, sesije, dakle **sve što
       unesu tijekom dana**. Inače to dolazi kao prijavljeni bug svako jutro
-- [ ] ovaj dokument prepisati iz plana u postupak + dodati `Update-only` odjeljak
+
+## C9. REDEPLOY — nova verzija koda na `develop`-u
+
+Ovo je postupak koji se koristi **nakon prve instalacije**, svaki put kad netko spoji fix u
+`develop`. Nije isto što i §C6 (prva instalacija) — repoi su već na kutiji, `.env` i keystore
+stoje, i ne dira ih se.
+
+> **Zašto se ne buildA na kutiji:** `repo.maven.apache.org`, `build.shibboleth.net` i
+> `registry.npmjs.org` su s te kutije blokirani (izmjereno 18.09., §C1). Build ide **lokalno**,
+> na kutiju se nose gotovi artefakti. Bez toga `mvn` na kutiji ne razriješi ni roditeljski POM.
+
+### Korak 1 — PRIJE VPN-a: povuci kod (treba internet)
+
+```powershell
+git -C C:\Users\MladenHangi\str_backend checkout develop; git -C C:\Users\MladenHangi\str_backend pull
+```
+```powershell
+git -C C:\Users\MladenHangi\str_frontend checkout develop; git -C C:\Users\MladenHangi\str_frontend pull
+```
+
+**Pogledaj što je došlo** — određuje koliko posla slijedi:
+
+```powershell
+git -C C:\Users\MladenHangi\str_backend log --oneline -5; git -C C:\Users\MladenHangi\str_frontend log --oneline -5
+```
+
+- Ako `str_frontend` nije donio ništa novo → **preskoči korak 3 i frontend dio koraka 4**.
+- Ako je `package-lock.json` mijenjan → prije builda treba `npm ci`, ne samo `npm run build`.
+
+**Provjeri je li stigao novi konfiguracijski ključ** (najtiša zamka pri updateu — novi ključ
+dolazi u predlošku, a `.env` na kutiji ga nema, pa Spring uzme default ili start padne):
+
+```powershell
+git -C C:\Users\MladenHangi\str_backend diff HEAD@{1} HEAD -- .env.cdupreprod.example
+```
+
+Ako ispis nije prazan, isti ključ dodaj i u `~/str-rn/str_backend/.env.cdupreprod` na kutiji.
+
+### Korak 2 — PRIJE VPN-a: backend jar
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.10"
+```
+```powershell
+& "C:\Users\MladenHangi\Desktop\Maven\bin\mvn.cmd" -f C:\Users\MladenHangi\str_backend\pom.xml clean package -DskipTests
+```
+
+**Namjerno bez `-o` (offline).** Fix može donijeti novu ovisnost — točno se to dogodilo s
+`ZXing` u PR-u #82 — a offline build bi tada pao, ili, gore, prošao sa starim artefaktima.
+Zato se builda dok još ima interneta.
+
+### Korak 3 — PRIJE VPN-a: frontend (samo ako je mijenjan)
+
+```powershell
+Set-Location C:\Users\MladenHangi\str_frontend; $env:VITE_API_URL="https://str-preprod-eturizam.gov.hr"; $env:VITE_USE_MOCK="false"; $env:VITE_NIAS_ENABLED="true"; $env:VITE_CAPTCHA_ENABLED="true"; npm run build
+```
+
+**Varijable se postavljaju svaki put.** Vrijede samo za tu PowerShell sesiju i **zapeku se u
+build**. Zaboraviš li ih, fronta će gađati `localhost:8080`; zaboraviš li ih promijeniti nakon
+builda za drugu okolinu, gađat će **testnu** domenu — a to izgleda potpuno normalno dok netko
+ne primijeti da podaci idu u krivi registar.
+
+Provjera (mora ispisati pogodak):
+
+```powershell
+Select-String -Path C:\Users\MladenHangi\str_frontend\build\assets\*.js -Pattern "str-preprod-eturizam" | Select-Object -First 1
+```
+
+### Korak 4 — NA VPN-u: prijenos
+
+Prvo sigurnosna kopija zatečenog jara, da se pad može vratiti u minuti:
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend/target && cp -f str-backend-0.0.1-SNAPSHOT.jar str-backend-PRETHODNI.jar 2>/dev/null; ls -l"
+```
+
+Backend:
+
+```powershell
+scp C:\Users\MladenHangi\str_backend\target\str-backend-0.0.1-SNAPSHOT.jar cdu-preprod:~/str-rn/str_backend/target/
+```
+
+Frontend (**samo ako je mijenjan**) — staro se prvo briše:
+
+```powershell
+ssh cdu-preprod "rm -rf ~/str-rn/str_frontend/build/*"
+```
+```powershell
+scp -r C:\Users\MladenHangi\str_frontend\build\* cdu-preprod:~/str-rn/str_frontend/build/
+```
+
+Dvije stvari koje ovdje štede sat vremena:
+
+- **`scp` ne briše zaostale datoteke.** Stari `index-<hash>.js` bi ostao uz novi; preglednik s
+  cacheanim `index.html` traži hash kojeg više nema → **bijeli ekran**. Zato `rm -rf build/*`.
+- Kopira se **`build\*`, ne `build`**. Kod same mape `scp` na kraju pokušava postaviti mod i
+  vrijeme, pa javi `remote setstat: Permission denied` iako je upis prošao.
+
+### Korak 5 — NA VPN-u: podizanje
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build"
+```
+
+`up -d --build` je dovoljan: promijenjen jar poništi cache na `COPY` sloju, image se pregradi i
+kontejner rekreira. `down` **ne treba** — bug `KeyError: 'ContainerConfig'` je iz compose v1, a
+ovdje je v2. Nove Liquibase changesete primijeni sam backend pri dizanju.
+
+### Korak 6 — provjera
+
+```powershell
+ssh cdu-preprod "docker logs --since 5m str-backend-cdupreprod 2>&1 | grep -E 'Started StrBackendApplication|startup_'"
+```
+
+Mora se vidjeti `Started StrBackendApplication` i blok `startup_` bez ERROR-a (popis očekivanih
+vrijednosti je u §C7). Zatim fronta:
+
+```powershell
+ssh cdu-preprod "curl -sI http://localhost:8085 | head -1; curl -s -o /dev/null -w 'captcha %{http_code}\n' http://localhost:8085/api/captcha/challenge"
+```
+
+U pregledniku **uvijek Ctrl+F5** — statika ima `immutable, 7 dana`.
+
+### Ako nova verzija ne valja — povratak
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend/target && cp -f str-backend-PRETHODNI.jar str-backend-0.0.1-SNAPSHOT.jar && cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build"
+```
+
+Vraća **samo aplikaciju**. Ako je nova verzija u međuvremenu primijenila Liquibase changeset,
+on **ostaje primijenjen** — shema se ne vraća unatrag. Na ovoj okolini to rijetko smeta jer se
+tablice ionako dropaju svake noći, pa idući jutarnji restart izgradi shemu po staroj verziji.
+
+### Ako deploya netko drugi
+
+Vrijedi sve gore, uz dvoje: treba mu **pristup direktoriju** (§B2 — prava za grupu `docker`) i
+**`umask 002` prije `scp`-a**. Bez toga datoteka koju donese ostaje `644` u njegovom vlasništvu
+i sljedeći kolega je ne može prepisati.
 
 ---
 
