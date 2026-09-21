@@ -1,13 +1,18 @@
 # CDU predprodukcija — `str-preprod-eturizam.gov.hr` (PLAN)
 
-> **Status 18.09.2026.: instalacija se može pokrenuti.**
-> Recon kutije i baze je odrađen, DBA je potvrdio kako radi noćni reset (tablice se dropaju,
-> shema i role ostaju), konfiguracija je u `develop`-u (PR #84 spojen 18.09.), a **§C6 je
-> izvršni runbook korak po korak**. Tvrdo blokira samo lozinka NIAS keystorea (Simon) — i nju se
-> zaobilazi s `NIAS_SAML_ENABLED=false`, uz gubitak samo prijave eGrađanima.
-> Za **dan poslije** još fale: vrijeme reset prozora (bez njega nema crona) i potvrda da tablični
-> `SELECT` grantovi prežive reset. Kad okolina proradi, ovaj dokument prelazi u oblik kakav ima
-> `DEPLOY-CDU.md`.
+> **Status 18.09.2026.: okolina je INSTALIRANA i radi; čeka se samo gateway.**
+>
+> Backend i frontend su podignuti na `172.20.8.143:8085`, aplikacija se uredno diže, baza,
+> adresni registri, captcha i NIAS keystore su provjereni u `startup_` bloku (§C7). Interno je
+> dostupna na `http://172.20.8.143:8085`.
+>
+> **Javni URL još ne radi** i to nije do nas: `https://str-preprod-eturizam.gov.hr` prolazi TLS
+> pa se veza resetira, dok `str-test-eturizam.gov.hr` na istom IP-u vraća 200 — gatewayu
+> (F5 BigIP) nedostaje pravilo `443 → 172.20.8.143:8085`. Provjereno je i da je port dostupan
+> s mreže (`Test-NetConnection` prolazi), pa je s naše strane sve zatvoreno (A3/13).
+>
+> **Otvoreno:** vrijeme reset prozora (bez njega nema crona, §C8) i potvrda da tablični `SELECT`
+> grantovi prežive reset (A1/6). Za redeploy nove verzije vidi **§C9**.
 
 Nova okolina je **druga kutija na istom državnom VPN-u** kao CDU test. Nije nastavak
 InfoDomove predprodukcije (`s-str-02`) — s njom dijeli samo riječ „predprodukcija".
@@ -69,7 +74,8 @@ još nema živog upstreama; to je očekivano dok ne deployamo.
 | Port 8085 | **slobodan** | `ss` ne nalazi ništa na 8085/8080/8086 |
 | Tuđi stack | `str2-str-external-app-1` (8082), `str2-str-internal-app-1` (8081) | koegzistira; **ne dirati** |
 | Internet | `github.com` → `HTTP/2 200` | izlaz na 443 radi |
-| Docker Hub | `registry-1.docker.io/v2/` → `401`, `docker pull nginx:alpine` → **OK** | **build-on-box je moguć** |
+| Docker Hub | `registry-1.docker.io/v2/` → `401`, `docker pull nginx:alpine` → **OK** | base imageovi se povlače; ali **build svejedno ne ide na kutiji** — vidi redak niže |
+| **maven / shibboleth / npm** | `repo.maven.apache.org`, `build.shibboleth.net`, `registry.npmjs.org` → **svi `000`, connection reset** | ⛔ **build na kutiji je nemoguć** — artefakti se grade lokalno i nose `scp`-om (§B3, §C9) |
 | GitHub SSH (22) | **zatvoren** (bez odgovora) | deploy ključ preko SSH-a **otpada** → §B6 |
 | `mvn` / `npm` / `java` na hostu | **nema ih** | nebitno: build ide u kontejneru |
 | Cacheirani imageovi | `eclipse-temurin:11-jre`, `str-external`, `str-internal` | naš base (**21**) i `maven`/`node` povlače se pri prvom buildu |
@@ -105,7 +111,7 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 | NIAS | `niastst.fina.hr`, demo cert | **`nias.gov.hr`, produkcijski cert** | `nias.gov.hr`, prod cert |
 | eGOP | ugašen | **ugašen** | ugašen |
 | Profil | `cdu` | **`cdupreprod`** | `preprod` |
-| Build | lokalno + `scp` (nema mvn/npm/DockerHub) | **build-on-box (potvrđeno)** | build-on-box |
+| Build | lokalno + `scp` (nema mvn/npm/DockerHub) | **lokalno + `scp`** (maven/npm blokirani) | build-on-box |
 
 ---
 
@@ -260,16 +266,36 @@ chmod 640 ~/str-rn/str_backend/.env.cdupreprod ~/str-rn/secrets/*   # tajne osta
 **Ne raditi ovo unaprijed.** `chmod 711` na home je popuštanje privatnosti vlastitog direktorija
 i ima smisla tek kad postoji stvarna potreba; do tada je manje izloženosti bolji default.
 
-## B3. Build ide NA KUTIJI
+## B3. Build ide LOKALNO, ne na kutiji
 
-Docker Hub je dohvatljiv i `docker pull` prolazi, pa se koriste **postojeći `Dockerfile`-ovi iz
-oba repoa** (maven i vite u kontejneru). `BACKEND_DOCKERFILE`/`FRONTEND_DOCKERFILE` ostaju
-nepostavljeni.
+> **Ovo je bilo drukčije do prvog deploya.** Prvotno je pisalo „build ide na kutiji", jer je
+> `docker pull` prolazio pa se činilo da je sve dohvatljivo. Prvi build (18.09.) pao je na
+> `mvn dependency:go-offline` i pokazao da Docker Hub nije mjerilo: **paketni registryji su
+> blokirani**. Ostavljam trag te promjene jer je to glavna razlika u odnosu na InfoDom okolinu.
 
-Time otpada cijeli lanac s CDU testa: lokalni build, `scp` artefakata, ručni `chmod`, i
-posljedično najčešći kvar te okoline. `Dockerfile.artifact` ostaje u repou kao **rezerva** ako
-kutija ikad ostane bez pristupa registryju; FE thin varijanta se tada radi zasebno (u
-`str_frontend` repou ne postoji).
+Izmjereno s kutije — sva tri `000`, connection reset:
+
+| Host | Čemu služi | Bez njega |
+| :--- | :--- | :--- |
+| `repo.maven.apache.org` | standardne Java ovisnosti | `mvn` ne razriješi ni roditeljski POM |
+| `build.shibboleth.net` | `opensaml-saml-impl:4.3.1` — **nije na Maven Centralu** | nema SAML2, dakle nema NIAS prijave |
+| `registry.npmjs.org` | frontend ovisnosti | `npm ci` ne prolazi |
+
+Zato **oba** artefakta nastaju lokalno i nose se `scp`-om, a na kutiji se koriste thin imageovi
+koji ih samo kopiraju:
+
+```
+BACKEND_DOCKERFILE=Dockerfile.artifact       # str_backend/Dockerfile.artifact
+FRONTEND_DOCKERFILE=Dockerfile.artifact      # str_frontend/Dockerfile.artifact
+```
+
+Oba `Dockerfile.artifact` imaju `chmod -R a+rX` **u imageu**, pa modovi koje donese Windows
+`scp` više ne mogu proizvesti bijeli ekran — to je na CDU testu bio ručni korak koji se
+zaboravljao.
+
+Cijena je da svaki deploy nosi ~110 MB jara i traje ~15 minuta umjesto ~3. Ako mrežni tim ikad
+otvori `repo.maven.apache.org` i `build.shibboleth.net`, dovoljno je maknuti ta dva retka iz
+`.env.cdupreprod` i build se vraća na kutiju bez ijedne druge izmjene.
 
 ## B4. Captcha UKLJUČENA
 
@@ -699,19 +725,36 @@ stoje, i ne dira ih se.
 > `registry.npmjs.org` su s te kutije blokirani (izmjereno 18.09., §C1). Build ide **lokalno**,
 > na kutiju se nose gotovi artefakti. Bez toga `mvn` na kutiji ne razriješi ni roditeljski POM.
 
+### Korak 0 — jednokratno, postavi putanje za svoju sesiju
+
+Naredbe niže koriste ove tri varijable, pa vrijede za bilo čiji račun i bilo koji checkout.
+Postavi ih na početku svake PowerShell sesije (ili ih trajno upiši u svoj `$PROFILE`):
+
+```powershell
+$BE = "C:\Users\MladenHangi\str_backend"; $FE = "C:\Users\MladenHangi\str_frontend"
+```
+```powershell
+$MVN = "C:\Users\MladenHangi\Desktop\Maven\bin\mvn.cmd"; $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.10"
+```
+
+Vrijednosti gore su s jednog konkretnog računala — **zamijeni ih svojima**. Ako su `mvn` i
+`java` kod tebe na `PATH`-u, umjesto pune putanje može stajati `$MVN = "mvn"`, a `JAVA_HOME`
+se onda ne mora postavljati. Provjera da je postavljeno ispravno:
+
+```powershell
+Test-Path $BE, $FE; & $MVN -v | Select-Object -First 1
+```
+
 ### Korak 1 — PRIJE VPN-a: povuci kod (treba internet)
 
 ```powershell
-git -C C:\Users\MladenHangi\str_backend checkout develop; git -C C:\Users\MladenHangi\str_backend pull
-```
-```powershell
-git -C C:\Users\MladenHangi\str_frontend checkout develop; git -C C:\Users\MladenHangi\str_frontend pull
+git -C $BE checkout develop; git -C $BE pull; git -C $FE checkout develop; git -C $FE pull
 ```
 
 **Pogledaj što je došlo** — određuje koliko posla slijedi:
 
 ```powershell
-git -C C:\Users\MladenHangi\str_backend log --oneline -5; git -C C:\Users\MladenHangi\str_frontend log --oneline -5
+git -C $BE log --oneline -5; git -C $FE log --oneline -5
 ```
 
 - Ako `str_frontend` nije donio ništa novo → **preskoči korak 3 i frontend dio koraka 4**.
@@ -721,7 +764,7 @@ git -C C:\Users\MladenHangi\str_backend log --oneline -5; git -C C:\Users\Mladen
 dolazi u predlošku, a `.env` na kutiji ga nema, pa Spring uzme default ili start padne):
 
 ```powershell
-git -C C:\Users\MladenHangi\str_backend diff HEAD@{1} HEAD -- .env.cdupreprod.example
+git -C $BE diff HEAD@{1} HEAD -- .env.cdupreprod.example
 ```
 
 Ako ispis nije prazan, isti ključ dodaj i u `~/str-rn/str_backend/.env.cdupreprod` na kutiji.
@@ -729,20 +772,21 @@ Ako ispis nije prazan, isti ključ dodaj i u `~/str-rn/str_backend/.env.cduprepr
 ### Korak 2 — PRIJE VPN-a: backend jar
 
 ```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.10"
-```
-```powershell
-& "C:\Users\MladenHangi\Desktop\Maven\bin\mvn.cmd" -f C:\Users\MladenHangi\str_backend\pom.xml clean package -DskipTests
+& $MVN -f $BE\pom.xml clean package -DskipTests
 ```
 
 **Namjerno bez `-o` (offline).** Fix može donijeti novu ovisnost — točno se to dogodilo s
 `ZXing` u PR-u #82 — a offline build bi tada pao, ili, gore, prošao sa starim artefaktima.
 Zato se builda dok još ima interneta.
 
+**Prvi put na novom računalu build MORA ići izvan VPN-a.** `opensaml-saml-impl` se povlači s
+`build.shibboleth.net`, koji je sa svih CDU okolina blokiran; jednom kad sjedne u lokalni
+`.m2`, kasniji buildovi rade i bez njega.
+
 ### Korak 3 — PRIJE VPN-a: frontend (samo ako je mijenjan)
 
 ```powershell
-Set-Location C:\Users\MladenHangi\str_frontend; $env:VITE_API_URL="https://str-preprod-eturizam.gov.hr"; $env:VITE_USE_MOCK="false"; $env:VITE_NIAS_ENABLED="true"; $env:VITE_CAPTCHA_ENABLED="true"; npm run build
+Set-Location $FE; $env:VITE_API_URL="https://str-preprod-eturizam.gov.hr"; $env:VITE_USE_MOCK="false"; $env:VITE_NIAS_ENABLED="true"; $env:VITE_CAPTCHA_ENABLED="true"; npm run build
 ```
 
 **Varijable se postavljaju svaki put.** Vrijede samo za tu PowerShell sesiju i **zapeku se u
@@ -753,7 +797,7 @@ ne primijeti da podaci idu u krivi registar.
 Provjera (mora ispisati pogodak):
 
 ```powershell
-Select-String -Path C:\Users\MladenHangi\str_frontend\build\assets\*.js -Pattern "str-preprod-eturizam" | Select-Object -First 1
+Select-String -Path $FE\build\assets\*.js -Pattern "str-preprod-eturizam" | Select-Object -First 1
 ```
 
 ### Korak 4 — NA VPN-u: prijenos
@@ -767,7 +811,7 @@ ssh cdu-preprod "cd ~/str-rn/str_backend/target && cp -f str-backend-0.0.1-SNAPS
 Backend:
 
 ```powershell
-scp C:\Users\MladenHangi\str_backend\target\str-backend-0.0.1-SNAPSHOT.jar cdu-preprod:~/str-rn/str_backend/target/
+scp $BE\target\str-backend-0.0.1-SNAPSHOT.jar cdu-preprod:~/str-rn/str_backend/target/
 ```
 
 Frontend (**samo ako je mijenjan**) — staro se prvo briše:
@@ -776,7 +820,7 @@ Frontend (**samo ako je mijenjan**) — staro se prvo briše:
 ssh cdu-preprod "rm -rf ~/str-rn/str_frontend/build/*"
 ```
 ```powershell
-scp -r C:\Users\MladenHangi\str_frontend\build\* cdu-preprod:~/str-rn/str_frontend/build/
+scp -r $FE\build\* cdu-preprod:~/str-rn/str_frontend/build/
 ```
 
 Dvije stvari koje ovdje štede sat vremena:
@@ -821,11 +865,25 @@ Vraća **samo aplikaciju**. Ako je nova verzija u međuvremenu primijenila Liqui
 on **ostaje primijenjen** — shema se ne vraća unatrag. Na ovoj okolini to rijetko smeta jer se
 tablice ionako dropaju svake noći, pa idući jutarnji restart izgradi shemu po staroj verziji.
 
-### Ako deploya netko drugi
+### Ako deploya netko drugi — što mu treba prije prvog puta
 
-Vrijedi sve gore, uz dvoje: treba mu **pristup direktoriju** (§B2 — prava za grupu `docker`) i
-**`umask 002` prije `scp`-a**. Bez toga datoteka koju donese ostaje `644` u njegovom vlasništvu
-i sljedeći kolega je ne može prepisati.
+Postupak je isti, ali se **ništa od ovoga ne podrazumijeva**. Redoslijed je bitan: prve dvije
+stavke radi vlasnik kutije, ostale novi kolega sam.
+
+| # | Što | Tko | Napomena |
+| :---: | :--- | :--- | :--- |
+| 1 | Prava na `~/str-rn` za grupu `docker` | dosadašnji deployer | §B2; jednokratno |
+| 2 | `chmod 660` na `.env.cdupreprod` | dosadašnji deployer | **samo ako treba moći dodavati nove ključeve**; uz `640` ga može čitati, ali ne mijenjati |
+| 3 | SSH alias `cdu-preprod` u `~/.ssh/config` | novi kolega | `HostName 172.20.8.143`, `User <njegov račun>` |
+| 4 | Java 21 + Maven + **popunjen `.m2`** | novi kolega | prvi `mvn package` **mora izvan VPN-a** — `opensaml` se povlači sa `shibboleth`, koji je s CDU mreže blokiran |
+| 5 | Node + `npm ci` odrađen | novi kolega | isto, izvan VPN-a |
+| 6 | `umask 002` prije svakog `scp`-a | **svi** | inače datoteka ostaje `644` u njegovom vlasništvu i **sljedeći je kolega ne može prepisati** |
+
+Tajne mu **ne treba slati**: `.env.cdupreprod` i keystore već stoje na kutiji i redeploy ih ne
+dira. To je namjerna posljedica ovog rasporeda — lozinka baze i NIAS keystorea ne putuju.
+
+Dogovorite i tko deploya kad: dvoje ljudi koji istovremeno rade `up -d --build` nad istim
+compose projektom rekreira kontejnere jedan drugome ispod ruke.
 
 ---
 
