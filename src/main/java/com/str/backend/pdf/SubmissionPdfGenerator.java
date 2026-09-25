@@ -144,7 +144,7 @@ public class SubmissionPdfGenerator {
             addGroupRow(main, "OBJEKTI", objektiTop);
 
             addGroupRow(main, "VRSTA BROJ I\nKAPACITET OBJEKATA\nZA SMJEŠTAJ",
-                    buildKapacitetTable(ctx.accommodationName(), ctx.maxBeds(), ctx.typeName()));
+                    buildKapacitetTable(ctx.accommodationName(), ctx.maxGuests(), ctx.typeName()));
 
             addGroupRow(main, "OSTALI SADRŽAJI", singleValueTable("označeno"));
 
@@ -272,21 +272,25 @@ public class SubmissionPdfGenerator {
 
     // ── builders ─────────────────────────────────────────────────────────────
 
-    private PdfPTable buildKapacitetTable(String reqName, int reqMaxBeds, String typeName) {
-        PdfPTable t = new PdfPTable(new float[]{3.2f, 2.2f, 1.5f, 1.2f, 1.5f, 1.2f});
+    /**
+     * Tablica kapaciteta. Od stavke 2 kapacitet je jedan podatak — maksimalan broj gostiju,
+     * zbroj kreveta i pomoćnih kreveta — pa obrazac više nema zasebne stupce za krevete i
+     * pomoćne krevete. Iz zahtjeva se ta podjela ionako ne može rekonstruirati.
+     */
+    private PdfPTable buildKapacitetTable(String reqName, int maxGuests, String typeName) {
+        PdfPTable t = new PdfPTable(new float[]{3.2f, 2.2f, 1.5f, 1.7f, 1.2f});
         t.setWidthPercentage(100);
 
         // header row
         addKapacitetHeader(t, "Vrsta objekta");
         addKapacitetHeader(t, "Oznaka/naziv\nobjekta");
         addKapacitetHeader(t, "Tražena\nkategorija");
-        addKapacitetHeader(t, "Broj\nkreveta");
-        addKapacitetHeader(t, "Broj\npomoćnih\nkreveta");
+        addKapacitetHeader(t, "Maksimalan\nbroj gostiju");
         addKapacitetHeader(t, "Broj soba");
 
         // data row — no vertical separators between cells
         String[] dataValues = {typeName != null ? typeName : "", safe(reqName), "",
-                String.valueOf(reqMaxBeds), "", ""};
+                String.valueOf(maxGuests), ""};
         for (int i = 0; i < dataValues.length; i++) {
             PdfPCell c = new PdfPCell(new Phrase(dataValues[i], FNT_VALUE));
             int border = PdfPCell.TOP;
@@ -314,8 +318,8 @@ public class SubmissionPdfGenerator {
         ukupnoLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(ukupnoLabel, 3);
         t.addCell(ukupnoLabel);
-        String[] ukupnoValues = {"1", "", String.valueOf(reqMaxBeds), "", ""};
-        for (int i = 0; i < 4; i++) {
+        String[] ukupnoValues = {"1", "", String.valueOf(maxGuests), ""};
+        for (int i = 0; i < ukupnoValues.length - 1; i++) {
             PdfPCell c = new PdfPCell(new Phrase(ukupnoValues[i], FNT_VALUE));
             c.setBorder(PdfPCell.BOTTOM);
             c.setBorderColor(BLUE);
@@ -324,7 +328,7 @@ public class SubmissionPdfGenerator {
             pad(c, 4);
             t.addCell(c);
         }
-        PdfPCell ukupnoLast = new PdfPCell(new Phrase(ukupnoValues[4], FNT_VALUE));
+        PdfPCell ukupnoLast = new PdfPCell(new Phrase(ukupnoValues[ukupnoValues.length - 1], FNT_VALUE));
         ukupnoLast.setBorder(PdfPCell.BOTTOM | PdfPCell.RIGHT);
         ukupnoLast.setBorderColor(BLUE);
         ukupnoLast.setHorizontalAlignment(Element.ALIGN_CENTER);
@@ -369,8 +373,8 @@ public class SubmissionPdfGenerator {
         lc.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(lc, 4);
         t.addCell(lc);
-        // 4 cells: no borders
-        for (int i = 0; i < 4; i++) {
+        // 3 cells: no borders
+        for (int i = 0; i < 3; i++) {
             PdfPCell c = new PdfPCell(new Phrase("", FNT_VALUE));
             c.setBorder(PdfPCell.NO_BORDER);
             pad(c, 4);

@@ -149,6 +149,8 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getOib();
         String getSubtypeCode();
         Integer getBeds();
+        /** Pomoćni kreveti ({@code CAT_BROJ_POM_KREVETA}); ulaze u maksimalan broj gostiju. */
+        Integer getAuxiliaryBeds();
         Boolean getActive();
         String getName();
         /** Naziv/ime iznajmljivača — služi samo da se prepozna kad je `facility.name` zapravo on. */
@@ -198,6 +200,8 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * <p>Broj kreveta ima isti {@code facility_unit_capacity} fallback kao
      * {@link #findListingByOib} — bez njega objekt s jedinicama vrati {@code NULL} kreveta i
      * provjera kapaciteta se tiho preskoči, pa bi popis i provjera vidjeli različit podatak.
+     * Pomoćni kreveti imaju isti fallback, jer se zbrajaju s krevetima u maksimalan broj
+     * gostiju (v. {@link FacilityClaimVerifier#maxGuests}).
      *
      * <p>Adresa i naziv se čitaju istom join-mapom kao popis (isti {@code CASE} za
      * {@code same_address_subject}), jer se uspoređuju s onim što je korisnik vidio u formi.
@@ -228,7 +232,19 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                           JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
                          WHERE fu.facility_id = f.id AND coalesce(fu.active, true) = true
                            AND ce2.code = 'CAT_BROJ_KREVETA')
-                   ) AS beds
+                   ) AS beds,
+                   coalesce(
+                       (SELECT sum(fc.quantity) FROM str.facility_capacity fc
+                          JOIN str.codebook_element ce ON ce.id = fc.type_id
+                         WHERE fc.facility_id = f.id AND coalesce(fc.active, true) = true
+                           AND ce.code = 'CAT_BROJ_POM_KREVETA'),
+                       (SELECT sum(fuc.quantity) FROM str.facility_unit fu
+                          JOIN str.facility_unit_capacity fuc
+                            ON fuc.facility_unit_id = fu.id AND coalesce(fuc.active, true) = true
+                          JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
+                         WHERE fu.facility_id = f.id AND coalesce(fu.active, true) = true
+                           AND ce2.code = 'CAT_BROJ_POM_KREVETA')
+                   ) AS auxiliaryBeds
             FROM str.facility f
             JOIN str.subject_version sv ON sv.id = f.subject_version_id
             JOIN str.subject s          ON s.id  = sv.subject_id

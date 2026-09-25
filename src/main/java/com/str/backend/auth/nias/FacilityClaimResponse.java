@@ -15,6 +15,9 @@ import java.util.List;
  * (npr. {@code typeId}, {@code maxBeds}), da ih frontend može izravno preslikati na svoje inpute.
  * Polje koje eTurizam ne zna (prazna ulica, naziv {@code -}) namjerno <b>nije</b> na popisu —
  * takvo korisnik smije i treba popuniti.
+ *
+ * <p>{@code brKreveta} je <b>maksimalan broj gostiju</b> — kreveti + pomoćni kreveti iz eTurizma
+ * (v. {@code FacilityClaimVerifier.maxGuests}). Ime polja ostaje zbog ugovora s frontendom.
  */
 public record FacilityClaimResponse(
         String id,

@@ -9,10 +9,12 @@ import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnRepository.FacilityRnRow;
 import com.str.backend.str.StrFacilityRepository;
 import com.str.backend.str.StrFacilityRepository.FacilityListingRow;
+import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -194,6 +196,21 @@ class NiasFacilityServiceTest {
         assertThat(page.items()).hasSize(1);
         verify(facilityRepository, never()).findListingByOib(anyString(), any(), anyInt(), anyInt());
         verify(facilityRepository, never()).countListingByOib(anyString(), any());
+    }
+
+    /** Claim nosi maksimalan broj gostiju (kreveti + pomoćni) i zaključava ga. */
+    @Test
+    void claim_returnsBedsPlusAuxiliaryAsMaxGuests() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn(OIB);
+        when(row.getBeds()).thenReturn(4);
+        when(row.getAuxiliaryBeds()).thenReturn(2);
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+
+        FacilityClaimResponse claim = service.claim(OIB, "153049");
+
+        assertThat(claim.brKreveta()).isEqualTo(6);
+        assertThat(claim.zakljucanaPolja()).contains("maxBeds");
     }
 
     private void stubFacilities(FacilityListingRow... rows) {
