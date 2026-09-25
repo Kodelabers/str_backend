@@ -54,4 +54,10 @@ public interface AccommodationRequest {
      * vrijednost daje 400 — v. {@code CadastreResolver}.
      */
     String kcBroj();
+
+    /** Broj pomoćnih kreveta (kauč, rasklopni krevet i sl.); nije dio obaveznog kapaciteta. */
+    default Integer auxiliaryBeds() { return null; }
+
+    /** Kategorija smještajnog objekta; zadržava onaj koji je korisnik upisao do admin provjere. */
+    default String kategorija() { return null; }
 }

@@ -42,7 +42,9 @@ public record RegistrationRequest(
         @NotBlank @Size(max = 32) String kontaktMobitel,
         @Size(max = 32) String kontaktTelefon,
         @Size(max = 128) String kontaktOsoba,
-        @Size(max = 64) String kcBroj
+        @Size(max = 64) String kcBroj,
+        Integer auxiliaryBeds,
+        @Size(max = 100) String kategorija
 ) implements AccommodationRequest {
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {
@@ -54,6 +56,6 @@ public record RegistrationRequest(
                 orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),
                 orig.confirmDuplicateLocation(), orig.facilityId(),
                 orig.kontaktEmail(), orig.kontaktMobitel(), orig.kontaktTelefon(),
-                orig.kontaktOsoba(), orig.kcBroj());
+                orig.kontaktOsoba(), orig.kcBroj(), orig.auxiliaryBeds(), orig.kategorija());
     }
 }
