@@ -1,4 +1,4 @@
-package com.str.backend.registration;
+﻿package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
@@ -241,6 +241,8 @@ public class RegistrationService {
             entity.markHost(req.host());
         }
         resolveAccommodationTypeId(req.typeId()).ifPresent(entity::setAccommodationTypeId);
+        entity.setAuxiliaryBeds(req.auxiliaryBeds());
+        entity.setRequestedCategory(req.kategorija());
         return entity;
     }
 
