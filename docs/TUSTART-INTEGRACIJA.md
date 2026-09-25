@@ -36,8 +36,8 @@ Svi su **opcionalni**. Identitet (ime, prezime, OIB) se **ne šalje** — STR ga
 | `facilityId` | ID objekta u eTurizmu — `str.facility.id`. Šalje se samo za postojeći objekt; ključ po kojem STR nakon dodjele vraća RB (v. §6). | `1448035` |
 | `name` | Naziv objekta | `kuća test 55` |
 | `type` | Vrsta objekta — šifra iz `GET /api/lookups/accommodation-types` (`code`). Backend je prima izravno u `typeId` (v. §5), pa je frontend ne mora prevoditi. | `FS_KUCA_ZA_ODMOR` |
-| `maxBedCount` | Broj kreveta | `3` |
-| ~~`maxGuestCount`~~ | Broj gostiju je izbačen (v. §6c) — parametar se ignorira | — |
+| `maxBedCount` | Broj kreveta. **Značenje nakon stavke 2 nije potvrđeno s tuStartom** — obrazac ga prikazuje kao maksimalan broj gostiju; za objekt s `facilityId` mjerodavan je claim (§6b), pa URL vrijednost ne ide u zahtjev | `3` |
+| ~~`maxGuestCount`~~ | Parametar se ignorira — maksimalan broj gostiju računa STR (v. §6c) | — |
 | `county` | Županija | `Grad Zagreb` |
 | `municipality` | Grad / općina | `Zagreb` |
 | `settlement` | Naselje | `Zagreb` |
@@ -144,7 +144,7 @@ Naziv koji je vrsta smještaja („Apartman", „Studio apartman" — preko 12 t
 zaključan: to jest vrijednost koju eTurizam vodi kao naziv. Smije li se i to mijenjati, poslovna je
 odluka, ne tehnička.
 
-Broj gostiju se **ne** provjerava — v. §6c, više se ni ne šalje.
+Kapacitet se provjerava kao **maksimalan broj gostiju** (kreveti + pomoćni kreveti) — v. §6c.
 
 ## 6b. Koja su polja stvarno zaključana — `GET /api/nias/facilities/{id}`
 
@@ -160,7 +160,7 @@ GET /api/nias/facilities/1448035
   "id": "1448035",
   "naziv": "-",
   "vrstaSifra": "FS_SOBA",
-  "brKreveta": 2,
+  "brKreveta": 3,
   "zupanijaNaziv": "Splitsko-dalmatinska",
   "opcinaNaziv": "Makarska",
   "naseljeNaziv": "Makarska",
@@ -179,15 +179,20 @@ popuniti.
 Tuđi i nepostojeći objekt daju isti **404** — postojanje tuđeg zapisa nije podatak koji ovaj
 endpoint smije otkriti.
 
-## 6c. Broj gostiju je izbačen
+## 6c. Maksimalan broj gostiju (stavka 2)
 
-Primjedba s UAT-a: broj gostiju je isti kao broj kreveta, pa je maknut iz forme i iz API-ja.
-`maxGuests` više **nije** polje tijela `POST /api/generateRegistrationNumber` (ni internog ni
-vanjskog), ne vraća se u `GET /api/rn/{rn}/detail` i nema ga u statističkim izvozima. Backend na
-registraciji upisuje `max_guests = max_beds`; kolona je zadržana radi već izdanih RB-ova.
+Obrazac ima **jedno** polje kapaciteta, „Maksimalan broj gostiju“, čija je vrijednost zbroj kreveta
+(`CAT_BROJ_KREVETA`) i pomoćnih kreveta (`CAT_BROJ_POM_KREVETA`) iz eTurizma, s fallbackom na razinu
+jedinice (`facility_unit_capacity`). Račun je na jednom mjestu, `FacilityClaimVerifier.maxGuests`, i
+koriste ga predpopuna (`brKreveta` u §6b — u primjeru 2 kreveta + 1 pomoćni), zaključavanje
+(`maxBeds` u `zakljucanaPolja`) i provjera pri submitu (`error.facility.beds.mismatch`).
 
-eTurizam ga za objekte u domaćinstvu ionako ne vodi — `CAT_BROJ_GOSTIJU` postoji samo na razini
-jedinica hotela i sličnih objekata (v. `docs/ETURIZAM-OBJEKTI.md`).
+Polje tijela i dalje se zove `maxBeds` (ugovor s frontendom). Backend isti broj upisuje u
+`max_beds` i `max_guests`; podjela na krevete i pomoćne krevete iz zahtjeva se ne može
+rekonstruirati, pa i PDF zahtjeva prema eGOP-u ima jedan stupac „Maksimalan broj gostiju“.
+
+`CAT_BROJ_GOSTIJU` se ne koristi — eTurizam ga za objekte u domaćinstvu ne vodi, postoji samo na
+razini jedinica hotela i sličnih objekata (v. `docs/ETURIZAM-OBJEKTI.md`).
 
 ## 6d. NIAS dashboard — postojeći objekti i skenirano rješenje
 

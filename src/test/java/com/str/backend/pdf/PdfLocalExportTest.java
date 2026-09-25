@@ -129,7 +129,7 @@ class PdfLocalExportTest {
                 "Drage Ivaniševića", "3", null, "21315",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
-                false, null, false, true,
+                false, "2", false, true,
                 null, null, null, null, null, null, null,
                 "pero.peric@example.com", "0991234567", "021111222", "Pero Perić",
                 "1201/1");

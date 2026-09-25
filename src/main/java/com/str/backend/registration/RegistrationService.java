@@ -217,8 +217,9 @@ public class RegistrationService {
     AccommodationEntity buildAccommodation(AccommodationRequest req, String countyName) {
         String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName, "");
         String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName, null);
-        // Broj gostiju je maknut s forme — po primjedbi s UAT-a isti je kao broj kreveta.
-        // Kolona je NOT NULL i zadržana radi već izdanih RB-ova, pa se popunjava iz kreveta.
+        // Obrazac ima jedno polje, maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2),
+        // koje putuje kao `maxBeds`. Isti broj ide u max_beds i max_guests; obje kolone su NOT
+        // NULL i zadržane radi već izdanih RB-ova, pa se podjela na krevete ovdje ne rekonstruira.
         AccommodationEntity entity = AccommodationEntity.create(
                 null, countyName, cityName, req.street(), req.streetNumber(),
                 req.maxBeds(), req.maxBeds(), req.offerType(), req.offering(),

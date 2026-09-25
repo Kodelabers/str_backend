@@ -10,6 +10,8 @@ import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
 import com.str.backend.request.SubmissionEntity;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -87,6 +89,28 @@ class RegistrationControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    /** Kat je obavezan i isključivo cijeli broj (stavka 2) — riječi i kratice se odbijaju. */
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "prizemlje", "P", "1.5", "100", "-10", "--1", "+1"})
+    void post_returns_400_when_floor_not_integer_in_range(String floor) throws Exception {
+        mvc.perform(post("/api/generateRegistrationNumber")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(withFloor(validRequest(), floor))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "1", "-1", "-9", "99"})
+    void post_accepts_integer_floor(String floor) throws Exception {
+        when(service.generateRegistrationNumber(any()))
+                .thenReturn(new RegistrationResponse("HR120001000000000001", UUID.randomUUID()));
+
+        mvc.perform(post("/api/generateRegistrationNumber")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(withFloor(validRequest(), floor))))
+                .andExpect(status().isCreated());
+    }
+
     @Test
     void post_returns_400_when_oib_invalid() throws Exception {
         RegistrationRequest invalid = withOib(validRequest(), "abc");
@@ -149,7 +173,7 @@ class RegistrationControllerTest {
                 "Ulica kralja Tomislava", "14a", null, null,
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
-                false, null, false, true,
+                false, "2", false, true,
                 null, null, null, null, null, null, null,
                 "iznajmljivac@example.com", "0991234567", null, null, null);
     }
@@ -176,6 +200,20 @@ class RegistrationControllerTest {
                 maxBeds,
                 r.offerType(), r.offering(),
                 r.building(), r.floor(), r.apartments(), r.legalized(),
+                r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
+                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
+                r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),
+                r.kcBroj());
+    }
+
+    private RegistrationRequest withFloor(RegistrationRequest r, String floor) {
+        return new RegistrationRequest(
+                r.oib(), r.name(), r.typeId(),
+                r.countyId(), r.cityId(), r.settlementId(),
+                r.street(), r.streetNumber(), r.kucniBrojId(), r.postalCode(),
+                r.maxBeds(),
+                r.offerType(), r.offering(),
+                r.building(), floor, r.apartments(), r.legalized(),
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
                 r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
                 r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),

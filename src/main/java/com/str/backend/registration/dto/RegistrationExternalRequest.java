@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
@@ -43,7 +44,8 @@ public record RegistrationExternalRequest(
         @NotNull OfferType offerType,
         @NotNull Offering offering,
         @NotNull Boolean building,
-        @Size(max = 8) String floor,
+        // Kat je cijeli broj: 0 = prizemlje, negativan = ispod razine tla (-9..99).
+        @NotBlank @Pattern(regexp = "-[1-9]|\\d{1,2}", message = "Kat mora biti cijeli broj od -9 do 99") String floor,
         @NotNull Boolean apartments,
         @NotNull Boolean legalized,
         Boolean lessorResidence,

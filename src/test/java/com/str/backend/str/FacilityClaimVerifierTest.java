@@ -134,6 +134,58 @@ class FacilityClaimVerifierTest {
         assertThatCode(() -> verifier.verify(OIB, "153049", claim(1L, 4))).doesNotThrowAnyException();
     }
 
+    // --- Maksimalan broj gostiju = kreveti + pomoćni kreveti ---
+
+    @Test
+    void passes_whenMaxGuestsEqualsBedsPlusAuxiliary() {
+        stubFacility(OIB, "FS_SOBA", 4, true);
+        when(stubbedRow.getAuxiliaryBeds()).thenReturn(2);
+        stubSubmittedType(1L, "FS_SOBA");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049", claim(1L, 6))).doesNotThrowAnyException();
+    }
+
+    /** Samo stalni kreveti više nisu ispravan podatak kad objekt ima i pomoćne. */
+    @Test
+    void rejects_whenOnlyPermanentBedsSubmittedButFacilityHasAuxiliary() {
+        stubFacility(OIB, "FS_SOBA", 4, true);
+        when(stubbedRow.getAuxiliaryBeds()).thenReturn(2);
+        stubSubmittedType(1L, "FS_SOBA");
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 4)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.beds.mismatch");
+    }
+
+    @Test
+    void maxGuests_sumsBedsAndAuxiliary() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getBeds()).thenReturn(4);
+        when(row.getAuxiliaryBeds()).thenReturn(2);
+
+        assertThat(FacilityClaimVerifier.maxGuests(row)).isEqualTo(6);
+    }
+
+    @Test
+    void maxGuests_isBedsWhenNoAuxiliary() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getBeds()).thenReturn(4);
+        when(row.getAuxiliaryBeds()).thenReturn(null);
+
+        assertThat(FacilityClaimVerifier.maxGuests(row)).isEqualTo(4);
+    }
+
+    /** Bez kreveta nema kapaciteta — pomoćni sami ne zaključavaju polje. */
+    @Test
+    void maxGuests_isNullWhenBedsUnknown() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getBeds()).thenReturn(null);
+        when(row.getAuxiliaryBeds()).thenReturn(2);
+
+        assertThat(FacilityClaimVerifier.maxGuests(row)).isNull();
+        assertThat(FacilityClaimVerifier.lockedFields(row)).doesNotContain("maxBeds");
+    }
+
     /** Vrsta bez FS_ šifre (npr. hotel) — usporedba se preskače, ne laže. */
     @Test
     void passes_whenSubmittedTypeHasNoCode() {

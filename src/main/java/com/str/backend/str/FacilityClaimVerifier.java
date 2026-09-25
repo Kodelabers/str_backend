@@ -38,8 +38,10 @@ import java.util.Locale;
  * koja iz toga stvarno jesu zaključana vraća {@link #lockedFields(FacilityOwnershipRow)} — frontend
  * po njemu onemogući točno ta polja umjesto da pogađa iz tuStart URL parametara.
  *
- * <p>Broj gostiju se ne provjerava — eTurizam ga za objekte u domaćinstvu ne vodi
- * ({@code CAT_BROJ_GOSTIJU} postoji samo na razini jedinica hotela i sličnih objekata).
+ * <p>Maksimalan broj gostiju ({@code maxBeds} u zahtjevu) izvodi se iz kapaciteta: kreveti +
+ * pomoćni kreveti, v. {@link #maxGuests(FacilityOwnershipRow)}. {@code CAT_BROJ_GOSTIJU} se ne
+ * koristi — eTurizam ga za objekte u domaćinstvu ne vodi (postoji samo na razini jedinica hotela
+ * i sličnih objekata).
  */
 @Service
 public class FacilityClaimVerifier {
@@ -109,8 +111,8 @@ public class FacilityClaimVerifier {
             throw new BusinessException("error.facility.type.mismatch");
         }
 
-        Integer expectedBeds = facility.getBeds();
-        if (expectedBeds != null && expectedBeds > 0 && expectedBeds != claim.maxBeds()) {
+        Integer expectedGuests = maxGuests(facility);
+        if (expectedGuests != null && expectedGuests != claim.maxBeds()) {
             throw new BusinessException("error.facility.beds.mismatch");
         }
 
@@ -128,13 +130,30 @@ public class FacilityClaimVerifier {
     }
 
     /**
+     * Maksimalan broj gostiju objekta iz eTurizma: kreveti + pomoćni kreveti (stavka 2 sa
+     * sastanka). Jedno mjesto za taj račun — po njemu se predpopunjava claim, zaključava polje i
+     * provjerava predaja, pa se ta tri ne mogu razići.
+     *
+     * <p>{@code null} kad eTurizam ne zna broj kreveta: tada polje nije zaključano i usporedba se
+     * preskače. Pomoćni kreveti bez kreveta ne čine kapacitet, pa se sami ne računaju.
+     */
+    public static Integer maxGuests(FacilityOwnershipRow facility) {
+        Integer beds = facility.getBeds();
+        if (beds == null || beds <= 0) {
+            return null;
+        }
+        Integer auxiliary = facility.getAuxiliaryBeds();
+        return beds + (auxiliary != null && auxiliary > 0 ? auxiliary : 0);
+    }
+
+    /**
      * Polja koja su za ovaj objekt stvarno zaključana — ona za koja eTurizam ima podatak, pa bi
      * ih {@link #verify} odbio da stignu izmijenjena. Frontend po ovom popisu onemogući unos.
      */
     public static List<String> lockedFields(FacilityOwnershipRow facility) {
         List<String> locked = new ArrayList<>();
         if (known(facility.getSubtypeCode())) locked.add(FIELD_TYPE);
-        if (facility.getBeds() != null && facility.getBeds() > 0) locked.add(FIELD_BEDS);
+        if (maxGuests(facility) != null) locked.add(FIELD_BEDS);
         if (known(objectName(facility))) locked.add(FIELD_NAME);
         if (known(facility.getCountyName())) locked.add(FIELD_COUNTY);
         if (known(facility.getMunicipalityName())) locked.add(FIELD_CITY);

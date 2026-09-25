@@ -157,7 +157,7 @@ class RegistrationServiceDuplicateLocationTest {
                 "Marulićeva", "5", null, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
-                false, null, false, true,
+                false, "2", false, true,
                 null, null, null, null, null, null, null,
                 "iznajmljivac@example.com", "0991234567", null, null, null);
         when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(
@@ -176,7 +176,7 @@ class RegistrationServiceDuplicateLocationTest {
                 "Marulićeva", "5", null, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
-                false, null, false, true,
+                false, "2", false, true,
                 null, null, null, null, null, confirm, null,
                 "iznajmljivac@example.com", "0991234567", null, null, null);
     }
