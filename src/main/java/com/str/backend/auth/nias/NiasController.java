@@ -16,6 +16,7 @@ import com.str.backend.lessor.LessorRnActionResponse;
 import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.LessorWithdrawRequest;
+import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.rn.RnRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -47,6 +48,7 @@ public class NiasController {
     private final SessionIdentityResolver identityResolver;
     private final NiasFacilityService facilityService;
     private final CategorizationDecisionService categorizationDecisionService;
+    private final SubjectProfileService subjectProfileService;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -56,7 +58,8 @@ public class NiasController {
                           LessorRnActionService rnActionService,
                           SessionIdentityResolver identityResolver,
                           NiasFacilityService facilityService,
-                          CategorizationDecisionService categorizationDecisionService) {
+                          CategorizationDecisionService categorizationDecisionService,
+                          SubjectProfileService subjectProfileService) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -66,6 +69,24 @@ public class NiasController {
         this.identityResolver = identityResolver;
         this.facilityService = facilityService;
         this.categorizationDecisionService = categorizationDecisionService;
+        this.subjectProfileService = subjectProfileService;
+    }
+
+    /**
+     * Podaci o prijavljenom podnositelju za formu zahtjeva za RB: OIB, ime i prezime iz NIAS-a,
+     * adresa iz registra (OIB sustav, a dok on nije dostupan {@code str.subject}). Isti izvor
+     * koristi izdavanje RB-a ({@link SubjectProfileService}), pa se prikazano i spremljeno ne
+     * mogu razići.
+     *
+     * <p>OIB je uvijek iz sesije, nikad iz parametra. 400 {@code error.subject.notFound} kad ga
+     * registar ne poznaje, 503 kad registar nije dostupan.
+     */
+    @GetMapping("/subject")
+    public SubjectProfileResponse subject(Authentication authentication) {
+        NiasIdentity identity = NiasOibExtractor.extractIdentity(authentication)
+                .orElseGet(() -> new NiasIdentity(resolveOib(authentication), null, null));
+        return SubjectProfileResponse.of(subjectProfileService.load(
+                identity.oib(), identity.firstName(), identity.lastName()));
     }
 
     /**

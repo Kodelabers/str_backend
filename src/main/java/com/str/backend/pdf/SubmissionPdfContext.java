@@ -18,6 +18,8 @@ public record SubmissionPdfContext(
         String postalCode,
         String cityName,
         int maxBeds,
+        Integer auxiliaryBeds,
+        String requestedCategory,
         String typeName,
         LessorEntity lessor,
         String filingNumber,
@@ -34,6 +36,8 @@ public record SubmissionPdfContext(
                 accommodation.getPostalCode(),
                 accommodation.getCity(),
                 accommodation.getMaxBeds(),
+                accommodation.getAuxiliaryBeds(),
+                accommodation.getRequestedCategory(),
                 typeName,
                 lessor,
                 filingNumber,
@@ -43,11 +47,13 @@ public record SubmissionPdfContext(
     /** Isti zahtjev, ali bez urudžbenog broja — kad urudžbiranje nije prošlo. */
     public SubmissionPdfContext withoutFilingNumber() {
         return new SubmissionPdfContext(accommodationName, street, streetNumber, postalCode,
-                cityName, maxBeds, typeName, lessor, null, registrationNumber);
+                cityName, maxBeds, auxiliaryBeds, requestedCategory, typeName, lessor, null,
+                registrationNumber);
     }
 
     public SubmissionPdfContext withFilingNumber(String value) {
         return new SubmissionPdfContext(accommodationName, street, streetNumber, postalCode,
-                cityName, maxBeds, typeName, lessor, value, registrationNumber);
+                cityName, maxBeds, auxiliaryBeds, requestedCategory, typeName, lessor, value,
+                registrationNumber);
     }
 }

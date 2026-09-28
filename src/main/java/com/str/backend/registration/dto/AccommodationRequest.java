@@ -55,9 +55,16 @@ public interface AccommodationRequest {
      */
     String kcBroj();
 
-    /** Broj pomoćnih kreveta (kauč, rasklopni krevet i sl.); nije dio obaveznog kapaciteta. */
-    default Integer auxiliaryBeds() { return null; }
+    /**
+     * Broj pomoćnih kreveta (kauč, rasklopni krevet i sl.). Ne ulazi u {@link #maxBeds()} — taj
+     * se uspoređuje s osnovnim krevetima u eTurizmu, koji pomoćne vodi zasebno — ali ulazi u
+     * najveći broj gostiju (stavka 2).
+     */
+    Integer auxiliaryBeds();
 
-    /** Kategorija smještajnog objekta; zadržava onaj koji je korisnik upisao do admin provjere. */
-    default String kategorija() { return null; }
+    /**
+     * Kategorija koju je iznajmljivač ručno upisao pri izdavanju RB-a; STR je nema. Sprema se
+     * kao tražena kategorija ({@code accommodation.requested_category}, VARCHAR(32)).
+     */
+    String kategorija();
 }

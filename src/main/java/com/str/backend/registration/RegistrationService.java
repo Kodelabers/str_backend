@@ -1,4 +1,4 @@
-﻿package com.str.backend.registration;
+package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
@@ -9,12 +9,14 @@ import com.str.backend.address.MunicipalityEntity;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementEntity;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.AccommodationRequest;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
@@ -27,7 +29,6 @@ import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.str.FacilityClaimVerifier;
-import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -53,7 +54,7 @@ public class RegistrationService {
     private final ParallelValidationOrchestrator orchestrator;
     private final RnService rnService;
     private final RnRepository rnRepository;
-    private final StrLessorLookupService strLessorLookupService;
+    private final SubjectProfileService subjectProfileService;
     private final CountyRepository countyRepository;
     private final MunicipalityRepository municipalityRepository;
     private final SettlementRepository settlementRepository;
@@ -68,7 +69,7 @@ public class RegistrationService {
                                ParallelValidationOrchestrator orchestrator,
                                RnService rnService,
                                RnRepository rnRepository,
-                               StrLessorLookupService strLessorLookupService,
+                               SubjectProfileService subjectProfileService,
                                CountyRepository countyRepository,
                                MunicipalityRepository municipalityRepository,
                                SettlementRepository settlementRepository,
@@ -82,7 +83,7 @@ public class RegistrationService {
         this.orchestrator = orchestrator;
         this.rnService = rnService;
         this.rnRepository = rnRepository;
-        this.strLessorLookupService = strLessorLookupService;
+        this.subjectProfileService = subjectProfileService;
         this.countyRepository = countyRepository;
         this.municipalityRepository = municipalityRepository;
         this.settlementRepository = settlementRepository;
@@ -92,8 +93,19 @@ public class RegistrationService {
         this.eventPublisher = eventPublisher;
     }
 
+    /** Bez NIAS assertiona (local/mock, testovi): identitet je samo OIB iz zahtjeva. */
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse generateRegistrationNumber(RegistrationRequest req) {
+        return generateRegistrationNumber(req, null);
+    }
+
+    /**
+     * @param niasIdentity identitet iz NIAS assertiona; ime i prezime iz njega su mjerodavni.
+     *                     OIB zahtjeva kontroler je već zamijenio NIAS OIB-om, pa se ime uzima
+     *                     samo kad se OIB-ovi slažu.
+     */
+    @Transactional(noRollbackFor = ValidationRejectedException.class)
+    public RegistrationResponse generateRegistrationNumber(RegistrationRequest req, NiasIdentity niasIdentity) {
         CountyEntity county = countyRepository.findById(req.countyId())
                 .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
 
@@ -101,7 +113,12 @@ public class RegistrationService {
         verifyFacilityClaim(req.oib(), accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
-        LessorEntity lessor = strLessorLookupService.resolveLessor(req.oib());
+        // Identitet i adresa iz NIAS-a / registra, na serveru — ne iz zahtjeva. Nedostupan
+        // registar je 503 i dolazi prije GO pipelinea i pohrane, pa ne ostaje poluupisan zahtjev.
+        boolean sameOib = niasIdentity != null && req.oib().equals(niasIdentity.oib());
+        LessorEntity lessor = subjectProfileService.resolveLessor(req.oib(),
+                sameOib ? niasIdentity.firstName() : null,
+                sameOib ? niasIdentity.lastName() : null);
         // Kontakt mora biti upisan PRIJE prve pohrane — lessor.email je updatable=false.
         // resolveLessor vraća još nepohranjen entitet (sprema ga tek commitRegistration).
         lessor.applyContact(trimmed(req.kontaktEmail()), trimmed(req.kontaktOsoba()),
@@ -204,24 +221,46 @@ public class RegistrationService {
         return s == null || s.isBlank();
     }
 
+    /**
+     * PDF zahtjeva nosi osobne podatke podnositelja (ime, OIB, adresu prebivališta), pa ga smije
+     * preuzeti samo vlasnik. Tuđi zahtjev daje isti 404 kao nepostojeći — postojanje tuđeg
+     * zapisa nije podatak koji ovaj endpoint smije otkriti.
+     */
     @Transactional(readOnly = true)
-    public SubmissionEntity getSubmissionForPdf(UUID submissionId) {
+    public SubmissionEntity getSubmissionForPdf(UUID submissionId, SubmissionRequester requester) {
         SubmissionEntity submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new ResourceNotFoundException("submission not found: " + submissionId));
+        if (!isOwnedBy(submission, requester)) {
+            throw new ResourceNotFoundException("submission not found: " + submissionId);
+        }
         if (submission.getPdfContent() == null || submission.getPdfContent().length == 0) {
             throw new ResourceNotFoundException("error.pdf.not.stored");
         }
         return submission;
     }
 
+    private boolean isOwnedBy(SubmissionEntity submission, SubmissionRequester requester) {
+        if (requester.unrestricted()) {
+            return true;
+        }
+        if (requester.lessorId() != null) {
+            return requester.lessorId().equals(submission.getLessorId());
+        }
+        return lessorRepository.findById(submission.getLessorId())
+                .map(LessorEntity::getLessorOib)
+                .filter(oib -> oib.equals(requester.oib()))
+                .isPresent();
+    }
+
     AccommodationEntity buildAccommodation(AccommodationRequest req, String countyName) {
         String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName, "");
         String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName, null);
-        // Broj gostiju je maknut s forme — po primjedbi s UAT-a isti je kao broj kreveta.
-        // Kolona je NOT NULL i zadržana radi već izdanih RB-ova, pa se popunjava iz kreveta.
+        // Stavka 2: najveći broj kreveta je broj kreveta + broj pomoćnih kreveta, a broj gostiju
+        // (nije na formi) jednak je tom ukupnom broju. Pomoćni se čuvaju i zasebno, za prikaz.
+        int totalBeds = req.maxBeds() + (req.auxiliaryBeds() == null ? 0 : req.auxiliaryBeds());
         AccommodationEntity entity = AccommodationEntity.create(
                 null, countyName, cityName, req.street(), req.streetNumber(),
-                req.maxBeds(), req.maxBeds(), req.offerType(), req.offering(),
+                totalBeds, totalBeds, req.offerType(), req.offering(),
                 req.building(), req.apartments(), req.legalized());
         entity.setName(req.name());
         entity.setFacilityId(req.facilityId());
@@ -242,7 +281,7 @@ public class RegistrationService {
         }
         resolveAccommodationTypeId(req.typeId()).ifPresent(entity::setAccommodationTypeId);
         entity.setAuxiliaryBeds(req.auxiliaryBeds());
-        entity.setRequestedCategory(req.kategorija());
+        entity.setRequestedCategory(trimmed(req.kategorija()));
         return entity;
     }
 

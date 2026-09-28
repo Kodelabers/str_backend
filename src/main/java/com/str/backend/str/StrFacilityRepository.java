@@ -129,10 +129,18 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                          WHERE fu.facility_id = f.id AND fu.active = true
                            AND ce2.code = 'CAT_BROJ_KREVETA')
                    )                                       AS beds,
-                   (SELECT sum(fc2.quantity) FROM str.facility_capacity fc2
-                      JOIN str.codebook_element ce3 ON ce3.id = fc2.type_id
-                     WHERE fc2.facility_id = f.id AND fc2.active = true
-                       AND ce3.code = 'CAT_BROJ_POM_KREVETA') AS auxiliaryBeds
+                   coalesce(
+                       (SELECT sum(fc2.quantity) FROM str.facility_capacity fc2
+                          JOIN str.codebook_element ce3 ON ce3.id = fc2.type_id
+                         WHERE fc2.facility_id = f.id AND fc2.active = true
+                           AND ce3.code = 'CAT_BROJ_POM_KREVETA'),
+                       (SELECT sum(fuc2.quantity) FROM str.facility_unit fu2
+                          JOIN str.facility_unit_capacity fuc2
+                            ON fuc2.facility_unit_id = fu2.id AND fuc2.active = true
+                          JOIN str.codebook_element ce4 ON ce4.id = fuc2.type_id
+                         WHERE fu2.facility_id = f.id AND fu2.active = true
+                           AND ce4.code = 'CAT_BROJ_POM_KREVETA')
+                   )                                       AS auxiliaryBeds
             """ + LISTING_FROM + """
              ORDER BY f.id
              LIMIT :limit OFFSET :offset
@@ -149,6 +157,11 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getOib();
         String getSubtypeCode();
         Integer getBeds();
+        /**
+         * {@code CAT_BROJ_POM_KREVETA}; {@code NULL} kad eTurizam za objekt nema takav zapis —
+         * tada je podatak nepoznat, a ne 0, pa se provjera preskače.
+         */
+        Integer getAuxiliaryBeds();
         Boolean getActive();
         String getName();
         /** Naziv/ime iznajmljivača — služi samo da se prepozna kad je `facility.name` zapravo on. */
@@ -198,6 +211,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * <p>Broj kreveta ima isti {@code facility_unit_capacity} fallback kao
      * {@link #findListingByOib} — bez njega objekt s jedinicama vrati {@code NULL} kreveta i
      * provjera kapaciteta se tiho preskoči, pa bi popis i provjera vidjeli različit podatak.
+     * Pomoćni kreveti imaju isti fallback, iz istog razloga.
      *
      * <p>Adresa i naziv se čitaju istom join-mapom kao popis (isti {@code CASE} za
      * {@code same_address_subject}), jer se uspoređuju s onim što je korisnik vidio u formi.
@@ -228,7 +242,19 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                           JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
                          WHERE fu.facility_id = f.id AND coalesce(fu.active, true) = true
                            AND ce2.code = 'CAT_BROJ_KREVETA')
-                   ) AS beds
+                   ) AS beds,
+                   coalesce(
+                       (SELECT sum(fc.quantity) FROM str.facility_capacity fc
+                          JOIN str.codebook_element ce ON ce.id = fc.type_id
+                         WHERE fc.facility_id = f.id AND coalesce(fc.active, true) = true
+                           AND ce.code = 'CAT_BROJ_POM_KREVETA'),
+                       (SELECT sum(fuc.quantity) FROM str.facility_unit fu
+                          JOIN str.facility_unit_capacity fuc
+                            ON fuc.facility_unit_id = fu.id AND coalesce(fuc.active, true) = true
+                          JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
+                         WHERE fu.facility_id = f.id AND coalesce(fu.active, true) = true
+                           AND ce2.code = 'CAT_BROJ_POM_KREVETA')
+                   ) AS auxiliaryBeds
             FROM str.facility f
             JOIN str.subject_version sv ON sv.id = f.subject_version_id
             JOIN str.subject s          ON s.id  = sv.subject_id

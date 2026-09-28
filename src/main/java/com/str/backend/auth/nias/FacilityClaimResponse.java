@@ -21,6 +21,8 @@ public record FacilityClaimResponse(
         String naziv,
         String vrstaSifra,
         Integer brKreveta,
+        /** {@code null} = eTurizam ne zna, pa polje nije zaključano; 0 je stvaran podatak. */
+        Integer brPomocnihKreveta,
         String zupanijaNaziv,
         String opcinaNaziv,
         String naseljeNaziv,

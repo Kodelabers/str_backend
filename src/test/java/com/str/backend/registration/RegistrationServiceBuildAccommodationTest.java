@@ -18,7 +18,7 @@ import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
-import com.str.backend.str.StrLessorLookupService;
+import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +58,7 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(ParallelValidationOrchestrator.class),
                 mock(RnService.class),
                 mock(RnRepository.class),
-                mock(StrLessorLookupService.class),
+                mock(SubjectProfileService.class),
                 mock(CountyRepository.class),
                 mock(MunicipalityRepository.class),
                 mock(SettlementRepository.class),
@@ -83,6 +83,11 @@ class RegistrationServiceBuildAccommodationTest {
     }
 
     private RegistrationRequest requestWithType(String typeId, Boolean host) {
+        return request(typeId, host, null, null);
+    }
+
+    private RegistrationRequest request(String typeId, Boolean host,
+                                        Integer auxiliaryBeds, String kategorija) {
         return new RegistrationRequest(
                 "12312312316", "AP1", typeId,
                 7L, "Split", "Meje",
@@ -94,7 +99,7 @@ class RegistrationServiceBuildAccommodationTest {
                 LocalDate.of(2026, 1, 15), LocalDate.of(2027, 1, 15),
                 host, null, "1448035",
                 "iznajmljivac@example.com", "0991234567", null, null,
-                "430/1");
+                "430/1", auxiliaryBeds, kategorija);
     }
 
     @Test
@@ -109,8 +114,10 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getStreet()).isEqualTo("Marulićeva");
         assertThat(e.getStreetNumber()).isEqualTo("5");
         assertThat(e.getMaxBeds()).isEqualTo(4);
-        // Broj gostiju je maknut s forme (UAT) — kolona je NOT NULL i puni se iz broja kreveta.
+        // Broj gostiju nije na formi — to je ukupan broj kreveta; bez pomoćnih jednak je osnovnima.
         assertThat(e.getMaxGuests()).isEqualTo(4);
+        assertThat(e.getAuxiliaryBeds()).isNull();
+        assertThat(e.getRequestedCategory()).isNull();
         assertThat(e.getOfferType()).isEqualTo(OfferType.PRIMARY_RESIDENCE);
         assertThat(e.getOffering()).isEqualTo(Offering.PART);
         assertThat(e.isBuilding()).isTrue();
@@ -129,6 +136,31 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getHost()).isTrue();
         assertThat(e.getAccommodationTypeId()).isEqualTo(1L);
         assertThat(e.getFacilityId()).isEqualTo("1448035");
+    }
+
+    /** Stavka 2: najveći broj kreveta i gostiju je broj kreveta + broj pomoćnih kreveta. */
+    @Test
+    void auxiliary_beds_count_towards_max_beds_and_guests() {
+        AccommodationEntity e = newService()
+                .buildAccommodation(request("1", null, 2, null), "Splitsko-dalmatinska");
+
+        assertThat(e.getMaxBeds()).isEqualTo(6);
+        assertThat(e.getMaxGuests()).isEqualTo(6);
+        assertThat(e.getAuxiliaryBeds()).isEqualTo(2);
+    }
+
+    @Test
+    void manual_category_is_stored_trimmed_as_requested_category() {
+        AccommodationEntity e = newService()
+                .buildAccommodation(request("1", null, null, "  3 zvjezdice "), "Splitsko-dalmatinska");
+        assertThat(e.getRequestedCategory()).isEqualTo("3 zvjezdice");
+    }
+
+    @Test
+    void blank_category_is_not_stored() {
+        AccommodationEntity e = newService()
+                .buildAccommodation(request("1", null, null, "   "), "Splitsko-dalmatinska");
+        assertThat(e.getRequestedCategory()).isNull();
     }
 
     @Test

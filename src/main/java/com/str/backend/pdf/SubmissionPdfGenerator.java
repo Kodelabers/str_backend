@@ -144,7 +144,7 @@ public class SubmissionPdfGenerator {
             addGroupRow(main, "OBJEKTI", objektiTop);
 
             addGroupRow(main, "VRSTA BROJ I\nKAPACITET OBJEKATA\nZA SMJEŠTAJ",
-                    buildKapacitetTable(ctx.accommodationName(), ctx.maxBeds(), ctx.typeName()));
+                    buildKapacitetTable(ctx));
 
             addGroupRow(main, "OSTALI SADRŽAJI", singleValueTable("označeno"));
 
@@ -272,7 +272,7 @@ public class SubmissionPdfGenerator {
 
     // ── builders ─────────────────────────────────────────────────────────────
 
-    private PdfPTable buildKapacitetTable(String reqName, int reqMaxBeds, String typeName) {
+    private PdfPTable buildKapacitetTable(SubmissionPdfContext ctx) {
         PdfPTable t = new PdfPTable(new float[]{3.2f, 2.2f, 1.5f, 1.2f, 1.5f, 1.2f});
         t.setWidthPercentage(100);
 
@@ -285,8 +285,12 @@ public class SubmissionPdfGenerator {
         addKapacitetHeader(t, "Broj soba");
 
         // data row — no vertical separators between cells
-        String[] dataValues = {typeName != null ? typeName : "", safe(reqName), "",
-                String.valueOf(reqMaxBeds), "", ""};
+        // max_beds je ukupan broj (osnovni + pomoćni) — stupci ih prikazuju razdvojeno.
+        int aux = ctx.auxiliaryBeds() == null ? 0 : ctx.auxiliaryBeds();
+        String basicBeds = String.valueOf(ctx.maxBeds() - aux);
+        String auxiliaryBeds = ctx.auxiliaryBeds() == null ? "" : String.valueOf(aux);
+        String[] dataValues = {safe(ctx.typeName()), safe(ctx.accommodationName()),
+                safe(ctx.requestedCategory()), basicBeds, auxiliaryBeds, ""};
         for (int i = 0; i < dataValues.length; i++) {
             PdfPCell c = new PdfPCell(new Phrase(dataValues[i], FNT_VALUE));
             int border = PdfPCell.TOP;
@@ -314,7 +318,7 @@ public class SubmissionPdfGenerator {
         ukupnoLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(ukupnoLabel, 3);
         t.addCell(ukupnoLabel);
-        String[] ukupnoValues = {"1", "", String.valueOf(reqMaxBeds), "", ""};
+        String[] ukupnoValues = {"1", "", basicBeds, auxiliaryBeds, ""};
         for (int i = 0; i < 4; i++) {
             PdfPCell c = new PdfPCell(new Phrase(ukupnoValues[i], FNT_VALUE));
             c.setBorder(PdfPCell.BOTTOM);

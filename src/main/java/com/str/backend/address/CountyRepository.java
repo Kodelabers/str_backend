@@ -14,4 +14,6 @@ public interface CountyRepository extends JpaRepository<CountyEntity, Long> {
     List<CountyEntity> findByNameContainingIgnoreCaseOrderByZuRb(String name);
 
     Optional<CountyEntity> findByName(String name);
+
+    Optional<CountyEntity> findFirstByZuRb(Integer zuRb);
 }

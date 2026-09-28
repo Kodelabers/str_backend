@@ -110,6 +110,7 @@ public class NiasFacilityService {
                 FacilityClaimVerifier.objectName(row),
                 row.getSubtypeCode(),
                 row.getBeds(),
+                row.getAuxiliaryBeds(),
                 row.getCountyName(),
                 row.getMunicipalityName(),
                 row.getSettlementName(),

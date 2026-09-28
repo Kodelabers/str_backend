@@ -42,8 +42,8 @@ public record RegistrationRequest(
         @Size(max = 32) String kontaktTelefon,
         @Size(max = 128) String kontaktOsoba,
         @Size(max = 64) String kcBroj,
-        Integer auxiliaryBeds,
-        @Size(max = 100) String kategorija
+        @Min(0) Integer auxiliaryBeds,
+        @Size(max = 32) String kategorija
 ) implements AccommodationRequest {
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {

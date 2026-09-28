@@ -116,7 +116,7 @@ provjerava (`FacilityClaimVerifier`):
 | Objekt postoji i aktivan je | 400 `error.facility.unknown` / `error.facility.inactive` |
 | Objekt već nema stojeći RB (ACTIVE / SUSPENSION_PROPOSED / SUSPENDED) | 400 `error.facility.alreadyRegistered` |
 | `typeId` odgovara podvrsti u eTurizmu (`FS_*`) | 400 `error.facility.type.mismatch` |
-| `maxBeds` odgovara `CAT_BROJ_KREVETA` u eTurizmu | 400 `error.facility.beds.mismatch` |
+| `maxBeds + auxiliaryBeds` odgovara `CAT_BROJ_KREVETA + CAT_BROJ_POM_KREVETA` u eTurizmu | 400 `error.facility.beds.mismatch` |
 | `name` odgovara `facility.name` | 400 `error.facility.name.mismatch` |
 | Županija / grad-općina / naselje / ulica / kućni broj odgovaraju adresi objekta | 400 `error.facility.address.mismatch` |
 
@@ -144,7 +144,12 @@ Naziv koji je vrsta smještaja („Apartman", „Studio apartman" — preko 12 t
 zaključan: to jest vrijednost koju eTurizam vodi kao naziv. Smije li se i to mijenjati, poslovna je
 odluka, ne tehnička.
 
-Broj gostiju se **ne** provjerava — v. §6c, više se ni ne šalje.
+Broj kreveta je **ukupan broj, uključujući pomoćne** (stavka 2): uspoređuje se zbroj s obje strane,
+a `max_beds` i `max_guests` spremaju se kao taj zbroj. `maxBeds` i `auxiliaryBeds` zaključavaju se
+zajedno.
+
+Broj gostiju se **ne** provjerava zasebno — v. §6c, više se ni ne šalje; jednak je ukupnom broju
+kreveta.
 
 ## 6b. Koja su polja stvarno zaključana — `GET /api/nias/facilities/{id}`
 
@@ -161,12 +166,13 @@ GET /api/nias/facilities/1448035
   "naziv": "-",
   "vrstaSifra": "FS_SOBA",
   "brKreveta": 2,
+  "brPomocnihKreveta": 1,
   "zupanijaNaziv": "Splitsko-dalmatinska",
   "opcinaNaziv": "Makarska",
   "naseljeNaziv": "Makarska",
   "ulicaNaziv": null,
   "kucniBrojNaziv": null,
-  "zakljucanaPolja": ["typeId", "maxBeds", "countyId", "cityId", "settlementId"]
+  "zakljucanaPolja": ["typeId", "maxBeds", "auxiliaryBeds", "countyId", "cityId", "settlementId"]
 }
 ```
 

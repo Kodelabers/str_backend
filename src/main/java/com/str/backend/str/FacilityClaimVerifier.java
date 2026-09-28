@@ -22,8 +22,8 @@ import java.util.Locale;
  *       tuđi ID i RB završi na tuđem objektu u tuđem registru.</li>
  *   <li><b>Vrsta, kapacitet, adresa i naziv.</b> Primjedba s UAT-a: za postojeći objekt se gornji
  *       podaci ne smiju mijenjati. Šifra podvrste u eTurizmu ({@code FS_*}) je ista kao
- *       {@code accommodation_type.code}, pa je usporedba direktna; broj kreveta je kategoriziran
- *       rješenjem, a ne slobodan unos.</li>
+ *       {@code accommodation_type.code}, pa je usporedba direktna; broj kreveta (osnovni +
+ *       pomoćni) kategoriziran je rješenjem, a ne slobodan unos.</li>
  *   <li><b>Dvostruki RB.</b> Objekt koji već ima stojeći RB ne smije dobiti drugi. Postojeći
  *       {@code checkDuplicateLocation} to ne pokriva: gleda adresu (županija + grad + ulica + kbr),
  *       a eTurizam adrese su rijetko strukturirane — ulica i kućni broj su najčešće prazni, pa se
@@ -39,7 +39,8 @@ import java.util.Locale;
  * po njemu onemogući točno ta polja umjesto da pogađa iz tuStart URL parametara.
  *
  * <p>Broj gostiju se ne provjerava — eTurizam ga za objekte u domaćinstvu ne vodi
- * ({@code CAT_BROJ_GOSTIJU} postoji samo na razini jedinica hotela i sličnih objekata).
+ * ({@code CAT_BROJ_GOSTIJU} postoji samo na razini jedinica hotela i sličnih objekata). Kod nas
+ * je jednak ukupnom broju kreveta, pa je time provjeren posredno.
  */
 @Service
 public class FacilityClaimVerifier {
@@ -50,6 +51,7 @@ public class FacilityClaimVerifier {
      */
     public static final String FIELD_TYPE = "typeId";
     public static final String FIELD_BEDS = "maxBeds";
+    public static final String FIELD_AUXILIARY_BEDS = "auxiliaryBeds";
     public static final String FIELD_NAME = "name";
     public static final String FIELD_COUNTY = "countyId";
     public static final String FIELD_CITY = "cityId";
@@ -69,7 +71,10 @@ public class FacilityClaimVerifier {
         this.rnRepository = rnRepository;
     }
 
-    /** Podaci iz zahtjeva koji se uspoređuju s eTurizmom. Sve osim vrste i kreveta smije biti null. */
+    /**
+     * Podaci iz zahtjeva koji se uspoređuju s eTurizmom. Sve osim vrste i kreveta smije biti null.
+     * {@code maxBeds} je ukupan broj kreveta, uključujući pomoćne.
+     */
     public record Claim(Long accommodationTypeId, int maxBeds, String name, String county,
                         String city, String settlement, String street, String streetNumber) {
     }
@@ -109,8 +114,8 @@ public class FacilityClaimVerifier {
             throw new BusinessException("error.facility.type.mismatch");
         }
 
-        Integer expectedBeds = facility.getBeds();
-        if (expectedBeds != null && expectedBeds > 0 && expectedBeds != claim.maxBeds()) {
+        int expectedBeds = totalBeds(facility);
+        if (expectedBeds > 0 && expectedBeds != claim.maxBeds()) {
             throw new BusinessException("error.facility.beds.mismatch");
         }
 
@@ -134,7 +139,11 @@ public class FacilityClaimVerifier {
     public static List<String> lockedFields(FacilityOwnershipRow facility) {
         List<String> locked = new ArrayList<>();
         if (known(facility.getSubtypeCode())) locked.add(FIELD_TYPE);
-        if (facility.getBeds() != null && facility.getBeds() > 0) locked.add(FIELD_BEDS);
+        // Oba polja čine ukupan broj kreveta koji se provjerava, pa se zaključavaju zajedno.
+        if (totalBeds(facility) > 0) {
+            locked.add(FIELD_BEDS);
+            locked.add(FIELD_AUXILIARY_BEDS);
+        }
         if (known(objectName(facility))) locked.add(FIELD_NAME);
         if (known(facility.getCountyName())) locked.add(FIELD_COUNTY);
         if (known(facility.getMunicipalityName())) locked.add(FIELD_CITY);
@@ -142,6 +151,18 @@ public class FacilityClaimVerifier {
         if (known(facility.getStreetName())) locked.add(FIELD_STREET);
         if (known(facility.getHouseNumber())) locked.add(FIELD_STREET_NUMBER);
         return locked;
+    }
+
+    /**
+     * Ukupan broj kreveta u eTurizmu: {@code CAT_BROJ_KREVETA} + {@code CAT_BROJ_POM_KREVETA}.
+     * 0 znači da kapacitet nije kategoriziran, pa se usporedba preskače.
+     */
+    static int totalBeds(FacilityOwnershipRow facility) {
+        return orZero(facility.getBeds()) + orZero(facility.getAuxiliaryBeds());
+    }
+
+    private static int orZero(Integer value) {
+        return value == null ? 0 : value;
     }
 
     /**

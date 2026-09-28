@@ -331,7 +331,32 @@ class StrFacilityListingQueryTest {
         assertThat(row.get().getOib()).isEqualTo(OIB);
         assertThat(row.get().getSubtypeCode()).isEqualTo("FS_SOBA");
         assertThat(row.get().getBeds()).isEqualTo(2);
+        assertThat(row.get().getAuxiliaryBeds()).isNull(); // nema zapisa → nepoznato, ne 0
         assertThat(row.get().getActive()).isTrue();
+    }
+
+    @Test
+    void findsOwnership_withAuxiliaryBeds() {
+        facility(10, 1, "Soba 1", "uuid-10", 31, true);
+        type(10, 1010);
+        capacity(100, 10, 1040, 2);
+        capacity(101, 10, 1041, 0);
+
+        assertThat(repository.findOwnership(10L).orElseThrow().getAuxiliaryBeds()).isEqualTo(0);
+    }
+
+    /** Popis i provjera moraju za pomoćne krevete vidjeti isti podatak i kad je vođen po jedinicama. */
+    @Test
+    void fallsBackToUnitCapacity_forAuxiliaryBeds() {
+        facility(10, 1, "Apartmani", "uuid-10", 31, true);
+        type(10, 1011);
+        jdbc.update("INSERT INTO str.facility_unit (id, active, facility_id, type_id, number_of_units)"
+                + " VALUES (200, true, 10, 1011, 3)");
+        jdbc.update("INSERT INTO str.facility_unit_capacity"
+                + " (id, active, facility_unit_id, type_id, quantity) VALUES (300, true, 200, 1041, 2)");
+
+        assertThat(repository.findListingByOib(OIB, CODES, 20, 0).getFirst().getAuxiliaryBeds()).isEqualTo(2);
+        assertThat(repository.findOwnership(10L).orElseThrow().getAuxiliaryBeds()).isEqualTo(2);
     }
 
     private void facility(long id, long subjectVersionId, String name, String systemUuid,

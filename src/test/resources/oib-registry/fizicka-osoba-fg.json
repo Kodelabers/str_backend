@@ -1,0 +1,34 @@
+{
+  "zaglavlje": {
+    "vrstaZahtjeva": "FG",
+    "idPoruke": "test-1",
+    "sifraServisa": "OIB",
+    "sifraMetode": "dohvatiFG"
+  },
+  "fizickaOsoba": {
+    "dohvatiFA": null,
+    "dohvatiFG": {
+      "oib": "12312312316",
+      "ime": "PERO",
+      "prezime": "PERIĆ",
+      "adresaPrebivalista": {
+        "ulica": "ULICA KRALJA TOMISLAVA",
+        "kucniBroj": "14",
+        "kucniBrojDodatak": "A",
+        "brojPoste": "21000",
+        "sifraNaselja": "12345",
+        "naselje": "SPLIT",
+        "sifraOpcine": "123",
+        "opcina": "SPLIT",
+        "drzava": "HRVATSKA",
+        "sifraDrzave": "HR",
+        "statusAdrese": "A"
+      },
+      "oibstatus": "1"
+    }
+  },
+  "greske": {
+    "imaGresaka": false,
+    "greska": []
+  }
+}

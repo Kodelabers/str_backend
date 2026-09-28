@@ -12,7 +12,7 @@ import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
-import com.str.backend.str.StrLessorLookupService;
+import com.str.backend.lessor.SubjectProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +34,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -62,7 +62,7 @@ class PdfLocalExportTest {
     /** Vrsta se razrješava iz baze, pa je H2 (bez Liquibase seeda) treba dobiti ovdje. */
     private String typeId;
 
-    @MockBean private StrLessorLookupService strLessorLookupService;
+    @MockBean private SubjectProfileService subjectProfileService;
     @MockBean private CountyRepository countyRepository;
 
     @BeforeEach
@@ -78,7 +78,7 @@ class PdfLocalExportTest {
         setField(lessor, "lessorOib", "12312312316");
         lessor.setContact("Pero Perić", "031-555-100", "091-555-100", null);
 
-        when(strLessorLookupService.resolveLessor(anyString())).thenReturn(lessor);
+        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessor);
 
         CountyEntity county = buildCounty(7L, "Osječko-baranjska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));
@@ -132,7 +132,7 @@ class PdfLocalExportTest {
                 false, null, false, true,
                 null, null, null, null, null, null, null,
                 "pero.peric@example.com", "0991234567", "021111222", "Pero Perić",
-                "1201/1");
+                "1201/1", null, null);
     }
 
     private CountyEntity buildCounty(Long id, String name) {

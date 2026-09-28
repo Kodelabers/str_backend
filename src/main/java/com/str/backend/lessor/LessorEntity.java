@@ -196,7 +196,7 @@ public class LessorEntity {
      * Call before the entity is first persisted — the columns are {@code updatable = false},
      * so they are written on INSERT only (this is construction, not a mutation, so timestamps
      * are left as set by the factory). Reuses {@code legalEntityName} for the name; note that
-     * column stays mutable for the legacy {@code StrLessorLookupService} flow.
+     * column stays mutable for the NIAS flow ({@code SubjectProfileService#toLessor}).
      */
     public void applyLegalEntityOwner(String name, Integer countryId, String city, String registrationNumber) {
         this.legalEntityOwner = true;
@@ -223,7 +223,7 @@ public class LessorEntity {
      * upisuje samo na INSERT. Isti obrazac kao {@link #applyLegalEntityOwner}: ovo je dovršetak
      * konstrukcije, ne izmjena, pa se {@code updatedAt} ne dira.
      *
-     * <p>Postoji jer {@code StrLessorLookupService} gradi iznajmljivača iz {@code str.subject*},
+     * <p>Postoji jer {@code SubjectProfileService} gradi iznajmljivača iz registra (OIB sustav ili {@code str.subject*}),
      * gdje kontakta nema — dosad je e-mail ostajao {@code null} i, budući da je stupac
      * neizmjenjiv, nije ga se moglo popuniti naknadno. Posljedica je bio prazan kontakt blok u
      * PDF-u i preskočena obavijest o izdanom RB-u.

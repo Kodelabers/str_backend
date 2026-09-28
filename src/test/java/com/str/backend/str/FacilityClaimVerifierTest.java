@@ -134,6 +134,39 @@ class FacilityClaimVerifierTest {
         assertThatCode(() -> verifier.verify(OIB, "153049", claim(1L, 4))).doesNotThrowAnyException();
     }
 
+    // --- Stavka 2: broj kreveta je ukupan broj, osnovni + pomoćni ---
+
+    @Test
+    void comparesTotalBeds_includingAuxiliary() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        when(stubbedRow.getAuxiliaryBeds()).thenReturn(1);
+
+        assertThatCode(() -> verifier.verify(OIB, "153049", claim(1L, 3))).doesNotThrowAnyException();
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.beds.mismatch");
+    }
+
+    /** Objekt s kapacitetom samo u pomoćnim krevetima i dalje ima poznat ukupan broj. */
+    @Test
+    void comparesTotalBeds_whenOnlyAuxiliaryKnown() {
+        stubFacility(OIB, "FS_SOBA", null, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        when(stubbedRow.getAuxiliaryBeds()).thenReturn(2);
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 5)))
+                .hasMessage("error.facility.beds.mismatch");
+        assertThat(FacilityClaimVerifier.lockedFields(stubbedRow)).contains("maxBeds", "auxiliaryBeds");
+    }
+
+    @Test
+    void locksBothBedFields_orNeither() {
+        stubFacility(OIB, "FS_SOBA", null, true);
+        assertThat(FacilityClaimVerifier.lockedFields(stubbedRow))
+                .doesNotContain("maxBeds", "auxiliaryBeds");
+    }
+
     /** Vrsta bez FS_ šifre (npr. hotel) — usporedba se preskače, ne laže. */
     @Test
     void passes_whenSubmittedTypeHasNoCode() {
@@ -312,7 +345,7 @@ class FacilityClaimVerifierTest {
         when(row.getHouseNumber()).thenReturn("12");
 
         assertThat(FacilityClaimVerifier.lockedFields(row))
-                .containsExactly("typeId", "maxBeds", "countyId", "cityId", "streetNumber");
+                .containsExactly("typeId", "maxBeds", "auxiliaryBeds", "countyId", "cityId", "streetNumber");
     }
 
     /** Popis i provjera moraju se slagati: polje koje nije zaključano smije se poslati izmijenjeno. */

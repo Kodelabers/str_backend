@@ -5,9 +5,13 @@ import com.str.backend.auth.SessionIdentityResolver;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.LessorRnActionService;
+import com.str.backend.lessor.SubjectDataSource;
+import com.str.backend.lessor.SubjectProfile;
+import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.rn.RnRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +61,51 @@ class NiasFacilityControllerTest {
     @MockBean CountryRepository countryRepository;
     @MockBean LessorRnActionService rnActionService;
     @MockBean SessionIdentityResolver identityResolver;
+    @MockBean SubjectProfileService subjectProfileService;
+
+    /** Stavka 2: sva polja podnositelja vidljiva, s izvorom po grupi. */
+    @Test
+    void returnsSubjectProfile_forSessionOib() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(subjectProfileService.load(OIB, null, null)).thenReturn(new SubjectProfile(
+                OIB, "Test", "Korisnik", SubjectDataSource.STR_SUBJEKT, null,
+                "Ilica", "1", "Zagreb", "10000", "Zagreb", "Grad Zagreb",
+                SubjectDataSource.STR_SUBJEKT));
+
+        mvc.perform(get("/api/nias/subject"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.oib").value(OIB))
+                .andExpect(jsonPath("$.ime").value("Test"))
+                .andExpect(jsonPath("$.prezime").value("Korisnik"))
+                .andExpect(jsonPath("$.imeIzvor").value("STR_SUBJEKT"))
+                .andExpect(jsonPath("$.ulica").value("Ilica"))
+                .andExpect(jsonPath("$.kucniBroj").value("1"))
+                .andExpect(jsonPath("$.mjesto").value("Zagreb"))
+                .andExpect(jsonPath("$.postanskiBroj").value("10000"))
+                .andExpect(jsonPath("$.opcina").value("Zagreb"))
+                .andExpect(jsonPath("$.zupanija").value("Grad Zagreb"))
+                .andExpect(jsonPath("$.adresaIzvor").value("STR_SUBJEKT"))
+                // kontakt ne vodi nijedan registar — korisnik ga upisuje, pa ga odgovor ni ne nudi
+                .andExpect(jsonPath("$.kontaktEmail").doesNotExist());
+    }
+
+    @Test
+    void rejectsSubjectProfile_withoutNiasSession() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/nias/subject")).andExpect(status().isUnauthorized());
+        verify(subjectProfileService, never()).load(any(), any(), any());
+    }
+
+    @Test
+    void subjectProfile_isServiceUnavailable_whenRegistryDown() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(subjectProfileService.load(any(), any(), any())).thenThrow(new ExternalRegistryException("OIB", "down"));
+
+        mvc.perform(get("/api/nias/subject"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.details.registry").value("OIB"));
+    }
 
     @Test
     void returnsFacilityPage() throws Exception {
