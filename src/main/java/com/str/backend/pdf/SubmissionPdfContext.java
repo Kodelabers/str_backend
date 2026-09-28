@@ -10,7 +10,6 @@ import com.str.backend.lessor.LessorEntity;
  *
  * @param maxGuests          maksimalan broj gostiju (kreveti + pomoćni kreveti) — obrazac ga
  *                           od stavke 2 prikazuje kao jedan podatak, bez podjele na krevete
- * @param requestedCategory  kategorija koju je iznajmljivač ručno upisao; {@code null} kad je nije
  * @param filingNumber       KLASA + URBROJ; {@code null} dok zahtjev nije urudžbiran
  * @param registrationNumber uvijek postoji — PDF se generira nakon dodjele RB-a
  */
@@ -21,7 +20,6 @@ public record SubmissionPdfContext(
         String postalCode,
         String cityName,
         int maxGuests,
-        String requestedCategory,
         String typeName,
         LessorEntity lessor,
         String filingNumber,
@@ -38,7 +36,6 @@ public record SubmissionPdfContext(
                 accommodation.getPostalCode(),
                 accommodation.getCity(),
                 accommodation.getMaxGuests(),
-                accommodation.getRequestedCategory(),
                 typeName,
                 lessor,
                 filingNumber,
@@ -48,11 +45,11 @@ public record SubmissionPdfContext(
     /** Isti zahtjev, ali bez urudžbenog broja — kad urudžbiranje nije prošlo. */
     public SubmissionPdfContext withoutFilingNumber() {
         return new SubmissionPdfContext(accommodationName, street, streetNumber, postalCode,
-                cityName, maxGuests, requestedCategory, typeName, lessor, null, registrationNumber);
+                cityName, maxGuests, typeName, lessor, null, registrationNumber);
     }
 
     public SubmissionPdfContext withFilingNumber(String value) {
         return new SubmissionPdfContext(accommodationName, street, streetNumber, postalCode,
-                cityName, maxGuests, requestedCategory, typeName, lessor, value, registrationNumber);
+                cityName, maxGuests, typeName, lessor, value, registrationNumber);
     }
 }

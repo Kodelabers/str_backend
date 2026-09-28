@@ -59,7 +59,5 @@ public record RegistrationExternalRequest(
         @NotBlank @Size(max = 32) String kontaktMobitel,
         @Size(max = 32) String kontaktTelefon,
         @Size(max = 128) String kontaktOsoba,
-        @Size(max = 64) String kcBroj,
-        @Min(0) Integer auxiliaryBeds,
-        @Size(max = 32) String kategorija
+        @Size(max = 64) String kcBroj
 ) implements AccommodationRequest {}

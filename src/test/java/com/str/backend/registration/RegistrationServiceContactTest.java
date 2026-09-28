@@ -243,7 +243,7 @@ class RegistrationServiceContactTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, null,
-                email, mobitel, telefon, osoba, null, null, null);
+                email, mobitel, telefon, osoba, null);
     }
 
     private RegistrationExternalRequest externalRequest(String email, String mobitel) {
@@ -255,7 +255,7 @@ class RegistrationServiceContactTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, null,
-                email, mobitel, null, null, null, null, null);
+                email, mobitel, null, null, null);
     }
 
     private CountyEntity buildCounty(Long id, String name) {

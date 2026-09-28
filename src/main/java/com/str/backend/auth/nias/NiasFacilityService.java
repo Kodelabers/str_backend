@@ -112,8 +112,6 @@ public class NiasFacilityService {
                 // Maksimalan broj gostiju (kreveti + pomoćni), isti račun kojim verifier
                 // zaključava i provjerava `maxBeds`.
                 FacilityClaimVerifier.maxGuests(row),
-                // Informativno: koliko od toga su pomoćni kreveti — za predpopunu `auxiliaryBeds`.
-                row.getAuxiliaryBeds(),
                 row.getCountyName(),
                 row.getMunicipalityName(),
                 row.getSettlementName(),

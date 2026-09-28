@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.saml2.provider.service.registration.RelyingPartyRegistrationRepository;
@@ -13,6 +14,8 @@ import org.springframework.security.saml2.provider.service.web.authentication.lo
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 import java.net.URI;
 
@@ -20,6 +23,10 @@ import java.net.URI;
 @ConditionalOnProperty(name = "nias.saml.enabled", havingValue = "true")
 @EnableConfigurationProperties(NiasSamlProperties.class)
 public class NiasSecurityConfig {
+
+    /** API pozivi — bez sesije dobivaju 401 umjesto preusmjerenja na NIAS prijavu. */
+    static final RequestMatcher API_REQUESTS =
+            request -> request.getRequestURI().startsWith(request.getContextPath() + "/api/");
 
     @Bean
     @Order(1)
@@ -50,6 +57,15 @@ public class NiasSecurityConfig {
                         .requestMatchers("/error", "/login", "/saml2/**", "/login/saml2/**", "/logout/saml2/**")
                         .permitAll()
                         .anyRequest().authenticated())
+                // API bez sesije → 401, ne 302 na /saml2/authenticate/nias. saml2Login bi inače
+                // preusmjeravao i API pozive, pa bi fetch pratio preusmjerenje i završio na HTML-u
+                // NIAS-a ili na CORS grešci, a frontend ne bi mogao razlikovati „nisi prijavljen" od
+                // kvara. Prijava se pokreće navigacijom na /saml2/**, koja ovdje nije pogođena.
+                // Redoslijed je bitan: ExceptionHandlingConfigurer drži ulazne točke u redoslijedu
+                // registracije, a ova se registrira ovdje, prije nego saml2Login u init() doda svoju
+                // (LoginUrlAuthenticationEntryPoint) — pa za /api/** pobjeđuje ova.
+                .exceptionHandling(eh -> eh.defaultAuthenticationEntryPointFor(
+                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), API_REQUESTS))
                 // NAPOMENA: Saml2AuthenticationRequestRepository se ovdje NE postavlja jer
                 // Saml2LoginConfigurer sam traži takav bean u kontekstu (getBeanOrNull) i ubacuje
                 // ga u Saml2WebSsoAuthenticationFilter, Saml2WebSsoAuthenticationRequestFilter i

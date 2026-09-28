@@ -24,11 +24,6 @@ public record FacilityClaimResponse(
         String naziv,
         String vrstaSifra,
         Integer brKreveta,
-        /**
-         * Informativno: koliko od {@code brKreveta} otpada na pomoćne krevete. Već je sadržano u
-         * {@code brKreveta}, ne zbraja se; {@code null} kad eTurizam taj zapis nema.
-         */
-        Integer brPomocnihKreveta,
         String zupanijaNaziv,
         String opcinaNaziv,
         String naseljeNaziv,

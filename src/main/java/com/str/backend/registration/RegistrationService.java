@@ -258,7 +258,6 @@ public class RegistrationService {
         // Obrazac ima jedno polje, maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2),
         // koje putuje kao `maxBeds`. Isti broj ide u max_beds i max_guests; obje kolone su NOT
         // NULL i zadržane radi već izdanih RB-ova, pa se podjela na krevete ovdje ne rekonstruira.
-        // `auxiliaryBeds` se sprema samo informativno — već je sadržan u `maxBeds`, ne dodaje se.
         AccommodationEntity entity = AccommodationEntity.create(
                 null, countyName, cityName, req.street(), req.streetNumber(),
                 req.maxBeds(), req.maxBeds(), req.offerType(), req.offering(),
@@ -281,8 +280,6 @@ public class RegistrationService {
             entity.markHost(req.host());
         }
         resolveAccommodationTypeId(req.typeId()).ifPresent(entity::setAccommodationTypeId);
-        entity.setAuxiliaryBeds(req.auxiliaryBeds());
-        entity.setRequestedCategory(trimmed(req.kategorija()));
         return entity;
     }
 

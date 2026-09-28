@@ -113,27 +113,6 @@ class RegistrationControllerTest {
     }
 
     @Test
-    void post_returns_400_when_auxiliary_beds_negative() throws Exception {
-        RegistrationRequest invalid = withCapacityExtras(validRequest(), -1, null);
-
-        mvc.perform(post("/api/generateRegistrationNumber")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsBytes(invalid)))
-                .andExpect(status().isBadRequest());
-    }
-
-    /** Stupac requested_category je VARCHAR(32) — dulja vrijednost bi pala tek na INSERT-u, kao 500. */
-    @Test
-    void post_returns_400_when_category_longer_than_column() throws Exception {
-        RegistrationRequest invalid = withCapacityExtras(validRequest(), null, "k".repeat(33));
-
-        mvc.perform(post("/api/generateRegistrationNumber")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsBytes(invalid)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
     void post_returns_400_when_oib_invalid() throws Exception {
         RegistrationRequest invalid = withOib(validRequest(), "abc");
 
@@ -197,7 +176,7 @@ class RegistrationControllerTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, null,
-                "iznajmljivac@example.com", "0991234567", null, null, null, null, null);
+                "iznajmljivac@example.com", "0991234567", null, null, null);
     }
 
     private RegistrationRequest withContact(RegistrationRequest r, String email, String mobitel) {
@@ -211,7 +190,7 @@ class RegistrationControllerTest {
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
                 r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
                 email, mobitel, r.kontaktTelefon(), r.kontaktOsoba(),
-                r.kcBroj(), r.auxiliaryBeds(), r.kategorija());
+                r.kcBroj());
     }
 
     private RegistrationRequest withMaxBeds(RegistrationRequest r, int maxBeds) {
@@ -225,22 +204,7 @@ class RegistrationControllerTest {
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
                 r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
                 r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),
-                r.kcBroj(), r.auxiliaryBeds(), r.kategorija());
-    }
-
-    private RegistrationRequest withCapacityExtras(RegistrationRequest r, Integer auxiliaryBeds,
-                                                   String kategorija) {
-        return new RegistrationRequest(
-                r.oib(), r.name(), r.typeId(),
-                r.countyId(), r.cityId(), r.settlementId(),
-                r.street(), r.streetNumber(), r.kucniBrojId(), r.postalCode(),
-                r.maxBeds(),
-                r.offerType(), r.offering(),
-                r.building(), r.floor(), r.apartments(), r.legalized(),
-                r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
-                r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
-                r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),
-                r.kcBroj(), auxiliaryBeds, kategorija);
+                r.kcBroj());
     }
 
     private RegistrationRequest withFloor(RegistrationRequest r, String floor) {
@@ -254,7 +218,7 @@ class RegistrationControllerTest {
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
                 r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
                 r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),
-                r.kcBroj(), r.auxiliaryBeds(), r.kategorija());
+                r.kcBroj());
     }
 
     private RegistrationRequest withOib(RegistrationRequest r, String oib) {
@@ -268,7 +232,7 @@ class RegistrationControllerTest {
                 r.lessorResidence(), r.coOwnerConsent(), r.consentDate(),
                 r.consentWithdrawalDate(), r.host(), r.confirmDuplicateLocation(), r.facilityId(),
                 r.kontaktEmail(), r.kontaktMobitel(), r.kontaktTelefon(), r.kontaktOsoba(),
-                r.kcBroj(), r.auxiliaryBeds(), r.kategorija());
+                r.kcBroj());
     }
 
     private SubmissionEntity submissionWithPdf(UUID id, String filingNumber, byte[] pdf) {

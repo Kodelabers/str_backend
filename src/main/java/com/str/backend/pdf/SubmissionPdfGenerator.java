@@ -144,7 +144,7 @@ public class SubmissionPdfGenerator {
             addGroupRow(main, "OBJEKTI", objektiTop);
 
             addGroupRow(main, "VRSTA BROJ I\nKAPACITET OBJEKATA\nZA SMJEŠTAJ",
-                    buildKapacitetTable(ctx));
+                    buildKapacitetTable(ctx.accommodationName(), ctx.maxGuests(), ctx.typeName()));
 
             addGroupRow(main, "OSTALI SADRŽAJI", singleValueTable("označeno"));
 
@@ -277,7 +277,7 @@ public class SubmissionPdfGenerator {
      * zbroj kreveta i pomoćnih kreveta — pa obrazac više nema zasebne stupce za krevete i
      * pomoćne krevete. Iz zahtjeva se ta podjela ionako ne može rekonstruirati.
      */
-    private PdfPTable buildKapacitetTable(SubmissionPdfContext ctx) {
+    private PdfPTable buildKapacitetTable(String reqName, int maxGuests, String typeName) {
         PdfPTable t = new PdfPTable(new float[]{3.2f, 2.2f, 1.5f, 1.7f, 1.2f});
         t.setWidthPercentage(100);
 
@@ -289,9 +289,8 @@ public class SubmissionPdfGenerator {
         addKapacitetHeader(t, "Broj soba");
 
         // data row — no vertical separators between cells
-        String maxGuests = String.valueOf(ctx.maxGuests());
-        String[] dataValues = {safe(ctx.typeName()), safe(ctx.accommodationName()),
-                safe(ctx.requestedCategory()), maxGuests, ""};
+        String[] dataValues = {typeName != null ? typeName : "", safe(reqName), "",
+                String.valueOf(maxGuests), ""};
         for (int i = 0; i < dataValues.length; i++) {
             PdfPCell c = new PdfPCell(new Phrase(dataValues[i], FNT_VALUE));
             int border = PdfPCell.TOP;
@@ -319,7 +318,7 @@ public class SubmissionPdfGenerator {
         ukupnoLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(ukupnoLabel, 3);
         t.addCell(ukupnoLabel);
-        String[] ukupnoValues = {"1", "", maxGuests, ""};
+        String[] ukupnoValues = {"1", "", String.valueOf(maxGuests), ""};
         for (int i = 0; i < ukupnoValues.length - 1; i++) {
             PdfPCell c = new PdfPCell(new Phrase(ukupnoValues[i], FNT_VALUE));
             c.setBorder(PdfPCell.BOTTOM);

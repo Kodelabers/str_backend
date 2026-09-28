@@ -83,11 +83,6 @@ class RegistrationServiceBuildAccommodationTest {
     }
 
     private RegistrationRequest requestWithType(String typeId, Boolean host) {
-        return request(typeId, host, null, null);
-    }
-
-    private RegistrationRequest request(String typeId, Boolean host,
-                                        Integer auxiliaryBeds, String kategorija) {
         return new RegistrationRequest(
                 "12312312316", "AP1", typeId,
                 7L, "Split", "Meje",
@@ -99,7 +94,7 @@ class RegistrationServiceBuildAccommodationTest {
                 LocalDate.of(2026, 1, 15), LocalDate.of(2027, 1, 15),
                 host, null, "1448035",
                 "iznajmljivac@example.com", "0991234567", null, null,
-                "430/1", auxiliaryBeds, kategorija);
+                "430/1");
     }
 
     @Test
@@ -116,8 +111,6 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getMaxBeds()).isEqualTo(4);
         // Obrazac ima jedno polje, maksimalan broj gostiju — isti broj ide u max_beds i max_guests.
         assertThat(e.getMaxGuests()).isEqualTo(4);
-        assertThat(e.getAuxiliaryBeds()).isNull();
-        assertThat(e.getRequestedCategory()).isNull();
         assertThat(e.getOfferType()).isEqualTo(OfferType.PRIMARY_RESIDENCE);
         assertThat(e.getOffering()).isEqualTo(Offering.PART);
         assertThat(e.isBuilding()).isTrue();
@@ -136,34 +129,6 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getHost()).isTrue();
         assertThat(e.getAccommodationTypeId()).isEqualTo(1L);
         assertThat(e.getFacilityId()).isEqualTo("1448035");
-    }
-
-    /**
-     * Stavka 2: {@code maxBeds} već nosi maksimalan broj gostiju (kreveti + pomoćni). Pomoćni
-     * kreveti su informativni — ne smiju se još jednom dodati, inače bi se brojali dvaput.
-     */
-    @Test
-    void auxiliary_beds_are_informative_and_not_added_again() {
-        AccommodationEntity e = newService()
-                .buildAccommodation(request("1", null, 2, null), "Splitsko-dalmatinska");
-
-        assertThat(e.getMaxBeds()).isEqualTo(4);
-        assertThat(e.getMaxGuests()).isEqualTo(4);
-        assertThat(e.getAuxiliaryBeds()).isEqualTo(2);
-    }
-
-    @Test
-    void manual_category_is_stored_trimmed_as_requested_category() {
-        AccommodationEntity e = newService()
-                .buildAccommodation(request("1", null, null, "  3 zvjezdice "), "Splitsko-dalmatinska");
-        assertThat(e.getRequestedCategory()).isEqualTo("3 zvjezdice");
-    }
-
-    @Test
-    void blank_category_is_not_stored() {
-        AccommodationEntity e = newService()
-                .buildAccommodation(request("1", null, null, "   "), "Splitsko-dalmatinska");
-        assertThat(e.getRequestedCategory()).isNull();
     }
 
     @Test

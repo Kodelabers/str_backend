@@ -145,8 +145,6 @@ zaključan: to jest vrijednost koju eTurizam vodi kao naziv. Smije li se i to mi
 odluka, ne tehnička.
 
 Kapacitet se provjerava kao **maksimalan broj gostiju** (kreveti + pomoćni kreveti) — v. §6c.
-`auxiliaryBeds` iz zahtjeva je samo informativan: već je sadržan u `maxBeds`, ne zbraja se, ne
-provjerava i ne zaključava.
 
 ## 6b. Koja su polja stvarno zaključana — `GET /api/nias/facilities/{id}`
 
@@ -163,7 +161,6 @@ GET /api/nias/facilities/1448035
   "naziv": "-",
   "vrstaSifra": "FS_SOBA",
   "brKreveta": 3,
-  "brPomocnihKreveta": 1,
   "zupanijaNaziv": "Splitsko-dalmatinska",
   "opcinaNaziv": "Makarska",
   "naseljeNaziv": "Makarska",

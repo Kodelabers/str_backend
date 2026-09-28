@@ -54,17 +54,4 @@ public interface AccommodationRequest {
      * vrijednost daje 400 — v. {@code CadastreResolver}.
      */
     String kcBroj();
-
-    /**
-     * Broj pomoćnih kreveta (kauč, rasklopni krevet i sl.) — <b>informativno</b>. Već je sadržan u
-     * {@link #maxBeds()}, koji od stavke 2 nosi maksimalan broj gostiju (kreveti + pomoćni), pa se
-     * ne dodaje ni u {@code max_beds} ni u {@code max_guests}. Neobavezno.
-     */
-    Integer auxiliaryBeds();
-
-    /**
-     * Kategorija koju je iznajmljivač ručno upisao pri izdavanju RB-a; STR je nema. Sprema se
-     * kao tražena kategorija ({@code accommodation.requested_category}, VARCHAR(32)).
-     */
-    String kategorija();
 }

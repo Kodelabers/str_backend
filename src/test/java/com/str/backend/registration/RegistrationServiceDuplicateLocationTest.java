@@ -159,7 +159,7 @@ class RegistrationServiceDuplicateLocationTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, null,
-                "iznajmljivac@example.com", "0991234567", null, null, null, null, null);
+                "iznajmljivac@example.com", "0991234567", null, null, null);
         when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(
                 eq(COUNTY), eq(CITY), eq(STREET), eq(STREET_NUMBER), eq(OIB)))
                 .thenReturn(List.of(EXISTING_RN));
@@ -178,7 +178,7 @@ class RegistrationServiceDuplicateLocationTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, confirm, null,
-                "iznajmljivac@example.com", "0991234567", null, null, null, null, null);
+                "iznajmljivac@example.com", "0991234567", null, null, null);
     }
 
     private CountyEntity buildCountyEntity(Long id, String name) {

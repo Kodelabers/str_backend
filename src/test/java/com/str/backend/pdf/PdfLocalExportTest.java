@@ -132,7 +132,7 @@ class PdfLocalExportTest {
                 false, "2", false, true,
                 null, null, null, null, null, null, null,
                 "pero.peric@example.com", "0991234567", "021111222", "Pero Perić",
-                "1201/1", null, null);
+                "1201/1");
     }
 
     private CountyEntity buildCounty(Long id, String name) {
