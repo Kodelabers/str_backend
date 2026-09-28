@@ -18,7 +18,7 @@ import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
-import com.str.backend.str.StrLessorLookupService;
+import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +58,7 @@ class RegistrationServiceBuildAccommodationTest {
                 mock(ParallelValidationOrchestrator.class),
                 mock(RnService.class),
                 mock(RnRepository.class),
-                mock(StrLessorLookupService.class),
+                mock(SubjectProfileService.class),
                 mock(CountyRepository.class),
                 mock(MunicipalityRepository.class),
                 mock(SettlementRepository.class),
@@ -109,7 +109,7 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getStreet()).isEqualTo("Marulićeva");
         assertThat(e.getStreetNumber()).isEqualTo("5");
         assertThat(e.getMaxBeds()).isEqualTo(4);
-        // Broj gostiju je maknut s forme (UAT) — kolona je NOT NULL i puni se iz broja kreveta.
+        // Obrazac ima jedno polje, maksimalan broj gostiju — isti broj ide u max_beds i max_guests.
         assertThat(e.getMaxGuests()).isEqualTo(4);
         assertThat(e.getOfferType()).isEqualTo(OfferType.PRIMARY_RESIDENCE);
         assertThat(e.getOffering()).isEqualTo(Offering.PART);

@@ -129,10 +129,18 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                          WHERE fu.facility_id = f.id AND fu.active = true
                            AND ce2.code = 'CAT_BROJ_KREVETA')
                    )                                       AS beds,
-                   (SELECT sum(fc2.quantity) FROM str.facility_capacity fc2
-                      JOIN str.codebook_element ce3 ON ce3.id = fc2.type_id
-                     WHERE fc2.facility_id = f.id AND fc2.active = true
-                       AND ce3.code = 'CAT_BROJ_POM_KREVETA') AS auxiliaryBeds
+                   coalesce(
+                       (SELECT sum(fc2.quantity) FROM str.facility_capacity fc2
+                          JOIN str.codebook_element ce3 ON ce3.id = fc2.type_id
+                         WHERE fc2.facility_id = f.id AND fc2.active = true
+                           AND ce3.code = 'CAT_BROJ_POM_KREVETA'),
+                       (SELECT sum(fuc2.quantity) FROM str.facility_unit fu2
+                          JOIN str.facility_unit_capacity fuc2
+                            ON fuc2.facility_unit_id = fu2.id AND fuc2.active = true
+                          JOIN str.codebook_element ce4 ON ce4.id = fuc2.type_id
+                         WHERE fu2.facility_id = f.id AND fu2.active = true
+                           AND ce4.code = 'CAT_BROJ_POM_KREVETA')
+                   )                                       AS auxiliaryBeds
             """ + LISTING_FROM + """
              ORDER BY f.id
              LIMIT :limit OFFSET :offset

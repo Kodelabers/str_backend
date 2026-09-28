@@ -116,7 +116,7 @@ provjerava (`FacilityClaimVerifier`):
 | Objekt postoji i aktivan je | 400 `error.facility.unknown` / `error.facility.inactive` |
 | Objekt već nema stojeći RB (ACTIVE / SUSPENSION_PROPOSED / SUSPENDED) | 400 `error.facility.alreadyRegistered` |
 | `typeId` odgovara podvrsti u eTurizmu (`FS_*`) | 400 `error.facility.type.mismatch` |
-| `maxBeds` odgovara `CAT_BROJ_KREVETA` u eTurizmu | 400 `error.facility.beds.mismatch` |
+| `maxBeds` odgovara maksimalnom broju gostiju u eTurizmu (`CAT_BROJ_KREVETA + CAT_BROJ_POM_KREVETA`) | 400 `error.facility.beds.mismatch` |
 | `name` odgovara `facility.name` | 400 `error.facility.name.mismatch` |
 | Županija / grad-općina / naselje / ulica / kućni broj odgovaraju adresi objekta | 400 `error.facility.address.mismatch` |
 

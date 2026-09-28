@@ -366,6 +366,8 @@ class StrFacilityListingQueryTest {
 
         assertThat(row.getBeds()).isEqualTo(4);
         assertThat(row.getAuxiliaryBeds()).isEqualTo(1);
+        // Popis objekata mora vidjeti isti podatak kao provjera
+        assertThat(repository.findListingByOib(OIB, CODES, 20, 0).getFirst().getAuxiliaryBeds()).isEqualTo(1);
     }
 
     private void facility(long id, long subjectVersionId, String name, String systemUuid,

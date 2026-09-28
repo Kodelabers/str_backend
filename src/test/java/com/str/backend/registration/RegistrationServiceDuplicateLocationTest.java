@@ -19,7 +19,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
-import com.str.backend.str.StrLessorLookupService;
+import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -59,7 +59,7 @@ class RegistrationServiceDuplicateLocationTest {
     private ParallelValidationOrchestrator orchestrator;
     private RnService rnService;
     private RnRepository rnRepository;
-    private StrLessorLookupService strLessorLookupService;
+    private SubjectProfileService subjectProfileService;
     private CountyRepository countyRepository;
     private MunicipalityRepository municipalityRepository;
     private SettlementRepository settlementRepository;
@@ -76,7 +76,7 @@ class RegistrationServiceDuplicateLocationTest {
         orchestrator = mock(ParallelValidationOrchestrator.class);
         rnService = mock(RnService.class);
         rnRepository = mock(RnRepository.class);
-        strLessorLookupService = mock(StrLessorLookupService.class);
+        subjectProfileService = mock(SubjectProfileService.class);
         countyRepository = mock(CountyRepository.class);
         municipalityRepository = mock(MunicipalityRepository.class);
         settlementRepository = mock(SettlementRepository.class);
@@ -87,7 +87,7 @@ class RegistrationServiceDuplicateLocationTest {
 
         service = new RegistrationService(
                 lessorRepository, accommodationRepository, submissionRepository,
-                orchestrator, rnService, rnRepository, strLessorLookupService,
+                orchestrator, rnService, rnRepository, subjectProfileService,
                 countyRepository, municipalityRepository, settlementRepository,
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), eventPublisher);
@@ -98,7 +98,7 @@ class RegistrationServiceDuplicateLocationTest {
         LessorEntity lessor = LessorEntity.create("PERO", "PERIĆ",
                 "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr");
         lessor.setLessorOib(OIB);
-        when(strLessorLookupService.resolveLessor(anyString())).thenReturn(lessor);
+        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessor);
 
         when(orchestrator.execute(any(ValidationContext.class)))
                 .thenReturn(PipelineResult.passed());

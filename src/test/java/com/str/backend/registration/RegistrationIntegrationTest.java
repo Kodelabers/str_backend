@@ -11,7 +11,7 @@ import com.str.backend.lessor.LessorRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
-import com.str.backend.str.StrLessorLookupService;
+import com.str.backend.lessor.SubjectProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +26,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.lang.reflect.Field;
 import java.util.Optional;
 
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import java.util.UUID;
@@ -52,12 +52,12 @@ class RegistrationIntegrationTest {
     @Autowired private SubmissionRepository submissionRepository;
     @Autowired private LessorRepository lessorRepository;
 
-    @MockBean private StrLessorLookupService strLessorLookupService;
+    @MockBean private SubjectProfileService subjectProfileService;
     @MockBean private CountyRepository countyRepository;
 
     @BeforeEach
     void setupMocks() {
-        when(strLessorLookupService.resolveLessor(anyString()))
+        when(subjectProfileService.resolveLessor(any(), any(), any()))
                 .thenAnswer(inv -> {
                     LessorEntity l = LessorEntity.create("PERO", "PERIĆ",
                             "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr");

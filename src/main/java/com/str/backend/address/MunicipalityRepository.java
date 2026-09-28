@@ -17,4 +17,7 @@ public interface MunicipalityRepository extends JpaRepository<MunicipalityEntity
             ORDER BY m.name
             """)
     List<MunicipalityEntity> findByCountyIdOrderByName(@Param("countyId") Long countyId, @Param("q") String q);
+
+    /** Za izvođenje županije iz naziva općine (OIB sustav je vraća samo nazivom). */
+    List<MunicipalityEntity> findByNameIgnoreCase(String name);
 }

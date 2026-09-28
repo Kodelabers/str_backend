@@ -22,8 +22,8 @@ import java.util.Locale;
  *       tuđi ID i RB završi na tuđem objektu u tuđem registru.</li>
  *   <li><b>Vrsta, kapacitet, adresa i naziv.</b> Primjedba s UAT-a: za postojeći objekt se gornji
  *       podaci ne smiju mijenjati. Šifra podvrste u eTurizmu ({@code FS_*}) je ista kao
- *       {@code accommodation_type.code}, pa je usporedba direktna; broj kreveta je kategoriziran
- *       rješenjem, a ne slobodan unos.</li>
+ *       {@code accommodation_type.code}, pa je usporedba direktna; broj kreveta (osnovni +
+ *       pomoćni) kategoriziran je rješenjem, a ne slobodan unos.</li>
  *   <li><b>Dvostruki RB.</b> Objekt koji već ima stojeći RB ne smije dobiti drugi. Postojeći
  *       {@code checkDuplicateLocation} to ne pokriva: gleda adresu (županija + grad + ulica + kbr),
  *       a eTurizam adrese su rijetko strukturirane — ulica i kućni broj su najčešće prazni, pa se
@@ -71,7 +71,10 @@ public class FacilityClaimVerifier {
         this.rnRepository = rnRepository;
     }
 
-    /** Podaci iz zahtjeva koji se uspoređuju s eTurizmom. Sve osim vrste i kreveta smije biti null. */
+    /**
+     * Podaci iz zahtjeva koji se uspoređuju s eTurizmom. Sve osim vrste i kreveta smije biti null.
+     * {@code maxBeds} je maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2).
+     */
     public record Claim(Long accommodationTypeId, int maxBeds, String name, String county,
                         String city, String settlement, String street, String streetNumber) {
     }

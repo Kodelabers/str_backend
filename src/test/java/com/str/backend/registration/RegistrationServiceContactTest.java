@@ -7,10 +7,13 @@ import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
+import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
@@ -19,7 +22,6 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
-import com.str.backend.str.StrLessorLookupService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -34,11 +36,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,7 +56,7 @@ class RegistrationServiceContactTest {
     private static final String OIB = "12312312316";
 
     private LessorRepository lessorRepository;
-    private StrLessorLookupService strLessorLookupService;
+    private SubjectProfileService subjectProfileService;
     private RnService rnService;
     private RegistrationService service;
 
@@ -64,7 +68,7 @@ class RegistrationServiceContactTest {
         ParallelValidationOrchestrator orchestrator = mock(ParallelValidationOrchestrator.class);
         rnService = mock(RnService.class);
         RnRepository rnRepository = mock(RnRepository.class);
-        strLessorLookupService = mock(StrLessorLookupService.class);
+        subjectProfileService = mock(SubjectProfileService.class);
         CountyRepository countyRepository = mock(CountyRepository.class);
         MunicipalityRepository municipalityRepository = mock(MunicipalityRepository.class);
         SettlementRepository settlementRepository = mock(SettlementRepository.class);
@@ -75,7 +79,7 @@ class RegistrationServiceContactTest {
 
         service = new RegistrationService(
                 lessorRepository, accommodationRepository, submissionRepository,
-                orchestrator, rnService, rnRepository, strLessorLookupService,
+                orchestrator, rnService, rnRepository, subjectProfileService,
                 countyRepository, municipalityRepository, settlementRepository,
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), eventPublisher);
@@ -93,12 +97,12 @@ class RegistrationServiceContactTest {
     }
 
     /**
-     * NIAS put: {@code StrLessorLookupService} gradi iznajmljivača iz {@code str.subject*}, gdje
-     * kontakta nema — e-mail dolazi isključivo sa zahtjeva.
+     * NIAS put: {@code SubjectProfileService} gradi iznajmljivača iz NIAS-a i OIB sustava; kontakt
+     * iz registra je samo prijedlog — spremljeni e-mail dolazi isključivo sa zahtjeva.
      */
     @Test
     void niasFlow_contactFromRequest_isStoredOnLessor() {
-        when(strLessorLookupService.resolveLessor(anyString())).thenReturn(lessorWithoutContact());
+        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessorWithoutContact());
 
         service.generateRegistrationNumber(request("ana@example.com", "0991234567", "021555666", "Ana Anić"));
 
@@ -109,10 +113,45 @@ class RegistrationServiceContactTest {
         assertThat(saved.getContactName()).isEqualTo("Ana Anić");
     }
 
+    /** Stavka 2: ime i prezime iz NIAS assertiona idu do izvora podataka o subjektu. */
+    @Test
+    void niasFlow_passesAssertionNamesToSubjectLookup() {
+        NiasIdentity identity = new NiasIdentity(OIB, "Ana", "Anić");
+        when(subjectProfileService.resolveLessor(OIB, "Ana", "Anić")).thenReturn(lessorWithoutContact());
+
+        service.generateRegistrationNumber(request("ana@example.com", "0991234567", null, null), identity);
+
+        verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić");
+    }
+
+    /** Identitet s drugim OIB-om nego zahtjev ne smije podmetnuti tuđe ime. */
+    @Test
+    void niasFlow_ignoresIdentityOfAnotherOib() {
+        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessorWithoutContact());
+
+        service.generateRegistrationNumber(request("ana@example.com", "0991234567", null, null),
+                new NiasIdentity("19819819816", "Netko", "Drugi"));
+
+        verify(subjectProfileService).resolveLessor(OIB, null, null);
+    }
+
+    /** Nedostupan OIB sustav je 503 i ne ostavlja poluupisanog iznajmljivača. */
+    @Test
+    void niasFlow_registryDown_propagatesAndStoresNothing() {
+        when(subjectProfileService.resolveLessor(any(), any(), any()))
+                .thenThrow(new ExternalRegistryException("OIB", "down"));
+
+        assertThatThrownBy(() -> service.generateRegistrationNumber(
+                request("ana@example.com", "0991234567", null, null)))
+                .isInstanceOf(ExternalRegistryException.class);
+        verify(lessorRepository, never()).save(any());
+        verify(rnService, never()).issue(any(), any());
+    }
+
     /** Prazan string iz forme znači „nije upisano", ne prazna vrijednost. */
     @Test
     void niasFlow_blankOptionalContact_storedAsNull() {
-        when(strLessorLookupService.resolveLessor(anyString())).thenReturn(lessorWithoutContact());
+        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessorWithoutContact());
 
         service.generateRegistrationNumber(request("ana@example.com", "0991234567", "   ", ""));
 

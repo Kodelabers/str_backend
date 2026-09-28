@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -48,7 +49,7 @@ class RegistrationControllerTest {
     void post_returns_201_with_registration_number() throws Exception {
         UUID submissionId = UUID.randomUUID();
         RegistrationResponse resp = new RegistrationResponse("HR120001000000000001", submissionId);
-        when(service.generateRegistrationNumber(any())).thenReturn(resp);
+        when(service.generateRegistrationNumber(any(), any())).thenReturn(resp);
 
         mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -123,7 +124,7 @@ class RegistrationControllerTest {
 
     @Test
     void post_returns_422_when_validation_rejected() throws Exception {
-        when(service.generateRegistrationNumber(any()))
+        when(service.generateRegistrationNumber(any(), any()))
                 .thenThrow(new ValidationRejectedException("GO-3", "objekt nije legaliziran"));
 
         mvc.perform(post("/api/generateRegistrationNumber")
@@ -138,7 +139,7 @@ class RegistrationControllerTest {
         UUID id = UUID.randomUUID();
         byte[] pdf = "%PDF-1.4 fake".getBytes();
         SubmissionEntity s = submissionWithPdf(id, "334-01/26-01/1001", pdf);
-        when(service.getSubmissionForPdf(id)).thenReturn(s);
+        when(service.getSubmissionForPdf(eq(id), any())).thenReturn(s);
 
         mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isOk())
@@ -151,7 +152,7 @@ class RegistrationControllerTest {
     @Test
     void get_pdf_returns_404_when_submission_missing() throws Exception {
         UUID id = UUID.randomUUID();
-        when(service.getSubmissionForPdf(id)).thenThrow(new ResourceNotFoundException("submission not found"));
+        when(service.getSubmissionForPdf(eq(id), any())).thenThrow(new ResourceNotFoundException("submission not found"));
 
         mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isNotFound());
@@ -160,7 +161,7 @@ class RegistrationControllerTest {
     @Test
     void get_pdf_returns_404_when_pdf_not_stored() throws Exception {
         UUID id = UUID.randomUUID();
-        when(service.getSubmissionForPdf(id)).thenThrow(new ResourceNotFoundException("error.pdf.not.stored"));
+        when(service.getSubmissionForPdf(eq(id), any())).thenThrow(new ResourceNotFoundException("error.pdf.not.stored"));
 
         mvc.perform(get("/api/generateRegistrationNumber/{id}/pdf", id))
                 .andExpect(status().isNotFound());
