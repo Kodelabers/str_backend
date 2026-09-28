@@ -114,7 +114,7 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getStreet()).isEqualTo("Marulićeva");
         assertThat(e.getStreetNumber()).isEqualTo("5");
         assertThat(e.getMaxBeds()).isEqualTo(4);
-        // Broj gostiju nije na formi — to je ukupan broj kreveta; bez pomoćnih jednak je osnovnima.
+        // Obrazac ima jedno polje, maksimalan broj gostiju — isti broj ide u max_beds i max_guests.
         assertThat(e.getMaxGuests()).isEqualTo(4);
         assertThat(e.getAuxiliaryBeds()).isNull();
         assertThat(e.getRequestedCategory()).isNull();
@@ -138,14 +138,17 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getFacilityId()).isEqualTo("1448035");
     }
 
-    /** Stavka 2: najveći broj kreveta i gostiju je broj kreveta + broj pomoćnih kreveta. */
+    /**
+     * Stavka 2: {@code maxBeds} već nosi maksimalan broj gostiju (kreveti + pomoćni). Pomoćni
+     * kreveti su informativni — ne smiju se još jednom dodati, inače bi se brojali dvaput.
+     */
     @Test
-    void auxiliary_beds_count_towards_max_beds_and_guests() {
+    void auxiliary_beds_are_informative_and_not_added_again() {
         AccommodationEntity e = newService()
                 .buildAccommodation(request("1", null, 2, null), "Splitsko-dalmatinska");
 
-        assertThat(e.getMaxBeds()).isEqualTo(6);
-        assertThat(e.getMaxGuests()).isEqualTo(6);
+        assertThat(e.getMaxBeds()).isEqualTo(4);
+        assertThat(e.getMaxGuests()).isEqualTo(4);
         assertThat(e.getAuxiliaryBeds()).isEqualTo(2);
     }
 

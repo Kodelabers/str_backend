@@ -185,7 +185,7 @@ public class StatisticsExportService {
         sb.append('﻿'); // BOM for Excel-compatible UTF-8
         sb.append("Registracijski broj,Naziv objekta,Adresa,Grad/naselje,Županija,")
           .append("Kategorija,Tip ponude,Status RB,Datum izdavanja,")
-          .append("Vrijedi od,Vrijedi do,Max ležajeva\r\n");
+          .append("Vrijedi od,Vrijedi do,Maksimalan broj gostiju\r\n");
         for (DetailRowProjection row : rows) {
             sb.append(csvEscape(row.getRn())).append(',')
               .append(csvEscape(row.getName())).append(',')
@@ -221,7 +221,7 @@ public class StatisticsExportService {
             String[] headers = {
                     "Registracijski broj", "Naziv objekta", "Adresa", "Grad/naselje", "Županija",
                     "Kategorija", "Tip ponude", "Status RB", "Datum izdavanja",
-                    "Vrijedi od", "Vrijedi do", "Max ležajeva"
+                    "Vrijedi od", "Vrijedi do", "Maksimalan broj gostiju"
             };
             Row headerRow = sheet.createRow(0);
             for (int i = 0; i < headers.length; i++) {

@@ -38,9 +38,10 @@ import java.util.Locale;
  * koja iz toga stvarno jesu zaključana vraća {@link #lockedFields(FacilityOwnershipRow)} — frontend
  * po njemu onemogući točno ta polja umjesto da pogađa iz tuStart URL parametara.
  *
- * <p>Broj gostiju se ne provjerava — eTurizam ga za objekte u domaćinstvu ne vodi
- * ({@code CAT_BROJ_GOSTIJU} postoji samo na razini jedinica hotela i sličnih objekata). Kod nas
- * je jednak ukupnom broju kreveta, pa je time provjeren posredno.
+ * <p>Maksimalan broj gostiju ({@code maxBeds} u zahtjevu) izvodi se iz kapaciteta: kreveti +
+ * pomoćni kreveti, v. {@link #maxGuests(FacilityOwnershipRow)}. {@code CAT_BROJ_GOSTIJU} se ne
+ * koristi — eTurizam ga za objekte u domaćinstvu ne vodi (postoji samo na razini jedinica hotela
+ * i sličnih objekata).
  */
 @Service
 public class FacilityClaimVerifier {
@@ -51,7 +52,6 @@ public class FacilityClaimVerifier {
      */
     public static final String FIELD_TYPE = "typeId";
     public static final String FIELD_BEDS = "maxBeds";
-    public static final String FIELD_AUXILIARY_BEDS = "auxiliaryBeds";
     public static final String FIELD_NAME = "name";
     public static final String FIELD_COUNTY = "countyId";
     public static final String FIELD_CITY = "cityId";
@@ -73,7 +73,7 @@ public class FacilityClaimVerifier {
 
     /**
      * Podaci iz zahtjeva koji se uspoređuju s eTurizmom. Sve osim vrste i kreveta smije biti null.
-     * {@code maxBeds} je ukupan broj kreveta, uključujući pomoćne.
+     * {@code maxBeds} je maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2).
      */
     public record Claim(Long accommodationTypeId, int maxBeds, String name, String county,
                         String city, String settlement, String street, String streetNumber) {
@@ -114,8 +114,8 @@ public class FacilityClaimVerifier {
             throw new BusinessException("error.facility.type.mismatch");
         }
 
-        int expectedBeds = totalBeds(facility);
-        if (expectedBeds > 0 && expectedBeds != claim.maxBeds()) {
+        Integer expectedGuests = maxGuests(facility);
+        if (expectedGuests != null && expectedGuests != claim.maxBeds()) {
             throw new BusinessException("error.facility.beds.mismatch");
         }
 
@@ -133,17 +133,30 @@ public class FacilityClaimVerifier {
     }
 
     /**
+     * Maksimalan broj gostiju objekta iz eTurizma: kreveti + pomoćni kreveti (stavka 2 sa
+     * sastanka). Jedno mjesto za taj račun — po njemu se predpopunjava claim, zaključava polje i
+     * provjerava predaja, pa se ta tri ne mogu razići.
+     *
+     * <p>{@code null} kad eTurizam ne zna broj kreveta: tada polje nije zaključano i usporedba se
+     * preskače. Pomoćni kreveti bez kreveta ne čine kapacitet, pa se sami ne računaju.
+     */
+    public static Integer maxGuests(FacilityOwnershipRow facility) {
+        Integer beds = facility.getBeds();
+        if (beds == null || beds <= 0) {
+            return null;
+        }
+        Integer auxiliary = facility.getAuxiliaryBeds();
+        return beds + (auxiliary != null && auxiliary > 0 ? auxiliary : 0);
+    }
+
+    /**
      * Polja koja su za ovaj objekt stvarno zaključana — ona za koja eTurizam ima podatak, pa bi
      * ih {@link #verify} odbio da stignu izmijenjena. Frontend po ovom popisu onemogući unos.
      */
     public static List<String> lockedFields(FacilityOwnershipRow facility) {
         List<String> locked = new ArrayList<>();
         if (known(facility.getSubtypeCode())) locked.add(FIELD_TYPE);
-        // Oba polja čine ukupan broj kreveta koji se provjerava, pa se zaključavaju zajedno.
-        if (totalBeds(facility) > 0) {
-            locked.add(FIELD_BEDS);
-            locked.add(FIELD_AUXILIARY_BEDS);
-        }
+        if (maxGuests(facility) != null) locked.add(FIELD_BEDS);
         if (known(objectName(facility))) locked.add(FIELD_NAME);
         if (known(facility.getCountyName())) locked.add(FIELD_COUNTY);
         if (known(facility.getMunicipalityName())) locked.add(FIELD_CITY);
@@ -151,18 +164,6 @@ public class FacilityClaimVerifier {
         if (known(facility.getStreetName())) locked.add(FIELD_STREET);
         if (known(facility.getHouseNumber())) locked.add(FIELD_STREET_NUMBER);
         return locked;
-    }
-
-    /**
-     * Ukupan broj kreveta u eTurizmu: {@code CAT_BROJ_KREVETA} + {@code CAT_BROJ_POM_KREVETA}.
-     * 0 znači da kapacitet nije kategoriziran, pa se usporedba preskače.
-     */
-    static int totalBeds(FacilityOwnershipRow facility) {
-        return orZero(facility.getBeds()) + orZero(facility.getAuxiliaryBeds());
-    }
-
-    private static int orZero(Integer value) {
-        return value == null ? 0 : value;
     }
 
     /**

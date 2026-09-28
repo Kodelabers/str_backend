@@ -157,10 +157,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getOib();
         String getSubtypeCode();
         Integer getBeds();
-        /**
-         * {@code CAT_BROJ_POM_KREVETA}; {@code NULL} kad eTurizam za objekt nema takav zapis —
-         * tada je podatak nepoznat, a ne 0, pa se provjera preskače.
-         */
+        /** Pomoćni kreveti ({@code CAT_BROJ_POM_KREVETA}); ulaze u maksimalan broj gostiju. */
         Integer getAuxiliaryBeds();
         Boolean getActive();
         String getName();
@@ -211,7 +208,8 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * <p>Broj kreveta ima isti {@code facility_unit_capacity} fallback kao
      * {@link #findListingByOib} — bez njega objekt s jedinicama vrati {@code NULL} kreveta i
      * provjera kapaciteta se tiho preskoči, pa bi popis i provjera vidjeli različit podatak.
-     * Pomoćni kreveti imaju isti fallback, iz istog razloga.
+     * Pomoćni kreveti imaju isti fallback, jer se zbrajaju s krevetima u maksimalan broj
+     * gostiju (v. {@link FacilityClaimVerifier#maxGuests}).
      *
      * <p>Adresa i naziv se čitaju istom join-mapom kao popis (isti {@code CASE} za
      * {@code same_address_subject}), jer se uspoređuju s onim što je korisnik vidio u formi.

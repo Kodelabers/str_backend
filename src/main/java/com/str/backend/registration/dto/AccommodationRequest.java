@@ -56,9 +56,9 @@ public interface AccommodationRequest {
     String kcBroj();
 
     /**
-     * Broj pomoćnih kreveta (kauč, rasklopni krevet i sl.). Ne ulazi u {@link #maxBeds()} — taj
-     * se uspoređuje s osnovnim krevetima u eTurizmu, koji pomoćne vodi zasebno — ali ulazi u
-     * najveći broj gostiju (stavka 2).
+     * Broj pomoćnih kreveta (kauč, rasklopni krevet i sl.) — <b>informativno</b>. Već je sadržan u
+     * {@link #maxBeds()}, koji od stavke 2 nosi maksimalan broj gostiju (kreveti + pomoćni), pa se
+     * ne dodaje ni u {@code max_beds} ni u {@code max_guests}. Neobavezno.
      */
     Integer auxiliaryBeds();
 

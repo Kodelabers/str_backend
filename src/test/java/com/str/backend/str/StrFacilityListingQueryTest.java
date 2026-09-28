@@ -331,32 +331,43 @@ class StrFacilityListingQueryTest {
         assertThat(row.get().getOib()).isEqualTo(OIB);
         assertThat(row.get().getSubtypeCode()).isEqualTo("FS_SOBA");
         assertThat(row.get().getBeds()).isEqualTo(2);
-        assertThat(row.get().getAuxiliaryBeds()).isNull(); // nema zapisa → nepoznato, ne 0
+        assertThat(row.get().getAuxiliaryBeds()).isNull();
         assertThat(row.get().getActive()).isTrue();
     }
 
+    /** Pomoćni kreveti ulaze u maksimalan broj gostiju, pa ih vlasnički upit mora vratiti. */
     @Test
     void findsOwnership_withAuxiliaryBeds() {
         facility(10, 1, "Soba 1", "uuid-10", 31, true);
         type(10, 1010);
-        capacity(100, 10, 1040, 2);
-        capacity(101, 10, 1041, 0);
+        capacity(100, 10, 1040, 4);
+        capacity(101, 10, 1041, 2);
 
-        assertThat(repository.findOwnership(10L).orElseThrow().getAuxiliaryBeds()).isEqualTo(0);
+        FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getBeds()).isEqualTo(4);
+        assertThat(row.getAuxiliaryBeds()).isEqualTo(2);
+        assertThat(FacilityClaimVerifier.maxGuests(row)).isEqualTo(6);
     }
 
-    /** Popis i provjera moraju za pomoćne krevete vidjeti isti podatak i kad je vođen po jedinicama. */
+    /** Isti fallback na jedinice kao za krevete — inače bi zbroj kod takvih objekata izgubio pomoćne. */
     @Test
-    void fallsBackToUnitCapacity_forAuxiliaryBeds() {
+    void findsOwnership_fallsBackToUnitCapacity_forBedsAndAuxiliaryBeds() {
         facility(10, 1, "Apartmani", "uuid-10", 31, true);
         type(10, 1011);
         jdbc.update("INSERT INTO str.facility_unit (id, active, facility_id, type_id, number_of_units)"
                 + " VALUES (200, true, 10, 1011, 3)");
         jdbc.update("INSERT INTO str.facility_unit_capacity"
-                + " (id, active, facility_unit_id, type_id, quantity) VALUES (300, true, 200, 1041, 2)");
+                + " (id, active, facility_unit_id, type_id, quantity) VALUES (300, true, 200, 1040, 4)");
+        jdbc.update("INSERT INTO str.facility_unit_capacity"
+                + " (id, active, facility_unit_id, type_id, quantity) VALUES (301, true, 200, 1041, 1)");
 
-        assertThat(repository.findListingByOib(OIB, CODES, 20, 0).getFirst().getAuxiliaryBeds()).isEqualTo(2);
-        assertThat(repository.findOwnership(10L).orElseThrow().getAuxiliaryBeds()).isEqualTo(2);
+        FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getBeds()).isEqualTo(4);
+        assertThat(row.getAuxiliaryBeds()).isEqualTo(1);
+        // Popis objekata mora vidjeti isti podatak kao provjera
+        assertThat(repository.findListingByOib(OIB, CODES, 20, 0).getFirst().getAuxiliaryBeds()).isEqualTo(1);
     }
 
     private void facility(long id, long subjectVersionId, String name, String systemUuid,

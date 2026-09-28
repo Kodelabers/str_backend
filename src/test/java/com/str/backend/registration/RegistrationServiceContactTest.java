@@ -241,7 +241,7 @@ class RegistrationServiceContactTest {
                 "Marulićeva", "5", null, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
-                false, null, false, true,
+                false, "2", false, true,
                 null, null, null, null, null, null, null,
                 email, mobitel, telefon, osoba, null, null, null);
     }
@@ -253,7 +253,7 @@ class RegistrationServiceContactTest {
                 "Marulićeva", "5", null, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
-                false, null, false, true,
+                false, "2", false, true,
                 null, null, null, null, null, null, null,
                 email, mobitel, null, null, null, null, null);
     }
