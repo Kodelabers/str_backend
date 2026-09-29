@@ -1,14 +1,17 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.str.backend.captcha.AltchaService;
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.SecurityConfig;
+import com.str.backend.auth.nias.ActingSubjectService;
+import com.str.backend.auth.nias.EffectiveOibResolver;
+import com.str.backend.auth.nias.NiasOibResolver;
+import com.str.backend.captcha.AltchaService;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
-import com.str.backend.auth.SecurityConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
@@ -33,10 +36,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, EffectiveOibResolver.class, NiasOibResolver.class})
 @WebMvcTest(value = RegistrationController.class,
             excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class)
 class RegistrationControllerSecurityTest {
+
+    /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean ActingSubjectService actingSubjectService;
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper om;

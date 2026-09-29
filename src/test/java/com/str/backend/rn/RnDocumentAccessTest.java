@@ -2,6 +2,9 @@ package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.SecurityConfig;
+import com.str.backend.auth.nias.ActingSubjectService;
+import com.str.backend.auth.nias.EffectiveOibResolver;
+import com.str.backend.auth.nias.NiasOibResolver;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.lessor.LessorEntity;
@@ -37,10 +40,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * tko zna registracijski broj mogao povući ime, adresu i OIB iznajmljivača.
  */
 @ActiveProfiles("test")
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, EffectiveOibResolver.class, NiasOibResolver.class})
 @WebMvcTest(value = RnController.class,
             excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class)
 class RnDocumentAccessTest {
+
+    /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean ActingSubjectService actingSubjectService;
 
     private static final String RN = "HR180000123456789001";
 

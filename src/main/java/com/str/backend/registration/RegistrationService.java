@@ -9,6 +9,7 @@ import com.str.backend.address.MunicipalityEntity;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementEntity;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.auth.nias.ActingSubject;
 import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.DuplicateLocationException;
@@ -106,6 +107,20 @@ public class RegistrationService {
      */
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse generateRegistrationNumber(RegistrationRequest req, NiasIdentity niasIdentity) {
+        return generateRegistrationNumber(req, niasIdentity, null);
+    }
+
+    /**
+     * @param legalEntity pravna osoba u čije ime NIAS osoba djeluje, upravo ponovo potvrđena kroz
+     *                    e-Ovlaštenja; {@code null} kad osoba djeluje u svoje ime. Kad je zadana,
+     *                    {@code req.oib()} je OIB tvrtke (postavlja ga kontroler).
+     */
+    @Transactional(noRollbackFor = ValidationRejectedException.class)
+    public RegistrationResponse generateRegistrationNumber(RegistrationRequest req, NiasIdentity niasIdentity,
+                                                           ActingSubject legalEntity) {
+        if (legalEntity != null && !legalEntity.legalOib().equals(req.oib())) {
+            throw new IllegalArgumentException("OIB zahtjeva nije OIB pravne osobe u čije ime se djeluje");
+        }
         CountyEntity county = countyRepository.findById(req.countyId())
                 .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
 
@@ -115,10 +130,17 @@ public class RegistrationService {
 
         // Identitet i adresa iz NIAS-a / registra, na serveru — ne iz zahtjeva. Nedostupan
         // registar je 503 i dolazi prije GO pipelinea i pohrane, pa ne ostaje poluupisan zahtjev.
-        boolean sameOib = niasIdentity != null && req.oib().equals(niasIdentity.oib());
-        LessorEntity lessor = subjectProfileService.resolveLessor(req.oib(),
-                sameOib ? niasIdentity.firstName() : null,
-                sameOib ? niasIdentity.lastName() : null);
+        LessorEntity lessor;
+        if (legalEntity != null) {
+            lessor = subjectProfileService.toLegalLessor(legalEntity.legalOib(), legalEntity.legalName(),
+                    legalEntity.representativeOib(), legalEntity.representativeFirstName(),
+                    legalEntity.representativeLastName());
+        } else {
+            boolean sameOib = niasIdentity != null && req.oib().equals(niasIdentity.oib());
+            lessor = subjectProfileService.resolveLessor(req.oib(),
+                    sameOib ? niasIdentity.firstName() : null,
+                    sameOib ? niasIdentity.lastName() : null);
+        }
         // Kontakt mora biti upisan PRIJE prve pohrane — lessor.email je updatable=false.
         // resolveLessor vraća još nepohranjen entitet (sprema ga tek commitRegistration).
         lessor.applyContact(trimmed(req.kontaktEmail()), trimmed(req.kontaktOsoba()),

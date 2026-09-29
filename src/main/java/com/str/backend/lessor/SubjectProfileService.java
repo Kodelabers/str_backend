@@ -15,7 +15,8 @@ import org.springframework.stereotype.Service;
  *
  * <p>Prima vrijednosti, a ne NIAS tip, da {@code lessor} ne ovisi o {@code auth.nias}.
  *
- * <p>Pravna osoba (eOvlaštenja) još nije podržana: NIAS ne javlja da netko zastupa pravnu osobu.
+ * <p>Pravnu osobu (e-Zastupanja) gradi {@link #toLegalLessor}: podaci o tvrtki dolaze iz
+ * e-Ovlaštenja, a ne iz ovog registra.
  */
 @Service
 public class SubjectProfileService {
@@ -82,6 +83,25 @@ public class SubjectProfileService {
         if (known(profile.legalEntityName())) {
             lessor.setLegalEntityName(profile.legalEntityName());
         }
+        return lessor;
+    }
+
+    /**
+     * Iznajmljivač je pravna osoba koju NIAS osoba zastupa (e-Zastupanja): {@code lessorOib} je
+     * OIB tvrtke, a ime i prezime su zastupnikovi ({@code lessor.first_name/last_name} su NOT NULL).
+     *
+     * <p>Adresa sjedišta tvrtke nije poznata — e-Ovlaštenja je ne daju — pa ostaje prazna. Time je
+     * i GO-1 (status domaćina) {@code false}; je li to ispravno za pravnu osobu, poslovno je pitanje.
+     */
+    public LessorEntity toLegalLessor(String legalOib, String legalName, String representativeOib,
+                                      String representativeFirstName, String representativeLastName) {
+        LessorEntity lessor = LessorEntity.create(
+                orMissing(representativeFirstName),
+                orMissing(representativeLastName),
+                "", "", "", "", null);
+        lessor.setLessorOib(legalOib);
+        lessor.applyNiasLegalEntity(legalName, representativeOib,
+                (orEmpty(representativeFirstName) + " " + orEmpty(representativeLastName)).trim());
         return lessor;
     }
 

@@ -18,10 +18,14 @@ import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.LessorWithdrawRequest;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.rn.RnRepository;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,6 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/nias")
@@ -49,6 +54,8 @@ public class NiasController {
     private final NiasFacilityService facilityService;
     private final CategorizationDecisionService categorizationDecisionService;
     private final SubjectProfileService subjectProfileService;
+    private final EffectiveOibResolver effectiveOibResolver;
+    private final ActingSubjectService actingSubjectService;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -59,7 +66,9 @@ public class NiasController {
                           SessionIdentityResolver identityResolver,
                           NiasFacilityService facilityService,
                           CategorizationDecisionService categorizationDecisionService,
-                          SubjectProfileService subjectProfileService) {
+                          SubjectProfileService subjectProfileService,
+                          EffectiveOibResolver effectiveOibResolver,
+                          ActingSubjectService actingSubjectService) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -70,6 +79,41 @@ public class NiasController {
         this.facilityService = facilityService;
         this.categorizationDecisionService = categorizationDecisionService;
         this.subjectProfileService = subjectProfileService;
+        this.effectiveOibResolver = effectiveOibResolver;
+        this.actingSubjectService = actingSubjectService;
+    }
+
+    /**
+     * Pravna osoba u čije ime korisnik djeluje (e-Zastupanja). OIB tvrtke iz tijela je samo
+     * prijedlog: subjekt se prihvaća i sprema u sesiju tek kad ga e-Ovlaštenja potvrde.
+     * 400 neispravan OIB ili nepostojeća tvrtka, 403 korisnik nije zastupnik, 401 nevažeća
+     * NIAS sjednica, 503 e-Ovlaštenja nedostupna.
+     */
+    @PostMapping("/acting-subject")
+    public ActingSubjectResponse selectActingSubject(@Valid @RequestBody ActingSubjectRequest body,
+                                                     Authentication authentication,
+                                                     HttpSession session) {
+        return ActingSubjectResponse.of(actingSubjectService.select(session, personIdentity(authentication), body.oib()));
+    }
+
+    /** Trenutno odabrana pravna osoba; 204 kad korisnik djeluje u svoje ime. */
+    @GetMapping("/acting-subject")
+    public ResponseEntity<ActingSubjectResponse> actingSubject(Authentication authentication) {
+        personOib(authentication);
+        return effectiveOibResolver.actingSubject(authentication)
+                .map(s -> ResponseEntity.ok(ActingSubjectResponse.of(s)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /** Povratak na djelovanje u svoje ime. */
+    @DeleteMapping("/acting-subject")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearActingSubject(Authentication authentication, HttpServletRequest request) {
+        personOib(authentication);
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            actingSubjectService.clear(session);
+        }
     }
 
     /**
@@ -80,13 +124,20 @@ public class NiasController {
      *
      * <p>OIB je uvijek iz sesije, nikad iz parametra. 400 {@code error.subject.notFound} kad ga
      * registar ne poznaje, 503 kad registar nije dostupan.
+     *
+     * <p>U ime tvrtke iznajmljivač je tvrtka, pa se prebivalište zastupnika ne traži u registru:
+     * zastupnik kojeg registar ne poznaje inače bi dobio 400 i ne bi mogao predati zahtjev za
+     * tvrtku, iako izdavanje RB-a te podatke ne koristi ({@code SubjectProfileService#toLegalLessor}).
      */
     @GetMapping("/subject")
     public SubjectProfileResponse subject(Authentication authentication) {
-        NiasIdentity identity = NiasOibExtractor.extractIdentity(authentication)
-                .orElseGet(() -> new NiasIdentity(resolveOib(authentication), null, null));
-        return SubjectProfileResponse.of(subjectProfileService.load(
-                identity.oib(), identity.firstName(), identity.lastName()));
+        NiasIdentity identity = personIdentity(authentication);
+        Optional<ActingSubject> acting = effectiveOibResolver.actingSubject(authentication);
+        if (acting.isPresent()) {
+            return SubjectProfileResponse.ofRepresentative(acting.get());
+        }
+        return SubjectProfileResponse.of(
+                subjectProfileService.load(identity.oib(), identity.firstName(), identity.lastName()));
     }
 
     /**
@@ -181,7 +232,7 @@ public class NiasController {
     public CategorizationDecisionResponse uploadCategorizationDecision(
             @Valid @ModelAttribute CategorizationDecisionRequest req,
             Authentication authentication) {
-        return categorizationDecisionService.upload(resolveOib(authentication), req);
+        return categorizationDecisionService.upload(ownerOibForChange(authentication), req);
     }
 
     /** STR-1.3-001: NIAS user revokes (opoziv) their own RN. Vlasništvo se provjerava
@@ -192,13 +243,39 @@ public class NiasController {
             @PathVariable String rn,
             @Valid @RequestBody(required = false) LessorWithdrawRequest body,
             Authentication authentication) {
-        String oib = resolveOib(authentication);
+        String oib = ownerOibForChange(authentication);
         String reason = body != null ? body.reason() : null;
         return rnActionService.withdrawOwnByOib(rn, oib, reason);
     }
 
+    /**
+     * OIB za koji se radi: pravna osoba u čije ime korisnik djeluje, inače on sam
+     * ({@link EffectiveOibResolver}). Za sve što je vezano uz vlasnika.
+     */
     private String resolveOib(Authentication authentication) {
+        return effectiveOibResolver.resolve(authentication)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+    }
+
+    /**
+     * Kao {@link #resolveOib}, za radnje koje mijenjaju stanje: u ime tvrtke se zastupanje prije
+     * toga ponovo potvrđuje. Povlačenje RB-a je nepovratno, a odabir u sesiji može biti star.
+     */
+    private String ownerOibForChange(Authentication authentication) {
+        return effectiveOibResolver.reverifiedActingSubject(authentication)
+                .map(ActingSubject::legalOib)
+                .orElseGet(() -> resolveOib(authentication));
+    }
+
+    /** OIB same prijavljene osobe — za podatke o njoj i za odabir subjekta. */
+    private String personOib(Authentication authentication) {
         return oibResolver.resolve(authentication)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+    }
+
+    /** Identitet iz assertiona; na local/mock samo mock OIB, bez imena i sjednice. */
+    private NiasIdentity personIdentity(Authentication authentication) {
+        return NiasOibExtractor.extractIdentity(authentication)
+                .orElseGet(() -> new NiasIdentity(personOib(authentication), null, null));
     }
 }

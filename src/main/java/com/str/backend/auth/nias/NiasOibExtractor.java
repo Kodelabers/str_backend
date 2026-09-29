@@ -14,6 +14,9 @@ public final class NiasOibExtractor {
     private static final String ATTR_OIB = "oib";
     private static final String ATTR_FIRST_NAME = "ime";
     private static final String ATTR_LAST_NAME = "prezime";
+    // Šalje se samo usluzi registriranoj i za autorizaciju (e-Ovlaštenja) — v. NiasIdentity.
+    private static final String ATTR_SESIJA_ID = "sesija_id";
+    private static final String ATTR_TID = "tid";
 
     private NiasOibExtractor() {}
 
@@ -38,7 +41,18 @@ public final class NiasOibExtractor {
         return Optional.of(new NiasIdentity(
                 oib,
                 firstAttr(principal, ATTR_FIRST_NAME),
-                firstAttr(principal, ATTR_LAST_NAME)));
+                firstAttr(principal, ATTR_LAST_NAME),
+                trimmed(firstAttr(principal, ATTR_SESIJA_ID)),
+                trimmed(firstAttr(principal, ATTR_TID))));
+    }
+
+    /** FINA primjeri {@code sesija_id} šalju s okolnim razmacima i novim redovima. */
+    private static String trimmed(String value) {
+        if (value == null) {
+            return null;
+        }
+        String t = value.trim();
+        return t.isEmpty() ? null : t;
     }
 
     private static Optional<Saml2AuthenticatedPrincipal> principalOf(Authentication auth) {

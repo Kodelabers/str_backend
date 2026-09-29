@@ -1,6 +1,9 @@
 package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.str.backend.auth.nias.ActingSubjectService;
+import com.str.backend.auth.nias.EffectiveOibResolver;
+import com.str.backend.auth.nias.NiasOibResolver;
 import com.str.backend.captcha.AltchaService;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -16,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -35,9 +39,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
+@Import({EffectiveOibResolver.class, NiasOibResolver.class})
 @WebMvcTest(RegistrationController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class RegistrationControllerTest {
+
+    /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean ActingSubjectService actingSubjectService;
 
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper om;

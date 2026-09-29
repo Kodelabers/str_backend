@@ -26,13 +26,29 @@ public record SubjectProfileResponse(
         String postanskiBroj,
         String opcina,
         String zupanija,
-        SubjectDataSource adresaIzvor
+        SubjectDataSource adresaIzvor,
+        /**
+         * Pravna osoba u čije ime korisnik djeluje (e-Zastupanja); {@code null} kad djeluje u svoje
+         * ime. Kad je postavljena, podaci iznad su podaci o <b>zastupniku</b>: OIB i ime, bez
+         * adrese — iznajmljivač je tvrtka, pa se prebivalište zastupnika ne dohvaća.
+         */
+        ActingSubjectResponse pravnaOsoba
 ) {
 
+    /** Korisnik djeluje u svoje ime: podaci o njemu iz NIAS-a i registra. */
     static SubjectProfileResponse of(SubjectProfile p) {
         return new SubjectProfileResponse(
                 p.oib(), p.firstName(), p.lastName(), p.nameSource(), p.legalEntityName(),
                 p.street(), p.streetNumber(), p.place(), p.postalCode(), p.municipality(),
-                p.county(), p.addressSource());
+                p.county(), p.addressSource(), null);
+    }
+
+    /** Korisnik djeluje u ime tvrtke: zastupnik bez adrese i tvrtka iz e-Ovlaštenja. */
+    static SubjectProfileResponse ofRepresentative(ActingSubject s) {
+        return new SubjectProfileResponse(
+                s.representativeOib(), s.representativeFirstName(), s.representativeLastName(),
+                SubjectDataSource.NIAS, null,
+                null, null, null, null, null, null, null,
+                ActingSubjectResponse.of(s));
     }
 }

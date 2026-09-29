@@ -54,6 +54,8 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.zip.Inflater;
 
 @Configuration(proxyBeanMethods = false)
@@ -200,6 +202,12 @@ public class NiasSamlConfig {
                 String samlResponse = saml2Auth.getSaml2Response();
                 List<String> sessionIndexes = NiasSecurityUtil.extractSessionIndexes(samlResponse);
                 Saml2AuthenticatedPrincipal currentPrincipal = (Saml2AuthenticatedPrincipal) saml2Auth.getPrincipal();
+                // Samo NAZIVI atributa, bez vrijednosti (osobni podaci), i OBLIK sesija_id: stiže
+                // li uopće (bez njega e-Ovlaštenja ne rade) i odgovara li formatu koji šaljemo.
+                log.info("nias_login attributes={} sesija_id={}", currentPrincipal.getAttributes().keySet(),
+                        sesijaIdShape(currentPrincipal.getFirstAttribute("sesija_id")));
+                // Nova prijava poništava ranije odabran subjekt u čije se ime djelovalo.
+                request.getSession().removeAttribute(ActingSubjectService.SESSION_KEY);
                 DefaultSaml2AuthenticatedPrincipal newPrincipal = new DefaultSaml2AuthenticatedPrincipal(
                         currentPrincipal.getName(),
                         currentPrincipal.getAttributes(),
@@ -216,6 +224,31 @@ public class NiasSamlConfig {
             }
             response.sendRedirect(props.successRedirectUrl());
         };
+    }
+
+    /**
+     * Duljina i vrste znakova {@code sesija_id}, nikad vrijednost: identifikator sjednice uz naš
+     * certifikat otvara upit prema e-Ovlaštenjima. Posebni znakovi se navode pojedinačno — po
+     * tome se vidi treba li proširiti uzorak u {@code EOvlastenjaRequest} ({@code [A-Za-z0-9-]}).
+     */
+    static String sesijaIdShape(Object value) {
+        String v = value == null ? "" : value.toString().trim();
+        if (v.isEmpty()) {
+            return "nema";
+        }
+        SortedSet<String> classes = new TreeSet<>();
+        for (char c : v.toCharArray()) {
+            if (c >= 'A' && c <= 'Z') {
+                classes.add("A-Z");
+            } else if (c >= 'a' && c <= 'z') {
+                classes.add("a-z");
+            } else if (c >= '0' && c <= '9') {
+                classes.add("0-9");
+            } else {
+                classes.add(Character.isWhitespace(c) ? "razmak" : String.valueOf(c));
+            }
+        }
+        return "len=" + v.length() + " znakovi=" + classes;
     }
 
     @Bean

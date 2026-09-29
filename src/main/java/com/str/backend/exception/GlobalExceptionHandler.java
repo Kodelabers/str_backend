@@ -1,6 +1,7 @@
 package com.str.backend.exception;
 
 import com.str.backend.captcha.CaptchaException;
+import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.AllArgsConstructor;
@@ -59,6 +60,30 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
         return build(HttpStatus.NOT_FOUND, resolve(ex.getMessage()), null);
+    }
+
+    /**
+     * Provjera zastupanja kroz e-Ovlaštenja nije prošla. {@code details.code} razlikuje slučajeve
+     * za frontend; {@code details.eovlastenjaCode} je šifra iz FINA šifarnika (za podršku).
+     */
+    @ExceptionHandler(EOvlastenjaException.class)
+    public ResponseEntity<ErrorResponse> handleEOvlastenja(EOvlastenjaException ex) {
+        HttpStatus status = switch (ex.reason()) {
+            case SESSION -> HttpStatus.UNAUTHORIZED;
+            case NOT_REPRESENTATIVE -> HttpStatus.FORBIDDEN;
+            case SUBJECT_NOT_FOUND -> HttpStatus.BAD_REQUEST;
+        };
+        String key = switch (ex.reason()) {
+            case SESSION -> "error.eovlastenja.session";
+            case NOT_REPRESENTATIVE -> "error.eovlastenja.notRepresentative";
+            case SUBJECT_NOT_FOUND -> "error.eovlastenja.subjectNotFound";
+        };
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("code", "EOVLASTENJA_" + ex.reason().name());
+        if (ex.code() != null) {
+            details.put("eovlastenjaCode", ex.code());
+        }
+        return build(status, resolve(key), details);
     }
 
     @ExceptionHandler(BusinessException.class)
