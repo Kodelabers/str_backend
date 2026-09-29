@@ -32,15 +32,21 @@ public class ActingSubjectService {
     private static final Logger log = LoggerFactory.getLogger(ActingSubjectService.class);
 
     private final EOvlastenjaClient eOvlastenjaClient;
+    private final ActingSubjectRateLimiter rateLimiter;
     private final Clock clock;
 
-    public ActingSubjectService(EOvlastenjaClient eOvlastenjaClient, Clock clock) {
+    public ActingSubjectService(EOvlastenjaClient eOvlastenjaClient, ActingSubjectRateLimiter rateLimiter,
+                                Clock clock) {
         this.eOvlastenjaClient = eOvlastenjaClient;
+        this.rateLimiter = rateLimiter;
         this.clock = clock;
     }
 
     /**
+     * Neispravan i vlastiti OIB odbijaju se lokalno, prije ograničenja broja odabira — ne troše kvotu.
+     *
      * @throws BusinessException {@code error.actingSubject.invalidOib} za neispravan OIB tvrtke
+     * @throws ActingSubjectRateLimitException previše odabira u kratkom vremenu (429)
      * @throws EOvlastenjaException kad e-Ovlaštenja ne potvrde zastupanje ili je sjednica nevažeća
      */
     public ActingSubject select(HttpSession session, NiasIdentity person, String legalOib) {
@@ -51,6 +57,7 @@ public class ActingSubjectService {
         if (oib.equals(person.oib())) {
             throw new BusinessException("error.actingSubject.self");
         }
+        rateLimiter.acquire(person.oib(), session.getId());
         ActingSubject subject = verify(person, oib);
         session.setAttribute(SESSION_KEY, subject);
         log.info("acting_subject selected functions={}", subject.functions().size());

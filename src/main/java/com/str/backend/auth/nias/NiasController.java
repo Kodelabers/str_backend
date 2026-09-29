@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -56,6 +57,7 @@ public class NiasController {
     private final SubjectProfileService subjectProfileService;
     private final EffectiveOibResolver effectiveOibResolver;
     private final ActingSubjectService actingSubjectService;
+    private final ActingSubjectGuard actingSubjectGuard;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -68,7 +70,8 @@ public class NiasController {
                           CategorizationDecisionService categorizationDecisionService,
                           SubjectProfileService subjectProfileService,
                           EffectiveOibResolver effectiveOibResolver,
-                          ActingSubjectService actingSubjectService) {
+                          ActingSubjectService actingSubjectService,
+                          ActingSubjectGuard actingSubjectGuard) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -81,6 +84,7 @@ public class NiasController {
         this.subjectProfileService = subjectProfileService;
         this.effectiveOibResolver = effectiveOibResolver;
         this.actingSubjectService = actingSubjectService;
+        this.actingSubjectGuard = actingSubjectGuard;
     }
 
     /**
@@ -231,8 +235,9 @@ public class NiasController {
     @ResponseStatus(HttpStatus.CREATED)
     public CategorizationDecisionResponse uploadCategorizationDecision(
             @Valid @ModelAttribute CategorizationDecisionRequest req,
-            Authentication authentication) {
-        return categorizationDecisionService.upload(ownerOibForChange(authentication), req);
+            Authentication authentication,
+            @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
+        return categorizationDecisionService.upload(ownerOibForChange(authentication, actingSubjectHeader), req);
     }
 
     /** STR-1.3-001: NIAS user revokes (opoziv) their own RN. Vlasništvo se provjerava
@@ -242,8 +247,9 @@ public class NiasController {
     public LessorRnActionResponse withdrawOwnRegistration(
             @PathVariable String rn,
             @Valid @RequestBody(required = false) LessorWithdrawRequest body,
-            Authentication authentication) {
-        String oib = ownerOibForChange(authentication);
+            Authentication authentication,
+            @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
+        String oib = ownerOibForChange(authentication, actingSubjectHeader);
         String reason = body != null ? body.reason() : null;
         return rnActionService.withdrawOwnByOib(rn, oib, reason);
     }
@@ -258,10 +264,12 @@ public class NiasController {
     }
 
     /**
-     * Kao {@link #resolveOib}, za radnje koje mijenjaju stanje: u ime tvrtke se zastupanje prije
-     * toga ponovo potvrđuje. Povlačenje RB-a je nepovratno, a odabir u sesiji može biti star.
+     * Kao {@link #resolveOib}, za radnje koje mijenjaju stanje. Najprije {@link ActingSubjectGuard}:
+     * je li radnja pripremljena za subjekta koji je i sada u sesiji (409), bez poziva FINA-i. Zatim se
+     * u ime tvrtke zastupanje ponovo potvrđuje — povlačenje RB-a je nepovratno, a odabir može biti star.
      */
-    private String ownerOibForChange(Authentication authentication) {
+    private String ownerOibForChange(Authentication authentication, String actingSubjectHeader) {
+        actingSubjectGuard.requireUnchanged(authentication, actingSubjectHeader);
         return effectiveOibResolver.reverifiedActingSubject(authentication)
                 .map(ActingSubject::legalOib)
                 .orElseGet(() -> resolveOib(authentication));

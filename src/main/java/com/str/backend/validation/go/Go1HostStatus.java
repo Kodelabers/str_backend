@@ -23,6 +23,16 @@ public class Go1HostStatus implements ValidationCheck {
         LessorEntity lessor = context.lessor();
         AccommodationEntity accommodation = context.accommodation();
 
+        // Pravna osoba bez poznate adrese sjedišta (e-Zastupanja — e-Ovlaštenja je ne daju): županije
+        // nema s čim usporediti. Ishod je isti kao usporedba ispod (prazna županija se nikad ne
+        // poklapa), samo označen kao „ne utvrđuje se", da ne izgleda kao pala provjera. Je li pravna
+        // osoba ikad domaćin, čeka odluku naručitelja.
+        if (lessor.isLegalEntityOwner() && (lessor.getCounty() == null || lessor.getCounty().isBlank())) {
+            accommodation.markHost(false);
+            return new ValidationResult.Passed(STEP,
+                    "host=false (pravna osoba: status domaćina se ne utvrđuje — adresa sjedišta nije poznata)");
+        }
+
         boolean countyMatches = equalsIgnoreCaseNullSafe(lessor.getCounty(), accommodation.getCounty());
         boolean isHost = countyMatches && !accommodation.isBuilding();
 

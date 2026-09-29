@@ -111,6 +111,29 @@ Ostalo (BX0–BX8, te FE stavke F1–F8) nepromijenjeno — vidi tablice ispod.
 
 ---
 
+## 2a. e-Ovlaštenja (stavka 2, djelovanje u ime pravne osobe) — otvoreno (2026-09-29)
+
+> Tok e-Zastupanja radi na CDU-u od početka do kraja (NIAS → `sesija_id` → `GetAuthorizationUnionPermission`
+> → potpisan odgovor; pozitivan test s testnim korisnikom). Zaštita od promjene subjekta (409) i
+> ograničenje odabira (429) su gotovi. Opis: `docs/EOVLASTENJA.md`. Frontend nalaze vodi frontend
+> repo, pa ovdje nisu.
+
+| # | Stavka | Status | Ovisi o / napomena | Referenca |
+|---|--------|--------|--------------------|-----------|
+| E1 | **Nepotpisane JSON greške FINA-e.** Šifra 100 stigla je kao HTTP 400 s `{"Code":"100","Message":…}`, a ne u potpisanom XML-u. Klijent je sad vidi samo kao `eovlastenja_call failed status=400` → 503, a šifra ostaje u stack traceu. Čitati tijelo 4xx, logirati šifru i mapirati je po istoj tablici, ali **samo na odbijanja** (401/403/400/503), nikad na odobrenje (nepotpisano). Uskladiti tablicu u `DEPLOY-CDU.md` §8b. | 🟢 | — | `EOvlastenjaHttpClient`, `EOvlastenjaResponseParser` |
+| E2 | **`DEPLOY-CDU.md` usklađen sa stvarnim postupkom.** (a) Apsolutna putanja `/home/vviskov/str-rn/str_backend` — za korisnika `mhangi` `~/str-rn` je krivi direktorij (izmjene `.env.cdu` su 29.09. tiho otišle nigdje). (b) `/home/vviskov/str-secrets` nije upisiv → kopiranje kao root kroz `docker run --rm -v …:/s nginx:alpine cp …`. (c) Prelazak CDU-a na certifikat „e-Turizam" (`NIAS_ENTITY_ID`, `NIAS_KEY_ALIAS`, `NIAS_KEYSTORE_PASSWORD` u `.env.cdu`, sigurnosna kopija `keystore-interniturizam.p12`) i povratak. (d) `read -rs` pokretati zasebno, ne u zalijepljenom bloku. | 🟢 | — | `DEPLOY-CDU.md` §5b, §8b |
+| E3 | **Čišćenje:** `RegistrationRequest.withOib` se više ne koristi u glavnom kodu (OIB se provjerava, ne zamjenjuje), samo u testovima. | 🟢 | — | `registration/dto/RegistrationRequest` |
+| E4 | **Lokalni nacrti u svoje ime** vode se po kolačiću preglednika (`mock_nias_oib`), a ne po mock OIB-u ni po odabranoj tvrtki. Samo `local`/`mock`; na NIAS okolinama nacrti idu po efektivnom OIB-u. | 🟡 | samo lokalno | `DraftOwnerResolver` |
+| E5 | **GO-1 za pravnu osobu.** Sada `host=false`, označeno „status domaćina se ne utvrđuje — adresa sjedišta nije poznata". Prijedlog: ostaje `false`, ili adresa sjedišta iz OIB sustava / sudskog registra pa usporedba županije kao kod fizičke osobe. | 🔴 | **odluka naručitelja** | `Go1HostStatus` |
+| E6 | **Koje funkcije e-Zastupanja smiju tražiti RB.** Sada svaka; na CDU-u viđena i „Izvanredni povjerenik". | 🔴 | **odluka naručitelja** | `ActingSubjectService` |
+| E7 | **Adresa sjedišta i kontakt tvrtke.** e-Ovlaštenja ih ne daju: u PDF-u adresa ostaje prazna („ , "), eGOP bez adrese, kontakt upisuje korisnik. | 🔴 | izvor podataka (OIB sustav / sudski registar) | `SubjectProfileService#toLegalLessor`, `SubmissionPdfGenerator` |
+| E8 | **Obrt i OPG** (`IZVOR_REG` 2/3; `oib2` je OIB vlasnika — fizičke osobe). Prva faza pokriva samo tvrtke (`IZVOR_REG=1`). | 🔴 | **poslovno-pravno pitanje** | `EOvlastenjaRequest` |
+| E9 | **Vlastita registracija STR-a kod FINA-e** (NIAS + e-Ovlaštenja, po okolini). CDU trenutno koristi posuđeni JTI-jev certifikat „e-Turizam" (do 13.07.2028.): odjava vodi na JTI, prijava je dijeljena s JTI-jem. S certifikatom InterniTurizma e-Ovlaštenja ne rade (nema `sesija_id`, šifra 100), a njegov produkcijski certifikat istječe **08.11.2026.** Preprod/cdupreprod/prod su bez e-Ovlaštenja (503). | 🔴 | **FINA** + vlastiti aplikacijski certifikat (u postupku) | memorija / `docs/EOVLASTENJA.md` |
+| E10 | **Navigacijska traka e-Građani** (popis subjekata kao u JTI-ju, `eusluge-nav.gov.hr`). Njezin `change_entity_url` registriran je uz uslugu, pa s posuđenim certifikatom vodi na tuđu aplikaciju. | 🔴 | E9 | — |
+| E11 | **Automatski odabir tvrtke iz NIAS prijave** (poslovna vjerodajnica: `ips`, `izvor_reg`, `oib2`, `pos_naziv`). FINA te atribute našoj usluzi sad ne šalje (`nias_login attributes=[…]`). | 🔴 | FINA registracija usluge za poslovne subjekte (E9) | `NiasSamlConfig` success handler |
+
+---
+
 ## 3. Frontend problemi (ugovorne / UI nepodudarnosti)
 
 > Izvedeno iz dokumentiranih FE pretpostavki; potvrditi na frontend repou.
@@ -140,6 +163,7 @@ Ostalo (BX0–BX8, te FE stavke F1–F8) nepromijenjeno — vidi tablice ispod.
 | **DGU** | ne postoji | BX5 | GO-4 stvarna suglasnost suvlasnika |
 | **MPGI / GIS / RPJ / SR** | stubovi (`registries/stub/*`) | BX6, B10 | GO-1/2/3/5 nad stvarnim podacima |
 | **NIAS / eIDAS** | SAML2 postoji uvjetno; potpis flow izvan opsega | (registracija EU) | poznato ograničenje — ne ispravljati u ovoj fazi |
+| **FINA — registracija STR-a (NIAS + e-Ovlaštenja)** | posuđeni certifikati (InterniTurizam; na CDU-u „e-Turizam") | E9, E10, E11 | vlastiti aplikacijski certifikat u postupku; InterniTurizam prod istječe 08.11.2026. |
 
 ---
 
@@ -149,5 +173,6 @@ Ostalo (BX0–BX8, te FE stavke F1–F8) nepromijenjeno — vidi tablice ispod.
 2. **Priprema integracija (logika sad, dostava/podaci kasnije):** B10, BX2 (paralelno s prikupljanjem eGOP odgovora).
 3. **Blokirano na NIAS rolama (TODO — čeka specifikaciju):** BX0, F6, pouzdani aktor u B6.
 4. **Blokirano dok vanjski sustavi ne budu dostupni:** BX1, BX3, BX4, BX5, BX6, BX7, BX8.
+5. **e-Ovlaštenja:** E1–E3 odmah (E4 samo lokalno); E5–E8 čekaju odluku naručitelja; E9–E11 čekaju FINA-u i vlastiti certifikat.
 
 > Blok 1 ne ovisi ni o čemu vanjskom ni o rolama → smislen prvi PR-set. Blok 3 čeka NIAS specifikaciju rola; blok 4 čeka kredencijale/šifrarnike/klijente vanjskih registara.

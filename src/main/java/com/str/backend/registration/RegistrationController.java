@@ -2,6 +2,8 @@ package com.str.backend.registration;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.nias.ActingSubject;
+import com.str.backend.auth.nias.ActingSubjectChangedException;
+import com.str.backend.auth.nias.ActingSubjectGuard;
 import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.auth.nias.NiasOibExtractor;
@@ -38,19 +40,27 @@ public class RegistrationController {
     private final AltchaService altchaService;
     private final boolean niasEnabled;
     private final EffectiveOibResolver effectiveOibResolver;
+    private final ActingSubjectGuard actingSubjectGuard;
 
     public RegistrationController(RegistrationService service, AltchaService altchaService,
                                   @Value("${nias.saml.enabled:false}") boolean niasEnabled,
-                                  EffectiveOibResolver effectiveOibResolver) {
+                                  EffectiveOibResolver effectiveOibResolver,
+                                  ActingSubjectGuard actingSubjectGuard) {
         this.service = service;
         this.altchaService = altchaService;
         this.niasEnabled = niasEnabled;
         this.effectiveOibResolver = effectiveOibResolver;
+        this.actingSubjectGuard = actingSubjectGuard;
     }
 
     /**
      * Izdavanje RB-a za iznajmljivača s OIB-om. Kad je NIAS uključen, OIB, ime i prezime dolaze
-     * <b>isključivo</b> iz SAML assertiona.
+     * <b>isključivo</b> iz SAML assertiona, odnosno iz tvrtke odabrane u sesiji.
+     *
+     * <p>OIB iz tijela je vlasnik za kojeg je obrazac ispunjen i mora se slagati sa sesijom: u svoje
+     * ime OIB iz assertiona, u ime tvrtke OIB tvrtke. Inače 409 {@code ACTING_SUBJECT_CHANGED}
+     * ({@link ActingSubjectGuard}) — ranije se tiho zamjenjivao, pa bi obrazac ispunjen za sebe,
+     * predan nakon odabira tvrtke u drugom prozoru, izdao RB tvrtki.
      *
      * <p>{@code NiasSecurityConfig} traži samo {@code authenticated()}, a non-EU prijava
      * ({@code AuthController.login}) sprema kontekst u istu HTTP sesiju — pa i sesija s
@@ -69,24 +79,30 @@ public class RegistrationController {
     public ResponseEntity<RegistrationResponse> generateRegistrationNumber(
             @Valid @RequestBody RegistrationRequest req,
             Authentication authentication,
-            @RequestHeader(value = "X-Altcha", required = false) String altcha) {
+            @RequestHeader(value = "X-Altcha", required = false) String altcha,
+            @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
         Optional<NiasIdentity> identity = NiasOibExtractor.extractIdentity(authentication);
         if (niasEnabled && identity.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Zahtjev za registracijski broj s OIB-om traži NIAS prijavu.");
         }
         altchaService.verifyOrThrow(altcha);
-        Optional<ActingSubject> acting = effectiveOibResolver.reverifiedActingSubject(authentication);
+        actingSubjectGuard.requireUnchanged(authentication, actingSubjectHeader);
+        Optional<ActingSubject> acting = effectiveOibResolver.actingSubject(authentication);
         if (acting.isPresent()) {
-            ActingSubject verified = acting.get();
-            return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(
-                    RegistrationRequest.withOib(req, verified.legalOib()), identity.orElse(null), verified));
+            // Prije ponovne potvrde, da se za odbijen zahtjev ne troši poziv FINA-i.
+            ActingSubject selected = acting.get();
+            ActingSubjectGuard.requireOwner(req.oib(), selected.representativeOib(), selected.legalOib());
+            // Tvrtka je mogla nestati iz sesije između dva čitanja (drugi prozor): vlasnik je tada osoba.
+            ActingSubject verified = effectiveOibResolver.reverifiedActingSubject(authentication)
+                    .orElseThrow(() -> new ActingSubjectChangedException(null));
+            ActingSubjectGuard.requireOwner(req.oib(), verified.representativeOib(), verified.legalOib());
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(service.generateRegistrationNumber(req, identity.orElse(null), verified));
         }
-        RegistrationRequest finalReq = identity
-                .map(id -> RegistrationRequest.withOib(req, id.oib()))
-                .orElse(req);
+        identity.ifPresent(id -> ActingSubjectGuard.requireOwner(req.oib(), id.oib(), null));
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(service.generateRegistrationNumber(finalReq, identity.orElse(null)));
+                .body(service.generateRegistrationNumber(req, identity.orElse(null)));
     }
 
     @PostMapping("/api/generateRegistrationNumberExternal")
