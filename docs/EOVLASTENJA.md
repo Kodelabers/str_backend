@@ -35,7 +35,7 @@ izvodi. Čitanja (popisi, PDF, akti) koriste odabir iz sesije bez novog poziva.
 
 | Endpoint | Ishod |
 |---|---|
-| `POST /api/nias/acting-subject` `{"oib"}` | 200 `ActingSubjectResponse` · 400 neispravan OIB (`error.actingSubject.invalidOib`), vlastiti OIB (`error.actingSubject.self`) ili tvrtka ne postoji (`EOVLASTENJA_SUBJECT_NOT_FOUND`) · 403 niste zastupnik (`EOVLASTENJA_NOT_REPRESENTATIVE`) · 401 nevažeća NIAS sjednica (`EOVLASTENJA_SESSION`, samo FINA šifre 200–203) · 503 e-Ovlaštenja nedostupna, nisu uključena na okolini ili prijava ne nosi `sesija_id` (`details.registry = EOVLASTENJA`) |
+| `POST /api/nias/acting-subject` `{"oib"}` | 200 `ActingSubjectResponse` · 429 previše odabira (`EOVLASTENJA_RATE_LIMIT`, v. niže) · 400 neispravan OIB (`error.actingSubject.invalidOib`), vlastiti OIB (`error.actingSubject.self`) ili tvrtka ne postoji (`EOVLASTENJA_SUBJECT_NOT_FOUND`) · 403 niste zastupnik (`EOVLASTENJA_NOT_REPRESENTATIVE`) · 401 nevažeća NIAS sjednica (`EOVLASTENJA_SESSION`, samo FINA šifre 200–203) · 503 e-Ovlaštenja nedostupna, nisu uključena na okolini ili prijava ne nosi `sesija_id` (`details.registry = EOVLASTENJA`) |
 | `GET /api/nias/acting-subject` | 200 subjekt · 204 korisnik djeluje u svoje ime |
 | `DELETE /api/nias/acting-subject` | 204 — povratak na djelovanje u svoje ime |
 | `GET /api/nias/subject` | u svoje ime kao i dosad, uz `pravnaOsoba = null`. U ime tvrtke: `oib`/`ime`/`prezime` **zastupnika**, adresa `null` (prebivalište zastupnika se ne traži u registru — iznajmljivač je tvrtka) i `pravnaOsoba` s podacima o tvrtki |
@@ -51,6 +51,32 @@ Iste greške (401/403/400/503) može vratiti i ponovna provjera pri izdavanju RB
 stanje registracije usluge, ne sjednice: ponovna prijava ga ne donosi, pa je to 503 (inače bi
 frontend korisnika vrtio u krug na NIAS).
 
+## Zaštita od promjene subjekta (409 `ACTING_SUBJECT_CHANGED`)
+
+Odabrana tvrtka vrijedi za cijelu sesiju, pa i za druge prozore. Bez zaštite bi obrazac otvoren u svoje
+ime, predan nakon odabira tvrtke u drugom prozoru, izdao RB tvrtki (TOCTOU). Zato radnje nose za koga
+su pripremljene, a `ActingSubjectGuard` to uspoređuje sa sesijom **prije** ponovne potvrde kroz
+e-Ovlaštenja (za odbijen zahtjev nema poziva FINA-i):
+
+| Radnja | Očekivani vlasnik |
+|---|---|
+| `POST /api/generateRegistrationNumber` | `oib` iz tijela (OIB tvrtke u ime tvrtke, osobni u svoje ime) — više se **ne zamjenjuje tiho**; i zaglavlje, ako je poslano |
+| `POST /api/nias/registrations/{rn}/withdraw`, `POST /api/nias/categorization-decisions`, `POST/PUT/DELETE /api/drafts` | zaglavlje `X-Acting-Subject`: OIB tvrtke ili `SELF`; bez zaglavlja nema provjere (kompatibilnost) |
+
+Neslaganje → **409**, `details = { code: "ACTING_SUBJECT_CHANGED", current: "<OIB tvrtke iz sesije>" | null }`,
+ništa nije izvedeno. Zaglavlje koje nije OIB ni `SELF` → 400 (`error.actingSubject.invalidHeader`).
+Bez NIAS-a (local/mock) OIB iz tijela u svoje ime ostaje slobodan (lokalno se testiraju razni
+iznajmljivači); u ime tvrtke (mock par) provjera vrijedi i lokalno.
+
+## Ograničenje odabira (429 `EOVLASTENJA_RATE_LIMIT`)
+
+Svaki odabir ide FINA-i, a razlika „tvrtka ne postoji" / „niste zastupnik" bez ograničenja služi za
+ispitivanje OIB-ova. Klizni prozor po NIAS osobi i po sesiji: **10 u minuti, 50 na sat**
+(`app.eovlastenja.rate-limit.per-minute/-per-hour`). Neispravan i vlastiti OIB odbijaju se prije i ne
+troše kvotu; odbijen pokušaj se ne broji. Prekoračenje → **429**, zaglavlje `Retry-After` i
+`details = { code: "EOVLASTENJA_RATE_LIMIT", retryAfterSeconds }`. Pozitivan odgovor se ne kešira.
+Ponovna potvrda pri radnjama nije ograničena i uvijek je svježa.
+
 Dok je subjekt odabran, **OIB tvrtke** vrijedi za: `/api/nias/registrations`, `/facilities`,
 `/facilities/{id}`, upload rješenja, povlačenje RB-a, akte `/api/rn/{rn}/documents/**`, PDF zahtjeva
 i nacrte. Izvor je jedan: `EffectiveOibResolver`.
@@ -64,7 +90,7 @@ i nacrte. Izvor je jedan: `EffectiveOibResolver`.
 | `legal_entity_name` | naziv iz e-Ovlaštenja (obavezan — odgovor bez naziva se odbija) |
 | `representative_oib`, `legal_representative_name` | NIAS osoba (zastupnik) |
 | `first_name`, `last_name` | ime i prezime zastupnika (NOT NULL stupci) |
-| adresa | prazna — e-Ovlaštenja je ne daju (otvoreno pitanje; GO-1 zato daje `host=false`) |
+| adresa | prazna — e-Ovlaštenja je ne daju (otvoreno pitanje). GO-1 zato daje `host=false`, označeno „pravna osoba: status domaćina se ne utvrđuje" |
 
 PDF: „OIB" = OIB tvrtke, „Pravna osoba", „Osoba ovlaštena za zastupanje" = zastupnik s OIB-om.
 ZUP akti: stranka = naziv i OIB tvrtke, zastupnik u zasebnom retku. eGOP: subjekt je tvrtka

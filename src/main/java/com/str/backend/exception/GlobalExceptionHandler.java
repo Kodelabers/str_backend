@@ -1,6 +1,8 @@
 package com.str.backend.exception;
 
 import com.str.backend.captcha.CaptchaException;
+import com.str.backend.auth.nias.ActingSubjectChangedException;
+import com.str.backend.auth.nias.ActingSubjectRateLimitException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -12,6 +14,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -84,6 +87,31 @@ public class GlobalExceptionHandler {
             details.put("eovlastenjaCode", ex.code());
         }
         return build(status, resolve(key), details);
+    }
+
+    /**
+     * Radnja je pripremljena za drugog vlasnika od onoga u sesiji (npr. subjekt promijenjen u drugom
+     * prozoru) i nije izvedena. {@code details.current} je OIB tvrtke iz sesije ili {@code null} kad
+     * se djeluje u svoje ime — frontend po njemu osvježava prikaz.
+     */
+    @ExceptionHandler(ActingSubjectChangedException.class)
+    public ResponseEntity<ErrorResponse> handleActingSubjectChanged(ActingSubjectChangedException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("code", "ACTING_SUBJECT_CHANGED");
+        details.put("current", ex.current());
+        return build(HttpStatus.CONFLICT, resolve("error.actingSubject.changed"), details);
+    }
+
+    /** Previše odabira pravne osobe; {@code Retry-After} i {@code details.retryAfterSeconds} su isti broj. */
+    @ExceptionHandler(ActingSubjectRateLimitException.class)
+    public ResponseEntity<ErrorResponse> handleActingSubjectRateLimit(ActingSubjectRateLimitException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("code", "EOVLASTENJA_RATE_LIMIT");
+        details.put("retryAfterSeconds", ex.retryAfterSeconds());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.retryAfterSeconds()))
+                .body(new ErrorResponse(HttpStatus.TOO_MANY_REQUESTS.value(),
+                        resolve("error.eovlastenja.rateLimit", ex.retryAfterSeconds()), details, Instant.now()));
     }
 
     @ExceptionHandler(BusinessException.class)
@@ -205,8 +233,8 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.INTERNAL_SERVER_ERROR, resolve("error.internal"), null);
     }
 
-    private String resolve(String key) {
-        return messageSource.getMessage(key, null, key, LocaleContextHolder.getLocale());
+    private String resolve(String key, Object... args) {
+        return messageSource.getMessage(key, args, key, LocaleContextHolder.getLocale());
     }
 
     private static ResponseEntity<ErrorResponse> build(HttpStatus status, String message, Object details) {

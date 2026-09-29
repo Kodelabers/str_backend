@@ -2,9 +2,12 @@ package com.str.backend.registration;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.nias.ActingSubject;
+import com.str.backend.auth.nias.ActingSubjectChangedException;
+import com.str.backend.auth.nias.ActingSubjectGuard;
 import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.auth.nias.NiasOibExtractor;
+import com.str.backend.auth.nias.NiasOibResolver;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import com.str.backend.captcha.AltchaService;
 import com.str.backend.domain.OfferType;
@@ -33,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -53,10 +57,11 @@ class RegistrationControllerNiasAccessTest {
 
     private final RegistrationService service = mock(RegistrationService.class);
     private final EffectiveOibResolver effectiveOibResolver = mock(EffectiveOibResolver.class);
+    private final ActingSubjectGuard guard = new ActingSubjectGuard(new NiasOibResolver(""), effectiveOibResolver);
     private final RegistrationController nias = new RegistrationController(
-            service, mock(AltchaService.class), true, effectiveOibResolver);
+            service, mock(AltchaService.class), true, effectiveOibResolver, guard);
     private final RegistrationController local = new RegistrationController(
-            service, mock(AltchaService.class), false, effectiveOibResolver);
+            service, mock(AltchaService.class), false, effectiveOibResolver, guard);
 
     @BeforeEach
     void noActingSubjectByDefault() {
@@ -70,7 +75,7 @@ class RegistrationControllerNiasAccessTest {
     /** Samoregistrirani non-EU korisnik ne smije zatražiti RB na tuđi OIB. */
     @Test
     void submit_rejectsLessorPrincipalSession_whenNiasEnabled() {
-        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(OTHER_OIB), lessorAuth(), null))
+        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(OTHER_OIB), lessorAuth(), null, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(e -> ((ResponseStatusException) e).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
@@ -79,19 +84,30 @@ class RegistrationControllerNiasAccessTest {
 
     @Test
     void submit_rejectsMissingIdentity_whenNiasEnabled() {
-        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(OTHER_OIB), null, null))
+        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(OTHER_OIB), null, null, null))
                 .isInstanceOf(ResponseStatusException.class);
         verifyNoInteractions(service);
     }
 
-    /** OIB iz tijela se zanemaruje — mjerodavan je assertion, s imenom i prezimenom. */
+    /** U svoje ime vlasnik je osoba iz assertiona, s imenom i prezimenom iz njega. */
     @Test
-    void submit_usesAssertionIdentity_notBodyOib() {
-        nias.generateRegistrationNumber(request(OTHER_OIB), niasAuth(OIB), null);
+    void submit_ownName_usesAssertionIdentity() {
+        nias.generateRegistrationNumber(request(OIB), niasAuth(OIB), null, null);
 
         ArgumentCaptor<RegistrationRequest> req = ArgumentCaptor.forClass(RegistrationRequest.class);
         verify(service).generateRegistrationNumber(req.capture(), eq(new NiasIdentity(OIB, "Pero", "Perić")));
         assertThat(req.getValue().oib()).isEqualTo(OIB);
+    }
+
+    /**
+     * Tuđi OIB u tijelu se više ne zamjenjuje tiho OIB-om iz assertiona: obrazac je ispunjen za
+     * drugog vlasnika (npr. za tvrtku koja je u drugom prozoru poništena), pa se RB ne izdaje.
+     */
+    @Test
+    void submit_ownName_bodyForAnotherOwner_is409() {
+        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(COMPANY_OIB), niasAuth(OIB), null, null))
+                .isInstanceOfSatisfying(ActingSubjectChangedException.class, e -> assertThat(e.current()).isNull());
+        verifyNoInteractions(service);
     }
 
     /**
@@ -101,22 +117,60 @@ class RegistrationControllerNiasAccessTest {
     @Test
     void submit_actingForCompany_reverifiesAndIssuesToCompany() {
         ActingSubject reverified = actingSubject();
+        when(effectiveOibResolver.actingSubject(any())).thenReturn(Optional.of(actingSubject()));
         when(effectiveOibResolver.reverifiedActingSubject(any())).thenReturn(Optional.of(reverified));
 
-        nias.generateRegistrationNumber(request(OTHER_OIB), niasAuth(OIB), null);
+        nias.generateRegistrationNumber(request(COMPANY_OIB), niasAuth(OIB), null, COMPANY_OIB);
 
         ArgumentCaptor<RegistrationRequest> req = ArgumentCaptor.forClass(RegistrationRequest.class);
         verify(service).generateRegistrationNumber(req.capture(), eq(new NiasIdentity(OIB, "Pero", "Perić")), eq(reverified));
         assertThat(req.getValue().oib()).isEqualTo(COMPANY_OIB);
     }
 
+    /**
+     * TOCTOU: obrazac ispunjen u svoje ime, a u drugom prozoru odabrana tvrtka. Ranije bi RB tiho
+     * otišao tvrtki; sada 409 — i to bez poziva FINA-i.
+     */
+    @Test
+    void submit_actingForCompany_bodyForSelf_is409_withoutReverification() {
+        when(effectiveOibResolver.actingSubject(any())).thenReturn(Optional.of(actingSubject()));
+
+        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(OIB), niasAuth(OIB), null, null))
+                .isInstanceOfSatisfying(ActingSubjectChangedException.class,
+                        e -> assertThat(e.current()).isEqualTo(COMPANY_OIB));
+        verify(effectiveOibResolver, never()).reverifiedActingSubject(any());
+        verifyNoInteractions(service);
+    }
+
+    /** Tvrtka je nestala iz sesije između provjere i ponovne potvrde (drugi prozor): vlasnik je sad osoba. */
+    @Test
+    void submit_actingForCompany_subjectClearedMeanwhile_is409() {
+        when(effectiveOibResolver.actingSubject(any())).thenReturn(Optional.of(actingSubject()));
+        when(effectiveOibResolver.reverifiedActingSubject(any())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(COMPANY_OIB), niasAuth(OIB), null, null))
+                .isInstanceOfSatisfying(ActingSubjectChangedException.class, e -> assertThat(e.current()).isNull());
+        verifyNoInteractions(service);
+    }
+
+    /** Zaglavlje se provjerava i na predaji: pripremljeno „u svoje ime", a sesija djeluje za tvrtku. */
+    @Test
+    void submit_headerSelf_whileActingForCompany_is409() {
+        when(effectiveOibResolver.actingSubject(any())).thenReturn(Optional.of(actingSubject()));
+
+        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(COMPANY_OIB), niasAuth(OIB), null, "SELF"))
+                .isInstanceOf(ActingSubjectChangedException.class);
+        verifyNoInteractions(service);
+    }
+
     /** Zastupanje prestalo od odabira: RB se ne izdaje. */
     @Test
     void submit_actingForCompany_failedReverification_issuesNothing() {
+        when(effectiveOibResolver.actingSubject(any())).thenReturn(Optional.of(actingSubject()));
         when(effectiveOibResolver.reverifiedActingSubject(any())).thenThrow(new EOvlastenjaException(
                 EOvlastenjaException.Reason.NOT_REPRESENTATIVE, null, "nema zastupanja"));
 
-        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(OTHER_OIB), niasAuth(OIB), null))
+        assertThatThrownBy(() -> nias.generateRegistrationNumber(request(COMPANY_OIB), niasAuth(OIB), null, null))
                 .isInstanceOf(EOvlastenjaException.class);
         verifyNoInteractions(service);
     }
@@ -141,11 +195,21 @@ class RegistrationControllerNiasAccessTest {
     /** Bez NIAS-a (local/mock) OIB ostaje iz tijela — tako se lokalno testiraju razni iznajmljivači. */
     @Test
     void submit_keepsBodyOib_whenNiasDisabled() {
-        local.generateRegistrationNumber(request(OTHER_OIB), null, null);
+        local.generateRegistrationNumber(request(OTHER_OIB), null, null, null);
 
         ArgumentCaptor<RegistrationRequest> req = ArgumentCaptor.forClass(RegistrationRequest.class);
         verify(service).generateRegistrationNumber(req.capture(), eq(null));
         assertThat(req.getValue().oib()).isEqualTo(OTHER_OIB);
+    }
+
+    /** I lokalno, u ime tvrtke (mock e-Ovlaštenja), tijelo mora nositi OIB tvrtke — da se 409 da izazvati. */
+    @Test
+    void submit_local_actingForCompany_stillChecksBody() {
+        when(effectiveOibResolver.actingSubject(any())).thenReturn(Optional.of(actingSubject()));
+
+        assertThatThrownBy(() -> local.generateRegistrationNumber(request(OTHER_OIB), null, null, null))
+                .isInstanceOf(ActingSubjectChangedException.class);
+        verifyNoInteractions(service);
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.auth.nias.ActingSubjectService;
+import com.str.backend.auth.nias.ActingSubjectGuard;
 import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasOibResolver;
 import com.str.backend.captcha.AltchaService;
@@ -39,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("test")
-@Import({EffectiveOibResolver.class, NiasOibResolver.class})
+@Import({EffectiveOibResolver.class, NiasOibResolver.class, ActingSubjectGuard.class})
 @WebMvcTest(RegistrationController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class RegistrationControllerTest {

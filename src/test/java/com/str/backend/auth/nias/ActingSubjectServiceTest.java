@@ -23,6 +23,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -38,7 +39,8 @@ class ActingSubjectServiceTest {
 
     private final EOvlastenjaClient client = mock(EOvlastenjaClient.class);
     private final Clock clock = Clock.fixed(Instant.parse("2026-09-29T10:00:00Z"), ZoneOffset.UTC);
-    private final ActingSubjectService service = new ActingSubjectService(client, clock);
+    private final ActingSubjectService service =
+            new ActingSubjectService(client, new ActingSubjectRateLimiter(100, 100, clock), clock);
     private final MockHttpSession session = new MockHttpSession();
 
     private static Zastupanje zastupanje() {
@@ -77,6 +79,30 @@ class ActingSubjectServiceTest {
         assertThatThrownBy(() -> service.select(session, IDENTITY, PERSON))
                 .isInstanceOf(BusinessException.class).hasMessage("error.actingSubject.self");
         verifyNoInteractions(client);
+    }
+
+    /** Neispravan i vlastiti OIB odbijaju se lokalno i ne troše kvotu — ni FINA-in poziv ni ograničenje. */
+    @Test
+    void locallyRejectedOibs_doNotConsumeQuota() {
+        ActingSubjectService strict = new ActingSubjectService(client, new ActingSubjectRateLimiter(1, 1, clock), clock);
+        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+
+        assertThatThrownBy(() -> strict.select(session, IDENTITY, "12345678901")).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> strict.select(session, IDENTITY, PERSON)).isInstanceOf(BusinessException.class);
+
+        assertThat(strict.select(session, IDENTITY, COMPANY).legalOib()).isEqualTo(COMPANY);
+    }
+
+    /** Preko kvote nema poziva FINA-i. */
+    @Test
+    void overQuota_isRejectedBeforeEOvlastenja() {
+        ActingSubjectService strict = new ActingSubjectService(client, new ActingSubjectRateLimiter(1, 1, clock), clock);
+        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+        strict.select(session, IDENTITY, COMPANY);
+
+        assertThatThrownBy(() -> strict.select(session, IDENTITY, COMPANY))
+                .isInstanceOf(ActingSubjectRateLimitException.class);
+        verify(client, times(1)).verifyRepresentation(any(), any(), any());
     }
 
     /** Subjekt odabran za jednu osobu ne vrijedi ako se u istoj sesiji pojavi druga. */
@@ -151,6 +177,32 @@ class ActingSubjectServiceTest {
                     EOvlastenjaException.Reason.NOT_REPRESENTATIVE, "400", "ne"));
             assertThatThrownBy(() -> resolver.reverifiedActingSubject(auth)).isInstanceOf(EOvlastenjaException.class);
             assertThat(resolver.actingSubject(auth)).isEmpty();
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    /**
+     * Nakon nove NIAS prijave ponovna potvrda koristi sjednicu iz <b>nove</b> prijave, a ne onu iz
+     * vremena odabira — inače bi e-Ovlaštenja javila istekao {@code sesija_id} (EOVLASTENJA_SESSION)
+     * i frontend bi korisnika vrtio na ponovnu prijavu.
+     */
+    @Test
+    void afterNewLogin_reverificationUsesNewSession() {
+        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+        service.select(session, IDENTITY, COMPANY);                       // odabrano uz „sesija-1"
+        when(client.verifyRepresentation(eq("sesija-1"), any(), any())).thenThrow(new EOvlastenjaException(
+                EOvlastenjaException.Reason.SESSION, "203", "istekla"));
+
+        Authentication newLogin = samlAuth("sesija-2");
+        NiasOibResolver niasOibResolver = mock(NiasOibResolver.class);
+        when(niasOibResolver.resolve(newLogin)).thenReturn(Optional.of(PERSON));
+        EffectiveOibResolver resolver = new EffectiveOibResolver(niasOibResolver, service);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setSession(session);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            assertThat(resolver.reverifiedActingSubject(newLogin)).map(ActingSubject::legalOib).contains(COMPANY);
         } finally {
             RequestContextHolder.resetRequestAttributes();
         }

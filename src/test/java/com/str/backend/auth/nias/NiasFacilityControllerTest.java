@@ -40,6 +40,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -48,7 +49,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@link NiasOibResolver} — kad on ne razriješi OIB, oba puta moraju vratiti 401 i ne dirati servis.
  */
 @ActiveProfiles("test")
-@Import({EffectiveOibResolver.class})
+@Import({EffectiveOibResolver.class, ActingSubjectGuard.class})
 @WebMvcTest(NiasController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class NiasFacilityControllerTest {
@@ -164,6 +165,85 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_NOT_REPRESENTATIVE"));
 
         verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+    }
+
+    // ── zaštita od promjene subjekta (X-Acting-Subject) ─────────────────────
+
+    /** Povlačenje pripremljeno „u svoje ime", a sesija u međuvremenu djeluje za tvrtku: ništa se ne izvodi. */
+    @Test
+    void withdraw_headerSelf_whileActingForCompany_is409_withoutReverification() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+
+        mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw").header("X-Acting-Subject", "SELF"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.details.code").value("ACTING_SUBJECT_CHANGED"))
+                .andExpect(jsonPath("$.details.current").value(COMPANY_OIB));
+
+        verify(actingSubjectService, never()).reverify(any(), any(), any());
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+    }
+
+    @Test
+    void withdraw_headerCompany_whileOwnName_is409_withNullCurrent() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+
+        mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw").header("X-Acting-Subject", COMPANY_OIB))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.details.code").value("ACTING_SUBJECT_CHANGED"))
+                .andExpect(jsonPath("$.details.current").isEmpty());
+
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+    }
+
+    @Test
+    void withdraw_matchingHeader_proceeds() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+        when(actingSubjectService.reverify(any(), any(), any())).thenReturn(companySubject());
+
+        mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw").header("X-Acting-Subject", COMPANY_OIB))
+                .andExpect(status().isOk());
+
+        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", COMPANY_OIB, null);
+    }
+
+    @Test
+    void withdraw_malformedHeader_is400() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+
+        mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw").header("X-Acting-Subject", "tvrtka"))
+                .andExpect(status().isBadRequest());
+
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+    }
+
+    /** Rješenje pripremljeno za tvrtku ne smije se upisati osobi nakon povratka u svoje ime (drugi prozor). */
+    @Test
+    void uploadDecision_headerCompany_whileOwnName_is409() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+
+        mvc.perform(multipart("/api/nias/categorization-decisions")
+                        .file(pdf())
+                        .header("X-Acting-Subject", COMPANY_OIB))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.details.code").value("ACTING_SUBJECT_CHANGED"));
+
+        verify(categorizationDecisionService, never()).upload(any(), any());
+    }
+
+    /** Previše odabira: 429 s istim brojem sekundi u zaglavlju i u tijelu. */
+    @Test
+    void selectActingSubject_rateLimited_is429() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.select(any(), any(), any())).thenThrow(new ActingSubjectRateLimitException(42));
+
+        mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"oib\":\"" + COMPANY_OIB + "\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "42"))
+                .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_RATE_LIMIT"))
+                .andExpect(jsonPath("$.details.retryAfterSeconds").value(42));
     }
 
     /** U svoje ime povlačenje ne zove e-Ovlaštenja. */
