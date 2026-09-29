@@ -101,8 +101,13 @@ public class SubmissionPdfGenerator {
             // ── PODNOSITELJ ───────────────────────────────────────────────────
             addSectionHeader(main, "PODNOSITELJ");
 
-            boolean isLegal = lessor.getLegalEntityName() != null;
-            String oib     = isLegal ? safe(lessor.getRepresentativeOib()) : safe(lessor.getLessorOib());
+            // Zastava je mjerodavna (e-Zastupanja je postavljaju uvijek). Naziv bez zastave i dalje
+            // znači pravnu osobu, kao i dosad: tako ga upisuju setLegalEntity i registar subjekata.
+            boolean isLegal = lessor.isLegalEntityOwner() || lessor.getLegalEntityName() != null;
+            // OIB podnositelja je uvijek lessorOib — kod pravne osobe to je OIB tvrtke. Zastupnikov
+            // OIB (representativeOib) ide u redak „Osoba ovlaštena za zastupanje" niže; ranije je
+            // ovdje stajao umjesto OIB-a tvrtke.
+            String oib     = safe(lessor.getLessorOib());
             String naziv   = isLegal ? safe(lessor.getLegalEntityName())   : fullName(lessor);
             String pravniOblik = isLegal ? "Pravna osoba" : "Fizička osoba";
             String adresa  = safe(lessor.getStreet()) + " " + safe(lessor.getStreetNumber())

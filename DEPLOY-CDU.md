@@ -277,6 +277,95 @@ curl -sI http://localhost:8085/assets/$(docker exec str-frontend-cdu ls /usr/sha
 Mora vratiti `HTTP/1.1 200 OK`. Ako vrati `404`, pogledaj `docker logs str-frontend-cdu` — kad
 ondje piše `stat() ... failed (13: Permission denied)`, preskočen je korak 6.
 
+### 8b. e-Ovlaštenja (djelovanje u ime pravne osobe)
+
+Uključena su u `application-cdu.properties` (`app.eovlastenja.enabled=true`, FINA **test**).
+U `.env.cdu` i `/secrets` ne treba ništa novo: klijentski certifikat je NIAS keystore
+(`/secrets/keystore.p12`, isti alias i lozinka), a potpisni certifikat e-Ovlaštenja i CA-ovi su
+javni i dolaze u jaru (`src/main/resources/eovlastenja/`). Tok i endpointi: `docs/EOVLASTENJA.md`.
+
+Svi retci ispod su bez osobnih podataka (nema OIB-ova, imena ni vrijednosti `sesija_id`).
+Paket `com.str.backend.registries.eovlastenja` je na CDU-u na **DEBUG** (`EOVLASTENJA_LOG_LEVEL`),
+da se uz svaki odgovor vidi i njegov oblik; poslije prvih provjera staviti `INFO`.
+
+**1. Start** — klijent se slaže na startu (fail-fast, kao eGOP): neučitljiv keystore ili certifikat
+znači da backend **ne krene**.
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja(_mtls|_trust| url=)"
+```
+
+| Redak | Očekivano |
+| :--- | :--- |
+| `eovlastenja_mtls alias=… client_cert=… issuer=… valid_until=…` | `client_cert` = CN=InterniTurizam…, `issuer` = Fina Demo CA 2020 — **ovaj** certifikat e-Ovlaštenja moraju poznavati |
+| `eovlastenja_trust anchors=N (jdk=…, extra=3 iz classpath:eovlastenja/ca-bundle.crt)` | `extra=3` (Sectigo R46 + dva Fina Demo CA) |
+| `eovlastenja url=https://roapiservistst.fina.hr/… signer=CN=Upravljanje-eOvlastenjimaTst,… signer_valid_until=…` | potpisni certifikat FINA testa |
+
+Gašenje bez rebuilda: `APP_EOVLASTENJA_ENABLED=false` u `.env.cdu`, pa korak 7 — odabir tvrtke
+tada vraća 503, sve ostalo radi.
+
+**2. Mreža s kutije** (bilo koji HTTP kod znači da ruta i TLS rade; vješanje je firewall/proxy):
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 15 https://roapiservistst.fina.hr/
+```
+
+**3. NIAS prijava** (korak 0.1) — jedna prijava u pregledniku, pa:
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep nias_login | tail -1
+```
+
+| `sesija_id=` | Značenje |
+| :--- | :--- |
+| `len=… znakovi=[-, 0-9, A-Z, a-z]` (ili podskup) | stiže i odgovara formatu koji šaljemo |
+| `len=… znakovi=[…, +, /, …]` | stiže, ali s posebnim znakovima → proširiti uzorak u `EOvlastenjaRequest` prije testa |
+| `nema` | FINA nije uključila autorizaciju za uslugu → svaki odabir tvrtke bit će 503; dalje nema smisla |
+
+**4. Odabir tvrtke** (korak 0.2). Dok fronta nema blok „Djelujem u ime", ide curlom s kolačićem
+`SESSION` iz preglednika (DevTools → Application → Cookies):
+
+```bash
+curl -s -X POST https://str-test-eturizam.gov.hr/api/nias/acting-subject \
+  -H 'Content-Type: application/json' -H 'Cookie: SESSION=<vrijednost>' \
+  -d '{"oib":"<OIB tvrtke>"}'
+docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja_|acting_subject|registry=EOVLASTENJA" | tail -8
+```
+
+| U logu | Značenje |
+| :--- | :--- |
+| `eovlastenja_call ok ms=… functions=N` + `acting_subject selected functions=N` | **radi** — osoba je zastupnik, tvrtka je u sesiji |
+| `eovlastenja_call rejected reason=NOT_REPRESENTATIVE code=400` / `401` | poziv radi; osoba nije u e-Ovlaštenjima / nema privolu |
+| `eovlastenja_call rejected reason=SESSION code=20x` | poziv radi (metoda dopuštena), NIAS sjednica nevažeća — ponovna prijava |
+| `eovlastenja_call rejected reason=SUBJECT_NOT_FOUND code=500` | poziv radi; tvrtka s tim OIB-om ne postoji |
+| `eovlastenja_config_error code=100` | InterniTurizam **nije** registriran za metodu → vlastita registracija STR-a |
+| `message=NIAS prijava ne nosi sesija_id` | v. točku 3 (`sesija_id=nema`) |
+| `message=neispravan sesija_id za e-Ovlaštenja` | v. točku 3 (posebni znakovi) |
+| `eovlastenja_call failed … cause=SSLHandshakeException: …` | TLS: certifikat nije prihvaćen ili ruta ne postoji — v. točku 5 |
+| `eovlastenja_call failed … cause=ConnectException` / `SocketTimeoutException` | mreža/firewall prema `roapiservistst.fina.hr:443` |
+| `eovlastenja_call failed … status=403` (ili drugi 4xx/5xx) | server je odbio poziv; tijelo odgovora (npr. IIS „403.7 client certificate required") je u stack traceu `external_registry_error` |
+| `message=e-Ovlaštenja: odgovor nije potpisan — nepotpisane šifre grešaka …: [100]` | FINA je vratila grešku bez potpisa; šifra je samo informativna |
+| `message=e-Ovlaštenja: provjera XML potpisa nije uspjela: … KeyInfo: [CN=…]` | potpisao je drugi certifikat od pinanog — stavlja se novi u `eovlastenja/` ili `APP_EOVLASTENJA_SIGNER_CERT_PATH` |
+| `message=e-Ovlaštenja: odgovor nije ispravan XML (… B, početak: "…")` | stigao je HTML ili drugo, ne XML (proxy, stranica greške) |
+| `message=e-Ovlaštenja: … ForRequestId=prazan …` / `osoba …` / `subjekt …` / `naziv …` + `eovlastenja_response_shape …` | odgovor je valjano potpisan, ali drugačije građen od FINA primjera — oblik iz loga usporediti s `TestSignatures.response` |
+| `eovlastenja_response_shape …` (DEBUG, uz svaki odgovor) | oblik stvarnog odgovora, za usporedbu s primjerom |
+
+Zatim, s odabranom tvrtkom, zahtjev za RB ili povlačenje RB-a: prije svake od tih radnji u logu
+mora biti `acting_subject reverified` (ili `acting_subject reverify_failed reason=…` — tvrtka je
+tada maknuta iz sesije i radnja se ne izvodi).
+
+**5. TLS dijagnostika** (samo ako točka 4 pokaže `SSLHandshakeException`). FINA klijentski
+certifikat traži tek naknadno (renegotiation), pa se iz same iznimke ne vidi je li ga uopće
+zatražila i je li poslan. Privremeno u `.env.cdu`:
+
+```bash
+JAVA_TOOL_OPTIONS=-Djavax.net.debug=ssl:handshake
+```
+
+pa korak 7 i ponoviti točku 4. U `docker logs` se tada vidi `CertificateRequest` od servera i
+`Produced client Certificate message` od nas. Ispis je velik (i za NIAS) — **odmah nakon toga
+ukloniti** redak i ponovo korak 7.
+
 ## 9. Iz browsera
 
 ```

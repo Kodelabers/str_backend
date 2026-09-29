@@ -12,12 +12,15 @@ import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import com.str.backend.rn.RnRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -36,6 +39,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -44,6 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@link NiasOibResolver} — kad on ne razriješi OIB, oba puta moraju vratiti 401 i ne dirati servis.
  */
 @ActiveProfiles("test")
+@Import({EffectiveOibResolver.class})
 @WebMvcTest(NiasController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class NiasFacilityControllerTest {
@@ -51,6 +56,9 @@ class NiasFacilityControllerTest {
     private static final String OIB = "99999999990";
 
     @Autowired MockMvc mvc;
+
+    /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean ActingSubjectService actingSubjectService;
 
     @MockBean NiasOibResolver oibResolver;
     @MockBean NiasFacilityService facilityService;
@@ -62,6 +70,133 @@ class NiasFacilityControllerTest {
     @MockBean LessorRnActionService rnActionService;
     @MockBean SessionIdentityResolver identityResolver;
     @MockBean SubjectProfileService subjectProfileService;
+
+    // ── djelovanje u ime pravne osobe (e-Zastupanja) ────────────────────────
+
+    private static final String COMPANY_OIB = "33333333360";
+
+    private static ActingSubject companySubject() {
+        return new ActingSubject(COMPANY_OIB, "TESTNA TVRTKA d.o.o.", List.of("Direktor"),
+                OIB, "Test", "Korisnik", Instant.parse("2026-09-29T10:00:00Z"));
+    }
+
+    @Test
+    void selectActingSubject_returnsVerifiedCompany() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.select(any(), eq(new NiasIdentity(OIB, null, null)), eq(COMPANY_OIB)))
+                .thenReturn(companySubject());
+
+        mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"oib\":\"" + COMPANY_OIB + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.oib").value(COMPANY_OIB))
+                .andExpect(jsonPath("$.naziv").value("TESTNA TVRTKA d.o.o."))
+                .andExpect(jsonPath("$.funkcije[0]").value("Direktor"))
+                .andExpect(jsonPath("$.zastupnikOib").value(OIB))
+                .andExpect(jsonPath("$.izvor").value("E_OVLASTENJA"));
+    }
+
+    @Test
+    void selectActingSubject_notRepresentative_is403() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.select(any(), any(), any())).thenThrow(new EOvlastenjaException(
+                EOvlastenjaException.Reason.NOT_REPRESENTATIVE, null, "ne"));
+
+        mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"oib\":\"" + COMPANY_OIB + "\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_NOT_REPRESENTATIVE"));
+    }
+
+    @Test
+    void selectActingSubject_expiredNiasSession_is401() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.select(any(), any(), any())).thenThrow(new EOvlastenjaException(
+                EOvlastenjaException.Reason.SESSION, "200", "istekla"));
+
+        mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"oib\":\"" + COMPANY_OIB + "\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.details.eovlastenjaCode").value("200"));
+    }
+
+    @Test
+    void actingSubject_noneSelected_is204() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+
+        mvc.perform(get("/api/nias/acting-subject")).andExpect(status().isNoContent());
+    }
+
+    /** Zastupnik vidi objekte tvrtke u čije ime djeluje, a ne svoje. */
+    @Test
+    void facilities_useCompanyOib_whenActingForCompany() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+        when(facilityService.list(any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0));
+
+        mvc.perform(get("/api/nias/facilities")).andExpect(status().isOk());
+
+        verify(facilityService).list(eq(COMPANY_OIB), any(), any());
+    }
+
+    /** Povlačenje je nepovratno: u ime tvrtke tek nakon ponovne potvrde zastupanja, i na tvrtku. */
+    @Test
+    void withdraw_actingForCompany_reverifiesFirst() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+        when(actingSubjectService.reverify(any(), any(), any())).thenReturn(companySubject());
+
+        mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw")).andExpect(status().isOk());
+
+        verify(actingSubjectService).reverify(any(), eq(new NiasIdentity(OIB, "Test", "Korisnik")), eq(companySubject()));
+        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", COMPANY_OIB, null);
+    }
+
+    @Test
+    void withdraw_actingForCompany_noLongerRepresentative_withdrawsNothing() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+        when(actingSubjectService.reverify(any(), any(), any())).thenThrow(new EOvlastenjaException(
+                EOvlastenjaException.Reason.NOT_REPRESENTATIVE, "400", "ne"));
+
+        mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_NOT_REPRESENTATIVE"));
+
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+    }
+
+    /** U svoje ime povlačenje ne zove e-Ovlaštenja. */
+    @Test
+    void withdraw_ownName_doesNotReverify() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+
+        mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw")).andExpect(status().isOk());
+
+        verify(actingSubjectService, never()).reverify(any(), any(), any());
+        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", OIB, null);
+    }
+
+    /**
+     * U ime tvrtke prebivalište zastupnika se ne traži: zastupnik kojeg registar ne poznaje inače
+     * bi dobio 400 i ne bi mogao predati zahtjev za tvrtku.
+     */
+    @Test
+    void subjectProfile_actingForCompany_skipsRegistry() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+
+        mvc.perform(get("/api/nias/subject"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.oib").value(OIB))
+                .andExpect(jsonPath("$.ime").value("Test"))
+                .andExpect(jsonPath("$.imeIzvor").value("NIAS"))
+                .andExpect(jsonPath("$.ulica").doesNotExist())
+                .andExpect(jsonPath("$.pravnaOsoba.oib").value(COMPANY_OIB))
+                .andExpect(jsonPath("$.pravnaOsoba.naziv").value("TESTNA TVRTKA d.o.o."));
+
+        verify(subjectProfileService, never()).load(any(), any(), any());
+    }
 
     /** Stavka 2: sva polja podnositelja vidljiva, s izvorom po grupi. */
     @Test

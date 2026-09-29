@@ -1,6 +1,7 @@
 package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
@@ -48,16 +49,18 @@ public class RnController {
     private final RnDocumentsService documentsService;
     private final RnRepository rnRepository;
     private final StatisticsExportService exportService;
+    private final EffectiveOibResolver effectiveOibResolver;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
                         RnDocumentsService documentsService, RnRepository rnRepository,
-                        StatisticsExportService exportService) {
+                        StatisticsExportService exportService, EffectiveOibResolver effectiveOibResolver) {
         this.service = service;
         this.mapper = mapper;
         this.documentService = documentService;
         this.documentsService = documentsService;
         this.rnRepository = rnRepository;
         this.exportService = exportService;
+        this.effectiveOibResolver = effectiveOibResolver;
     }
 
     /** STR-1.5: display of inactive RNs (SUSPENDED + WITHDRAWN). */
@@ -297,7 +300,9 @@ public class RnController {
             }
             return;
         }
-        Optional<String> oib = NiasOibExtractor.extractOib(authentication);
+        // Zastupnik pravne osobe vidi akte RB-ova tvrtke u čije ime djeluje (EffectiveOibResolver).
+        Optional<String> oib = NiasOibExtractor.extractOib(authentication).isPresent()
+                ? effectiveOibResolver.resolve(authentication) : Optional.empty();
         if (oib.isPresent() && !rnRepository.isOwnedByOib(rn, oib.get())) {
             throw new ResourceNotFoundException("rn not found: " + rn);
         }

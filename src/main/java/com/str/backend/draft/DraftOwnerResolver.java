@@ -1,6 +1,7 @@
 package com.str.backend.draft;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasOibExtractor;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,6 +19,11 @@ public class DraftOwnerResolver {
     private static final String MOCK_NIAS_COOKIE = "mock_nias_oib";
     private static final int MOCK_COOKIE_MAX_AGE_SECONDS = (int) Duration.ofDays(90).toSeconds();
     private final SecureRandom random = new SecureRandom();
+    private final EffectiveOibResolver effectiveOibResolver;
+
+    public DraftOwnerResolver(EffectiveOibResolver effectiveOibResolver) {
+        this.effectiveOibResolver = effectiveOibResolver;
+    }
 
     public DraftOwner resolve(HttpServletRequest request, HttpServletResponse response) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -28,7 +34,9 @@ public class DraftOwnerResolver {
             // Real NIAS SAML2 authentication — extract OIB from assertion attribute "oib"
             var niasOib = NiasOibExtractor.extractOib(auth);
             if (niasOib.isPresent()) {
-                return new DraftOwner(DraftOwnerType.NIAS_OIB, niasOib.get());
+                // Nacrt pripada subjektu u čije ime se djeluje — zastupnik ne miješa nacrte tvrtke i svoje.
+                return new DraftOwner(DraftOwnerType.NIAS_OIB,
+                        effectiveOibResolver.resolve(auth).orElse(niasOib.get()));
             }
         }
         // NIAS/eIDAS not yet active — fall back to a per-browser mock OIB

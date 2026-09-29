@@ -123,6 +123,25 @@ class SubjectProfileServiceTest {
         assertThat(lessor.getLegalEntityName()).isNull();
     }
 
+    /**
+     * e-Zastupanja: iznajmljivač je tvrtka (lessorOib), a NIAS osoba je zastupnik. Registar se ne
+     * pita — tvrtka nije fizička osoba iz str.subject.
+     */
+    @Test
+    void toLegalLessor_companyIsLessor_personIsRepresentative() {
+        LessorEntity lessor = service.toLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.",
+                "70000000004", "Ana", "Horvat");
+
+        assertThat(lessor.getLessorOib()).isEqualTo("33333333360");
+        assertThat(lessor.isLegalEntityOwner()).isTrue();
+        assertThat(lessor.getLegalEntityName()).isEqualTo("TESTNA TVRTKA d.o.o.");
+        assertThat(lessor.getRepresentativeOib()).isEqualTo("70000000004");
+        assertThat(lessor.getLegalRepresentativeName()).isEqualTo("Ana Horvat");
+        assertThat(lessor.getFirstName()).isEqualTo("Ana");
+        assertThat(lessor.getStreet()).isEmpty();
+        verify(registry, never()).findByOib(any());
+    }
+
     /** Isto ponašanje kao raniji StrLessorLookupService: naziv subjekta ide na lessor. */
     @Test
     void toLessor_keepsLegalEntityName_fromStrSubject() {

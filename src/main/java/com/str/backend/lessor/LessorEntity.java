@@ -206,6 +206,23 @@ public class LessorEntity {
         this.legalEntityRegistrationNumber = registrationNumber;
     }
 
+    /**
+     * Iznajmljivač je pravna osoba koju NIAS korisnik zastupa po zakonu (potvrđeno kroz
+     * e-Ovlaštenja). {@code lessorOib} je OIB tvrtke, a zastupnik se pamti uz nju.
+     *
+     * <p>Pozvati <b>prije prve pohrane</b> — {@code is_legal_entity_owner} je {@code updatable = false}.
+     * Isti obrazac kao {@link #applyContact}: dovršetak konstrukcije, ne izmjena.
+     */
+    public void applyNiasLegalEntity(String legalEntityName, String representativeOib, String representativeName) {
+        if (managed) {
+            throw new IllegalStateException("applyNiasLegalEntity na već spremljenom iznajmljivaču " + lessorId);
+        }
+        this.legalEntityOwner = true;
+        this.legalEntityName = legalEntityName;
+        this.representativeOib = representativeOib;
+        this.legalRepresentativeName = representativeName;
+    }
+
     public void setLegalEntity(String representativeOib, String legalEntityName, String legalRepresentativeName,
                                String representativeEmail, String representativePhone) {
         this.representativeOib = representativeOib;

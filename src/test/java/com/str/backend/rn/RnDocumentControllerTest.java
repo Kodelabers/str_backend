@@ -1,6 +1,9 @@
 package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.ActingSubjectService;
+import com.str.backend.auth.nias.EffectiveOibResolver;
+import com.str.backend.auth.nias.NiasOibResolver;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
@@ -10,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.saml2.provider.service.authentication.DefaultSaml2AuthenticatedPrincipal;
 import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication;
@@ -38,9 +42,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ono što radi sam kontroler: razrješenje sluga i provjera vlasništva.
  */
 @ActiveProfiles("test")
+@Import({EffectiveOibResolver.class, NiasOibResolver.class})
 @WebMvcTest(RnController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class RnDocumentControllerTest {
+
+    /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean ActingSubjectService actingSubjectService;
 
     private static final String RN = "HR180000123456789001";
 

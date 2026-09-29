@@ -1,6 +1,8 @@
 package com.str.backend.registration;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.nias.ActingSubject;
+import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.captcha.AltchaService;
@@ -35,12 +37,15 @@ public class RegistrationController {
     private final RegistrationService service;
     private final AltchaService altchaService;
     private final boolean niasEnabled;
+    private final EffectiveOibResolver effectiveOibResolver;
 
     public RegistrationController(RegistrationService service, AltchaService altchaService,
-                                  @Value("${nias.saml.enabled:false}") boolean niasEnabled) {
+                                  @Value("${nias.saml.enabled:false}") boolean niasEnabled,
+                                  EffectiveOibResolver effectiveOibResolver) {
         this.service = service;
         this.altchaService = altchaService;
         this.niasEnabled = niasEnabled;
+        this.effectiveOibResolver = effectiveOibResolver;
     }
 
     /**
@@ -55,6 +60,10 @@ public class RegistrationController {
      * Non-EU iznajmljivač ima svoj endpoint ({@code /api/generateRegistrationNumberExternal}).
      *
      * <p>Bez NIAS-a (local/mock) OIB ostaje iz tijela — tako se lokalno testiraju razni iznajmljivači.
+     *
+     * <p>Kad korisnik djeluje u ime pravne osobe, RB se izdaje na tvrtku. Zastupanje se prije toga
+     * <b>ponovo</b> provjerava kroz e-Ovlaštenja ({@link EffectiveOibResolver#reverifiedActingSubject}),
+     * jer je moglo prestati od odabira; neuspjeh briše subjekt iz sesije (401/403/503).
      */
     @PostMapping("/api/generateRegistrationNumber")
     public ResponseEntity<RegistrationResponse> generateRegistrationNumber(
@@ -67,6 +76,12 @@ public class RegistrationController {
                     "Zahtjev za registracijski broj s OIB-om traži NIAS prijavu.");
         }
         altchaService.verifyOrThrow(altcha);
+        Optional<ActingSubject> acting = effectiveOibResolver.reverifiedActingSubject(authentication);
+        if (acting.isPresent()) {
+            ActingSubject verified = acting.get();
+            return ResponseEntity.status(HttpStatus.CREATED).body(service.generateRegistrationNumber(
+                    RegistrationRequest.withOib(req, verified.legalOib()), identity.orElse(null), verified));
+        }
         RegistrationRequest finalReq = identity
                 .map(id -> RegistrationRequest.withOib(req, id.oib()))
                 .orElse(req);
@@ -106,9 +121,9 @@ public class RegistrationController {
         if (authentication != null && authentication.getPrincipal() instanceof LessorPrincipal principal) {
             return SubmissionRequester.lessor(principal.getLessorId());
         }
-        Optional<String> oib = NiasOibExtractor.extractOib(authentication);
-        if (oib.isPresent()) {
-            return SubmissionRequester.oib(oib.get());
+        if (NiasOibExtractor.extractOib(authentication).isPresent()) {
+            // Zastupnik vidi PDF-ove tvrtke u čije ime djeluje, a ne svoje.
+            return SubmissionRequester.oib(effectiveOibResolver.resolve(authentication).orElseThrow());
         }
         if (niasEnabled) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);

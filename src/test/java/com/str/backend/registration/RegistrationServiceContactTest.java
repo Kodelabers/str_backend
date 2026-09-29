@@ -7,6 +7,7 @@ import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.auth.nias.ActingSubject;
 import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -122,6 +123,36 @@ class RegistrationServiceContactTest {
         service.generateRegistrationNumber(request("ana@example.com", "0991234567", null, null), identity);
 
         verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić");
+    }
+
+    /** U ime tvrtke: iznajmljivač je tvrtka iz potvrđenog zastupanja, a ne osoba iz registra. */
+    @Test
+    void legalFlow_lessorIsCompanyFromVerifiedRepresentation() {
+        ActingSubject company = new ActingSubject("33333333360", "TESTNA TVRTKA d.o.o.", List.of("Direktor"),
+                OIB, "Ana", "Anić", java.time.Instant.now());
+        LessorEntity legal = LessorEntity.create("Ana", "Anić", "", "", "", "", null);
+        legal.setLessorOib("33333333360");
+        when(subjectProfileService.toLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.", OIB, "Ana", "Anić"))
+                .thenReturn(legal);
+
+        service.generateRegistrationNumber(
+                RegistrationRequest.withOib(request("ana@example.com", "0991234567", null, null), "33333333360"),
+                new NiasIdentity(OIB, "Ana", "Anić"), company);
+
+        assertThat(savedLessor().getLessorOib()).isEqualTo("33333333360");
+        verify(subjectProfileService, never()).resolveLessor(any(), any(), any());
+    }
+
+    /** Zahtjev ne smije nositi drugi OIB od tvrtke u čije se ime djeluje. */
+    @Test
+    void legalFlow_requestOibMustBeCompany() {
+        ActingSubject company = new ActingSubject("33333333360", "T", List.of("Direktor"),
+                OIB, "Ana", "Anić", java.time.Instant.now());
+
+        assertThatThrownBy(() -> service.generateRegistrationNumber(
+                request("ana@example.com", "0991234567", null, null), new NiasIdentity(OIB, "Ana", "Anić"), company))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(lessorRepository, never()).save(any());
     }
 
     /** Identitet s drugim OIB-om nego zahtjev ne smije podmetnuti tuđe ime. */
