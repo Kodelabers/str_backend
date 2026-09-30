@@ -103,7 +103,7 @@ public class FacilityClaimVerifier {
         if (oib == null || !oib.equals(facility.getOib())) {
             throw new BusinessException("error.facility.notOwned");
         }
-        if (Boolean.FALSE.equals(facility.getActive())) {
+        if (!isActive(facility)) {
             throw new BusinessException("error.facility.inactive");
         }
         if (!rnRepository.findRnsByFacilityIds(List.of(facilityId.trim())).isEmpty()) {
@@ -130,6 +130,20 @@ public class FacilityClaimVerifier {
                 || differs(facility.getHouseNumber(), claim.streetNumber())) {
             throw new BusinessException("error.facility.address.mismatch");
         }
+    }
+
+    /**
+     * Posluje li objekt: zapis je aktivan <b>i</b> poslovni status je {@code FBS_ACTIVE}. Isto
+     * pravilo kao popis objekata ({@code StrFacilityRepository.LISTING_FROM}) — objekt koji se na
+     * popisu ne vidi ne smije proći ni kroz tuStart handoff s {@code facilityId}.
+     *
+     * <p>Samo {@code facility.active} nije dovoljan: to je zastavica verzije zapisa, pa je na CDU
+     * „Odjavljen" gotovo polovica zapisa s {@code active = true}. Objekt bez statusa ne prolazi —
+     * ne zna se da posluje, a RB bi se upisao natrag u eTurizam.
+     */
+    public static boolean isActive(FacilityOwnershipRow facility) {
+        return Boolean.TRUE.equals(facility.getActive())
+                && StrFacilityRepository.ACTIVE_BUSINESS_STATUS.equals(facility.getBusinessStatusCode());
     }
 
     /**

@@ -113,7 +113,7 @@ provjerava (`FacilityClaimVerifier`):
 | Provjera | Ishod na neslaganje |
 | :--- | :--- |
 | Objekt pripada OIB-u iz NIAS sesije (`facility → subject_version → subject.jips`) | 400 `error.facility.notOwned` |
-| Objekt postoji i aktivan je | 400 `error.facility.unknown` / `error.facility.inactive` |
+| Objekt postoji i aktivan je: `facility.active` **i** poslovni status `FBS_ACTIVE` (odjavljen ili bez statusa ne prolazi) | 400 `error.facility.unknown` / `error.facility.inactive` |
 | Objekt već nema stojeći RB (ACTIVE / SUSPENSION_PROPOSED / SUSPENDED) | 400 `error.facility.alreadyRegistered` |
 | `typeId` odgovara podvrsti u eTurizmu (`FS_*`) | 400 `error.facility.type.mismatch` |
 | `maxBeds` odgovara maksimalnom broju gostiju u eTurizmu (`CAT_BROJ_KREVETA + CAT_BROJ_POM_KREVETA`) | 400 `error.facility.beds.mismatch` |
@@ -178,6 +178,11 @@ popuniti.
 
 Tuđi i nepostojeći objekt daju isti **404** — postojanje tuđeg zapisa nije podatak koji ovaj
 endpoint smije otkriti.
+
+Vlastiti objekt koji ne posluje (poslovni status nije `FBS_ACTIVE`: odjavljen ili bez statusa) daje
+**400 `error.facility.inactive`** — ista provjera koju submit radi u `FacilityClaimVerifier`, pa se
+forma ne predpopuni za zahtjev koji bi ionako bio odbijen. Takav objekt se ne vidi ni na popisu
+`GET /api/nias/facilities`, pa do ovoga dolazi samo tuStart handoff sa zastarjelim `facilityId`.
 
 ## 6c. Maksimalan broj gostiju (stavka 2)
 

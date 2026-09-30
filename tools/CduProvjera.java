@@ -56,6 +56,7 @@ public class CduProvjera {
              LEFT JOIN str.house_number hn  ON hn.id  = a.house_number_id
              WHERE r.rnk = 1
                AND f.active = true
+               AND c_st.code = 'FBS_ACTIVE'
                AND c_sub.code IN (?, ?, ?)
                AND NOT EXISTS (SELECT 1 FROM str.facility f2
                                 WHERE f2.system_uuid = f.system_uuid AND f2.id > f.id)

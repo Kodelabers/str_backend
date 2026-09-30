@@ -70,6 +70,21 @@ radu ga nemaju, pa se grupiraju po predmetu).
   `historical` znači, otvoreno je pitanje za eTurizam.
 - **`facility.active` filtrira se nakon dedupa.** Unutar dedupa bi objekt čiji je najnoviji zapis
   neaktivan „oživio" kroz stariji aktivni red.
+- **Prikazuju se samo objekti s poslovnim statusom `FBS_ACTIVE`**, također nakon dedupa (zahtjev
+  naručitelja). `facility.active` je zastavica verzije zapisa, ne podatak o tome posluje li objekt.
+  Na CDU, među zapisima smještaja (`FS_*`) s `active = true`, prije dedupa:
+
+  | Poslovni status | Zapisa |
+  | :--- | ---: |
+  | `FBS_ACTIVE` („Aktivan") | 120.119 |
+  | `FBS_INACTIVE` („Odjavljen") | 103.033 |
+  | bez statusa (`business_status_id` NULL) | 1.512 |
+
+  Drugih šifri nema, a `business_status_activation_date` ni u jednom zapisu nije u budućnosti.
+  **Objekt bez statusa se ne prikazuje**: ne zna se da posluje, a za njega bi se izdao RB i upisao
+  natrag u eTurizam. Isto pravilo vrijedi za `GET /api/nias/facilities/{id}` i za
+  `FacilityClaimVerifier` (`FacilityClaimVerifier.isActive`), pa objekt koji se ne vidi na popisu
+  ne može proći ni kroz tuStart handoff s `facilityId` (400 `error.facility.inactive`).
 - **`subject.active` se NE filtrira.** Objekt vodi na točno jednu verziju subjekta, pa filtar ne može
   spriječiti multiplikaciju — može samo sakriti objekt čiji je zapis subjekta nadjačan novijim
   (jedan OIB ima više `subject` redaka; unique indeks je `(jips, jips_source_id, subtype_id) WHERE

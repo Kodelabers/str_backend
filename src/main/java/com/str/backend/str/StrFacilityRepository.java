@@ -15,6 +15,13 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
 
     long countByActiveTrue();
 
+    /**
+     * Šifra poslovnog statusa ({@code facility.business_status_id → codebook_element}) objekta koji
+     * posluje. Drugi status u registru je {@code FBS_INACTIVE} („Odjavljen"). Isti literal stoji u
+     * {@link #LISTING_FROM} — native query ga ne može referencirati.
+     */
+    String ACTIVE_BUSINESS_STATUS = "FBS_ACTIVE";
+
     /*
      * ---------------------------------------------------------------------------------
      * Popis objekata iznajmljivača za NIAS dashboard.
@@ -32,6 +39,12 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * facility.active se filtrira NAKON dedupa: unutar njega bi objekt čiji je najnoviji
      * zapis neaktivan "oživio" kroz stariji aktivni red. historical se ne filtrira — 74.177
      * redaka s historical = true preživi dedup, a najveća skupina ima NULL.
+     *
+     * Uz facility.active traži se i poslovni status FBS_ACTIVE, isto nakon dedupa. active je
+     * zastavica verzije zapisa, ne podatak o tome posluje li objekt: na CDU je od 224.664
+     * zapisa smještaja s active = true njih 103.033 "Odjavljen" (FBS_INACTIVE), a 1512 nema
+     * status. Objekt bez statusa se ne prikazuje — ne zna se da je aktivan, a za njega bi se
+     * izdao RB i upisao natrag u eTurizam.
      *
      * Skalarni podqueryji u JOIN uvjetima (facility_type, subject_address) sprječavaju
      * multiplikaciju redaka, pa su LIMIT/OFFSET i count točni.
@@ -94,6 +107,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
              LEFT JOIN str.house_number hn  ON hn.id  = a.house_number_id
              WHERE r.rnk = 1
                AND f.active = true
+               AND c_st.code = 'FBS_ACTIVE'
                AND c_sub.code IN (:codes)
                AND NOT EXISTS (SELECT 1 FROM str.facility f2
                                 WHERE f2.system_uuid = f.system_uuid AND f2.id > f.id)
@@ -160,6 +174,11 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         /** Pomoćni kreveti ({@code CAT_BROJ_POM_KREVETA}); ulaze u maksimalan broj gostiju. */
         Integer getAuxiliaryBeds();
         Boolean getActive();
+        /**
+         * Šifra poslovnog statusa ({@code FBS_ACTIVE} / {@code FBS_INACTIVE}), {@code null} kad je
+         * objekt nema. {@link #getActive()} je zastavica verzije zapisa i ne kaže posluje li objekt.
+         */
+        String getBusinessStatusCode();
         String getName();
         /** Naziv/ime iznajmljivača — služi samo da se prepozna kad je `facility.name` zapravo on. */
         String getOwnerName();
@@ -218,6 +237,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
             SELECT s.jips      AS oib,
                    c_sub.code  AS subtypeCode,
                    f.active    AS active,
+                   c_st.code   AS businessStatusCode,
                    f.name      AS name,
                    sv.name     AS ownerName,
                    btrim(coalesce(sv.first_name,'') || ' ' || coalesce(sv.last_name,'')) AS ownerFullName,
@@ -260,6 +280,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    ON ft.id = (SELECT max(x.id) FROM str.facility_type x
                                 WHERE x.facility_id = f.id AND coalesce(x.active, true) = true)
             LEFT JOIN str.codebook_element c_sub ON c_sub.id = ft.sub_type_id
+            LEFT JOIN str.codebook_element c_st  ON c_st.id  = f.business_status_id
             LEFT JOIN str.address a
                    ON a.id = CASE WHEN f.same_address_subject = true
                                   THEN (SELECT max(x.address_id) FROM str.subject_address x

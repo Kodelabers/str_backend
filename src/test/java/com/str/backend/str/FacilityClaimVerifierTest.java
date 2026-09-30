@@ -82,6 +82,44 @@ class FacilityClaimVerifierTest {
     }
 
     /**
+     * Zapis je aktivan, ali objekt je odjavljen — na CDU gotovo polovica zapisa s
+     * {@code active = true}. Popis ga ne prikazuje, pa ne smije proći ni handoffom s ID-em.
+     */
+    @Test
+    void rejects_whenBusinessStatusInactive() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubBusinessStatus("FBS_INACTIVE");
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.inactive");
+    }
+
+    /** Bez poslovnog statusa se ne zna da objekt posluje — ne prolazi, kao ni na popisu. */
+    @Test
+    void rejects_whenBusinessStatusMissing() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubBusinessStatus(null);
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.inactive");
+    }
+
+    /** Isto kao popis ({@code f.active = true}): nepoznata zastavica zapisa nije aktivan objekt. */
+    @Test
+    void isActive_requiresActiveRowAndActiveBusinessStatus() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+
+        when(row.getActive()).thenReturn(null);
+        assertThat(FacilityClaimVerifier.isActive(row)).isFalse();
+
+        when(row.getActive()).thenReturn(true);
+        assertThat(FacilityClaimVerifier.isActive(row)).isTrue();
+    }
+
+    /**
      * Dva RB-a za isti eTurizam objekt: adresni {@code checkDuplicateLocation} to promaši jer su
      * ulica i kućni broj u eTurizmu najčešće prazni, a write-back drugog RB-a bi tiho pao na
      * {@code WHERE registration_number IS NULL}.
@@ -389,7 +427,12 @@ class FacilityClaimVerifierTest {
         when(stubbedRow.getSubtypeCode()).thenReturn(subtypeCode);
         when(stubbedRow.getBeds()).thenReturn(beds);
         when(stubbedRow.getActive()).thenReturn(active);
+        when(stubbedRow.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(stubbedRow));
+    }
+
+    private void stubBusinessStatus(String code) {
+        when(stubbedRow.getBusinessStatusCode()).thenReturn(code);
     }
 
     private void stubName(String name) {
