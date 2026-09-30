@@ -34,8 +34,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Provjera i čitanje {@code SignedAuthorizationUnionPermissionResponse}.
@@ -64,14 +68,10 @@ final class EOvlastenjaResponseParser {
     static final String REGISTRY = "EOVLASTENJA";
     static final String ROOT_NS = "http://eovlastenja.fina.hr/RoAuthUnionApi/v2";
     static final String ROOT_NAME = "SignedAuthorizationUnionPermissionResponse";
+    static final String NAVIGATION_ROOT_NAME = "NavigationDataResponse";
 
     private static final Logger log = LoggerFactory.getLogger(EOvlastenjaResponseParser.class);
-
-    private static final Set<String> SESSION_CODES = Set.of("200", "201", "202", "203");
-    private static final Set<String> NOT_REPRESENTATIVE_CODES = Set.of("400", "401");
-    private static final String SUBJECT_NOT_FOUND_CODE = "500";
-    /** 100 = pristup metodi nije dozvoljen, 402 = modul e-Zastupanja isključen — konfiguracija. */
-    private static final Set<String> CONFIGURATION_CODES = Set.of("100", "402");
+    private static final Pattern OIB = Pattern.compile("\\d{11}");
 
     // Dopušteni oblik potpisa. FINA (primjer poruke): exc-c14n, rsa-sha256, enveloped + exc-c14n,
     // SHA-1 digest. Secure validation je isključen zbog SHA-1, pa ovaj popis preuzima njegovu
@@ -115,20 +115,10 @@ final class EOvlastenjaResponseParser {
 
     private static Zastupanje read(Element root, String expectedRequestId, String expectedPersonOib,
                                    String expectedLegalOib) {
-        String forRequestId = root.getAttribute("ForRequestId");
-        if (!expectedRequestId.equals(forRequestId)) {
-            // Id je naš, nasumičan i bez osobnih podataka — primljena vrijednost smije u log.
-            throw failure("odgovor se ne odnosi na naš zahtjev (ForRequestId="
-                    + (forRequestId.isEmpty() ? "prazan" : forRequestId) + ", očekivan " + expectedRequestId + ")");
-        }
-
+        requireForRequestId(root, expectedRequestId);
         failOnErrors(root);
-
-        Element person = child(root, "Person");
-        String personOib = person != null ? text(person, "OIB") : null;
-        if (!expectedPersonOib.equals(personOib)) {
-            throw failure("osoba u odgovoru nije osoba iz zahtjeva");
-        }
+        Element person = requirePerson(root, expectedPersonOib);
+        String personOib = text(person, "OIB");
 
         String legalName = verifySubject(root, expectedLegalOib);
 
@@ -141,10 +131,112 @@ final class EOvlastenjaResponseParser {
                 expectedLegalOib, legalName, functions);
     }
 
-    // ── potpis ───────────────────────────────────────────────────────────────
+    // ── popis tvrtki (GetNavigationData) ─────────────────────────────────────
 
-    private Element verifiedRoot(byte[] xml) {
-        Document doc;
+    /**
+     * {@code NavigationDataResponse}. Shema ga ne potpisuje (nema {@code Signatures}), pa se čita
+     * samo za prikaz: sigurno parsiranje, {@code ForRequestId}, osoba iz zahtjeva i greške. U popis
+     * idu samo tvrtke ({@code IZVOR_REG=1}) na temelju e-Zastupanja i to unutar same tvrtke — isti
+     * par koji potvrđuje {@link #parse} ({@code JipsTo = IdentfiersFor}). e-Punomoći i djelovanje
+     * kao djelatnik druge tvrtke ne ulaze.
+     */
+    List<ZastupanaTvrtka> parseNavigation(byte[] xml, String expectedRequestId, String expectedPersonOib) {
+        Element root = parseDocument(xml).getDocumentElement();
+        requireRoot(root, NAVIGATION_ROOT_NAME);
+        try {
+            List<ZastupanaTvrtka> companies = readNavigation(root, expectedRequestId, expectedPersonOib);
+            if (log.isDebugEnabled()) {
+                log.debug("eovlastenja_navigation_shape {}", shape(root));
+            }
+            return companies;
+        } catch (EOvlastenjaException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("eovlastenja_navigation_shape {}", shape(root));
+            }
+            throw e;
+        } catch (ExternalRegistryException e) {
+            log.warn("eovlastenja_navigation_shape {}", shape(root));
+            throw e;
+        }
+    }
+
+    private static List<ZastupanaTvrtka> readNavigation(Element root, String expectedRequestId,
+                                                        String expectedPersonOib) {
+        requireForRequestId(root, expectedRequestId);
+        failOnErrors(root);
+        requirePerson(root, expectedPersonOib);
+
+        Map<String, ZastupanaTvrtka> companies = new LinkedHashMap<>();
+        Element authorizations = child(root, "Authorizations");
+        if (authorizations == null) {
+            return List.of();
+        }
+        for (Element item : children(authorizations, "AuthorizationItem")) {
+            // Bez LegalPersonTo osoba djeluje kao građanin; s njim — unutar te tvrtke.
+            Element within = child(item, "LegalPersonTo");
+            Element permissions = child(item, "PermissionsFor");
+            if (permissions == null) {
+                continue;
+            }
+            for (Element permission : children(permissions, "PermissionFor")) {
+                Element entityFor = child(permission, "EntityFor");
+                Element legal = entityFor != null ? child(entityFor, "Legal") : null;
+                String ips = companyIps(legal);
+                if (ips == null || !"true".equalsIgnoreCase(text(permission, "BasedOnRepresentation"))) {
+                    continue;
+                }
+                if (within != null && !ips.equals(companyIps(within))) {
+                    continue;
+                }
+                companies.putIfAbsent(ips, new ZastupanaTvrtka(ips, text(legal, "Name")));
+            }
+        }
+        if (companies.isEmpty() && !children(authorizations, "AuthorizationItem").isEmpty()) {
+            // Stavke postoje, a nijedna nije e-Zastupanje tvrtke — ili je stvarni oblik drugačiji od
+            // FINA primjera. Oblik (bez vrijednosti) razlikuje ta dva slučaja.
+            log.info("eovlastenja_navigation_no_companies shape={}", shape(root));
+        }
+        return List.copyOf(companies.values());
+    }
+
+    /** OIB tvrtke iz {@code Legal}/{@code LegalPersonTo}; {@code null} kad to nije tvrtka ({@code IZVOR_REG} ≠ 1). */
+    private static String companyIps(Element legal) {
+        Element jips = legal != null ? child(legal, "Jips") : null;
+        if (jips == null || !"1".equals(text(jips, "IZVOR_REG"))) {
+            return null;
+        }
+        String ips = text(jips, "IPS");
+        return ips != null && OIB.matcher(ips).matches() ? ips : null;
+    }
+
+    // ── zajedničke provjere ──────────────────────────────────────────────────
+
+    private static void requireRoot(Element root, String expectedName) {
+        if (!ROOT_NS.equals(root.getNamespaceURI()) || !expectedName.equals(root.getLocalName())) {
+            throw failure("neočekivan root element " + root.getLocalName());
+        }
+    }
+
+    private static void requireForRequestId(Element root, String expectedRequestId) {
+        String forRequestId = root.getAttribute("ForRequestId");
+        if (!expectedRequestId.equals(forRequestId)) {
+            // Id je naš, nasumičan i bez osobnih podataka — primljena vrijednost smije u log.
+            throw failure("odgovor se ne odnosi na naš zahtjev (ForRequestId="
+                    + (forRequestId.isEmpty() ? "prazan" : forRequestId) + ", očekivan " + expectedRequestId + ")");
+        }
+    }
+
+    private static Element requirePerson(Element root, String expectedPersonOib) {
+        Element person = child(root, "Person");
+        String personOib = person != null ? text(person, "OIB") : null;
+        if (!expectedPersonOib.equals(personOib)) {
+            throw failure("osoba u odgovoru nije osoba iz zahtjeva");
+        }
+        return person;
+    }
+
+    /** XML bez DOCTYPE-a i vanjskih entiteta (XXE); kodiranje iz same poruke. */
+    private static Document parseDocument(byte[] xml) {
         try {
             DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
             dbf.setNamespaceAware(true);
@@ -157,15 +249,17 @@ final class EOvlastenjaResponseParser {
             DocumentBuilder builder = dbf.newDocumentBuilder();
             // Bez ovoga Xerces grešku ispisuje i na stderr ("[Fatal Error] ..."), mimo loga.
             builder.setErrorHandler(new DefaultHandler());
-            doc = builder.parse(new ByteArrayInputStream(xml));
+            return builder.parse(new ByteArrayInputStream(xml));
         } catch (Exception e) {
             throw failure("odgovor nije ispravan XML (" + xml.length + " B, početak: " + preview(xml) + ")", e);
         }
+    }
 
-        Element root = doc.getDocumentElement();
-        if (!ROOT_NS.equals(root.getNamespaceURI()) || !ROOT_NAME.equals(root.getLocalName())) {
-            throw failure("neočekivan root element " + root.getLocalName());
-        }
+    // ── potpis ───────────────────────────────────────────────────────────────
+
+    private Element verifiedRoot(byte[] xml) {
+        Element root = parseDocument(xml).getDocumentElement();
+        requireRoot(root, ROOT_NAME);
         String rootId = root.getAttribute("Id");
         if (rootId.isEmpty()) {
             throw failure("root nema atribut Id");
@@ -330,25 +424,15 @@ final class EOvlastenjaResponseParser {
         }
         for (Element error : descendants(errors, "Error")) {
             String code = text(error, "Code");
-            String message = text(error, "Message");
-            if (code == null) {
-                continue;
-            }
-            if (SESSION_CODES.contains(code)) {
-                throw new EOvlastenjaException(Reason.SESSION, code, message);
-            }
-            if (NOT_REPRESENTATIVE_CODES.contains(code)) {
-                throw new EOvlastenjaException(Reason.NOT_REPRESENTATIVE, code, message);
-            }
-            if (SUBJECT_NOT_FOUND_CODE.equals(code)) {
-                throw new EOvlastenjaException(Reason.SUBJECT_NOT_FOUND, code, message);
-            }
-            if (CONFIGURATION_CODES.contains(code)) {
-                log.error("eovlastenja_config_error code={} message={}", code, message);
-                throw failure("e-Ovlaštenja odbijaju uslugu (šifra " + code + ")");
+            Optional<RuntimeException> rejection = EOvlastenjaErrorCodes.rejection(code, text(error, "Message"));
+            if (rejection.isPresent()) {
+                throw rejection.get();
             }
             // 403/404 (e-Punomoći isključene, preskočeni zapisi bez privole) ne tiču se e-Zastupanja.
-            log.info("eovlastenja_info code={} message={}", code, message);
+            // Bez poruke: kod preskočenih zapisa može navoditi subjekte.
+            if (code != null) {
+                log.info("eovlastenja_info code={}", code);
+            }
         }
     }
 
@@ -412,6 +496,16 @@ final class EOvlastenjaResponseParser {
             }
         }
         return null;
+    }
+
+    private static List<Element> children(Element parent, String localName) {
+        List<Element> out = new ArrayList<>();
+        for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
+            if (n instanceof Element e && localName.equals(e.getLocalName())) {
+                out.add(e);
+            }
+        }
+        return out;
     }
 
     private static List<Element> descendants(Element parent, String localName) {

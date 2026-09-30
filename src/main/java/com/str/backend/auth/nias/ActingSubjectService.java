@@ -2,16 +2,24 @@ package com.str.backend.auth.nias;
 
 import com.str.backend.common.Oib;
 import com.str.backend.exception.BusinessException;
+import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaClient;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
+import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.registries.eovlastenja.Zastupanje;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.Serializable;
+import java.text.Collator;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -28,6 +36,11 @@ import java.util.Optional;
 public class ActingSubjectService {
 
     public static final String SESSION_KEY = ActingSubjectService.class.getName() + ".SUBJECT";
+    /** Kratko čuvan popis tvrtki (GetNavigationData), da se FINA ne zove pri svakom otvaranju izbornika. */
+    public static final String OPTIONS_KEY = ActingSubjectService.class.getName() + ".OPTIONS";
+    private static final Duration OPTIONS_TTL = Duration.ofMinutes(5);
+    /** Neuspjeh se pamti kraće — da ispad FINA-e ne znači novi poziv (i timeout) pri svakom otvaranju izbornika. */
+    private static final Duration OPTIONS_FAILURE_TTL = Duration.ofSeconds(60);
 
     private static final Logger log = LoggerFactory.getLogger(ActingSubjectService.class);
 
@@ -62,6 +75,65 @@ public class ActingSubjectService {
         session.setAttribute(SESSION_KEY, subject);
         log.info("acting_subject selected functions={}", subject.functions().size());
         return subject;
+    }
+
+    /**
+     * Tvrtke koje osoba zastupa po zakonu, za izbornik „Djelujem u ime" — sortirane po nazivu.
+     * Popis je nepotpisan (v. {@link EOvlastenjaClient#representedCompanies}) i ništa ne odobrava:
+     * odabir i dalje ide kroz {@link #select} s potpisanom provjerom. Vrijedi samo za osobu za koju
+     * je dohvaćen; u sesiji se čuva 5 minuta, a neuspjeh 60 sekundi.
+     *
+     * <ul>
+     *   <li>FINA javlja da osoba nije u e-Ovlaštenjima / nema privolu / subjekt ne postoji → prazan
+     *       popis (samo uskraćuje, pa je siguran i iz nepotpisanog odgovora);</li>
+     *   <li>nevažeća sjednica, nedostupnost, šifra 100, isključeno na okolini →
+     *       {@link ActingSubjectOptionsUnavailableException} (503). Ne 401: popis frontend dohvaća
+     *       sam, pa bi 401 pokrenuo ponovnu prijavu koju korisnik nije tražio.</li>
+     * </ul>
+     */
+    public List<ZastupanaTvrtka> representedCompanies(HttpSession session, NiasIdentity person) {
+        Instant now = Instant.now(clock);
+        if (session.getAttribute(OPTIONS_KEY) instanceof CachedOptions cached
+                && person.oib().equals(cached.personOib())) {
+            if (cached.unavailable() && now.isBefore(cached.fetchedAt().plus(OPTIONS_FAILURE_TTL))) {
+                throw new ActingSubjectOptionsUnavailableException();
+            }
+            if (!cached.unavailable() && now.isBefore(cached.fetchedAt().plus(OPTIONS_TTL))) {
+                return cached.companies();
+            }
+        }
+        List<ZastupanaTvrtka> fetched;
+        try {
+            fetched = eOvlastenjaClient.representedCompanies(person.sesijaId(), person.oib());
+        } catch (EOvlastenjaException e) {
+            if (e.reason() == EOvlastenjaException.Reason.SESSION) {
+                throw unavailable(session, person, now, "reason=SESSION code=" + e.code());
+            }
+            fetched = List.of();   // nije u e-Ovlaštenjima / nema privolu / nema subjekta
+        } catch (ExternalRegistryException e) {
+            throw unavailable(session, person, now, e.getMessage());
+        }
+        Collator hr = Collator.getInstance(Locale.forLanguageTag("hr"));
+        List<ZastupanaTvrtka> companies = fetched.stream()
+                .filter(c -> !c.oib().equals(person.oib()))
+                .sorted(Comparator.comparing((ZastupanaTvrtka c) -> c.naziv() != null ? c.naziv() : c.oib(), hr))
+                .toList();
+        session.setAttribute(OPTIONS_KEY, new CachedOptions(person.oib(), now, companies, false));
+        log.info("acting_subject options companies={}", companies.size());
+        return companies;
+    }
+
+    private static ActingSubjectOptionsUnavailableException unavailable(HttpSession session, NiasIdentity person,
+                                                                         Instant now, String cause) {
+        session.setAttribute(OPTIONS_KEY, new CachedOptions(person.oib(), now, List.of(), true));
+        // Jedan WARN po minuti i sesiji, bez stack tracea; uzrok je naša poruka ili šifra, bez osobnih podataka.
+        log.warn("acting_subject options_unavailable cause={}", cause);
+        return new ActingSubjectOptionsUnavailableException();
+    }
+
+    /** Popis (ili neuspjeh) iz sesije; {@link Serializable} zbog Spring Session JDBC. */
+    record CachedOptions(String personOib, Instant fetchedAt, List<ZastupanaTvrtka> companies,
+                         boolean unavailable) implements Serializable {
     }
 
     public void clear(HttpSession session) {

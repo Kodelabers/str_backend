@@ -32,4 +32,14 @@ public class EOvlastenjaClientMock implements EOvlastenjaClient {
                 .orElseThrow(() -> new EOvlastenjaException(EOvlastenjaException.Reason.NOT_REPRESENTATIVE, null,
                         "e-Ovlaštenja ne potvrđuju zastupanje za traženi subjekt"));
     }
+
+    /** Tvrtke iz mock parova za ovu osobu — isti izvor kao {@link #verifyRepresentation}. */
+    @Override
+    public List<ZastupanaTvrtka> representedCompanies(String sesijaId, String personOib) {
+        return representations.stream()
+                .filter(r -> r.personOib().equals(personOib))
+                .map(r -> new ZastupanaTvrtka(r.legalOib(), r.legalName()))
+                .distinct()
+                .toList();
+    }
 }

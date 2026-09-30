@@ -208,6 +208,7 @@ public class NiasSamlConfig {
                         sesijaIdShape(currentPrincipal.getFirstAttribute("sesija_id")));
                 // Nova prijava poništava ranije odabran subjekt u čije se ime djelovalo.
                 request.getSession().removeAttribute(ActingSubjectService.SESSION_KEY);
+                request.getSession().removeAttribute(ActingSubjectService.OPTIONS_KEY);
                 DefaultSaml2AuthenticatedPrincipal newPrincipal = new DefaultSaml2AuthenticatedPrincipal(
                         currentPrincipal.getName(),
                         currentPrincipal.getAttributes(),

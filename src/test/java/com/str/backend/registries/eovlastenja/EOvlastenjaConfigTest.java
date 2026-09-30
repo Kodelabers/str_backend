@@ -40,6 +40,34 @@ class EOvlastenjaConfigTest {
         assertThatThrownBy(() -> client.verifyRepresentation("s", "99999999990", "33333333360"))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("nisu uključena");
+        assertThatThrownBy(() -> client.representedCompanies("s", "99999999990"))
+                .isInstanceOf(ExternalRegistryException.class);
+    }
+
+    @Test
+    void mock_listsCompaniesOfThePerson() {
+        EOvlastenjaClient client = config.eOvlastenjaClientWhenDisabled(disabled(List.of(PAIR)), false);
+
+        assertThat(client.representedCompanies(null, "99999999990"))
+                .containsExactly(new ZastupanaTvrtka("33333333360", "TESTNA TVRTKA d.o.o."));
+        assertThat(client.representedCompanies(null, "70000000004")).isEmpty();
+    }
+
+    /** GetNavigationData je na istom AuthUnionApi — adresa se izvodi, test i prod. */
+    @Test
+    void navigationUrl_isDerivedFromPermissionUrl() {
+        assertThat(enabled("/x.p12", null, CA_BUNDLE, SIGNER_TST).navigationUrl())
+                .isEqualTo("https://roapiservistst.fina.hr/api/AuthUnionApi/GetNavigationData");
+    }
+
+    @Test
+    void enabled_unexpectedUrl_abortsStartup() {
+        EOvlastenjaProperties p = new EOvlastenjaProperties(true, "https://roapiservistst.fina.hr/api/nesto",
+                "/x.p12", PASSWORD, null, null, null, SIGNER_TST, null, null, null);
+
+        assertThatThrownBy(() -> config.eOvlastenjaHttpClient(p))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("GetAuthorizationUnionPermission");
     }
 
     /** Mock uz NIAS dao bi stvarnom korisniku zastupanje bez provjere. */

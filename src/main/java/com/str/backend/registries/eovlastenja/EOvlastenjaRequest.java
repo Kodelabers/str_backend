@@ -44,6 +44,24 @@ record EOvlastenjaRequest(String id, String xml) {
         return new EOvlastenjaRequest(id, xml);
     }
 
+    /**
+     * {@code NavigationDataRequest}: popis subjekata za koje osoba ima prava. Bez {@code JipsTo} —
+     * osoba djeluje osobnom vjerodajnicom, kao građanin.
+     */
+    static EOvlastenjaRequest navigation(String sesijaId, String personOib) {
+        require(sesijaId, SESIJA_ID, "sesija_id");
+        require(personOib, OIB, "OIB osobe");
+        String id = "_" + UUID.randomUUID().toString().replace("-", "");
+        String xml = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <NavigationDataRequest Id="%s" xmlns="http://eovlastenja.fina.hr/RoAuthUnionApi/v2">
+                  <Sesija_Id>%s</Sesija_Id>
+                  <PersonOIB>%s</PersonOIB>
+                </NavigationDataRequest>
+                """.formatted(id, sesijaId, personOib);
+        return new EOvlastenjaRequest(id, xml);
+    }
+
     private static void require(String value, Pattern pattern, String name) {
         if (value == null || !pattern.matcher(value).matches()) {
             throw new IllegalArgumentException("neispravan " + name + " za e-Ovlaštenja");

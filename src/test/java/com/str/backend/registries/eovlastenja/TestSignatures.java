@@ -82,6 +82,58 @@ final class TestSignatures {
                 forRequestId, personOib, legalOib, representation, errors);
     }
 
+    /**
+     * {@code NavigationDataResponse} po FINA primjeru ({@code NavigationDataResponseType.xml}),
+     * nepotpisan kao u shemi. FINA: e-Zastupanje unutar same tvrtke (ulazi u popis) i e-Punomoć za
+     * TVRTKU D.D. (ne ulazi); KNJIGOVODSTVO: djelovanje kao djelatnik druge tvrtke (ne ulazi).
+     */
+    static String navigationResponse(String forRequestId, String personOib, String extraItems, String errors) {
+        return """
+                <NavigationDataResponse Id="_4fbfa22e058a4f3db69163360a1ea767" ForRequestId="%s" \
+                xmlns="http://eovlastenja.fina.hr/RoAuthUnionApi/v2">\
+                <Person xmlns="http://eovlastenja.fina.hr/authunion/v2">\
+                <OIB xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">%s</OIB>\
+                <FirstName xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">ANA</FirstName>\
+                <LastName xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">HORVAT</LastName></Person>\
+                <Authorizations xmlns="http://eovlastenja.fina.hr/authunion/v2">\
+                <AuthorizationItem><LegalPersonTo>%s</LegalPersonTo><PermissionsFor>\
+                <PermissionFor><EntityFor><Legal xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">%s</Legal></EntityFor>\
+                <AuthorizationRange>AllServices</AuthorizationRange><BasedOnRepresentation>true</BasedOnRepresentation>\
+                <BasedOnAuthorization>true</BasedOnAuthorization></PermissionFor>\
+                <PermissionFor><EntityFor><Legal xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">%s</Legal></EntityFor>\
+                <AuthorizationRange>CurrentService</AuthorizationRange><BasedOnRepresentation>false</BasedOnRepresentation>\
+                <BasedOnAuthorization>true</BasedOnAuthorization></PermissionFor>\
+                </PermissionsFor></AuthorizationItem>\
+                <AuthorizationItem><LegalPersonTo>%s</LegalPersonTo><PermissionsFor>\
+                <PermissionFor><EntityFor><Legal xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">%s</Legal></EntityFor>\
+                <AuthorizationRange>CurrentService</AuthorizationRange><BasedOnRepresentation>true</BasedOnRepresentation>\
+                <BasedOnAuthorization>false</BasedOnAuthorization></PermissionFor>\
+                </PermissionsFor></AuthorizationItem>%s\
+                </Authorizations>%s</NavigationDataResponse>""".formatted(forRequestId, personOib,
+                legal("FINANCIJSKA AGENCIJA", "85821130368", "1"), legal("FINANCIJSKA AGENCIJA", "85821130368", "1"),
+                legal("TVRTKA D.D.", "55555555551", "1"),
+                legal("KNJIGOVODSTVO D.O.O.", "12345678903", "1"), legal("TVRTKA D.D.", "55555555551", "1"),
+                extraItems, errors);
+    }
+
+    /** {@code Name} + {@code Jips} pravne osobe, za {@code Legal} i {@code LegalPersonTo}. */
+    static String legal(String name, String ips, String izvorReg) {
+        return """
+                <Name xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">%s</Name>\
+                <Jips xmlns="http://eovlastenja.fina.hr/authorizationbase/v2"><IPS>%s</IPS><IZVOR_REG>%s</IZVOR_REG></Jips>"""
+                .formatted(name, ips, izvorReg);
+    }
+
+    /** Stavka e-Zastupanja bez {@code LegalPersonTo} (osoba kao građanin). */
+    static String representationItem(String name, String ips, String izvorReg) {
+        return """
+                <AuthorizationItem><PermissionsFor><PermissionFor><EntityFor>\
+                <Legal xmlns="http://eovlastenja.fina.hr/authorizationbase/v2">%s</Legal></EntityFor>\
+                <AuthorizationRange>AllServices</AuthorizationRange><BasedOnRepresentation>true</BasedOnRepresentation>\
+                <BasedOnAuthorization>false</BasedOnAuthorization></PermissionFor></PermissionsFor></AuthorizationItem>"""
+                .formatted(legal(name, ips, izvorReg));
+    }
+
     static String signed(String xml) throws Exception {
         return sign(xml, TRUSTED, null);
     }

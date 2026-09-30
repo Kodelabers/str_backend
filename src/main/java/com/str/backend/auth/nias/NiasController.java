@@ -100,6 +100,21 @@ public class NiasController {
         return ActingSubjectResponse.of(actingSubjectService.select(session, personIdentity(authentication), body.oib()));
     }
 
+    /**
+     * Tvrtke koje prijavljena osoba zastupa po zakonu (e-Ovlaštenja {@code GetNavigationData}), za
+     * izbornik umjesto upisa OIB-a. Popis samo predlaže — odabir ide kroz {@code POST} i potpisanu
+     * provjeru. 200 i prazan popis kad tvrtki nema (i kad osoba nije u e-Ovlaštenjima); 503
+     * {@code EOVLASTENJA_OPTIONS_UNAVAILABLE} kad popis nije dostupan (FINA, šifra 100, isključeno,
+     * nevažeća FINA sjednica). 401 samo bez NIAS prijave — nikad zbog FINA-e, jer popis frontend
+     * dohvaća sam.
+     */
+    @GetMapping("/acting-subject/options")
+    public List<ActingSubjectOption> actingSubjectOptions(Authentication authentication, HttpSession session) {
+        return actingSubjectService.representedCompanies(session, personIdentity(authentication)).stream()
+                .map(c -> new ActingSubjectOption(c.oib(), c.naziv()))
+                .toList();
+    }
+
     /** Trenutno odabrana pravna osoba; 204 kad korisnik djeluje u svoje ime. */
     @GetMapping("/acting-subject")
     public ResponseEntity<ActingSubjectResponse> actingSubject(Authentication authentication) {

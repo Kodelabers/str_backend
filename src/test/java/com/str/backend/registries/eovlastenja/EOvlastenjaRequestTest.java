@@ -23,6 +23,21 @@ class EOvlastenjaRequestTest {
     }
 
     @Test
+    void buildsNavigationRequest_withoutJipsTo() {
+        EOvlastenjaRequest r = EOvlastenjaRequest.navigation("3B51-9ACB-EAE9-801A", "70000000004");
+
+        assertThat(r.id()).matches("_[0-9a-f]{32}");
+        assertThat(r.xml())
+                .startsWith("<?xml")
+                .contains("<NavigationDataRequest Id=\"" + r.id() + "\"")
+                .contains("<Sesija_Id>3B51-9ACB-EAE9-801A</Sesija_Id>")
+                .contains("<PersonOIB>70000000004</PersonOIB>")
+                .doesNotContain("JipsTo");
+        assertThatThrownBy(() -> EOvlastenjaRequest.navigation("x</Sesija_Id>", "70000000004"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void eachRequestHasOwnId() {
         assertThat(EOvlastenjaRequest.of("s", "70000000004", "33333333360").id())
                 .isNotEqualTo(EOvlastenjaRequest.of("s", "70000000004", "33333333360").id());
