@@ -58,6 +58,7 @@ public class NiasController {
     private final EffectiveOibResolver effectiveOibResolver;
     private final ActingSubjectService actingSubjectService;
     private final ActingSubjectGuard actingSubjectGuard;
+    private final NavigationBarService navigationBarService;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -71,7 +72,8 @@ public class NiasController {
                           SubjectProfileService subjectProfileService,
                           EffectiveOibResolver effectiveOibResolver,
                           ActingSubjectService actingSubjectService,
-                          ActingSubjectGuard actingSubjectGuard) {
+                          ActingSubjectGuard actingSubjectGuard,
+                          NavigationBarService navigationBarService) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -85,6 +87,7 @@ public class NiasController {
         this.effectiveOibResolver = effectiveOibResolver;
         this.actingSubjectService = actingSubjectService;
         this.actingSubjectGuard = actingSubjectGuard;
+        this.navigationBarService = navigationBarService;
     }
 
     /**
@@ -113,6 +116,37 @@ public class NiasController {
         return actingSubjectService.representedCompanies(session, personIdentity(authentication)).stream()
                 .map(c -> new ActingSubjectOption(c.oib(), c.naziv()))
                 .toList();
+    }
+
+    /**
+     * Adresa skripte FINA navigacijske trake za prijavljenu osobu — traka prikazuje subjekte koje
+     * smije zastupati i odabir vraća na {@code /acting-subject/change-entity}. 204 kad traka nije
+     * uključena ili prijava ne nosi {@code nav_token} (tada ostaje izbornik s upisom OIB-a).
+     */
+    @GetMapping("/navigation-bar")
+    public ResponseEntity<NavigationBarResponse> navigationBar(Authentication authentication, HttpSession session) {
+        personOib(authentication);
+        return navigationBarService.scriptUrl(session, authentication)
+                .map(url -> ResponseEntity.ok(new NavigationBarResponse(url)))
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /**
+     * {@code change_entity_url} navigacijske trake: odabir subjekta u traci. Parametri su samo
+     * prijedlog — subjekt se sprema nakon potpisane provjere, kao kod {@code POST}. Uvijek 302 na
+     * frontend s {@code ?entitySwitch=<ishod>}, i bez prijave (v. {@link NavigationBarService#change}).
+     */
+    @GetMapping("/acting-subject/change-entity")
+    public ResponseEntity<Void> changeEntity(@RequestParam(required = false) String toLegalIps,
+                                             @RequestParam(required = false) String toLegalIzvorReg,
+                                             @RequestParam(required = false) String forPersonOib,
+                                             @RequestParam(required = false) String state,
+                                             Authentication authentication,
+                                             HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .location(navigationBarService.change(request, authentication, toLegalIps, toLegalIzvorReg,
+                        forPersonOib, state))
+                .build();
     }
 
     /** Trenutno odabrana pravna osoba; 204 kad korisnik djeluje u svoje ime. */

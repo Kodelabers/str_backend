@@ -56,6 +56,11 @@ public class NiasSecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error", "/login", "/saml2/**", "/login/saml2/**", "/logout/saml2/**")
                         .permitAll()
+                        // Povratak iz FINA navigacijske trake dolazi punom navigacijom preglednika:
+                        // bez sesije mora dobiti preusmjerenje na frontend, ne golu 401 stranicu.
+                        // Identitet i state provjerava NavigationBarService.
+                        .requestMatchers(NavigationBarService.CHANGE_ENTITY_PATH)
+                        .permitAll()
                         .anyRequest().authenticated())
                 // API bez sesije → 401, ne 302 na /saml2/authenticate/nias. saml2Login bi inače
                 // preusmjeravao i API pozive, pa bi fetch pratio preusmjerenje i završio na HTML-u
