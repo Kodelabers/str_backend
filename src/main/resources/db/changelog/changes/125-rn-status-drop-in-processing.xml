@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Uklanja IN_PROCESSING iz dopuštenih statusa RB-a. Status nikad nije bio dosegljiv:
+      RnEntity.issue() RB odmah izdaje kao ACTIVE, a RB bez izdanog broja ne postoji.
+
+      Precondition zaustavlja migraciju ako ipak postoji takav red, jer bi ga ADD CONSTRAINT
+      ionako odbio, a HALT u logu kaže zašto. Takav red treba ručno pregledati, ne tiho
+      prepisati u ACTIVE.
+    -->
+    <changeSet id="125-rn-status-drop-in-processing" author="str-backend">
+        <preConditions onFail="HALT"
+                       onFailMessage="str_rn.registration_number ima redove u statusu IN_PROCESSING; pregledati ih prije migracije 125">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str_rn.registration_number WHERE status = 'IN_PROCESSING'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            ALTER TABLE str_rn.registration_number
+                DROP CONSTRAINT IF EXISTS chk_rn_status;
+            ALTER TABLE str_rn.registration_number
+                ADD CONSTRAINT chk_rn_status
+                    CHECK (status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'WITHDRAWN'));
+        </sql>
+        <rollback>
+            <sql>
+                ALTER TABLE str_rn.registration_number
+                    DROP CONSTRAINT IF EXISTS chk_rn_status;
+                ALTER TABLE str_rn.registration_number
+                    ADD CONSTRAINT chk_rn_status
+                        CHECK (status IN ('IN_PROCESSING', 'ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'WITHDRAWN'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

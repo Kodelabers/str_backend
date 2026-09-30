@@ -155,15 +155,6 @@ class RnLifecycleEmailListenerTest {
         assertThat(captured().dostavaMailom()).isFalse();
     }
 
-    /** Izdavanje RB-a već pokriva EgopRegistrationDispatcher; dvostruka obavijest se ne šalje. */
-    @Test
-    void issuance_isHandledElsewhere_noMail() {
-        listener.onLifecycleChange(event(RnStatus.IN_PROCESSING, RnStatus.ACTIVE,
-                RnTrigger.ISSUE, null, null));
-
-        verify(emailService, never()).sendRnLifecycleNotification(any());
-    }
-
     /** Pad rendera akta ne smije progutati obavijest — status je već promijenjen. */
     @Test
     void actRenderFailure_stillSendsMail() {

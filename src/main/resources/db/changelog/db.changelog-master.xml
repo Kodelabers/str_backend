@@ -204,4 +204,7 @@
          računa ostaje na uk_lessor_username (023). -->
     <include file="db/changelog/changes/065-drop-uq-lessor-email.xml"/>
 
+    <!-- RB se izdaje odmah kao ACTIVE; IN_PROCESSING nikad nije bio dosegljiv. -->
+    <include file="db/changelog/changes/125-rn-status-drop-in-processing.xml"/>
+
 </databaseChangeLog>

@@ -198,8 +198,8 @@ public enum StrDocumentType {
      * u eGOP i obavijest e-poštom — jer bi dvije kopije ovog mapiranja s vremenom razišle
      * dokument i poruku o istom događaju.
      *
-     * <p>Izdavanje RB-a namjerno vraća prazno: ono se urudžbira u registracijskom toku, koji
-     * PDF renderira <i>iz</i> urudžbenog broja i zato ne može ići ovim putem.
+     * <p>Izdavanje RB-a ovdje ne dolazi: RB nastaje odmah kao {@code ACTIVE}, bez prijelaza, a
+     * urudžbira se u registracijskom toku, koji PDF renderira <i>iz</i> urudžbenog broja.
      *
      * @param byLessor je li promjenu pokrenuo iznajmljivač — isti okidač
      *                 {@code WITHDRAWAL} pokriva i opoziv i povlačenje po službenoj dužnosti

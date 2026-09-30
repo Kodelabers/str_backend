@@ -1,7 +1,6 @@
 package com.str.backend.domain;
 
 public enum RnStatus {
-    IN_PROCESSING,
     ACTIVE,
     SUSPENSION_PROPOSED,
     SUSPENDED,
@@ -9,7 +8,6 @@ public enum RnStatus {
 
     public boolean canTransitionTo(RnStatus target, RnTrigger trigger) {
         return switch (this) {
-            case IN_PROCESSING -> trigger == RnTrigger.ISSUE && target == ACTIVE;
             case ACTIVE -> switch (trigger) {
                 // OTHER je slobodan razlog: RnService#suspend uz njega traži obrazloženje, koje
                 // onda nosi izreku prijedloga umjesto šifriranog razloga.

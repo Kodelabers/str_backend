@@ -72,8 +72,7 @@ class StatisticsServiceTest {
                 rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 3L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.SUSPENSION_PROPOSED, 1L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.SUSPENDED, 1L),
-                rnCount("Splitsko-dalmatinska županija", RnStatus.WITHDRAWN, 1L),
-                rnCount("Splitsko-dalmatinska županija", RnStatus.IN_PROCESSING, 99L)
+                rnCount("Splitsko-dalmatinska županija", RnStatus.WITHDRAWN, 1L)
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(10L);
 
@@ -87,7 +86,6 @@ class StatisticsServiceTest {
         assertThat(row.suspendedRn()).isEqualTo(1L);
         assertThat(row.withdrawnRn()).isEqualTo(1L);
         assertThat(row.registrationRate()).isEqualTo(40.0);
-        // IN_PROCESSING RNs are ignored by design — they aren't yet issued.
     }
 
     /** Totals must not silently lose a status; the sum of the columns is {@code totalRn}. */
