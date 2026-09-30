@@ -109,6 +109,7 @@ class StrFacilityListingQueryTest {
                   (1014, true, 'FS_PIZZERIA', 'Pizzeria'),
                   (1020, true, 'C_3_ZVJEZDICE', 'Tri zvjezdice'),
                   (1030, true, 'FBS_ACTIVE', 'Aktivan'),
+                  (1031, true, 'FBS_INACTIVE', 'Odjavljen'),
                   (1040, true, 'CAT_BROJ_KREVETA', 'Broj kreveta'),
                   (1041, true, 'CAT_BROJ_POM_KREVETA', 'Broj pomocnih kreveta')
                 """);
@@ -232,6 +233,45 @@ class StrFacilityListingQueryTest {
     }
 
     /**
+     * Zapis je aktivan, ali objekt je odjavljen. {@code facility.active} je zastavica verzije
+     * zapisa, pa je na CDU takvih gotovo polovica — ne smiju na popis.
+     */
+    @Test
+    void excludesDeregisteredFacility_evenWhenRowIsActive() {
+        facility(10, 1, "Aktivna soba", "uuid-10", 31, true);
+        type(10, 1010);
+        facility(11, 1, "Odjavljena soba", "uuid-11", 32, true);
+        type(11, 1010);
+        businessStatus(11, 1031L);
+
+        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(10L);
+        assertThat(repository.countListingByOib(OIB, CODES)).isEqualTo(1);
+    }
+
+    /** Bez poslovnog statusa se ne zna da objekt posluje, pa se ne prikazuje. */
+    @Test
+    void excludesFacilityWithoutBusinessStatus() {
+        facility(10, 1, "Soba bez statusa", "uuid-10", 31, true);
+        type(10, 1010);
+        businessStatus(10, null);
+
+        assertThat(repository.findListingByOib(OIB, CODES, 20, 0)).isEmpty();
+        assertThat(repository.countListingByOib(OIB, CODES)).isZero();
+    }
+
+    /** Status se gleda nakon dedupa — stariji zapis s FBS_ACTIVE ne smije "oživjeti" odjavljen objekt. */
+    @Test
+    void excludesDeregisteredFacility_withoutRevivingOlderActiveStatus() {
+        facility(10, 1, "Aktivna stara", "uuid-shared", 31, true);
+        type(10, 1010);
+        facility(12, 1, "Odjavljena nova", "uuid-shared", 32, true);
+        type(12, 1010);
+        businessStatus(12, 1031L);
+
+        assertThat(repository.findListingByOib(OIB, CODES, 20, 0)).isEmpty();
+    }
+
+    /**
      * Objekti bez {@code system_uuid} I bez dokumenta: bucket pada na vlastiti id, pa se ne skupe
      * svi u istu grupu. Bez toga bi {@code PARTITION BY NULL} od svih takvih objekata jednog
      * iznajmljivača prikazao samo najnoviji.
@@ -333,6 +373,35 @@ class StrFacilityListingQueryTest {
         assertThat(row.get().getBeds()).isEqualTo(2);
         assertThat(row.get().getAuxiliaryBeds()).isNull();
         assertThat(row.get().getActive()).isTrue();
+        // Literal u LISTING_FROM i konstanta koju čita verifier moraju biti isti kod
+        assertThat(row.get().getBusinessStatusCode()).isEqualTo(StrFacilityRepository.ACTIVE_BUSINESS_STATUS);
+        assertThat(FacilityClaimVerifier.isActive(row.get())).isTrue();
+        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(10L);
+    }
+
+    /** Vlasnički upit vraća odjavljen objekt (da verifier kaže zašto), ali ga ne pušta. */
+    @Test
+    void findsOwnership_ofDeregisteredFacility_asInactive() {
+        facility(10, 1, "Odjavljena soba", "uuid-10", 31, true);
+        type(10, 1010);
+        businessStatus(10, 1031L);
+
+        FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getBusinessStatusCode()).isEqualTo("FBS_INACTIVE");
+        assertThat(FacilityClaimVerifier.isActive(row)).isFalse();
+    }
+
+    @Test
+    void findsOwnership_withoutBusinessStatus_asInactive() {
+        facility(10, 1, "Soba bez statusa", "uuid-10", 31, true);
+        type(10, 1010);
+        businessStatus(10, null);
+
+        FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getBusinessStatusCode()).isNull();
+        assertThat(FacilityClaimVerifier.isActive(row)).isFalse();
     }
 
     /** Pomoćni kreveti ulaze u maksimalan broj gostiju, pa ih vlasnički upit mora vratiti. */
@@ -378,6 +447,10 @@ class StrFacilityListingQueryTest {
                                           same_address_subject, registration_number)
                 VALUES (?, ?, ?, ?, ?, ?, 41, 1020, 1030, false, NULL)
                 """, id, active, subjectVersionId, name, systemUuid, documentId);
+    }
+
+    private void businessStatus(long facilityId, Long statusId) {
+        jdbc.update("UPDATE str.facility SET business_status_id = ? WHERE id = ?", statusId, facilityId);
     }
 
     private void type(long facilityId, long subTypeId) {

@@ -4,6 +4,8 @@ import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionEntity.CategorizationDecisionMetadata;
 import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.exception.BusinessException;
+import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnRepository.FacilityRnRow;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -205,12 +208,43 @@ class NiasFacilityServiceTest {
         when(row.getOib()).thenReturn(OIB);
         when(row.getBeds()).thenReturn(4);
         when(row.getAuxiliaryBeds()).thenReturn(2);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
 
         FacilityClaimResponse claim = service.claim(OIB, "153049");
 
         assertThat(claim.brKreveta()).isEqualTo(6);
         assertThat(claim.zakljucanaPolja()).contains("maxBeds");
+    }
+
+    /**
+     * Odjavljen objekt: forma se ne smije predpopuniti, jer bi submit pao na verifieru. Vlasniku
+     * se to kaže (400), a ne 404 — objekt je njegov, pa ne otkriva ništa tuđe.
+     */
+    @Test
+    void claim_rejectsFacilityThatIsNotActive() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn(OIB);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_INACTIVE");
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+
+        assertThatThrownBy(() -> service.claim(OIB, "153049"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.inactive");
+    }
+
+    /** Tuđi odjavljeni objekt i dalje daje 404 — provjera statusa ide tek nakon vlasništva. */
+    @Test
+    void claim_returnsNotFound_forInactiveFacilityOfAnotherLessor() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn("12312312316");
+        when(row.getBusinessStatusCode()).thenReturn("FBS_INACTIVE");
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+
+        assertThatThrownBy(() -> service.claim(OIB, "153049"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     private void stubFacilities(FacilityListingRow... rows) {

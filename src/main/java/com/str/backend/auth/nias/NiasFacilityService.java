@@ -3,6 +3,7 @@ package com.str.backend.auth.nias;
 import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.rn.RnRepository;
@@ -89,6 +90,7 @@ public class NiasFacilityService {
      *
      * <p>Tuđi i nepostojeći objekt daju isti 404: postojanje tuđeg zapisa nije podatak koji
      * ovaj endpoint smije otkriti, a i sam submit bi ga odbio ({@code error.facility.notOwned}).
+     * Vlastiti objekt koji ne posluje daje 400 {@code error.facility.inactive}.
      */
     @Transactional(readOnly = true)
     public FacilityClaimResponse claim(String oib, String facilityId) {
@@ -101,6 +103,11 @@ public class NiasFacilityService {
         FacilityOwnershipRow row = facilityRepository.findOwnership(id)
                 .filter(r -> oib.equals(r.getOib()))
                 .orElseThrow(() -> new ResourceNotFoundException("facility not found: " + facilityId));
+        // Nakon provjere vlasništva: vlasniku smije reći da objekt ne posluje, tuđem ne smije
+        // otkriti ni da postoji. Bez ovoga bi se forma predpopunila, a submit bi pao na verifieru.
+        if (!FacilityClaimVerifier.isActive(row)) {
+            throw new BusinessException("error.facility.inactive");
+        }
 
         return new FacilityClaimResponse(
                 String.valueOf(id),
