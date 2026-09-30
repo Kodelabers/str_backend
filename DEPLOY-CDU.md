@@ -366,6 +366,27 @@ Zatim, s odabranom tvrtkom, zahtjev za RB ili povlačenje RB-a: prije svake od t
 mora biti `acting_subject reverified` (ili `acting_subject reverify_failed reason=…` — tvrtka je
 tada maknuta iz sesije i radnja se ne izvodi).
 
+**4a. Navigacijska traka e-Građani** (izbornik subjekta, `docs/EOVLASTENJA.md`). Uključena u
+`application-cdu.properties` (`eusluge-nav-test.gov.hr`); gašenje bez rebuilda:
+`APP_NIAS_NAVIGATION_BAR_ENABLED=false` u `.env.cdu` + korak 7. Nakon NIAS prijave na vrhu stranice
+mora biti traka e-Građani s **imenom korisnika**; klik na ime → „Izaberite subjekt" → odabir.
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "navigation_bar|acting_subject|eovlastenja_call" | tail -8
+```
+
+| U logu | Značenje |
+| :--- | :--- |
+| `navigation_bar unavailable nav_token=nema …` | NIAS ne šalje `nav_token` → traka se ne prikazuje, ostaje izbornik u zaglavlju |
+| `navigation_bar change outcome=ok izvor_reg=1` (uz `eovlastenja_call ok` + `acting_subject selected`) | **radi** — odabir iz trake potvrđen i spremljen |
+| `outcome=notRepresentative` / `notFound` / `unsupported izvor_reg=2…` | traka je ponudila subjekt koji ne prihvaćamo (punomoć, obrt/OPG) — očekivano |
+| `outcome=self` | korisnik je u traci odabrao sebe → djeluje u svoje ime |
+| `navigation_bar change invalid_state` + `outcome=invalid` | odabir nije došao iz naše trake u ovoj sesiji (ili FINA ne prenosi naš `state` u `change_entity_url`) |
+| nijedan `navigation_bar change` nakon odabira u traci | traka nije pozvala naš `change_entity_url` — FINA ga možda ne prihvaća za našu domenu; pogledati kamo je preglednik otišao (DevTools → Network, *Preserve log*) |
+
+Traka piše „Prijava" umjesto imena: adresa skripte nije iz iste okoline kao NIAS (test ↔ produkcija)
+ili FINA traku ne veže uz našu domenu — javiti se FINA-i.
+
 **5. TLS dijagnostika** (samo ako točka 4 pokaže `SSLHandshakeException`). FINA klijentski
 certifikat traži tek naknadno (renegotiation), pa se iz same iznimke ne vidi je li ga uopće
 zatražila i je li poslan. Privremeno u `.env.cdu`:

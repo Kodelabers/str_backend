@@ -12,7 +12,9 @@ otvoreni.
 
 ```
 1. NIAS prijava               → assertion: oib, ime, prezime, tid, sesija_id
-1a. GET /api/nias/acting-subject/options → GetNavigationData: tvrtke koje osoba zastupa (za izbornik)
+1a. FINA navigacijska traka e-Građani (u pregledniku) → korisnik odabere subjekt
+    → GET /api/nias/acting-subject/change-entity?toLegalIps=…&state=…  (dalje kao 3–5, pa 302 na frontend)
+1b. GET /api/nias/acting-subject/options → GetNavigationData: tvrtke koje osoba zastupa (izbornik u zaglavlju)
 2. POST /api/nias/acting-subject {"oib": "<OIB tvrtke>"}   (odabir iz izbornika ili upis OIB-a)
 3. backend → e-Ovlaštenja     GetAuthorizationUnionPermission (mTLS, XML)
                               Sesija_Id, PersonOIB, JipsTo = IdentfiersFor = tvrtka
@@ -29,9 +31,35 @@ u njega idu tvrtke (`IZVOR_REG=1`) na temelju e-Zastupanja (`BasedOnRepresentati
 tvrtke ili kao građanin; e-Punomoći i djelovanje kao djelatnik druge tvrtke ne ulaze. Odabir iz popisa
 ide istim `POST`-om i potpisanom provjerom. Popis se u sesiji čuva 5 minuta, po osobi.
 
-**Izbor subjekta je vlastiti** (izbornik ili unos OIB-a), ne FINA-ina zajednička navigacijska traka: njezin
-`change_entity_url` registriran je uz uslugu, pa bi uz posuđeni identitet InterniTurizma vodio na
-njihov URL (isti razlog zašto ne radi odjava, v. memoriju o NIAS registraciji).
+**Stanje na CDU-u (30.09.2026.):** certifikat „e-Turizam" smije `GetAuthorizationUnionPermission`, ali **ne i `GetNavigationData`** — FINA vraća šifru 100 kao XML `<Error>` uz HTTP 400. Popis zato daje 503 i ostaje upis OIB-a, dok FINA ne odobri pristup (backlog E13).
+
+**Navigacijska traka e-Građani** (`NavigationBarService`, uključena na CDU-u) je glavni izbornik
+subjekta. Traka popis dohvaća **sama, iz preglednika**: NIAS joj pri prijavi preda podatke i vrati nam
+atribut `nav_token` (NIAS specifikacija, korak 12), a traka se s prijavom uparuje preko `navToken` i
+`messageId` (= `InResponseTo` SAML odgovora) u adresi skripte. Certifikat usluge tu ne sudjeluje, pa
+traka radi i bez pristupa `GetNavigationData` — tako popis dobiva i eTurizam core, koji dijeli isti
+certifikat. `change_entity_url`, `login_url` i `logout_url` **ne** registriraju se uz uslugu: šaljemo
+ih mi kao parametre skripte (potvrđeno iz core aplikacije 30.09.2026.), pa odabir dolazi k nama.
+
+- Adresu skripte slaže backend (`GET /api/nias/navigation-bar`); okolina trake mora odgovarati NIAS-u:
+  test `eusluge-nav-test.gov.hr`, produkcija `eusluge-nav.gov.hr` (`app.nias.navigation-bar.script-url`).
+- Odabir: traka punom navigacijom zove `change_entity_url` s `toLegalIps`/`toLegalIzvorReg`. Parametri su
+  nepotpisani — backend ih tretira kao prijedlog i ide kroz isti `select` (potpisana provjera, rate
+  limit). `state` je slučajna vrijednost vezana uz sesiju i **jednokratna** (putuje FINA-i u adresi
+  skripte, pa se nakon povratka zamjenjuje; nova prijava je također mijenja) — tuđa ili ponovljena
+  poveznica ne može korisniku promijeniti subjekt.
+- Adresa skripte smije biti samo `https://eusluge-nav(-test).gov.hr` — provjerava se na startu
+  backenda i prije umetanja na frontendu, jer se skripta izvršava s punim ovlastima naše stranice.
+- Upit povratka (OIB-ovi, `state`) ne ide u nginx access log (`location =` u `nginx.conf.template`
+  frontenda); ishod bilježi backend (`navigation_bar change outcome=`).
+- Traka nudi i subjekte koje ne prihvaćamo (e-Punomoći, obrt/OPG, tijela). Takav odabir ne mijenja
+  subjekt i vraća poruku (`notRepresentative`, `unsupported`). Prazan `toLegalIps` ili OIB same osobe =
+  povratak na djelovanje u svoje ime — ali samo ako `forPersonOib` nije **druga** osoba (e-Punomoć →
+  `unsupported`, odabir ostaje).
+- Prijavu i odjavu iz trake preuzima frontend (odjava je SLO POST).
+
+Izbornik u zaglavlju (popis iz `GetNavigationData` + upis OIB-a) ostaje kao rezerva: kad traka nije
+uključena ili prijava ne nosi `nav_token`.
 
 **Ponovna provjera** (`EffectiveOibResolver.reverifiedActingSubject`): odabir u sesiji vrijedi do
 odjave, a zastupanje je moglo prestati. Zato se prije izdavanja RB-a, povlačenja RB-a (nepovratno)
@@ -44,6 +72,8 @@ izvodi. Čitanja (popisi, PDF, akti) koriste odabir iz sesije bez novog poziva.
 |---|---|
 | `POST /api/nias/acting-subject` `{"oib"}` | 200 `ActingSubjectResponse` · 429 previše odabira (`EOVLASTENJA_RATE_LIMIT`, v. niže) · 400 neispravan OIB (`error.actingSubject.invalidOib`), vlastiti OIB (`error.actingSubject.self`) ili tvrtka ne postoji (`EOVLASTENJA_SUBJECT_NOT_FOUND`) · 403 niste zastupnik (`EOVLASTENJA_NOT_REPRESENTATIVE`) · 401 nevažeća NIAS sjednica (`EOVLASTENJA_SESSION`, samo FINA šifre 200–203) · 503 e-Ovlaštenja nedostupna, nisu uključena na okolini ili prijava ne nosi `sesija_id` (`details.registry = EOVLASTENJA`) |
 | `GET /api/nias/acting-subject/options` | 200 `[{ oib, naziv }]` sortirano po nazivu (`naziv` može biti `null`); prazan popis i kad osoba nije u e-Ovlaštenjima (FINA 400/401/500) · 503 `EOVLASTENJA_OPTIONS_UNAVAILABLE` (`details.registry=EOVLASTENJA`) kad popis nije dostupan: FINA nedostupna, šifra 100, isključeno na okolini ili FINA ne prihvaća sjednicu — tada ostaje upis OIB-a. **Nikad 401 zbog FINA-e** (popis frontend dohvaća sam; 401 samo bez NIAS prijave). Uspjeh se u sesiji čuva 5 min, neuspjeh 60 s |
+| `GET /api/nias/navigation-bar` | 200 `{ scriptUrl }` — adresa skripte trake za ovu prijavu (nosi `navToken`, ne sprema se) · 204 traka isključena ili prijava bez `nav_token`/`InResponseTo` · 401 bez NIAS prijave |
+| `GET /api/nias/acting-subject/change-entity` | `change_entity_url` trake. **Uvijek 302** na `{public-base-url}/existing-objects?entitySwitch=<ishod>`, i bez prijave: `ok`, `self`, `notRepresentative`, `notFound`, `unsupported` (IZVOR_REG ≠ 1 ili druga fizička osoba), `invalid` (neispravan OIB, nepoznat ili već iskorišten `state`), `sessionExpired`, `loginRequired`, `rateLimited`, `unavailable` |
 | `GET /api/nias/acting-subject` | 200 subjekt · 204 korisnik djeluje u svoje ime |
 | `DELETE /api/nias/acting-subject` | 204 — povratak na djelovanje u svoje ime |
 | `GET /api/nias/subject` | u svoje ime kao i dosad, uz `pravnaOsoba = null`. U ime tvrtke: `oib`/`ime`/`prezime` **zastupnika**, adresa `null` (prebivalište zastupnika se ne traži u registru — iznajmljivač je tvrtka) i `pravnaOsoba` s podacima o tvrtki |

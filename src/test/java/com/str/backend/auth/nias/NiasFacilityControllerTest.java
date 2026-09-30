@@ -74,6 +74,47 @@ class NiasFacilityControllerTest {
     @MockBean LessorRnActionService rnActionService;
     @MockBean SessionIdentityResolver identityResolver;
     @MockBean SubjectProfileService subjectProfileService;
+    @MockBean NavigationBarService navigationBarService;
+
+    // ── FINA navigacijska traka ─────────────────────────────────────────────
+
+    @Test
+    void navigationBar_returnsScriptUrl() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(navigationBarService.scriptUrl(any(), any())).thenReturn(Optional.of("https://eusluge-nav-test.gov.hr/e_gradani.aspx?x=1"));
+
+        mvc.perform(get("/api/nias/navigation-bar"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scriptUrl").value("https://eusluge-nav-test.gov.hr/e_gradani.aspx?x=1"));
+    }
+
+    @Test
+    void navigationBar_unavailable_is204() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(navigationBarService.scriptUrl(any(), any())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/nias/navigation-bar")).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void navigationBar_withoutLogin_is401() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/nias/navigation-bar")).andExpect(status().isUnauthorized());
+        verify(navigationBarService, never()).scriptUrl(any(), any());
+    }
+
+    @Test
+    void changeEntity_alwaysRedirects() throws Exception {
+        when(navigationBarService.change(any(), any(), eq(COMPANY_OIB), eq("1"), eq("12312312316"), eq("st")))
+                .thenReturn(java.net.URI.create("https://str-test-eturizam.gov.hr/existing-objects?entitySwitch=ok"));
+
+        mvc.perform(get("/api/nias/acting-subject/change-entity")
+                        .param("toLegalIps", COMPANY_OIB).param("toLegalIzvorReg", "1")
+                        .param("forPersonOib", "12312312316").param("state", "st"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "https://str-test-eturizam.gov.hr/existing-objects?entitySwitch=ok"));
+    }
 
     // ── djelovanje u ime pravne osobe (e-Zastupanja) ────────────────────────
 

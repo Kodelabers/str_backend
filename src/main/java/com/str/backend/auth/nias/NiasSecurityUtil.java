@@ -35,8 +35,23 @@ public final class NiasSecurityUtil {
             return null;
         }
         try {
-            String xml = new String(Base64.getDecoder().decode(base64SamlResponse), StandardCharsets.UTF_8);
-            Document doc = parse(xml);
+            return inResponseToOf(new String(Base64.getDecoder().decode(base64SamlResponse), StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * {@code InResponseTo} iz već dekodiranog SAML odgovora ({@link
+     * org.springframework.security.saml2.provider.service.authentication.Saml2Authentication#getSaml2Response()}).
+     * Navigacijska traka ga traži kao {@code messageId} — v. {@link NavigationBarService}.
+     */
+    public static String inResponseToOf(String samlResponseXml) {
+        if (samlResponseXml == null || samlResponseXml.isBlank()) {
+            return null;
+        }
+        try {
+            Document doc = parse(samlResponseXml);
             NodeList responses = doc.getElementsByTagNameNS(SAML_PROTOCOL_NS, "Response");
             if (responses.getLength() == 0) {
                 return null;
