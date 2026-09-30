@@ -20,9 +20,10 @@ import java.util.UUID;
 /**
  * Skenirano papirnato rješenje o kategorizaciji koje nije migrirano u eTurizam.
  *
- * <p>Metapodaci objekta su svi opcionalni: frontend danas šalje samo datoteku, a što korisnik
- * uz nju unosi još nije dogovoreno s MINTS-om. Datoteka, OIB i status su obavezni jer bez njih
- * zapis ne znači ništa.
+ * <p>Novo rješenje uvijek je vezano uz izdani RB ({@code rn}): korisnik šalje samo datoteku, a
+ * metapodatke objekta (naziv, vrsta, adresa, kapacitet) server prepisuje iz smještaja tog RB-a,
+ * da ih nadležno tijelo vidi bez otvaranja skena. Zapisi iz starog samostalnog uploada RB nemaju
+ * i mogu nositi metapodatke koje je upisao korisnik.
  */
 @Entity
 @Getter
@@ -75,6 +76,10 @@ public class CategorizationDecisionEntity {
     @Column(name = "status", nullable = false, length = 16)
     private CategorizationDecisionStatus status;
 
+    /** RB uz koji je rješenje predano; {@code null} samo za stare samostalne uploade. */
+    @Column(name = "rn", updatable = false, length = 20)
+    private String rn;
+
     /** Popunjava se kad nadležno tijelo objekt upiše u eTurizam; do tada zapis živi samo kod nas. */
     @Column(name = "facility_id", length = 64)
     private String facilityId;
@@ -89,6 +94,7 @@ public class CategorizationDecisionEntity {
     private Instant verifiedAt;
 
     public static CategorizationDecisionEntity create(String lessorOib,
+                                                      String rn,
                                                       String fileName,
                                                       String contentType,
                                                       byte[] fileContent,
@@ -96,6 +102,7 @@ public class CategorizationDecisionEntity {
         CategorizationDecisionEntity e = new CategorizationDecisionEntity();
         e.decisionId = UUID.randomUUID();
         e.lessorOib = lessorOib;
+        e.rn = rn;
         e.fileName = fileName;
         e.contentType = contentType;
         e.fileContent = fileContent;
@@ -142,7 +149,7 @@ public class CategorizationDecisionEntity {
         }
     }
 
-    /** Metapodaci s rješenja — svi opcionalni, v. komentar na razredu. */
+    /** Metapodaci objekta — svi opcionalni, v. komentar na razredu. */
     public record CategorizationDecisionMetadata(String objectName,
                                                  String accommodationTypeCode,
                                                  String addressText,

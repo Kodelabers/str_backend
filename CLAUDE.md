@@ -68,7 +68,7 @@ On `dev`/`prod` we read from the real registries. On `local`/`mock` the address 
 POST /api/generateRegistrationNumber             → RegistrationService.generateRegistrationNumber()  ← runs GO pipeline, returns {registrationNumber, submissionId}
 GET  /api/generateRegistrationNumber/{id}/pdf    → SubmissionPdfGenerator
 GET  /api/nias/facilities                        → NiasFacilityService  ← lessor's existing eTurizam objects + uploaded scanned decisions (paged)
-POST /api/nias/categorization-decisions          → CategorizationDecisionService  ← scanned paper decision that was never migrated to eTurizam
+POST /api/nias/categorization-decisions          → CategorizationDecisionService  ← scanned categorization decision for an issued RN of a NEW object (multipart: datoteka + registrationNumber); one SUBMITTED/VERIFIED per RN (409 CATEGORIZATION_ALREADY_SUBMITTED), not for eTurizam objects (409 CATEGORIZATION_NOT_REQUIRED)
 ```
 
 A request carrying `facilityId` (tuStart handoff, existing object) is checked by `FacilityClaimVerifier` **before** anything else: the facility must belong to the caller's OIB, and the submitted type (`FS_*`) and bed count must match eTurizam — otherwise 400. Ownership is the load-bearing part: `FacilityRegistrationNumberWriteBack` writes the issued RN into `str.facility` for whatever `facilityId` arrived, so an unchecked foreign id would stamp our RN onto someone else's record in a registry we don't own. Bed count is validated, guest count is not — eTurizam does not track guests for household accommodation.

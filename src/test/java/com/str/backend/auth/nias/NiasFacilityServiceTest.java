@@ -48,7 +48,7 @@ class NiasFacilityServiceTest {
     void setUp() {
         lenient().when(typeRepository.findAllCodes()).thenReturn(CODES);
         lenient().when(decisionRepository
-                .findByLessorOibAndFacilityIdIsNullAndStatusNotOrderByUploadedAtDesc(anyString(), any()))
+                .findByLessorOibAndFacilityIdIsNullAndRnIsNullAndStatusNotOrderByUploadedAtDesc(anyString(), any()))
                 .thenReturn(List.of());
         lenient().when(rnRepository.findRnsByFacilityIds(any())).thenReturn(List.of());
     }
@@ -106,7 +106,7 @@ class NiasFacilityServiceTest {
     @Test
     void mapsTemporaryDecisionFields() {
         CategorizationDecisionEntity decision = CategorizationDecisionEntity.create(
-                OIB, "skan.pdf", "application/pdf", new byte[]{1},
+                OIB, null, "skan.pdf", "application/pdf", new byte[]{1},
                 new CategorizationDecisionMetadata("Soba Marija", "FS_SOBA",
                         "Kraljevska 88, Makarska", "UP/I-334-01/26", null, 3, null));
         stubDecisions(decision);
@@ -253,7 +253,7 @@ class NiasFacilityServiceTest {
     }
 
     private void stubDecisions(CategorizationDecisionEntity... decisions) {
-        when(decisionRepository.findByLessorOibAndFacilityIdIsNullAndStatusNotOrderByUploadedAtDesc(
+        when(decisionRepository.findByLessorOibAndFacilityIdIsNullAndRnIsNullAndStatusNotOrderByUploadedAtDesc(
                 OIB, CategorizationDecisionStatus.REJECTED)).thenReturn(List.of(decisions));
     }
 
@@ -277,7 +277,7 @@ class NiasFacilityServiceTest {
     }
 
     private static CategorizationDecisionEntity decision(String fileName) {
-        return CategorizationDecisionEntity.create("99999999990", fileName, "application/pdf",
+        return CategorizationDecisionEntity.create("99999999990", null, fileName, "application/pdf",
                 new byte[]{1, 2, 3},
                 new CategorizationDecisionMetadata(null, null, null, null, null, null, null));
     }

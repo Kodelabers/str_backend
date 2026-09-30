@@ -136,7 +136,7 @@ class AdminCategorizationDecisionServiceTest {
     }
 
     private static CategorizationDecisionEntity submitted() {
-        return CategorizationDecisionEntity.create(OIB, "rjesenje.pdf", "application/pdf", PDF,
+        return CategorizationDecisionEntity.create(OIB, null, "rjesenje.pdf", "application/pdf", PDF,
                 new CategorizationDecisionMetadata("Soba Marija", "FS_SOBA", "Sjenjak 19, Osijek",
                         "UP/I-123", LocalDate.of(2020, 1, 1), 3, "napomena"));
     }

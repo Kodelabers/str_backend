@@ -179,7 +179,7 @@ public class NiasFacilityService {
 
     private List<FacilityResponse> temporaryDecisions(String oib) {
         return decisionRepository
-                .findByLessorOibAndFacilityIdIsNullAndStatusNotOrderByUploadedAtDesc(
+                .findByLessorOibAndFacilityIdIsNullAndRnIsNullAndStatusNotOrderByUploadedAtDesc(
                         oib, CategorizationDecisionStatus.REJECTED)
                 .stream()
                 .map(NiasFacilityService::toResponse)

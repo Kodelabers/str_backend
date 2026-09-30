@@ -147,6 +147,11 @@ public class GlobalExceptionHandler {
                 "existingRegistrationNumber", ex.getExistingRegistrationNumber()));
     }
 
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex) {
+        return build(HttpStatus.CONFLICT, resolve(ex.getMessage()), Map.of("code", ex.getCode()));
+    }
+
     @ExceptionHandler(ExternalRegistryException.class)
     public ResponseEntity<ErrorResponse> handleRegistry(ExternalRegistryException ex) {
         log.error("external_registry_error registry={} message={}", ex.getRegistry(), ex.getMessage(), ex);

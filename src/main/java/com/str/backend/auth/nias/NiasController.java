@@ -227,9 +227,10 @@ public class NiasController {
     }
 
     /**
-     * Upload skeniranog papirnatog rješenja o kategorizaciji koje nije migrirano u eTurizam
-     * (procedura koju eTurizam već ima). Zapis ide u {@code str_rn.categorization_decision} i
-     * do upisa u eTurizam se na popisu iznad prikazuje kao privremeno rješenje, bez RB-a.
+     * Predaja skeniranog rješenja o kategorizaciji uz izdani RB novog objekta — odmah nakon
+     * izdavanja RB-a (ista forma) ili naknadno s „Mojih registracijskih brojeva". Zapis ide u
+     * {@code str_rn.categorization_decision} i čeka obradu nadležnog tijela; uz RB može biti
+     * najviše jedno predano ili potvrđeno rješenje (409 inače).
      */
     @PostMapping(value = "/categorization-decisions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)

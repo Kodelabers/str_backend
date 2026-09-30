@@ -265,13 +265,32 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     /** NIAS flow: lessorId is not stable across submissions by the same person
      *  (each NIAS registration creates a new LessorEntity snapshot), so the
-     *  "Moji registracijski brojevi" view for NIAS users matches by OIB. */
+     *  "Moji registracijski brojevi" view for NIAS users matches by OIB.
+     *
+     *  <p>Stanje rješenja o kategorizaciji: mjerodavno je potvrđeno, pa predano, pa odbijeno.
+     *  Aktivno (predano ili potvrđeno) može biti najviše jedno po RB-u (changeset 126), pa
+     *  redoslijed daje jednoznačan status bez oslanjanja na vrijeme uploada. */
     @Transactional(readOnly = true)
     @Query("""
             SELECT new com.str.backend.lessor.LessorRnSummaryDto(
                 r.rn, r.status, r.issueDate,
                 a.name, a.street, a.streetNumber, a.city,
-                t.name
+                t.name,
+                CASE WHEN (a.facilityId IS NULL OR TRIM(a.facilityId) = '')
+                          AND r.status <> com.str.backend.domain.RnStatus.WITHDRAWN
+                    THEN true ELSE false END,
+                CASE
+                    WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
+                                 AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED)
+                        THEN com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED
+                    WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
+                                 AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED)
+                        THEN com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED
+                    WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
+                                 AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.REJECTED)
+                        THEN com.str.backend.categorization.CategorizationDecisionStatus.REJECTED
+                    ELSE NULL
+                END
             )
             FROM RnEntity r
             JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
