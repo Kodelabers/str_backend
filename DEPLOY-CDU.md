@@ -342,6 +342,7 @@ docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja_|acting_subject|registry
 | `eovlastenja_config_error code=100` (i `eovlastenja_call failed … status=400 code=100`) | certifikat usluge **nije** registriran za metodu → registracija kod FINA-e. Šifra stiže kao nepotpisan JSON uz HTTP 400 |
 | `eovlastenja_navigation ok ms=… companies=N` | popis tvrtki za izbornik (`GET /api/nias/acting-subject/options`) radi |
 | `acting_subject options_unavailable cause=…` | popis nije dostupan (uzrok u retku); frontend ostaje na upisu OIB-a, novi pokušaj tek nakon 60 s |
+| `eovlastenja_navigation error_body content_type=… body="…"` | FINA je vratila grešku bez prepoznate šifre (`code=-`) — ovdje je početak njezina odgovora (skraćeno, OIB i `sesija_id` maskirani); po njemu se vidi je li to odbijen pristup ili oblik zahtjeva |
 | `eovlastenja_navigation_no_companies shape=…` | FINA je vratila stavke, ali nijednu tvrtku s e-Zastupanjem — ili je oblik drugačiji od primjera (usporediti shape) |
 | `eovlastenja_navigation failed … code=100` | usluga nema pristup `GetNavigationData` — izbornik ostaje na upisu OIB-a, odabir i dalje radi |
 | `message=NIAS prijava ne nosi sesija_id` | v. točku 3 (`sesija_id=nema`) |

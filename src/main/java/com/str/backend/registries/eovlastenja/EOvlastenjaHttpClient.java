@@ -126,8 +126,8 @@ public class EOvlastenjaHttpClient implements EOvlastenjaClient {
      * HTTP 4xx/5xx. Grešku pristupa (npr. šifra 100) FINA vraća kao nepotpisan JSON
      * {@code {"Code":"100","Message":…}} uz HTTP 400, a ne u potpisanom XML-u (izmjereno na CDU-u
      * 29.09.2026.). Šifra se čita i mapira istom tablicom kao potpisane greške — samo na odbijanja,
-     * pa nepotpisanost ne smeta ({@link EOvlastenjaErrorCodes}). Bez šifre: 503, tijelo je u
-     * stack traceu.
+     * pa nepotpisanost ne smeta ({@link EOvlastenjaErrorCodes}). Bez šifre: 503, a početak tijela
+     * ide u log ({@code error_body}).
      */
     private static RuntimeException errorResponse(String operation, RestClientResponseException e, long start) {
         JsonNode json = readJson(e.getResponseBodyAsByteArray());
@@ -138,12 +138,32 @@ public class EOvlastenjaHttpClient implements EOvlastenjaClient {
         int status = e.getStatusCode().value();
         log.warn("{} failed ms={} error={} status={} code={}", operation, elapsedMs(start),
                 e.getClass().getSimpleName(), status, code != null ? code : "-");
+        if (code == null) {
+            // Bez prepoznate šifre (npr. validacijska poruka ili tekst umjesto JSON-a) ovo je jedini
+            // trag uzroka: popis tvrtki uzrok ne ispisuje stack traceom. Skraćeno, bez kontrolnih
+            // znakova i s maskiranim 11-znamenkastim brojevima (OIB-ovi).
+            log.warn("{} error_body content_type={} body=\"{}\"", operation,
+                    e.getResponseHeaders() != null ? e.getResponseHeaders().getContentType() : null,
+                    bodyPreview(e.getResponseBodyAsByteArray()));
+        }
         // Uz šifru bez izvorne iznimke: njezina poruka nosi tijelo s FINA-inim tekstom, koji može
         // navoditi subjekte. Bez šifre (HTML proxyja i sl.) tijelo ostaje u stack traceu za dijagnozu.
         return EOvlastenjaErrorCodes.rejection(code, message).orElseGet(() -> code != null
                 ? new ExternalRegistryException(EOvlastenjaResponseParser.REGISTRY,
                         "e-Ovlaštenja odbijaju zahtjev (HTTP " + status + ", šifra " + code + ")")
                 : new ExternalRegistryException(EOvlastenjaResponseParser.REGISTRY, "e-Ovlaštenja nisu dostupna", e));
+    }
+
+    /** Početak tijela greške za log: najviše 300 znakova, bez kontrolnih znakova, OIB-ovi i sesija_id maskirani. */
+    static String bodyPreview(byte[] body) {
+        if (body == null || body.length == 0) {
+            return "";
+        }
+        String text = new String(body, 0, Math.min(body.length, 600), StandardCharsets.UTF_8)
+                .replaceAll("\\p{Cntrl}", " ")
+                .replaceAll("\\d{11}", "<oib>")
+                .replaceAll("[0-9A-Fa-f]{4}(-[0-9A-Fa-f]{4}){3,}", "<sesija>");
+        return text.length() > 300 ? text.substring(0, 300) + "…" : text;
     }
 
     private static JsonNode readJson(byte[] body) {

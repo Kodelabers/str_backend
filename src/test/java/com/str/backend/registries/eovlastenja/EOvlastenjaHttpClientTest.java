@@ -156,6 +156,19 @@ class EOvlastenjaHttpClientTest {
                 .hasNoCause();
     }
 
+    /** Početak tijela greške za log: skraćen, bez prelaska retka, bez OIB-a i sesija_id. */
+    @Test
+    void bodyPreview_isShortAndMasked() {
+        String body = "{\"errors\":{\"PersonOIB\":[\"12312312316 nije ispravan\"],"
+                + "\"Sesija_Id\":[\"3B51-9ACB-EAE9-801A-9A1D\"]}}\r\nINFO lažni redak" + "x".repeat(500);
+
+        String preview = EOvlastenjaHttpClient.bodyPreview(body.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(preview).contains("PersonOIB").contains("<oib>").contains("<sesija>")
+                .doesNotContain("12312312316").doesNotContain("3B51-9ACB").doesNotContain("\n")
+                .hasSizeLessThanOrEqualTo(301);
+    }
+
     /** Tijelo koje nije JSON (HTML proxyja): 503, tijelo ostaje u uzroku za dijagnozu. */
     @Test
     void htmlErrorBody_isUnavailable() {
