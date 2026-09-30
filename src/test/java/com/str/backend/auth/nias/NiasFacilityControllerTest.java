@@ -14,6 +14,7 @@ import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
+import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.rn.RnRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -233,6 +234,31 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.details.code").value("ACTING_SUBJECT_CHANGED"));
 
         verify(categorizationDecisionService, never()).upload(any(), any());
+    }
+
+    @Test
+    void actingSubjectOptions_listsCompanies() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.representedCompanies(any(), eq(new NiasIdentity(OIB, null, null))))
+                .thenReturn(List.of(new ZastupanaTvrtka(COMPANY_OIB, "TESTNA TVRTKA d.o.o.")));
+
+        mvc.perform(get("/api/nias/acting-subject/options"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].oib").value(COMPANY_OIB))
+                .andExpect(jsonPath("$[0].naziv").value("TESTNA TVRTKA d.o.o."));
+    }
+
+    /** Usluga nema pristup metodi (šifra 100) ili FINA nedostupna: 503, izbornik ostaje na upisu OIB-a. */
+    @Test
+    void actingSubjectOptions_unavailable_is503() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.representedCompanies(any(), any()))
+                .thenThrow(new ActingSubjectOptionsUnavailableException());
+
+        mvc.perform(get("/api/nias/acting-subject/options"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_OPTIONS_UNAVAILABLE"))
+                .andExpect(jsonPath("$.details.registry").value("EOVLASTENJA"));
     }
 
     /** Previše odabira: 429 s istim brojem sekundi u zaglavlju i u tijelu. */

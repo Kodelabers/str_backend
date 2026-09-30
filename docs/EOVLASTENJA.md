@@ -12,7 +12,8 @@ otvoreni.
 
 ```
 1. NIAS prijava               → assertion: oib, ime, prezime, tid, sesija_id
-2. POST /api/nias/acting-subject {"oib": "<OIB tvrtke>"}
+1a. GET /api/nias/acting-subject/options → GetNavigationData: tvrtke koje osoba zastupa (za izbornik)
+2. POST /api/nias/acting-subject {"oib": "<OIB tvrtke>"}   (odabir iz izbornika ili upis OIB-a)
 3. backend → e-Ovlaštenja     GetAuthorizationUnionPermission (mTLS, XML)
                               Sesija_Id, PersonOIB, JipsTo = IdentfiersFor = tvrtka
 4. e-Ovlaštenja → backend     SignedAuthorizationUnionPermissionResponse (XML-DSig)
@@ -22,7 +23,13 @@ otvoreni.
                               izdavanje RB-a (RB na tvrtku), povlačenje RB-a, upload rješenja
 ```
 
-**Izbor subjekta je vlastiti** (unos OIB-a), ne FINA-ina zajednička navigacijska traka: njezin
+**Popis tvrtki** dolazi iz `GetNavigationData` (`NavigationDataRequest` — „e-Usluga šalje zahtjev za
+dohvatom sadržaja navigacijske trake"). Odgovor po shemi **nije potpisan**, pa popis samo predlaže:
+u njega idu tvrtke (`IZVOR_REG=1`) na temelju e-Zastupanja (`BasedOnRepresentation=true`), unutar same
+tvrtke ili kao građanin; e-Punomoći i djelovanje kao djelatnik druge tvrtke ne ulaze. Odabir iz popisa
+ide istim `POST`-om i potpisanom provjerom. Popis se u sesiji čuva 5 minuta, po osobi.
+
+**Izbor subjekta je vlastiti** (izbornik ili unos OIB-a), ne FINA-ina zajednička navigacijska traka: njezin
 `change_entity_url` registriran je uz uslugu, pa bi uz posuđeni identitet InterniTurizma vodio na
 njihov URL (isti razlog zašto ne radi odjava, v. memoriju o NIAS registraciji).
 
@@ -36,6 +43,7 @@ izvodi. Čitanja (popisi, PDF, akti) koriste odabir iz sesije bez novog poziva.
 | Endpoint | Ishod |
 |---|---|
 | `POST /api/nias/acting-subject` `{"oib"}` | 200 `ActingSubjectResponse` · 429 previše odabira (`EOVLASTENJA_RATE_LIMIT`, v. niže) · 400 neispravan OIB (`error.actingSubject.invalidOib`), vlastiti OIB (`error.actingSubject.self`) ili tvrtka ne postoji (`EOVLASTENJA_SUBJECT_NOT_FOUND`) · 403 niste zastupnik (`EOVLASTENJA_NOT_REPRESENTATIVE`) · 401 nevažeća NIAS sjednica (`EOVLASTENJA_SESSION`, samo FINA šifre 200–203) · 503 e-Ovlaštenja nedostupna, nisu uključena na okolini ili prijava ne nosi `sesija_id` (`details.registry = EOVLASTENJA`) |
+| `GET /api/nias/acting-subject/options` | 200 `[{ oib, naziv }]` sortirano po nazivu (`naziv` može biti `null`); prazan popis i kad osoba nije u e-Ovlaštenjima (FINA 400/401/500) · 503 `EOVLASTENJA_OPTIONS_UNAVAILABLE` (`details.registry=EOVLASTENJA`) kad popis nije dostupan: FINA nedostupna, šifra 100, isključeno na okolini ili FINA ne prihvaća sjednicu — tada ostaje upis OIB-a. **Nikad 401 zbog FINA-e** (popis frontend dohvaća sam; 401 samo bez NIAS prijave). Uspjeh se u sesiji čuva 5 min, neuspjeh 60 s |
 | `GET /api/nias/acting-subject` | 200 subjekt · 204 korisnik djeluje u svoje ime |
 | `DELETE /api/nias/acting-subject` | 204 — povratak na djelovanje u svoje ime |
 | `GET /api/nias/subject` | u svoje ime kao i dosad, uz `pravnaOsoba = null`. U ime tvrtke: `oib`/`ime`/`prezime` **zastupnika**, adresa `null` (prebivalište zastupnika se ne traži u registru — iznajmljivač je tvrtka) i `pravnaOsoba` s podacima o tvrtki |
@@ -113,6 +121,10 @@ ZUP akti: stranka = naziv i OIB tvrtke, zastupnik u zasebnom retku. eGOP: subjek
 Šifre grešaka (šifarnik „Popis grešaka-rest (V2)"): 200–203 → sjednica (401), 400/401 → nije
 zastupnik ili nema privolu (403), 500 → tvrtka ne postoji (400), 100/402 → registracija usluge (503),
 403/404 → informativno.
+
+Iste šifre FINA vraća i **nepotpisano**, kao JSON `{"Code":"100","Message":…}` uz HTTP 400 (izmjereno
+na CDU-u za šifru 100). Klijent ih čita i mapira istom tablicom (`EOvlastenjaErrorCodes`) — sve su
+odbijanja, pa nepotpisanost ne može dati pravo, samo uskratiti.
 
 ## Transport
 

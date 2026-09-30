@@ -24,6 +24,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -34,12 +35,14 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class EOvlastenjaHttpClientTest {
 
     private static final String URL = "https://roapiservistst.fina.hr/api/AuthUnionApi/GetAuthorizationUnionPermission";
+    private static final String NAV_URL = "https://roapiservistst.fina.hr/api/AuthUnionApi/GetNavigationData";
     private static final String PERSON = "70000000004";
     private static final String COMPANY = "33333333360";
 
-    private final RestClient.Builder builder = RestClient.builder().baseUrl(URL);
+    private final RestClient.Builder builder = RestClient.builder();
     private final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-    private final EOvlastenjaHttpClient client = new EOvlastenjaHttpClient(builder.build(), new EOvlastenjaResponseParser(TRUSTED.cert()));
+    private final EOvlastenjaHttpClient client = new EOvlastenjaHttpClient(builder.build(),
+            new EOvlastenjaResponseParser(TRUSTED.cert()), URL, NAV_URL);
 
     /**
      * Prijava bez {@code sesija_id} je stanje registracije usluge, ne sjednice: 503, bez poziva.
@@ -103,6 +106,116 @@ class EOvlastenjaHttpClientTest {
 
         assertThat(z.legalName()).isEqualTo("ĐURĐEVIĆ ČŠŽ d.o.o.");
         assertThat(z.functions()).hasSize(2);
+        server.verify();
+    }
+
+    // ── nepotpisane JSON greške (HTTP 4xx) ──────────────────────────────────
+
+    /** Izmjereno na CDU-u: šifra 100 dolazi kao HTTP 400 s JSON-om, ne u potpisanom XML-u. */
+    @Test
+    void jsonError100_isRegistryFailure_withCode() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"Code\":\"100\",\"Message\":\"100: Pristup metodi nije dozvoljen!\"}"));
+
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+                .isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("100");
+    }
+
+    /** Nepotpisana šifra smije samo odbiti: 203 je istekla sjednica (401), ne 503. */
+    @Test
+    void jsonSessionError_isSession() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"203\",\"Message\":\"Sesija ne postoji\"}"));
+
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+                .isInstanceOfSatisfying(EOvlastenjaException.class,
+                        e -> assertThat(e.reason()).isEqualTo(EOvlastenjaException.Reason.SESSION));
+    }
+
+    @Test
+    void jsonNotRepresentative_isNotRepresentative() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"400\",\"Message\":\"-\"}"));
+
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+                .isInstanceOfSatisfying(EOvlastenjaException.class,
+                        e -> assertThat(e.reason()).isEqualTo(EOvlastenjaException.Reason.NOT_REPRESENTATIVE));
+    }
+
+    /** Nepoznata šifra je 503 s njom u poruci — nikad odobrenje. */
+    @Test
+    void jsonUnknownCode_isRegistryFailure() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"999\",\"Message\":\"?\"}"));
+
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+                .isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("šifra 999")
+                .hasNoCause();
+    }
+
+    /** Tijelo koje nije JSON (HTML proxyja): 503, tijelo ostaje u uzroku za dijagnozu. */
+    @Test
+    void htmlErrorBody_isUnavailable() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.TEXT_HTML).body("<html>Bad Request</html>"));
+
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+                .isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("nisu dostupna");
+    }
+
+    /** Šifra s prelaskom retka ne ide u log ni u poruku (log forging) — tretira se kao da je nema. */
+    @Test
+    void jsonCodeWithNewline_isIgnored() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"100\\nINFO lažni redak\"}"));
+
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+                .isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("nisu dostupna")
+                .hasMessageNotContaining("lažni");
+    }
+
+    // ── popis tvrtki (GetNavigationData) ─────────────────────────────────────
+
+    @Test
+    void navigation_sendsNavigationRequest_andReturnsCompanies() {
+        server.expect(requestTo(NAV_URL))
+                .andExpect(content().string(containsString("<NavigationDataRequest")))
+                .andExpect(content().string(containsString("<PersonOIB>" + PERSON + "</PersonOIB>")))
+                .andRespond(request -> {
+                    Matcher id = Pattern.compile("Id=\"(_[0-9a-f]{32})\"")
+                            .matcher(((MockClientHttpRequest) request).getBodyAsString());
+                    assertThat(id.find()).isTrue();
+                    String xml = TestSignatures.navigationResponse(id.group(1), PERSON, "", "");
+                    MockClientHttpResponse answer = new MockClientHttpResponse(xml.getBytes(StandardCharsets.UTF_8), HttpStatus.OK);
+                    answer.getHeaders().setContentType(MediaType.APPLICATION_XML);
+                    return answer;
+                });
+
+        assertThat(client.representedCompanies("sesija-1", PERSON))
+                .containsExactly(new ZastupanaTvrtka("85821130368", "FINANCIJSKA AGENCIJA"));
+        server.verify();
+    }
+
+    @Test
+    void navigation_accessNotAllowed_isRegistryFailure() {
+        server.expect(requestTo(NAV_URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"100\",\"Message\":\"nije dozvoljen\"}"));
+
+        assertThatThrownBy(() -> client.representedCompanies("sesija-1", PERSON))
+                .isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("100");
+    }
+
+    @Test
+    void navigation_withoutSesijaId_isUnavailable_withoutCall() {
+        assertThatThrownBy(() -> client.representedCompanies(null, PERSON))
+                .isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("sesija_id");
         server.verify();
     }
 

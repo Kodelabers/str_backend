@@ -43,11 +43,21 @@ public record EOvlastenjaProperties(
         List<MockRepresentation> mock
 ) {
 
+    private static final String PERMISSION_METHOD = "/GetAuthorizationUnionPermission";
+    private static final String NAVIGATION_METHOD = "/GetNavigationData";
     private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
     private static final int DEFAULT_READ_TIMEOUT_MS = 10_000;
 
     /** Mock zastupanje: osoba {@code personOib} zastupa tvrtku {@code legalOib}. */
     public record MockRepresentation(String personOib, String legalOib, String legalName, String function) {}
+
+    /**
+     * {@code GetNavigationData} je na istom {@code AuthUnionApi} kao {@code url}
+     * (test {@code roapiservistst.fina.hr}, prod {@code roapiservis.gov.hr}), pa se ne konfigurira zasebno.
+     */
+    public String navigationUrl() {
+        return url.substring(0, url.length() - PERMISSION_METHOD.length()) + NAVIGATION_METHOD;
+    }
 
     public int effectiveConnectTimeoutMs() {
         return connectTimeoutMs != null ? connectTimeoutMs : DEFAULT_CONNECT_TIMEOUT_MS;
@@ -73,6 +83,10 @@ public record EOvlastenjaProperties(
 
     void requireComplete() {
         require(url, "url");
+        if (!url.endsWith(PERMISSION_METHOD)) {
+            throw new IllegalStateException("app.eovlastenja.url mora završavati s " + PERMISSION_METHOD
+                    + " (iz nje se izvodi i adresa GetNavigationData)");
+        }
         require(keystorePath, "keystore-path");
         require(keystorePassword, "keystore-password");
         require(signerCertPath, "signer-cert-path");

@@ -335,10 +335,15 @@ docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja_|acting_subject|registry
 | U logu | Značenje |
 | :--- | :--- |
 | `eovlastenja_call ok ms=… functions=N` + `acting_subject selected functions=N` | **radi** — osoba je zastupnik, tvrtka je u sesiji |
+| `eovlastenja_call failed … status=4xx code=…` | FINA je odbila poziv nepotpisanim JSON-om; šifra se tumači kao u retcima ispod |
 | `eovlastenja_call rejected reason=NOT_REPRESENTATIVE code=400` / `401` | poziv radi; osoba nije u e-Ovlaštenjima / nema privolu |
 | `eovlastenja_call rejected reason=SESSION code=20x` | poziv radi (metoda dopuštena), NIAS sjednica nevažeća — ponovna prijava |
 | `eovlastenja_call rejected reason=SUBJECT_NOT_FOUND code=500` | poziv radi; tvrtka s tim OIB-om ne postoji |
-| `eovlastenja_config_error code=100` | InterniTurizam **nije** registriran za metodu → vlastita registracija STR-a |
+| `eovlastenja_config_error code=100` (i `eovlastenja_call failed … status=400 code=100`) | certifikat usluge **nije** registriran za metodu → registracija kod FINA-e. Šifra stiže kao nepotpisan JSON uz HTTP 400 |
+| `eovlastenja_navigation ok ms=… companies=N` | popis tvrtki za izbornik (`GET /api/nias/acting-subject/options`) radi |
+| `acting_subject options_unavailable cause=…` | popis nije dostupan (uzrok u retku); frontend ostaje na upisu OIB-a, novi pokušaj tek nakon 60 s |
+| `eovlastenja_navigation_no_companies shape=…` | FINA je vratila stavke, ali nijednu tvrtku s e-Zastupanjem — ili je oblik drugačiji od primjera (usporediti shape) |
+| `eovlastenja_navigation failed … code=100` | usluga nema pristup `GetNavigationData` — izbornik ostaje na upisu OIB-a, odabir i dalje radi |
 | `message=NIAS prijava ne nosi sesija_id` | v. točku 3 (`sesija_id=nema`) |
 | `message=neispravan sesija_id za e-Ovlaštenja` | v. točku 3 (posebni znakovi) |
 | `eovlastenja_call failed … cause=SSLHandshakeException: …` | TLS: certifikat nije prihvaćen ili ruta ne postoji — v. točku 5 |
@@ -349,6 +354,12 @@ docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja_|acting_subject|registry
 | `message=e-Ovlaštenja: odgovor nije ispravan XML (… B, početak: "…")` | stigao je HTML ili drugo, ne XML (proxy, stranica greške) |
 | `message=e-Ovlaštenja: … ForRequestId=prazan …` / `osoba …` / `subjekt …` / `naziv …` + `eovlastenja_response_shape …` | odgovor je valjano potpisan, ali drugačije građen od FINA primjera — oblik iz loga usporediti s `TestSignatures.response` |
 | `eovlastenja_response_shape …` (DEBUG, uz svaki odgovor) | oblik stvarnog odgovora, za usporedbu s primjerom |
+
+Popis tvrtki koje prijavljena osoba zastupa (isti kolačić):
+
+```bash
+curl -s http://localhost:8085/api/nias/acting-subject/options -H 'Cookie: SESSION=<vrijednost>' -w '\nHTTP %{http_code}\n'
+```
 
 Zatim, s odabranom tvrtkom, zahtjev za RB ili povlačenje RB-a: prije svake od tih radnji u logu
 mora biti `acting_subject reverified` (ili `acting_subject reverify_failed reason=…` — tvrtka je

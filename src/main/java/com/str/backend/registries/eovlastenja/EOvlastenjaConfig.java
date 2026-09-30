@@ -1,6 +1,5 @@
 package com.str.backend.registries.eovlastenja;
 
-import com.str.backend.exception.ExternalRegistryException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,14 +52,15 @@ public class EOvlastenjaConfig {
     EOvlastenjaClient eOvlastenjaHttpClient(EOvlastenjaProperties properties) throws Exception {
         properties.requireComplete();
         X509Certificate signer = loadCertificate(properties.signerCertPath());
-        log.info("eovlastenja url={} signer={} signer_valid_until={}",
-                properties.url(), signer.getSubjectX500Principal().getName(), signer.getNotAfter());
+        log.info("eovlastenja url={} navigation_url={} signer={} signer_valid_until={}",
+                properties.url(), properties.navigationUrl(), signer.getSubjectX500Principal().getName(),
+                signer.getNotAfter());
 
         RestClient restClient = RestClient.builder()
-                .baseUrl(properties.url())
                 .requestFactory(requestFactory(sslContext(properties).getSocketFactory(), properties))
                 .build();
-        return new EOvlastenjaHttpClient(restClient, new EOvlastenjaResponseParser(signer));
+        return new EOvlastenjaHttpClient(restClient, new EOvlastenjaResponseParser(signer),
+                properties.url(), properties.navigationUrl());
     }
 
     /**
@@ -78,10 +78,7 @@ public class EOvlastenjaConfig {
         List<EOvlastenjaProperties.MockRepresentation> pairs = properties.mockOrEmpty();
         if (pairs.isEmpty()) {
             log.info("eovlastenja iskljucena (app.eovlastenja.enabled=false) — odabir pravne osobe vraća 503");
-            return (sesijaId, personOib, legalOib) -> {
-                throw new ExternalRegistryException(EOvlastenjaResponseParser.REGISTRY,
-                        "e-Ovlaštenja nisu uključena na ovoj okolini (app.eovlastenja.enabled=false)");
-            };
+            return new EOvlastenjaClientDisabled();
         }
         if (niasEnabled) {
             throw new IllegalStateException("app.eovlastenja.mock je postavljen uz nias.saml.enabled=true — "

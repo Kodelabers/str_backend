@@ -2,6 +2,7 @@ package com.str.backend.exception;
 
 import com.str.backend.captcha.CaptchaException;
 import com.str.backend.auth.nias.ActingSubjectChangedException;
+import com.str.backend.auth.nias.ActingSubjectOptionsUnavailableException;
 import com.str.backend.auth.nias.ActingSubjectRateLimitException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -100,6 +101,18 @@ public class GlobalExceptionHandler {
         details.put("code", "ACTING_SUBJECT_CHANGED");
         details.put("current", ex.current());
         return build(HttpStatus.CONFLICT, resolve("error.actingSubject.changed"), details);
+    }
+
+    /**
+     * Popis tvrtki za izbornik nije dostupan — izbornik ostaje na upisu OIB-a. Bez ERROR loga i
+     * stack tracea: uzrok je već zabilježen jednom (WARN), a neuspjeh se u sesiji pamti 60 s.
+     */
+    @ExceptionHandler(ActingSubjectOptionsUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleActingSubjectOptionsUnavailable(ActingSubjectOptionsUnavailableException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("code", "EOVLASTENJA_OPTIONS_UNAVAILABLE");
+        details.put("registry", "EOVLASTENJA");
+        return build(HttpStatus.SERVICE_UNAVAILABLE, resolve("error.eovlastenja.optionsUnavailable"), details);
     }
 
     /** Previše odabira pravne osobe; {@code Retry-After} i {@code details.retryAfterSeconds} su isti broj. */
