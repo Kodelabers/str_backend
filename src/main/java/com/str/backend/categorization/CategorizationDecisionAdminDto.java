@@ -11,6 +11,7 @@ import java.util.UUID;
 public record CategorizationDecisionAdminDto(
         UUID decisionId,
         String lessorOib,
+        String registrationNumber,
         String objectName,
         String accommodationTypeCode,
         String addressText,
@@ -32,6 +33,7 @@ public record CategorizationDecisionAdminDto(
         return new CategorizationDecisionAdminDto(
                 e.getDecisionId(),
                 e.getLessorOib(),
+                e.getRn(),
                 e.getObjectName(),
                 e.getAccommodationTypeCode(),
                 e.getAddressText(),

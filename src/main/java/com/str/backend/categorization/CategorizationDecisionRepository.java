@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,14 +16,20 @@ public interface CategorizationDecisionRepository extends JpaRepository<Categori
     Page<CategorizationDecisionEntity> findByStatus(CategorizationDecisionStatus status, Pageable pageable);
 
     /**
-     * Zapisi koje na korisnikovom popisu treba prikazati kao privremeno rješenje: još nisu
-     * odbijeni i još nemaju objekt u eTurizmu. Kad {@code facilityId} bude popunjen, objekt
-     * dolazi iz {@code str.facility} i ovaj zapis se više ne prikazuje zasebno.
+     * Zapisi koje na korisnikovom popisu treba prikazati kao privremeno rješenje: stari
+     * samostalni uploadi (bez RB-a) koji još nisu odbijeni i još nemaju objekt u eTurizmu.
+     * Kad {@code facilityId} bude popunjen, objekt dolazi iz {@code str.facility} i ovaj zapis
+     * se više ne prikazuje zasebno. Rješenje vezano uz RB ovdje ne ide — objekt tog RB-a
+     * korisnik već ima u svojim registracijskim brojevima.
      */
     @Transactional(readOnly = true)
-    List<CategorizationDecisionEntity> findByLessorOibAndFacilityIdIsNullAndStatusNotOrderByUploadedAtDesc(
+    List<CategorizationDecisionEntity> findByLessorOibAndFacilityIdIsNullAndRnIsNullAndStatusNotOrderByUploadedAtDesc(
             String lessorOib, CategorizationDecisionStatus status);
 
     @Transactional(readOnly = true)
     List<CategorizationDecisionEntity> findByLessorOibOrderByUploadedAtDesc(String lessorOib);
+
+    /** Postoji li za RB rješenje koje ga „zauzima" (predano ili potvrđeno). */
+    @Transactional(readOnly = true)
+    boolean existsByRnAndStatusIn(String rn, Collection<CategorizationDecisionStatus> statuses);
 }

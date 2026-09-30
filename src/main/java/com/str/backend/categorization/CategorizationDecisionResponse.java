@@ -3,15 +3,16 @@ package com.str.backend.categorization;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Odgovor na upload — frontend iz njega odmah složi novi red u tablici objekata. */
+/** Odgovor na predaju rješenja — potvrda s RB-om uz koji je rješenje vezano. */
 public record CategorizationDecisionResponse(UUID decisionId,
+                                             String registrationNumber,
                                              CategorizationDecisionStatus status,
                                              String fileName,
                                              long fileSize,
                                              Instant uploadedAt) {
 
     public static CategorizationDecisionResponse of(CategorizationDecisionEntity e) {
-        return new CategorizationDecisionResponse(e.getDecisionId(), e.getStatus(),
+        return new CategorizationDecisionResponse(e.getDecisionId(), e.getRn(), e.getStatus(),
                 e.getFileName(), e.getFileSize(), e.getUploadedAt());
     }
 }

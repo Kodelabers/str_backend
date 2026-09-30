@@ -5,6 +5,7 @@ import com.str.backend.auth.SessionIdentityResolver;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorRepository;
@@ -55,6 +56,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class NiasFacilityControllerTest {
 
     private static final String OIB = "99999999990";
+    private static final String DECISION_RN = "HR120001000000000123";
 
     @Autowired MockMvc mvc;
 
@@ -225,6 +227,7 @@ class NiasFacilityControllerTest {
 
         mvc.perform(multipart("/api/nias/categorization-decisions")
                         .file(pdf())
+                        .param("registrationNumber", DECISION_RN)
                         .header("X-Acting-Subject", COMPANY_OIB))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.details.code").value("ACTING_SUBJECT_CHANGED"));
@@ -354,12 +357,13 @@ class NiasFacilityControllerTest {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         UUID decisionId = UUID.randomUUID();
         when(categorizationDecisionService.upload(eq(OIB), any()))
-                .thenReturn(new CategorizationDecisionResponse(decisionId,
+                .thenReturn(new CategorizationDecisionResponse(decisionId, DECISION_RN,
                         CategorizationDecisionStatus.SUBMITTED, "rjesenje.pdf", 12, Instant.now()));
 
-        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()))
+        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()).param("registrationNumber", DECISION_RN))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.decisionId").value(decisionId.toString()))
+                .andExpect(jsonPath("$.registrationNumber").value(DECISION_RN))
                 .andExpect(jsonPath("$.status").value("SUBMITTED"));
     }
 
@@ -367,7 +371,7 @@ class NiasFacilityControllerTest {
     void rejectsScannedDecision_withoutNiasSession() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.empty());
 
-        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()))
+        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()).param("registrationNumber", DECISION_RN))
                 .andExpect(status().isUnauthorized());
         verify(categorizationDecisionService, never()).upload(any(), any());
     }
@@ -382,7 +386,7 @@ class NiasFacilityControllerTest {
         when(categorizationDecisionService.upload(eq(OIB), any()))
                 .thenThrow(new MaxUploadSizeExceededException(10 * 1024 * 1024));
 
-        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()))
+        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()).param("registrationNumber", DECISION_RN))
                 .andExpect(status().isPayloadTooLarge());
     }
 
@@ -390,9 +394,31 @@ class NiasFacilityControllerTest {
     void rejectsScannedDecision_withoutFile() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
 
-        mvc.perform(multipart("/api/nias/categorization-decisions"))
+        mvc.perform(multipart("/api/nias/categorization-decisions").param("registrationNumber", DECISION_RN))
                 .andExpect(status().isBadRequest());
         verify(categorizationDecisionService, never()).upload(any(), any());
+    }
+
+    /** Rješenje se predaje samo uz RB — bez njega zahtjev ni ne dolazi do servisa. */
+    @Test
+    void rejectsScannedDecision_withoutRegistrationNumber() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+
+        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()))
+                .andExpect(status().isBadRequest());
+        verify(categorizationDecisionService, never()).upload(any(), any());
+    }
+
+    /** Sukob (npr. već predano rješenje) nosi `details.code` po kojem frontend bira poruku. */
+    @Test
+    void scannedDecision_conflict_is409WithCode() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(categorizationDecisionService.upload(eq(OIB), any())).thenThrow(new ConflictException(
+                "error.categorization.alreadySubmitted", "CATEGORIZATION_ALREADY_SUBMITTED"));
+
+        mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()).param("registrationNumber", DECISION_RN))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.details.code").value("CATEGORIZATION_ALREADY_SUBMITTED"));
     }
 
     private static MockMultipartFile pdf() {

@@ -207,4 +207,7 @@
     <!-- RB se izdaje odmah kao ACTIVE; IN_PROCESSING nikad nije bio dosegljiv. -->
     <include file="db/changelog/changes/125-rn-status-drop-in-processing.xml"/>
 
+    <!-- Rješenje o kategorizaciji vezano uz izdani RB (jedno aktivno po RB-u). -->
+    <include file="db/changelog/changes/126-categorization-decision-rn.xml"/>
+
 </databaseChangeLog>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Rješenje o kategorizaciji veže se uz izdani RB. Predaje se iz iste forme kojom se
+        traži RB za novi objekt (RB se izdaje odmah, rješenje stiže odmah iza njega) ili
+        naknadno s „Mojih registracijskih brojeva".
+
+        Kolona je nullable: zapisi predani starim samostalnim uploadom RB nemaju i ostaju
+        na popisu objekata kao privremeno rješenje.
+
+        Parcijalni unique index drži „jedno aktivno rješenje po RB-u" i na razini baze —
+        servis to provjerava prije spremanja, a index zatvara utrku dviju istodobnih predaja.
+        Odbijeno (REJECTED) ne blokira novu predaju.
+    -->
+    <changeSet id="126-categorization-decision-rn" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="categorization_decision">
+            <column name="rn" type="VARCHAR(20)"
+                    remarks="RB uz koji je rješenje predano; NULL za stare samostalne uploade">
+                <constraints nullable="true"
+                             foreignKeyName="fk_categorization_decision_rn"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="registration_number"
+                             referencedColumnNames="rn"/>
+            </column>
+        </addColumn>
+
+        <sql>
+            CREATE UNIQUE INDEX uq_categorization_decision_rn_active
+                ON str_rn.categorization_decision (rn)
+                WHERE rn IS NOT NULL AND status IN ('SUBMITTED', 'VERIFIED');
+        </sql>
+
+        <createIndex schemaName="str_rn" tableName="categorization_decision"
+                     indexName="idx_categorization_decision_rn">
+            <column name="rn"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex schemaName="str_rn" tableName="categorization_decision"
+                       indexName="idx_categorization_decision_rn"/>
+            <sql>DROP INDEX IF EXISTS str_rn.uq_categorization_decision_rn_active;</sql>
+            <dropColumn schemaName="str_rn" tableName="categorization_decision" columnName="rn"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
