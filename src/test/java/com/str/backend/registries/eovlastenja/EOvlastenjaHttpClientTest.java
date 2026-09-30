@@ -156,6 +156,34 @@ class EOvlastenjaHttpClientTest {
                 .hasNoCause();
     }
 
+    /** Izmjereno na CDU-u: GetNavigationData šifru 100 vraća kao XML {@code <Error>}, ne kao JSON. */
+    @Test
+    void navigation_xmlError100_isRegistryFailure_withCode() {
+        server.expect(requestTo(NAV_URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_XML)
+                .body("<Error xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" "
+                        + "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+                        + "xmlns=\"http://eovlastenja.fina.hr/authorizationbase/v2\"><Code>100</Code>"
+                        + "<Message>100: Pristup metodi 'https://roapiservistst.fina.hr/api/AuthUnionApi/GetNavigationData' "
+                        + "servisa [AuthorizationSvc] certifikatom CN=e-Turizam nije dozvoljen!</Message></Error>"));
+
+        assertThatThrownBy(() -> client.representedCompanies("sesija-1", PERSON))
+                .isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("šifra 100");
+    }
+
+    /** XML greška sa šifrom sjednice znači istu stvar kao i JSON — odbijanje, ne odobrenje. */
+    @Test
+    void xmlSessionError_isSession() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_XML)
+                .body("<Error xmlns=\"http://eovlastenja.fina.hr/authorizationbase/v2\"><Code>203</Code><Message>-</Message></Error>"));
+
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+                .isInstanceOfSatisfying(EOvlastenjaException.class,
+                        e -> assertThat(e.reason()).isEqualTo(EOvlastenjaException.Reason.SESSION));
+    }
+
     /** Početak tijela greške za log: skraćen, bez prelaska retka, bez OIB-a i sesija_id. */
     @Test
     void bodyPreview_isShortAndMasked() {

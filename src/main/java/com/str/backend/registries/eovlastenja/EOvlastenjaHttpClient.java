@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -130,11 +131,20 @@ public class EOvlastenjaHttpClient implements EOvlastenjaClient {
      * ide u log ({@code error_body}).
      */
     private static RuntimeException errorResponse(String operation, RestClientResponseException e, long start) {
-        JsonNode json = readJson(e.getResponseBodyAsByteArray());
-        // Nepotpisana vrijednost ide u log i poruku — samo kratka alfanumerička šifra (bez log forginga).
+        byte[] errorBody = e.getResponseBodyAsByteArray();
+        JsonNode json = readJson(errorBody);
         String rawCode = field(json, "Code", "code");
-        String code = rawCode != null && CODE.matcher(rawCode).matches() ? rawCode : null;
         String message = field(json, "Message", "message");
+        if (json == null) {
+            // Ista greška dolazi i kao XML <Error><Code>…</Code><Message>…</Message></Error>.
+            Optional<String[]> xml = EOvlastenjaResponseParser.errorBody(errorBody);
+            if (xml.isPresent()) {
+                rawCode = xml.get()[0];
+                message = xml.get()[1];
+            }
+        }
+        // Nepotpisana vrijednost ide u log i poruku — samo kratka alfanumerička šifra (bez log forginga).
+        String code = rawCode != null && CODE.matcher(rawCode).matches() ? rawCode : null;
         int status = e.getStatusCode().value();
         log.warn("{} failed ms={} error={} status={} code={}", operation, elapsedMs(start),
                 e.getClass().getSimpleName(), status, code != null ? code : "-");

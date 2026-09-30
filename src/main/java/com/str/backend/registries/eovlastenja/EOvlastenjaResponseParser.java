@@ -235,6 +235,29 @@ final class EOvlastenjaResponseParser {
         return person;
     }
 
+    /**
+     * Nepotpisano XML tijelo greške uz HTTP 4xx — {@code <Error><Code>100</Code><Message>…}
+     * (izmjereno na CDU-u 30.09.2026. za {@code GetNavigationData}). Istim sigurnim parserom; prazno
+     * kad tijelo nije takav XML. Šifra se smije koristiti samo za odbijanje ({@link EOvlastenjaErrorCodes}).
+     *
+     * @return {@code [code, message]}
+     */
+    static Optional<String[]> errorBody(byte[] xml) {
+        if (xml == null || xml.length == 0) {
+            return Optional.empty();
+        }
+        try {
+            Element root = parseDocument(xml).getDocumentElement();
+            Element error = "Error".equals(root.getLocalName()) ? root : child(root, "Error");
+            if (error == null) {
+                return Optional.empty();
+            }
+            return Optional.of(new String[]{text(error, "Code"), text(error, "Message")});
+        } catch (ExternalRegistryException notXml) {
+            return Optional.empty();
+        }
+    }
+
     /** XML bez DOCTYPE-a i vanjskih entiteta (XXE); kodiranje iz same poruke. */
     private static Document parseDocument(byte[] xml) {
         try {
