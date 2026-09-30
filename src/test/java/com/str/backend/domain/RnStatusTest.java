@@ -60,6 +60,5 @@ class RnStatusTest {
 
         assertThat(RnStatus.SUSPENDED.isActiveForPublicUse()).isFalse();
         assertThat(RnStatus.WITHDRAWN.isActiveForPublicUse()).isFalse();
-        assertThat(RnStatus.IN_PROCESSING.isActiveForPublicUse()).isFalse();
     }
 }

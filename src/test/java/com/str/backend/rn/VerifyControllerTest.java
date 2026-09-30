@@ -4,8 +4,6 @@ import com.str.backend.captcha.AltchaService;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.dto.RnPublicView;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -93,10 +91,9 @@ class VerifyControllerTest {
                 .andExpect(jsonPath("$.accommodationName").doesNotExist());
     }
 
-    @ParameterizedTest
-    @EnumSource(value = RnStatus.class, names = {"WITHDRAWN", "IN_PROCESSING"})
-    void returns_valid_false_for_withdrawn_or_in_processing(RnStatus status) throws Exception {
-        RnEntity entity = rnWithStatus(status);
+    @Test
+    void returns_valid_false_for_withdrawn() throws Exception {
+        RnEntity entity = rnWithStatus(RnStatus.WITHDRAWN);
         when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.of(entity));
 
         // A withdrawn RN must be indistinguishable from a non-existent one (čl. 4. st. 5.):

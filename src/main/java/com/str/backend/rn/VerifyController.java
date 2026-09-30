@@ -52,7 +52,7 @@ public class VerifyController {
         if (status == RnStatus.SUSPENDED) {
             return VerifyResponse.suspended();
         }
-        // WITHDRAWN, IN_PROCESSING, or not found — all indistinguishable to the public.
+        // WITHDRAWN or not found — all indistinguishable to the public.
         return VerifyResponse.invalid();
     }
 

@@ -8,7 +8,8 @@ import java.util.UUID;
 /**
  * Promjena statusa registracijskog broja, objavljena iz
  * {@code RnStatusTransitionService#transition} — jedine točke kroz koju status smije proći.
- * Zato nijedan put (voditelj postupka, iznajmljivač, izdavanje) ne može zaobići obavijest.
+ * Zato nijedan put (voditelj postupka, iznajmljivač) ne može zaobići obavijest. Izdavanje nije
+ * prijelaz — RB nastaje odmah kao {@code ACTIVE} — pa ovaj event ne objavljuje.
  *
  * @param logId identitet zapisa u {@code registration_number_log}; služi kao {@code act_ref}
  *              pri urudžbiranju, po kojem se ponovljena suspenzija istog RB-a razlikuje od

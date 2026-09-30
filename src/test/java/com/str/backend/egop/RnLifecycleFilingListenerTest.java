@@ -191,15 +191,6 @@ class RnLifecycleFilingListenerTest {
                 .isEqualTo("Obavijest o reaktivaciji registracijskog broja");
     }
 
-    /** Izdavanje RB-a urudžbira registracijski tok, s PDF-om izvedenim iz urudžbenog broja. */
-    @Test
-    void issuance_isHandledByRegistrationFlow() {
-        listener().onLifecycleChange(event(RnStatus.IN_PROCESSING, RnStatus.ACTIVE,
-                RnTrigger.ISSUE, null, null));
-
-        verify(store, never()).saveAkt(any());
-    }
-
     /** Bez dokumenta nema urudžbe — akt se ne zapisuje da ga retry ne bi vrtio prazan. */
     @Test
     void renderFailure_doesNotRecordAct() {
@@ -249,6 +240,5 @@ class RnLifecycleFilingListenerTest {
                 .contains(StrDocumentType.OPOZIV);
         assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, false))
                 .contains(StrDocumentType.POVLACENJE);
-        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.ISSUE, false)).isEmpty();
     }
 }

@@ -27,8 +27,7 @@ Defines legal transitions for `submission.status` (SubmissionStatus) and `regist
 
 | From | Trigger | To |
 | :--- | :--- | :--- |
-| — | RN issued when submission ACCEPTED | `IN_PROCESSING` |
-| `IN_PROCESSING` | `ISSUE` | `ACTIVE` |
+| — | RN issued (`RnEntity.issue()`, no log row) | `ACTIVE` |
 | `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` / `INCOMPLETE_DOCUMENTATION` | `SUSPENSION_PROPOSED` |
 | `SUSPENSION_PROPOSED` | `REVOKE_PROPOSAL` | `ACTIVE` |
 | `SUSPENSION_PROPOSED` | `DEADLINE_EXCEEDED` | `SUSPENDED` |
@@ -51,7 +50,7 @@ Each transition maps to a ZUP act through `StrDocumentType.forTransition(to, tri
 
 - `RnStatus.ACTIVE` is the **only** publicly visible state (see `RnStatus.isPubliclyVisible()`). All others must be filtered out of public-facing reads.
 - `SubmissionStatus.ACCEPTED` / `REJECTED` are terminal — `isTerminal()` returns true. Do not transition further.
-- `IN_PROCESSING` is transient. A stuck `IN_PROCESSING` row indicates an interrupted pipeline run, not a valid steady state.
+- `SubmissionStatus.IN_PROCESSING` is transient. A stuck `IN_PROCESSING` submission indicates an interrupted pipeline run, not a valid steady state.
 - `IN_VERIFICATION` requires a pending referent action (foreign upload review). It is the only non-NIAS entry into processing.
 
 ## Guard Pattern

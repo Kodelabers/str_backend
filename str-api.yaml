@@ -48,7 +48,7 @@ paths:
         Public endpoint used by SDEP and OTA platforms to check whether a registration
         number is valid. A registration number is valid if and only if it exists and its
         status is ACTIVE. Returns valid=false for non-existent numbers and for numbers in
-        status IN_PROCESSING, SUSPENDED, or WITHDRAWN. Always returns HTTP 200 for a
+        status SUSPENDED or WITHDRAWN. Always returns HTTP 200 for a
         well-formed registration number.
       operationId: verifyRn
       parameters:
@@ -1077,11 +1077,11 @@ components:
 
     RnStatus:
       type: string
-      enum: [IN_PROCESSING, ACTIVE, SUSPENDED, WITHDRAWN]
+      enum: [ACTIVE, SUSPENDED, WITHDRAWN]
 
     RnTrigger:
       type: string
-      enum: [ISSUE, CONSENT_EXPIRY, INSPECTION, WITHDRAWAL, REACTIVATE]
+      enum: [CONSENT_EXPIRY, INSPECTION, WITHDRAWAL, REACTIVATE]
       description: |
         - `CONSENT_EXPIRY` – co-owner consent expired (allowed for suspend)
         - `INSPECTION` – inspection finding (allowed for suspend)
@@ -1098,7 +1098,7 @@ components:
           type: boolean
           description: |
             True if the registration number exists and has status ACTIVE;
-            false in all other cases (not found, IN_PROCESSING, SUSPENDED, WITHDRAWN).
+            false in all other cases (not found, SUSPENDED, WITHDRAWN).
           example: true
 
     # ── Registration number ─────────────────────────────────────

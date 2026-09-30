@@ -87,9 +87,8 @@ PENDING → ACCEPTED (admin approves)
 PENDING → REJECTED (admin rejects)
 ```
 
-`RnStatus` (registration number lifecycle) — suspension is **two-phase**: the party is first invited to respond (čl. 30. st. 2 ZUP), and only an expired deadline suspends:
+`RnStatus` (registration number lifecycle) — an RN is born `ACTIVE` (`RnEntity.issue()`); there is no processing state and no issue transition, so issuance writes no `registration_number_log` row and publishes no `RnLifecycleEvent`. Suspension is **two-phase**: the party is first invited to respond (čl. 30. st. 2 ZUP), and only an expired deadline suspends:
 ```
-IN_PROCESSING → ACTIVE (ISSUE)
 ACTIVE → SUSPENSION_PROPOSED (CONSENT_EXPIRY / INSPECTION / INCOMPLETE_DOCUMENTATION / OTHER)
 SUSPENSION_PROPOSED → ACTIVE (REVOKE_PROPOSAL)        [party fixed the issue]
 SUSPENSION_PROPOSED → SUSPENDED (DEADLINE_EXCEEDED)   [SuspensionDeadlineJob, daily]

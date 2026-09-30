@@ -57,7 +57,6 @@ aktima.
 
 | Šifra | Hrvatski naziv | Prijelaz | Tko okida | Akt |
 | :--- | :--- | :--- | :--- | :--- |
-| `ISSUE` | izdavanje registracijskog broja | `IN_PROCESSING → ACTIVE` | sustav (dodjela RB-a) | Obavijest o dodjeli |
 | `DEADLINE_EXCEEDED` | istek roka za očitovanje | `SUSPENSION_PROPOSED → SUSPENDED` | sustav (`SuspensionDeadlineJob`, dnevno u 01:00) | Obavijest o suspenziji |
 | `REVOKE_PROPOSAL` | obustava postupka suspenzije | `SUSPENSION_PROPOSED → ACTIVE` | službenik (stranka je ispravila nedostatak) | Obavijest o obustavi postupka |
 | `REACTIVATE` | reaktivacija registracijskog broja | `SUSPENDED → ACTIVE` | službenik | Obavijest o reaktivaciji |

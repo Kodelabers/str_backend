@@ -47,9 +47,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
      * ne retryja i ne obara izdavanje). Bez ovog upita objekt s izdanim RB-om izgledao bi kao da
      * ga nema svaki put kad je upis u tuđu shemu pao.
      *
-     * <p>Uzimaju se samo izdani i još stojeći RB-ovi. {@code WITHDRAWN} je terminalan, a
-     * {@code IN_PROCESSING} ne bi smio postojati u tablici (v. {@code RnEntity.issue()}, koji
-     * odmah postavlja {@code ACTIVE}) — nabraja se eksplicitno da se to ne promijeni tiho.
+     * <p>Uzimaju se samo još stojeći RB-ovi; {@code WITHDRAWN} je terminalan. Statusi se nabrajaju
+     * eksplicitno da novi status ne bi tiho ušao u popis.
      */
     @Transactional(readOnly = true)
     @Query("""
