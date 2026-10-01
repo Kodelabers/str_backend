@@ -19,7 +19,7 @@ class EmailTemplateTest {
         MailTemplateLoader loader = new MailTemplateLoader();
         loader.loadAll();
         templates = new EmailTemplates(loader,
-                new MailProperties(true, "str@example.com", "https://str.example.com/login"));
+                new MailProperties(true, "str@example.com", "https://str.example.com/login", null));
     }
 
     @ParameterizedTest

@@ -22,7 +22,7 @@ class MailPreviewGenerator {
         MailTemplateLoader loader = new MailTemplateLoader();
         loader.loadAll();
         EmailTemplates templates = new EmailTemplates(loader,
-                new MailProperties(true, "str@mint.hr", "https://str-test-eturizam.gov.hr/login"));
+                new MailProperties(true, "str@mint.hr", "https://str-test-eturizam.gov.hr/login", null));
 
         for (MailTemplate t : MailTemplate.values()) {
             String html = "<!-- SUBJECT: " + templates.subject(t) + " -->\n"

@@ -101,11 +101,15 @@ public class StartupDiagnostics {
                         : " (EgopClientMock — KLASA/URBROJ dobivaju prefiks " + mockPrefix + ")");
 
         boolean mailEnabled = env.getProperty("app.mail.enabled", Boolean.class, false);
-        log.info("startup_mail enabled={} host={} from={}{}",
+        String mailRedirectTo = env.getProperty("app.mail.redirect-to", "").strip();
+        log.info("startup_mail enabled={} host={} from={} redirect_to={}{}",
                 mailEnabled,
                 env.getProperty("spring.mail.host"),
                 env.getProperty("app.mail.from"),
-                mailEnabled ? " — POZOR: poruke stvarno izlaze" : " (LoggingEmailService, ništa ne izlazi)");
+                mailRedirectTo.isEmpty() ? "-" : mailRedirectTo,
+                !mailEnabled ? " (LoggingEmailService, ništa ne izlazi)"
+                        : mailRedirectTo.isEmpty() ? " — POZOR: poruke stvarno izlaze"
+                        : " — poruke izlaze, ali sve na " + mailRedirectTo);
 
         log.info("startup_captcha enabled={} hmac_key={}",
                 env.getProperty("app.captcha.enabled", Boolean.class, false),

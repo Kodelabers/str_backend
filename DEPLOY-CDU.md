@@ -159,8 +159,11 @@ STR_DOCUMENTS_RELOAD=false
 # --- eGOP ---
 EGOP_AKTI_BEZ_SIFRE=reaktivacija,prijedlog-suspenzije,obustava-suspenzije
 
-# --- obavijesti e-poštom (ugašeno dok nema SMTP-a dohvatljivog s kutije) ---
-APP_MAIL_ENABLED=false
+# --- obavijesti e-poštom (relay servmail.ssc.gov.hr:25 i pošiljatelj su default u application-cdu.properties) ---
+APP_MAIL_ENABLED=true
+# Obavezno uz true: baza nosi stvarne adrese iznajmljivača. Sve poruke idu ovamo, stvarni
+# primatelj je u predmetu „[za: …]". U logu: startup_mail enabled=true … redirect_to=<adresa>.
+APP_MAIL_REDIRECT_TO=ime.prezime@kodelab.hr
 ```
 
 **Ključ koji ne postavljaš zakomentiraj, nemoj ostaviti prazan** — prazna vrijednost je
