@@ -76,11 +76,10 @@ public class SmtpEmailService implements EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
             helper.setFrom(properties.from());
-            helper.setTo(to);
-            helper.setSubject(subject);
+            String recipient = address(helper, to, subject);
             helper.setText(templates.body(template, values, dostavaMailom), true);
             mailSender.send(message);
-            log.info("Sent email to {} with subject '{}'", to, subject);
+            log.info("Sent email to {} with subject '{}'", recipient, subject);
         } catch (MessagingException | MailException e) {
             // Caller (TransactionalEventListener) treats this as a notification failure —
             // the underlying status change has already been committed.
@@ -101,18 +100,34 @@ public class SmtpEmailService implements EmailService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
             helper.setFrom(properties.from());
-            helper.setTo(to);
-            helper.setSubject(subject);
+            String recipient = address(helper, to, subject);
             helper.setText(templates.body(template, values, dostavaMailom), true);
             if (attachment != null && attachment.length > 0) {
                 helper.addAttachment(attachmentName, new ByteArrayResource(attachment));
             }
             mailSender.send(message);
             log.info("Sent email to {} with subject '{}' and attachment '{}' ({} bytes)",
-                    to, subject, attachmentName, attachment == null ? 0 : attachment.length);
+                    recipient, subject, attachmentName, attachment == null ? 0 : attachment.length);
         } catch (MessagingException | MailException e) {
             log.error("Failed to send email to {} with subject '{}': {}", to, subject, e.getMessage(), e);
         }
+    }
+
+    /**
+     * Postavlja primatelja i predmet. Uz {@code app.mail.redirect-to} poruka ide na tu adresu, a
+     * stvarni primatelj ide u predmet: testna okolina nad stvarnim podacima eTurizma tako ne šalje
+     * poštu stvarnim iznajmljivačima. Vraća opis primatelja za log.
+     */
+    private String address(MimeMessageHelper helper, String to, String subject) throws MessagingException {
+        String redirectTo = properties.redirectTo();
+        if (redirectTo == null) {
+            helper.setTo(to);
+            helper.setSubject(subject);
+            return to;
+        }
+        helper.setTo(redirectTo);
+        helper.setSubject("[za: " + to + "] " + subject);
+        return redirectTo + " (redirected, intended for " + to + ")";
     }
 
     private static String nn(String value) {
