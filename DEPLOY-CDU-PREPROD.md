@@ -907,8 +907,10 @@ ne diraju.
 | Lozinka | `NIAS_KEYSTORE_PASSWORD` u `.env.cdupreprod` | isto, nova vrijednost |
 | Odjava | nije mogla raditi (SLO registriran uz tuđi cert) | ACS i SLO registrirani uz e-Turizam → mora raditi |
 
-Prelazak ide **zajedno s redeployem** (§C9): nova compose datoteka (mount) stiže na kutiju kroz
-git bundle, a nova `.env` vrijednost bez nje ne bi imala što pročitati.
+Prelazak ide **zajedno s redeployem** (§C9), ali uz jedan korak koji §C9 nema: §C9 prenosi samo
+jar i frontend, a compose datoteka (s novim mountom) na kutiju stiže **samo kroz git** — korak
+C10.2b. Bez njega na kutiji ostaje stari compose s `/secrets`, a nova `.env` vrijednost nema što
+pročitati.
 
 ### C10.1 Izviđanje certifikata (ništa ne mijenja)
 
@@ -918,7 +920,7 @@ ssh cdu-preprod "ls -la /opt/str/config-external"
 Lozinku upisuješ na upit, pa ne ostaje u historyju. `keytool` dolazi iz JRE imagea, jer Jave na
 hostu nema:
 ```powershell
-ssh -t cdu-preprod "docker run --rm -it -v /opt/str/config-external:/c:ro eclipse-temurin:21-jre keytool -list -v -storetype PKCS12 -keystore /c/keystore.p12"
+ssh -t cdu-preprod "docker run --rm -it -v /opt/str/config-external:/c:ro eclipse-temurin:21-jre-jammy keytool -list -v -storetype PKCS12 -keystore /c/keystore.p12"
 ```
 
 | Iz ispisa | Ide u / mora biti |
@@ -940,6 +942,27 @@ dok je NIAS ugašen, keystore se uopće ne čita.
 ssh cdu-preprod "cd ~/str-rn/str_backend && cp -p .env.cdupreprod .env.cdupreprod.PRETHODNI && cp -p docker-compose.cdupreprod.yml docker-compose.cdupreprod.PRETHODNI.yml && ls -l .env.cdupreprod* docker-compose.cdupreprod*"
 ```
 Uz to i kopija jara/fronte iz §C9 korak 4.
+
+### C10.2b Git na kutiji (compose s novim mountom)
+
+Lokalno, **prije VPN-a** i tek kad je ova izmjena spojena u `develop`:
+```powershell
+git -C C:\Users\MladenHangi\str_backend fetch origin; git -C C:\Users\MladenHangi\str_backend bundle create C:\Users\MladenHangi\be-upd.bundle origin/develop
+```
+Na VPN-u:
+```powershell
+scp C:\Users\MladenHangi\be-upd.bundle cdu-preprod:~/
+```
+```powershell
+ssh cdu-preprod "git -C ~/str-rn/str_backend fetch ~/be-upd.bundle origin/develop:refs/remotes/upd/develop && git -C ~/str-rn/str_backend checkout --detach upd/develop && grep -n config-external ~/str-rn/str_backend/docker-compose.cdupreprod.yml"
+```
+
+**Zamka s imenom refa:** bundle napravljen iz `origin/develop` nosi ref
+`refs/remotes/origin/develop`, pa se na kutiji dohvaća kao `origin/develop:…`. Sa samim
+`develop:…` fetch pada na `couldn't find remote ref develop` (izmjereno 02.10.).
+
+Grep na kraju mora ispisati redak s `/opt/str/config-external`. Neprećene datoteke (`.env`,
+`target/`, `*.PRETHODNI*`) checkout ne dira.
 
 ### C10.3 `.env.cdupreprod`
 
