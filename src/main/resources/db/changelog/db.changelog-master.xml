@@ -210,4 +210,7 @@
     <!-- Rješenje o kategorizaciji vezano uz izdani RB (jedno aktivno po RB-u). -->
     <include file="db/changelog/changes/126-categorization-decision-rn.xml"/>
 
+    <!-- Postojeći eTurizam objekt: adresa i kapacitet smiju izostati kad ih eTurizam ne zna. -->
+    <include file="db/changelog/changes/127-accommodation-optional-facility-data.xml"/>
+
 </databaseChangeLog>

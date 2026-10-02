@@ -3,6 +3,7 @@ package com.str.backend.registration;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.CadastreResolver;
+import com.str.backend.address.CountyNames;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.address.MunicipalityEntity;
@@ -18,6 +19,7 @@ import com.str.backend.exception.ValidationRejectedException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.AccommodationRequest;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
@@ -30,6 +32,7 @@ import com.str.backend.rn.RnService;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.str.FacilityClaimVerifier;
+import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -121,11 +124,8 @@ public class RegistrationService {
         if (legalEntity != null && !legalEntity.legalOib().equals(req.oib())) {
             throw new IllegalArgumentException("OIB zahtjeva nije OIB pravne osobe u čije ime se djeluje");
         }
-        CountyEntity county = countyRepository.findById(req.countyId())
-                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
-
-        AccommodationEntity accommodation = buildAccommodation(req, county.getName());
-        verifyFacilityClaim(req.oib(), accommodation);
+        AccommodationEntity accommodation = buildAccommodation(req, countyName(req.countyId()));
+        verifyAndCompleteFacility(req.oib(), accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
         // Identitet i adresa iz NIAS-a / registra, na serveru — ne iz zahtjeva. Nedostupan
@@ -152,14 +152,13 @@ public class RegistrationService {
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
     public RegistrationResponse generateRegistrationNumberExternal(RegistrationExternalRequest req, UUID lessorId) {
-        CountyEntity county = countyRepository.findById(req.countyId())
-                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + req.countyId()));
+        String countyName = countyName(req.countyId());
 
         LessorEntity lessor = lessorRepository.findById(lessorId)
                 .orElseThrow(() -> new ResourceNotFoundException("lessor not found: " + lessorId));
 
-        AccommodationEntity accommodation = buildAccommodation(req, county.getName());
-        verifyFacilityClaim(lessor.getLessorOib(), accommodation);
+        AccommodationEntity accommodation = buildAccommodation(req, countyName);
+        verifyAndCompleteFacility(lessor.getLessorOib(), accommodation);
         checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
 
         // Iznajmljivač je već pohranjen (samoregistracija), pa se e-mail ne dira — on je
@@ -187,6 +186,20 @@ public class RegistrationService {
                 lessor.getContactNote());
     }
 
+    /**
+     * Naziv županije, ili {@code null} kad je zahtjev nema — to smije samo postojeći eTurizam
+     * objekt kojem eTurizam županiju ne zna (novi objekt je traži već na validaciji zahtjeva).
+     * Poslan, a nepostojeći id i dalje je greška.
+     */
+    private String countyName(Long countyId) {
+        if (countyId == null) {
+            return null;
+        }
+        return countyRepository.findById(countyId)
+                .map(CountyEntity::getName)
+                .orElseThrow(() -> new ResourceNotFoundException("county not found: " + countyId));
+    }
+
     /** Prazan string iz forme je „nije upisano", ne vrijednost — ne spremamo ga kao takvog. */
     private static String trimmed(String value) {
         if (value == null) {
@@ -201,18 +214,60 @@ public class RegistrationService {
      * a poslana vrsta, broj kreveta, naziv i adresa moraju odgovarati eTurizmu — v.
      * {@link FacilityClaimVerifier}. Provjera ide prije svega ostalog: jedina je brana između
      * tuđeg {@code facilityId} i write-backa RB-a u tuđi zapis.
+     *
+     * <p>Nakon provjere se dopunjava ono što zahtjev nije donio, a eTurizam zna. Obrazac ta polja
+     * za postojeći objekt ne traži i šalje ih kao {@code null} kad ih ne uspije razriješiti
+     * (šifrarnik nije stigao, naziv se ne nađe u adresnom registru), pa bi bez dopune RB nosio
+     * kod županije ili vrste 00 i GO-1 ne bi znao županiju. Dopuna mijenja samo prazna polja.
      */
-    private void verifyFacilityClaim(String oib, AccommodationEntity accommodation) {
+    private void verifyAndCompleteFacility(String oib, AccommodationEntity accommodation) {
         facilityClaimVerifier.verify(oib, accommodation.getFacilityId(),
-                new FacilityClaimVerifier.Claim(
-                        accommodation.getAccommodationTypeId(),
-                        accommodation.getMaxBeds(),
-                        accommodation.getName(),
-                        accommodation.getCounty(),
-                        accommodation.getCity(),
-                        accommodation.getSettlement(),
-                        accommodation.getStreet(),
-                        accommodation.getStreetNumber()));
+                        new FacilityClaimVerifier.Claim(
+                                accommodation.getAccommodationTypeId(),
+                                accommodation.getMaxBeds(),
+                                accommodation.getName(),
+                                accommodation.getCounty(),
+                                accommodation.getCity(),
+                                accommodation.getSettlement(),
+                                accommodation.getStreet(),
+                                accommodation.getStreetNumber()))
+                .ifPresent(facility -> accommodation.completeFrom(facilityData(facility)));
+    }
+
+    /** Ono što eTurizam stvarno zna o objektu, u obliku za dopunu; popunjivači postaju {@code null}. */
+    private AccommodationEntity.FacilityData facilityData(FacilityOwnershipRow facility) {
+        String subtypeCode = FacilityClaimVerifier.knownOrNull(facility.getSubtypeCode());
+        Long typeId = subtypeCode == null ? null
+                : accommodationTypeRepository.findByCodeIgnoreCase(subtypeCode)
+                        .map(AccommodationTypeEntity::getTypeId)
+                        .orElse(null);
+        return new AccommodationEntity.FacilityData(
+                FacilityClaimVerifier.objectName(facility),
+                typeId,
+                FacilityClaimVerifier.maxGuests(facility),
+                registryCountyName(FacilityClaimVerifier.knownOrNull(facility.getCountyName())),
+                FacilityClaimVerifier.knownOrNull(facility.getMunicipalityName()),
+                FacilityClaimVerifier.knownOrNull(facility.getSettlementName()),
+                FacilityClaimVerifier.knownOrNull(facility.getStreetName()),
+                FacilityClaimVerifier.knownOrNull(facility.getHouseNumber()),
+                FacilityClaimVerifier.knownOrNull(facility.getPostalCode()));
+    }
+
+    /**
+     * Naziv županije iz eTurizma u obliku adresnog registra — u tom obliku ga zahtjev s
+     * {@code countyId} sprema i po njemu {@code RnService} određuje kod županije u RB-u. Kad se
+     * ne nađe, ostaje naziv iz eTurizma: bolji je od praznog, a izdavanje se ne smije blokirati.
+     */
+    private String registryCountyName(String eturizamName) {
+        String key = CountyNames.key(eturizamName);
+        if (key == null) {
+            return null;
+        }
+        return countyRepository.findAll().stream()
+                .map(CountyEntity::getName)
+                .filter(name -> key.equals(CountyNames.key(name)))
+                .findFirst()
+                .orElse(eturizamName.trim());
     }
 
     /**
@@ -275,19 +330,21 @@ public class RegistrationService {
     }
 
     AccommodationEntity buildAccommodation(AccommodationRequest req, String countyName) {
-        String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName, "");
-        String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName, null);
+        String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName);
+        String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName);
         // Obrazac ima jedno polje, maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2),
-        // koje putuje kao `maxBeds`. Isti broj ide u max_beds i max_guests; obje kolone su NOT
-        // NULL i zadržane radi već izdanih RB-ova, pa se podjela na krevete ovdje ne rekonstruira.
+        // koje putuje kao `maxBeds`. Isti broj ide u max_beds i max_guests; obje kolone su
+        // zadržane radi već izdanih RB-ova, pa se podjela na krevete ovdje ne rekonstruira.
+        // Prazan string je „nije upisano": za postojeći objekt ta polja više nisu @NotBlank, pa
+        // bez ovoga "   " ne bi bio ni dopunjen iz eTurizma ni prepoznat kao prazan.
         AccommodationEntity entity = AccommodationEntity.create(
-                null, countyName, cityName, req.street(), req.streetNumber(),
+                null, countyName, cityName, trimmed(req.street()), trimmed(req.streetNumber()),
                 req.maxBeds(), req.maxBeds(), req.offerType(), req.offering(),
                 req.building(), req.apartments(), req.legalized());
-        entity.setName(req.name());
+        entity.setName(trimmed(req.name()));
         entity.setFacilityId(req.facilityId());
         entity.setSettlement(settlementName);
-        entity.setPostalCode(req.postalCode());
+        entity.setPostalCode(trimmed(req.postalCode()));
         entity.setFloor(req.floor());
         entity.setLessorResidence(req.lessorResidence());
         // Katastar iz registra, ne iz zahtjeva — v. CadastreResolver. Ide prije provjere vlasništva
@@ -371,9 +428,10 @@ public class RegistrationService {
         return new RegistrationResponse(rn.getRn(), submission.getSubmissionId());
     }
 
+    /** {@code null} kad id nije poslan — postojeći eTurizam objekt kojem eTurizam to ne zna. */
     private <T> String resolveEntityName(String id, JpaRepository<T, Long> repository,
-                                          Function<T, String> nameExtractor, String nullDefault) {
-        if (id == null) return nullDefault;
+                                          Function<T, String> nameExtractor) {
+        if (id == null || id.isBlank()) return null;
         try {
             return repository.findById(Long.parseLong(id))
                     .map(nameExtractor)

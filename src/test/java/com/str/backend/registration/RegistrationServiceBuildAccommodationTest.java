@@ -205,6 +205,38 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getAccommodationTypeId()).isNull();
     }
 
+    /**
+     * Postojeći eTurizam objekt kojem eTurizam ne zna naziv, adresu ni kapacitet: što nije
+     * poslano ostaje null — ne prazan string, ne 0 — i katastar se ne traži.
+     */
+    @Test
+    void existing_facility_without_eturizam_data_leaves_fields_null() {
+        RegistrationRequest req = new RegistrationRequest(
+                "12312312316", null, null,
+                null, null, null,
+                null, null, null, null,
+                null,
+                OfferType.PRIMARY_RESIDENCE, Offering.PART,
+                false, "1", false, false,
+                null, null, null, null,
+                null, null, "1448035",
+                "iznajmljivac@example.com", "0991234567", null, null,
+                null);
+
+        AccommodationEntity e = newService().buildAccommodation(req, null);
+
+        assertThat(e.getName()).isNull();
+        assertThat(e.getCounty()).isNull();
+        assertThat(e.getCity()).isNull();
+        assertThat(e.getSettlement()).isNull();
+        assertThat(e.getStreet()).isNull();
+        assertThat(e.getStreetNumber()).isNull();
+        assertThat(e.getMaxBeds()).isNull();
+        assertThat(e.getMaxGuests()).isNull();
+        assertThat(e.getHouseNumberCode()).isNull();
+        assertThat(e.getFacilityId()).isEqualTo("1448035");
+    }
+
     // --- fixtures ---
 
     /** typeId puni Liquibase/JPA, pa ga u testu postavljamo refleksijom. */

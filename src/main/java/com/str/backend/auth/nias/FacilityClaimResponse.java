@@ -13,8 +13,9 @@ import java.util.List;
  *
  * <p>Popis nosi <b>nazive polja iz tijela</b> {@code POST /api/generateRegistrationNumber}
  * (npr. {@code typeId}, {@code maxBeds}), da ih frontend može izravno preslikati na svoje inpute.
- * Polje koje eTurizam ne zna (prazna ulica, naziv {@code -}) namjerno <b>nije</b> na popisu —
- * takvo korisnik smije i treba popuniti.
+ * Polje koje eTurizam ne zna (prazna ulica, naziv {@code -}) namjerno <b>nije</b> na popisu.
+ * Obrazac ga za postojeći objekt ostavlja prazno i neobavezno, a backend ga pri izdavanju RB-a
+ * sam dopunjava iz eTurizma kad god može.
  *
  * <p>{@code brKreveta} je <b>maksimalan broj gostiju</b> — kreveti + pomoćni kreveti iz eTurizma
  * (v. {@code FacilityClaimVerifier.maxGuests}). Ime polja ostaje zbog ugovora s frontendom.
@@ -37,5 +38,12 @@ public record FacilityClaimResponse(
          */
         String kontaktEmail,
         String kontaktTelefon,
-        List<String> zakljucanaPolja) {
+        List<String> zakljucanaPolja,
+        /**
+         * Smije li objekt te vrste uopće dobiti RB ({@code FacilityClaimVerifier#isRegistrableType}).
+         * {@code false} za vrstu koja nije privatni smještaj (hotel, kamp, restoran, agencija…) —
+         * popis objekata takve ne prikazuje, ali do njih se može doći tuStart URL-om. Frontend
+         * tada blokira obrazac, a predaju bi ionako odbio verifier.
+         */
+        boolean vrstaDopustena) {
 }

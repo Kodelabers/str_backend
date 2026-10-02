@@ -49,6 +49,11 @@ public class CadastreResolver {
     @Transactional(readOnly = true)
     public Cadastre resolve(Long kucniBrojId, String street, String streetNumber, String submittedKcBroj) {
         String upisana = blankToNull(submittedKcBroj);
+        if (kucniBrojId == null && blankToNull(street) == null && blankToNull(streetNumber) == null) {
+            // Postojeći eTurizam objekt kojem eTurizam ne zna ulicu ni kućni broj (velika većina):
+            // bez adrese nema ni katastra, i to je očekivano — bez traga u logu.
+            return new Cadastre(null, upisana, null);
+        }
         if (kucniBrojId == null) {
             // Zahtjev svejedno prolazi, samo bez katastra — zato ovaj trag. Frontend `kucniBrojId`
             // šalje uvijek (polje je obavezno), pa ovo znači regresiju na fronti ili drugog

@@ -216,6 +216,25 @@ class NiasFacilityServiceTest {
 
         assertThat(claim.brKreveta()).isEqualTo(6);
         assertThat(claim.zakljucanaPolja()).contains("maxBeds");
+        // eTurizam vrstu ne zna — zabrana se ne može utemeljiti, RB se smije izdati.
+        assertThat(claim.vrstaDopustena()).isTrue();
+    }
+
+    /**
+     * Vlastiti hotel ili restoran do forme može doći tuStart URL-om. Claim to kaže zastavicom, da
+     * frontend blokira obrazac umjesto da ga korisnik ispuni i tek pri predaji dobije 400.
+     */
+    @Test
+    void claim_flagsTypeThatCannotGetRn() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn(OIB);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getSubtypeCode()).thenReturn("FS_HOTEL");
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+        when(typeRepository.findByCodeIgnoreCase("FS_HOTEL")).thenReturn(Optional.empty());
+
+        assertThat(service.claim(OIB, "153049").vrstaDopustena()).isFalse();
     }
 
     /**

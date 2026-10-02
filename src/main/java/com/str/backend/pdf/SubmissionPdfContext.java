@@ -9,7 +9,8 @@ import com.str.backend.lessor.LessorEntity;
  * kompajlera; {@code countyName} se pritom uopće nije čitao.
  *
  * @param maxGuests          maksimalan broj gostiju (kreveti + pomoćni kreveti) — obrazac ga
- *                           od stavke 2 prikazuje kao jedan podatak, bez podjele na krevete
+ *                           od stavke 2 prikazuje kao jedan podatak, bez podjele na krevete;
+ *                           {@code null} za postojeći eTurizam objekt kojem ga eTurizam ne zna
  * @param filingNumber       KLASA + URBROJ; {@code null} dok zahtjev nije urudžbiran
  * @param registrationNumber uvijek postoji — PDF se generira nakon dodjele RB-a
  */
@@ -19,7 +20,7 @@ public record SubmissionPdfContext(
         String streetNumber,
         String postalCode,
         String cityName,
-        int maxGuests,
+        Integer maxGuests,
         String typeName,
         LessorEntity lessor,
         String filingNumber,

@@ -45,19 +45,21 @@ public class AccommodationEntity {
     @Column(name = "facility_id", length = 64)
     @Setter private String facilityId;
 
-    @Column(name = "county", length = 128, nullable = false, updatable = false)
+    // Adresa i kapacitet smiju biti null samo za postojeći eTurizam objekt kojem eTurizam taj
+    // podatak ne zna (changeset 127). Za novi objekt ih traži RegistrationRequest.
+    @Column(name = "county", length = 128, updatable = false)
     private String county;
 
-    @Column(name = "city", length = 128, nullable = false, updatable = false)
+    @Column(name = "city", length = 128, updatable = false)
     private String city;
 
     @Column(name = "settlement", length = 128)
     @Setter private String settlement;
 
-    @Column(name = "street", length = 128, nullable = false, updatable = false)
+    @Column(name = "street", length = 128, updatable = false)
     private String street;
 
-    @Column(name = "street_number", length = 64, nullable = false, updatable = false)
+    @Column(name = "street_number", length = 64, updatable = false)
     private String streetNumber;
 
     @Column(name = "house_number_code", length = 64)
@@ -72,11 +74,11 @@ public class AccommodationEntity {
     @Column(name = "cadastral_parcel_number", length = 64)
     @Setter private String cadastralParcelNumber;
 
-    @Column(name = "max_beds", nullable = false, updatable = false)
-    private int maxBeds;
+    @Column(name = "max_beds", updatable = false)
+    private Integer maxBeds;
 
-    @Column(name = "max_guests", nullable = false, updatable = false)
-    private int maxGuests;
+    @Column(name = "max_guests", updatable = false)
+    private Integer maxGuests;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "offer_type", length = 32, nullable = false, updatable = false)
@@ -161,7 +163,7 @@ public class AccommodationEntity {
     private Instant updatedAt;
 
     public static AccommodationEntity create(UUID submissionId, String county, String city, String street,
-                                             String streetNumber, int maxBeds, int maxGuests, OfferType offerType,
+                                             String streetNumber, Integer maxBeds, Integer maxGuests, OfferType offerType,
                                              Offering offering, boolean building, boolean apartments,
                                              boolean legalized) {
         AccommodationEntity s = new AccommodationEntity();
@@ -182,6 +184,52 @@ public class AccommodationEntity {
         s.createdAt = now;
         s.updatedAt = now;
         return s;
+    }
+
+    /**
+     * Podaci postojećeg eTurizam objekta za dopunu — samo ono što eTurizam stvarno zna (inače
+     * {@code null}). {@code accommodationTypeId} je već razriješen iz šifre podvrste.
+     */
+    public record FacilityData(String name, Long accommodationTypeId, Integer maxGuests,
+                               String county, String city, String settlement,
+                               String street, String streetNumber, String postalCode) {
+    }
+
+    /**
+     * Dopunjava podatke postojećeg eTurizam objekta koje zahtjev nije donio — obrazac ih šalje
+     * kao {@code null} kad ih ne uspije razriješiti (šifrarnik, adresni registar, mreža), a bez
+     * dopune bi RB dobio kod županije ili vrste 00.
+     *
+     * <p>Mijenja <b>samo prazna</b> polja: ono što je zahtjev donio već je usporedio
+     * {@code FacilityClaimVerifier}. Vrijednost se skraćuje na duljinu kolone — eTurizam ne
+     * poznaje naša ograničenja, a predugi podatak ne smije spriječiti izdavanje RB-a.
+     */
+    public void completeFrom(FacilityData data) {
+        if (isBlank(name)) name = fit(data.name(), 255);
+        if (accommodationTypeId == null) accommodationTypeId = data.accommodationTypeId();
+        if (maxBeds == null && data.maxGuests() != null) {
+            maxBeds = data.maxGuests();
+            maxGuests = data.maxGuests();
+        }
+        if (isBlank(county)) county = fit(data.county(), 128);
+        if (isBlank(city)) city = fit(data.city(), 128);
+        if (isBlank(settlement)) settlement = fit(data.settlement(), 128);
+        if (isBlank(street)) street = fit(data.street(), 128);
+        if (isBlank(streetNumber)) streetNumber = fit(data.streetNumber(), 64);
+        if (isBlank(postalCode)) postalCode = fit(data.postalCode(), 32);
+        this.updatedAt = Instant.now();
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private static String fit(String value, int maxLength) {
+        if (isBlank(value)) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= maxLength ? trimmed : trimmed.substring(0, maxLength);
     }
 
     public void setLocationDetails(String settlement, String floor, String cadastralMunicipality,

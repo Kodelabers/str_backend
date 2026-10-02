@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
@@ -310,11 +311,18 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * objekt već dobio (ponovni pokušaj, ručni upis u eTurizmu) — write-back je time
      * idempotentan i ne može tiho pregaziti tuđi podatak.
      *
+     * <p>{@code REQUIRES_NEW}: poziva se iz {@code RnIssuedListener} u fazi {@code AFTER_COMMIT},
+     * kad registracijska transakcija više ne može ništa upisati. S običnim {@code REQUIRED} upis
+     * se priključi toj završenoj transakciji i padne s {@code TransactionRequiredException} —
+     * pogreška se proguta i RB nikad ne stigne u eTurizam. Isti obrazac kao {@code EgopFilingStore}.
+     * Na repozitoriju, a ne na pozivatelju, da neuspjeh ostane iznimka koju pozivatelj guta, a ne
+     * {@code UnexpectedRollbackException} koja bi preskočila i eGOP dostavu.
+     *
      * @return broj ažuriranih redaka: 1 kad je upis prošao, 0 kad objekt ne postoji ili
      * već ima RB
      */
     @Modifying
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Query(value = """
             UPDATE str.facility
                SET registration_number = :rn

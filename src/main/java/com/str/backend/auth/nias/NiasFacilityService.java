@@ -127,7 +127,8 @@ public class NiasFacilityService {
                 row.getPostalCode(),
                 row.getContactEmail(),
                 row.getContactPhone(),
-                FacilityClaimVerifier.lockedFields(row));
+                FacilityClaimVerifier.lockedFields(row),
+                FacilityClaimVerifier.isRegistrableType(row, accommodationTypeRepository));
     }
 
     private List<FacilityResponse> fromEturizam(String oib, List<String> codes, int limit, int offset) {

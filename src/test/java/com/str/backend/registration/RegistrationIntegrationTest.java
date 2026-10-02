@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.lang.reflect.Field;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -46,6 +47,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class RegistrationIntegrationTest {
+
+    private static final AtomicInteger STREET_NUMBERS = new AtomicInteger(100);
 
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper om;
@@ -137,11 +140,15 @@ class RegistrationIntegrationTest {
         }
     }
 
+    /**
+     * Svaki poziv nosi drugi kućni broj. Testovi dijele H2 bazu, pa bi drugi zahtjev za istu adresu
+     * dobio 409 DUPLICATE_LOCATION — prolaz je onda ovisio o redoslijedu izvođenja.
+     */
     private RegistrationRequest baseRequest() {
         return new RegistrationRequest(
                 "12312312316", "Apartman Sunce", null,
                 2L, "Split", null,
-                "Ulica kralja Tomislava", "14a", null, "21000",
+                "Ulica kralja Tomislava", String.valueOf(STREET_NUMBERS.incrementAndGet()), null, "21000",
                 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,

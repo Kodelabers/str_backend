@@ -16,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -170,6 +171,71 @@ class FacilityClaimVerifierTest {
         stubSubmittedType(1L, "FS_SOBA");
 
         assertThatCode(() -> verifier.verify(OIB, "153049", claim(1L, 4))).doesNotThrowAnyException();
+    }
+
+    /**
+     * Obrazac za postojeći objekt šalje samo ono što eTurizam zna, a ostalo kao {@code null}.
+     * Izostavljen podatak se ne uspoređuje — izostavljanjem se ne podmeće drukčija vrijednost.
+     */
+    @Test
+    void passes_whenRequestOmitsFacilityData() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubName("Apartman Marija");
+        stubAddress("Splitsko-dalmatinska", "Makarska", "Makarska", "Kalalarga", "12");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(null, null, null, null, null, null, null, null)))
+                .doesNotThrowAnyException();
+    }
+
+    /** Provjereni zapis se vraća — iz njega RegistrationService dopunjava ono što zahtjev nije donio. */
+    @Test
+    void returnsVerifiedFacility() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+
+        assertThat(verifier.verify(OIB, "153049", claim(1L, 2))).containsSame(stubbedRow);
+        assertThat(verifier.verify(OIB, null, claim(1L, 2))).isEmpty();
+    }
+
+    // --- Vrsta objekta: RB samo za privatni smještaj ---
+
+    /**
+     * Popis objekata hotel, restoran ili agenciju ne prikazuje, ali tuStart URL može nositi bilo
+     * koji vlastiti objekt. Odbija se i kad zahtjev vrstu ne pošalje — inače bi izostavljen
+     * typeId preskočio i ovu provjeru i zabranu u RnService.issue().
+     */
+    @Test
+    void rejects_whenFacilityIsNotPrivateAccommodation_evenWithoutSubmittedType() {
+        stubFacility(OIB, "FS_HOTEL", 40, true);
+        when(typeRepository.findByCodeIgnoreCase("FS_HOTEL")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049",
+                new Claim(null, null, null, null, null, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.type.notAllowed");
+    }
+
+    @Test
+    void rejects_whenFacilityTypeDoesNotAllowRn() {
+        stubFacility(OIB, "FS_KAMP", 40, true);
+        when(typeRepository.findByCodeIgnoreCase("FS_KAMP"))
+                .thenReturn(Optional.of(new AccommodationTypeEntity("Kamp", false, "kampovi")));
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049",
+                new Claim(null, null, null, null, null, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.type.notAllowed");
+    }
+
+    /** Kad eTurizam vrstu ne zna, zabrana se ne može utemeljiti — RB se mora moći izdati. */
+    @Test
+    void passes_whenEturizamHasNoType() {
+        stubFacility(OIB, null, 2, true);
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(null, null, null, null, null, null, null, null)))
+                .doesNotThrowAnyException();
+        assertThat(FacilityClaimVerifier.isRegistrableType(stubbedRow, typeRepository)).isTrue();
     }
 
     // --- Maksimalan broj gostiju = kreveti + pomoćni kreveti ---
@@ -362,6 +428,18 @@ class FacilityClaimVerifierTest {
                 .hasMessage("error.facility.address.mismatch");
     }
 
+    /** Registar piše „… županija", eTurizam ne nužno — to nije razlika adrese. */
+    @Test
+    void passes_whenCountyDiffersOnlyByZupanijaSuffixAndCase() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        stubSubmittedType(1L, "FS_SOBA");
+        stubAddress("SPLITSKO-DALMATINSKA", null, null, null, null);
+
+        assertThatCode(() -> verifier.verify(OIB, "153049",
+                new Claim(1L, 2, null, "Splitsko-dalmatinska županija", null, null, null, null)))
+                .doesNotThrowAnyException();
+    }
+
     @Test
     void passes_whenAddressMatches() {
         stubFacility(OIB, "FS_SOBA", 2, true);
@@ -429,6 +507,9 @@ class FacilityClaimVerifierTest {
         when(stubbedRow.getActive()).thenReturn(active);
         when(stubbedRow.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(stubbedRow));
+        // Šifrarnik vrsta privatnog smještaja: podvrsta objekta je dopuštena, osim ako test kaže drukčije.
+        when(typeRepository.findByCodeIgnoreCase(anyString()))
+                .thenReturn(Optional.of(new AccommodationTypeEntity("Soba", true, "domacinstvo")));
     }
 
     private void stubBusinessStatus(String code) {

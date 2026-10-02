@@ -69,6 +69,38 @@ class RnServiceTest {
         verify(repository).save(result);
     }
 
+    /** Postojeći eTurizam objekt smije biti bez adrese i kapaciteta — RB se izdaje i tada. */
+    @Test
+    void issue_returnsRnEntity_whenAccommodationHasNoAddressOrCapacity() {
+        UUID accommodationId = UUID.randomUUID();
+        AccommodationEntity bezPodataka = AccommodationEntity.create(
+                UUID.randomUUID(), null, null, null, null,
+                null, null, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, false, false);
+        when(accommodationRepository.findById(accommodationId)).thenReturn(Optional.of(bezPodataka));
+        when(repository.existsByRn(anyString())).thenReturn(false);
+
+        RnEntity result = service.issue(UUID.randomUUID(), accommodationId);
+
+        assertThat(result.getRn()).matches("HR\\d{18}");
+        verify(repository).save(result);
+    }
+
+    /**
+     * Kod županije u RB-u ne smije ovisiti o obliku naziva: lokalni seed piše bez „županija",
+     * a naziv dopunjen iz eTurizma može biti velikim slovima.
+     */
+    @Test
+    void issue_countyCodeIgnoresZupanijaSuffixAndCase() {
+        UUID accommodationId = UUID.randomUUID();
+        AccommodationEntity splitska = AccommodationEntity.create(
+                UUID.randomUUID(), "SPLITSKO-DALMATINSKA", "Split", null, null,
+                4, 4, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, false, false);
+        when(accommodationRepository.findById(accommodationId)).thenReturn(Optional.of(splitska));
+        when(repository.existsByRn(anyString())).thenReturn(false);
+
+        assertThat(service.issue(UUID.randomUUID(), accommodationId).getRn()).startsWith("HR18");
+    }
+
     @Test
     void issue_returnsRnEntity_whenTypeAllowsRn() {
         UUID accommodationId = UUID.randomUUID();

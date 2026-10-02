@@ -2,6 +2,7 @@ package com.str.backend.rn;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.CountyNames;
 import com.str.backend.common.SearchTokens;
 import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
@@ -26,6 +27,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class RnService {
@@ -59,6 +61,10 @@ public class RnService {
             Map.entry("Međimurska županija",                   21),
             Map.entry("Grad Zagreb",                           22)
     );
+
+    /** Isti kodovi, po {@link CountyNames#key} — v. {@link #countyCode}. */
+    private static final Map<String, Integer> COUNTY_CODES_BY_KEY = COUNTY_EGOP_ORG_IDS.entrySet().stream()
+            .collect(Collectors.toUnmodifiableMap(e -> CountyNames.key(e.getKey()), Map.Entry::getValue));
 
     private final RnRepository repository;
     private final RnStatusTransitionService transitionService;
@@ -260,8 +266,15 @@ public class RnService {
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
     }
 
+    /**
+     * Kod županije za RB. Traži se po {@link CountyNames#key}, ne po točnom nazivu: lokalni seed
+     * piše „Splitsko-dalmatinska", registar na dev/CDU „Splitsko-dalmatinska županija", a naziv
+     * dopunjen iz eTurizma može biti i velikim slovima — svi moraju dati isti kod.
+     * Bez županije (postojeći objekt kojem je ne zna ni eTurizam) kod je 0.
+     */
     private static int countyCode(AccommodationEntity accommodation) {
-        return COUNTY_EGOP_ORG_IDS.getOrDefault(accommodation.getCounty(), 0);
+        String key = CountyNames.key(accommodation.getCounty());
+        return key == null ? 0 : COUNTY_CODES_BY_KEY.getOrDefault(key, 0);
     }
 
     private RnEntity load(String rn) {

@@ -21,7 +21,8 @@ public interface AccommodationRequest {
      */
     Long kucniBrojId();
     String postalCode();
-    int maxBeds();
+    /** {@code null} samo za postojeći objekt kojem eTurizam ne zna kapacitet. */
+    Integer maxBeds();
     OfferType offerType();
     Offering offering();
     Boolean building();

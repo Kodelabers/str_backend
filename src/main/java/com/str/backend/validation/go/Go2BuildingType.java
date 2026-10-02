@@ -7,6 +7,7 @@ import com.str.backend.validation.ValidationContext;
 import com.str.backend.validation.ValidationResult;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.Set;
 
 @Component
@@ -36,7 +37,10 @@ public class Go2BuildingType implements ValidationCheck {
         if (!accommodation.isBuilding() || !accommodation.isApartments()) {
             return new ValidationResult.Passed(STEP, "nije zgrada/stanovi - GO-4 nije obvezan");
         }
-        String address = accommodation.getStreet() + " " + accommodation.getStreetNumber() + ", " + accommodation.getCity();
+        // Postojeći eTurizam objekt smije biti bez ulice i kućnog broja — ne šalje se „null".
+        String address = Objects.toString(accommodation.getStreet(), "") + " "
+                + Objects.toString(accommodation.getStreetNumber(), "") + ", "
+                + Objects.toString(accommodation.getCity(), "");
         int units = mpgiClient.brojStambenihJedinica(address);
         if (units > UNIT_THRESHOLD) {
             context.markCoOwnerConsentRequired();

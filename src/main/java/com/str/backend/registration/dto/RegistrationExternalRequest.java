@@ -40,7 +40,7 @@ public record RegistrationExternalRequest(
         @NotBlank String streetNumber,
         @Positive Long kucniBrojId,
         String postalCode,
-        @Min(1) int maxBeds,
+        @NotNull @Min(1) Integer maxBeds,
         @NotNull OfferType offerType,
         @NotNull Offering offering,
         @NotNull Boolean building,
