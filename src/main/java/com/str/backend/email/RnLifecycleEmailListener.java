@@ -16,6 +16,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Šalje iznajmljivaču obavijest o promjeni statusa registracijskog broja.
@@ -27,6 +28,9 @@ import java.util.Optional;
  * <p>Mail <b>nije dostava</b> (čl. 94. ZUP-a); akt se dostavlja u korisnički pretinac i od
  * te dostave teku rokovi. Zato se akt prilaže kao preslika, a svaki predložak nosi klauzulu
  * koja to izrijekom kaže.
+ *
+ * <p>Neuspjelo slanje ide u {@link MailRetryStore}, a ponavlja ga {@link MailRetryJob} preko
+ * {@link #retry}. Trajni razlozi (nema adrese, nema RB-a) se ne ponavljaju.
  */
 @Component
 public class RnLifecycleEmailListener {
@@ -39,15 +43,18 @@ public class RnLifecycleEmailListener {
     private final StrDocumentService documentService;
     private final DocumentLabels labels;
     private final EmailService emailService;
+    private final MailRetryStore retryStore;
 
     public RnLifecycleEmailListener(RnLifecycleLookup lookup,
                                     StrDocumentService documentService,
                                     DocumentLabels labels,
-                                    EmailService emailService) {
+                                    EmailService emailService,
+                                    MailRetryStore retryStore) {
         this.lookup = lookup;
         this.documentService = documentService;
         this.labels = labels;
         this.emailService = emailService;
+        this.retryStore = retryStore;
     }
 
     /**
@@ -59,6 +66,33 @@ public class RnLifecycleEmailListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLifecycleChange(RnLifecycleEvent event) {
+        deliver(event);
+    }
+
+    /**
+     * Ponovni pokušaj za {@link MailRetryJob}. Događaj se rekonstruira iz revizijskog zapisa.
+     * Obavijest o prijelazu koji je u međuvremenu nadjačan se ne šalje — stranka bi nakon
+     * novije obavijesti dobila staru, o stanju koje više ne vrijedi.
+     */
+    public void retry(UUID logId) {
+        RnLifecycleEvent event = lookup.findEvent(logId).orElse(null);
+        if (event == null) {
+            retryStore.abandon(MailRetryEntity.Kind.RN_LIFECYCLE, logId, "missing_log");
+            return;
+        }
+        if (!lookup.isLatestTransition(event.rn(), logId)) {
+            retryStore.abandon(MailRetryEntity.Kind.RN_LIFECYCLE, logId, "superseded");
+            return;
+        }
+        // deliver() prijelaz bez akta tiho preskače; ovdje bi to zapis ostavilo zauvijek otvorenim.
+        if (StrDocumentType.forTransition(event.to(), event.trigger(), event.initiatedByLessor()).isEmpty()) {
+            retryStore.abandon(MailRetryEntity.Kind.RN_LIFECYCLE, logId, "no_act");
+            return;
+        }
+        deliver(event);
+    }
+
+    private void deliver(RnLifecycleEvent event) {
         Optional<StrDocumentType> akt = StrDocumentType.forTransition(
                 event.to(), event.trigger(), event.initiatedByLessor());
         if (akt.isEmpty()) {
@@ -69,16 +103,18 @@ public class RnLifecycleEmailListener {
         RnDetailDto detail = lookup.findDetail(event.rn()).orElse(null);
         if (detail == null) {
             log.error("rn_lifecycle_mail_skipped reason=missing_detail rn={}", event.rn());
+            retryStore.abandon(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "missing_detail");
             return;
         }
         if (detail.lessorEmail() == null || detail.lessorEmail().isBlank()) {
             log.warn("rn_lifecycle_mail_skipped reason=no_email rn={} template={}",
                     event.rn(), template);
+            retryStore.abandon(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "no_email");
             return;
         }
 
         String razlog = razlog(event);
-        emailService.sendRnLifecycleNotification(new RnLifecycleMail(
+        boolean sent = emailService.sendRnLifecycleNotification(new RnLifecycleMail(
                 template,
                 detail.lessorEmail(),
                 ime(detail),
@@ -90,6 +126,11 @@ public class RnLifecycleEmailListener {
                 // Non-EU iznajmljivač nema OIB pa ni pristup korisničkom pretincu — njemu je
                 // e-pošta kanal dostave, a ne samo obavijest. Klauzula se po tome razlikuje.
                 detail.lessorOib() == null || detail.lessorOib().isBlank()));
+        if (sent) {
+            retryStore.markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
+        } else {
+            retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "smtp_failed");
+        }
     }
 
     private static MailTemplate mailTemplateFor(StrDocumentType type) {

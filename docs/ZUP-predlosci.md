@@ -259,6 +259,21 @@ Obavijest o izdanom RB-u je idempotentna preko `submission.rn_email_sent_at`, ko
 kad je poruka predana SMTP-u (`EmailService.sendRnIssuedNotification` vraća ishod). Non-EU poruka
 bez akta se ne šalje — ne zamjenjuje se PDF-om zahtjeva.
 
+**Ponovno slanje.** Neuspjelo slanje (izdani RB i promjena statusa) upisuje se u
+`str_rn.mail_retry` (`MailRetryStore`); zapis nastaje tek pri neuspjehu, pa uspješne poruke tamo
+ne ostavljaju trag. `MailRetryJob` (svakih 5 min) ponavlja dospjele zapise istim putem kao prvi
+pokušaj: izdani RB preko `EgopRegistrationDispatcher.retryEmail` (bez ponovnog urudžbiranja),
+promjenu statusa preko `RnLifecycleEmailListener.retry`, koji događaj rekonstruira iz
+`registration_number_log`. Odustaje se kad:
+
+- pokušaji su iscrpljeni (`app.mail.retry.max-attempts`) ili je obavijest starija od `max-age`;
+- iznajmljivač nema adresu;
+- obavijest je zastarjela — za prijelaz je u međuvremenu stigao noviji (npr. prijedlog suspenzije
+  pa obustava), odnosno RB o čijem se izdavanju javlja je povučen.
+
+Dok je mail ugašen (`app.mail.enabled=false`) ništa se ne bilježi: uključivanje maila ne smije
+odjednom poslati sve obavijesti iz razdoblja kad je bio ugašen.
+
 | Predložak | Okidač |
 | :--- | :--- |
 | `odobrenje`, `odbijanje` | `AdminPendingRegistrationService.approve/reject` |

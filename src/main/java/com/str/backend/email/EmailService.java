@@ -19,6 +19,8 @@ public interface EmailService {
      * Obavijest o promjeni statusa registracijskog broja (suspenzija, reaktivacija,
      * povlačenje, opoziv). Jedna metoda umjesto četiri jer se razlikuju samo predloškom;
      * {@link RnLifecycleMail#template()} bira tekst.
+     *
+     * @return je li poruka predana SMTP poslužitelju; neuspjeh ide u {@link MailRetryStore}
      */
-    void sendRnLifecycleNotification(RnLifecycleMail mail);
+    boolean sendRnLifecycleNotification(RnLifecycleMail mail);
 }

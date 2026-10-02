@@ -18,8 +18,9 @@ public class LoggingEmailService implements EmailService {
     }
 
     /**
-     * Vraća {@code false}: poruka nije poslana, pa se ne smije zabilježiti kao poslana. Inače
-     * RB izdan dok je mail ugašen ne bi dobio obavijest ni nakon što se SMTP upali.
+     * Vraća {@code false}: poruka nije poslana, pa {@code rn_email_sent_at} ostaje prazan i baza
+     * govori istinu. U red ponovnog slanja ne ide — {@link MailRetryStore} dok je mail ugašen ne
+     * bilježi ništa.
      */
     @Override
     public boolean sendRnIssuedNotification(RnIssuedMail mail) {
@@ -29,10 +30,12 @@ public class LoggingEmailService implements EmailService {
         return false;
     }
 
+    /** {@code false} iz istog razloga kao {@link #sendRnIssuedNotification}. */
     @Override
-    public void sendRnLifecycleNotification(RnLifecycleMail mail) {
+    public boolean sendRnLifecycleNotification(RnLifecycleMail mail) {
         log.info("[mail/mock] RN_LIFECYCLE {} → to={}, rn={}, razlog={}, pdf_bytes={}",
                 mail.template(), mail.to(), mail.rn(), mail.razlog(),
                 mail.pdf() == null ? 0 : mail.pdf().length);
+        return false;
     }
 }

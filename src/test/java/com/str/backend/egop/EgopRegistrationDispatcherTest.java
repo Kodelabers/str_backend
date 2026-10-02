@@ -7,7 +7,10 @@ import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.EgopSyncStatus;
 import com.str.backend.egop.exception.EgopBadRequestException;
+import com.str.backend.domain.RnStatus;
 import com.str.backend.email.EmailService;
+import com.str.backend.email.MailRetryEntity;
+import com.str.backend.email.MailRetryStore;
 import com.str.backend.email.RnIssuedMail;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
@@ -53,6 +56,7 @@ class EgopRegistrationDispatcherTest {
     private StrDocumentService documentService;
     private EgopFilingService egopFilingService;
     private EmailService emailService;
+    private MailRetryStore mailRetryStore;
     private EgopRegistrationDispatcher dispatcher;
 
     private SubmissionEntity submission;
@@ -71,11 +75,12 @@ class EgopRegistrationDispatcherTest {
         documentService = mock(StrDocumentService.class);
         egopFilingService = mock(EgopFilingService.class);
         emailService = mock(EmailService.class);
+        mailRetryStore = mock(MailRetryStore.class);
         EgopRetryPolicy retryPolicy =
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2));
         dispatcher = new EgopRegistrationDispatcher(store, accommodationRepository,
                 lessorRepository, rnRepository, accommodationTypeRepository, pdfGenerator,
-                documentService, egopFilingService, retryPolicy, emailService);
+                documentService, egopFilingService, retryPolicy, emailService, mailRetryStore);
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
         submission = SubmissionEntity.create(null, lessor.getLessorId(), null, null, null, null);
@@ -210,11 +215,94 @@ class EgopRegistrationDispatcherTest {
 
         assertNull(submission.getRnEmailSentAt());
         verify(store, never()).markRnEmailSent(any());
+        verify(mailRetryStore).recordFailure(
+                MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId(), "smtp_failed");
 
         dispatcher.dispatch(submission.getSubmissionId());
 
         verify(emailService, times(2)).sendRnIssuedNotification(any());
         verify(store).markRnEmailSent(submission.getSubmissionId());
+        verify(mailRetryStore).markSent(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId());
+    }
+
+    /**
+     * Ponovno slanje ne smije ponovo urudžbiti — predmet je možda već {@code SYNCED}, a
+     * urudžbiranje ima vlastiti retry.
+     */
+    @Test
+    void retryEmail_sendsWithoutFiling() throws Exception {
+        lessor.setLessorOib("12345678901");
+
+        dispatcher.retryEmail(submission.getSubmissionId());
+
+        verify(egopFilingService, never()).fileRegistration(any(), any(), any());
+        assertEquals("HR123456789012345678", sentMail().rn());
+        verify(mailRetryStore).markSent(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId());
+    }
+
+    /**
+     * Non-EU, predmet već urudžbiran: ponovno poslani akt nosi URBROJ spremljenog izlaznog
+     * pismena — isti dokument koji je u eGOP-u, ne verziju bez urudžbenog broja.
+     */
+    @Test
+    void retryEmail_nonEu_usesStoredOutgoingFilingNumber() {
+        EgopPismenoEntity izlazno = EgopPismenoEntity.create(submission.getSubmissionId(),
+                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
+                7, "2181-26-2", "OBV", false);
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.DODJELA.vrstaPismenaNaziv(),
+                EgopPismenoEntity.ACT_REF_REGISTRACIJA)).thenReturn(Optional.of(izlazno));
+        when(documentService.render(eq(StrDocumentType.DODJELA), anyString(), isNull(),
+                eq(new FilingReference(null, "2181-26-2", 7))))
+                .thenReturn("dodjela-urbroj".getBytes());
+
+        dispatcher.retryEmail(submission.getSubmissionId());
+
+        assertArrayEquals("dodjela-urbroj".getBytes(), sentMail().pdf());
+    }
+
+    /**
+     * Ponovno urudžbiranje ne šalje obavijest koja već čeka u redu — inače bi EgopRetryJob trošio
+     * pokušaje maila mimo njegovog backoffa i red bi odustao prije vremena.
+     */
+    @Test
+    void dispatch_mailAlreadyQueued_leavesItToMailRetryJob() throws Exception {
+        when(mailRetryStore.isQueued(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId()))
+                .thenReturn(true);
+        when(egopFilingService.fileRegistration(any(), any(), any()))
+                .thenReturn(new EgopFilingService.FilingResult("KLASA: x, URBROJ: y", "pdf".getBytes()));
+
+        dispatcher.dispatch(submission.getSubmissionId());
+
+        verify(egopFilingService).fileRegistration(eq(submission), eq(lessor), any());
+        verify(emailService, never()).sendRnIssuedNotification(any());
+        verify(mailRetryStore, never()).recordFailure(any(), any(), any());
+    }
+
+    /** Za povučeni RB obavijest o izdavanju više ne vrijedi. */
+    @Test
+    void retryEmail_withdrawnRn_isAbandoned() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+
+        dispatcher.retryEmail(submission.getSubmissionId());
+
+        verify(emailService, never()).sendRnIssuedNotification(any());
+        verify(mailRetryStore).abandon(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId(), "superseded");
+    }
+
+    /** Bez adrese ponavljanje nema smisla — zapis se zatvara umjesto da se vrti do iscrpljenja. */
+    @Test
+    void noEmail_abandonsRetry() {
+        LessorEntity bezMaila = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", null);
+        SubmissionEntity sub = SubmissionEntity.create(null, bezMaila.getLessorId(), null, null, null, null);
+        when(store.findSubmission(sub.getSubmissionId())).thenReturn(Optional.of(sub));
+        when(lessorRepository.findById(bezMaila.getLessorId())).thenReturn(Optional.of(bezMaila));
+        when(accommodationRepository.findBySubmissionId(sub.getSubmissionId())).thenReturn(List.of(accommodation));
+        when(rnRepository.findBySubmissionId(sub.getSubmissionId())).thenReturn(List.of(rn));
+
+        dispatcher.retryEmail(sub.getSubmissionId());
+
+        verify(emailService, never()).sendRnIssuedNotification(any());
+        verify(mailRetryStore).abandon(MailRetryEntity.Kind.RN_ISSUED, sub.getSubmissionId(), "no_email");
     }
 
     /** Postojeći eTurizam objekt smije biti bez adrese — opis ne smije imati viseće zareze. */

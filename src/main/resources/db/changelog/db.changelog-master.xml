@@ -216,4 +216,7 @@
     <!-- Nacrt vezan uz eTurizam objekt: jedan po objektu, briše se pri izdavanju RB-a. -->
     <include file="db/changelog/changes/128-submission-draft-facility.xml"/>
 
+    <!-- Ponovno slanje obavijesti iznajmljivaču kad SMTP padne. -->
+    <include file="db/changelog/changes/129-mail-retry.xml"/>
+
 </databaseChangeLog>

@@ -52,7 +52,7 @@ public class SmtpEmailService implements EmailService {
     }
 
     @Override
-    public void sendRnLifecycleNotification(RnLifecycleMail mail) {
+    public boolean sendRnLifecycleNotification(RnLifecycleMail mail) {
         Map<String, String> values = new HashMap<>();
         values.put("ime", nn(mail.ime()));
         values.put("rn", nn(mail.rn()));
@@ -61,12 +61,11 @@ public class SmtpEmailService implements EmailService {
         values.put("rok", nn(mail.rok()));
 
         if (mail.pdf() == null || mail.pdf().length == 0) {
-            send(mail.to(), mail.template(), values, mail.dostavaMailom());
-        } else {
-            sendWithAttachment(mail.to(), mail.template(), values,
-                    mail.template().slug() + "-" + mail.rn() + ".pdf", mail.pdf(),
-                    mail.dostavaMailom());
+            return send(mail.to(), mail.template(), values, mail.dostavaMailom());
         }
+        return sendWithAttachment(mail.to(), mail.template(), values,
+                mail.template().slug() + "-" + mail.rn() + ".pdf", mail.pdf(),
+                mail.dostavaMailom());
     }
 
     private boolean send(String to, MailTemplate template, Map<String, String> values) {
