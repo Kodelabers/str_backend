@@ -155,7 +155,7 @@ public class CategorizationDecisionService {
                 truncate(joinNonBlank(", ", streetLine, placeLine), 500),
                 null,
                 null,
-                a.getMaxBeds() > 0 ? a.getMaxBeds() : null,
+                a.getMaxBeds() != null && a.getMaxBeds() > 0 ? a.getMaxBeds() : null,
                 null);
     }
 

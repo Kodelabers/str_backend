@@ -1,7 +1,9 @@
 package com.str.backend.registration.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -12,18 +14,28 @@ import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 
+/**
+ * Zahtjev NIAS iznajmljivača za RB.
+ *
+ * <p>Naziv, adresa i maksimalan broj gostiju obavezni su samo za <b>novi</b> objekt
+ * ({@link #isNewFacilityComplete()}). Za postojeći objekt ({@code facilityId}) to su podaci iz
+ * eTurizma, koji ih ne vodi dosljedno — ulica i kućni broj prazni su za veliku većinu objekata,
+ * naziv je često popunjivač, a ponekad nema ni kreveta. Obrazac ih tada prikazuje onemogućene,
+ * a što eTurizam ne zna stiže kao {@code null}; RB se izdaje i bez toga. Što stigne, i dalje
+ * provjerava {@code FacilityClaimVerifier}.
+ */
 public record RegistrationRequest(
         @NotBlank @Pattern(regexp = "\\d{11}", message = "OIB mora sadržavati točno 11 znamenki") String oib,
-        @NotBlank String name,
+        String name,
         String typeId,
-        @NotNull @Min(1) Long countyId,
-        @NotBlank String cityId,
+        @Min(1) Long countyId,
+        String cityId,
         String settlementId,
-        @NotBlank String street,
-        @NotBlank String streetNumber,
+        String street,
+        String streetNumber,
         @Positive Long kucniBrojId,
         String postalCode,
-        @Min(1) int maxBeds,
+        @Min(1) Integer maxBeds,
         @NotNull OfferType offerType,
         @NotNull Offering offering,
         @NotNull Boolean building,
@@ -55,5 +67,27 @@ public record RegistrationRequest(
                 orig.confirmDuplicateLocation(), orig.facilityId(),
                 orig.kontaktEmail(), orig.kontaktMobitel(), orig.kontaktTelefon(),
                 orig.kontaktOsoba(), orig.kcBroj());
+    }
+
+    /**
+     * Novi objekt nema izvor podataka osim obrasca, pa mora donijeti naziv, adresu i kapacitet.
+     * {@code @JsonIgnore}: pravilo validacije, ne podatak — ne smije ispasti kao svojstvo u JSON-u.
+     */
+    @JsonIgnore
+    @AssertTrue(message = "error.registration.newFacility.incomplete")
+    public boolean isNewFacilityComplete() {
+        if (notBlank(facilityId)) {
+            return true;
+        }
+        return notBlank(name)
+                && countyId != null
+                && notBlank(cityId)
+                && notBlank(street)
+                && notBlank(streetNumber)
+                && maxBeds != null;
+    }
+
+    private static boolean notBlank(String value) {
+        return value != null && !value.isBlank();
     }
 }

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Za postojeći eTurizam objekt (zahtjev s facility_id) naziv, adresa i kapacitet dolaze iz
+        eTurizma, koji ih ne vodi dosljedno: ulica i kućni broj prazni su za veliku većinu objekata,
+        a ponekad nema ni kreveta. Obrazac ta polja prikazuje onemogućena i neobavezna, pa RB mora
+        biti moguće izdati i kad nekog od njih nema.
+
+        Za novi objekt ih i dalje traži RegistrationRequest.isNewFacilityComplete(), a za non-EU
+        iznajmljivača RegistrationExternalRequest — NOT NULL se skida samo na razini sheme.
+
+        Rollback vraća NOT NULL tek nakon što prazne vrijednosti zamijeni s '' odnosno 0.
+    -->
+    <changeSet id="127-accommodation-optional-facility-data" author="str-backend">
+        <dropNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                               columnName="county" columnDataType="VARCHAR(128)"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                               columnName="city" columnDataType="VARCHAR(128)"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                               columnName="street" columnDataType="VARCHAR(128)"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                               columnName="street_number" columnDataType="VARCHAR(64)"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                               columnName="max_beds" columnDataType="INTEGER"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                               columnName="max_guests" columnDataType="INTEGER"/>
+
+        <rollback>
+            <addNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                                  columnName="county" columnDataType="VARCHAR(128)" defaultNullValue=""/>
+            <addNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                                  columnName="city" columnDataType="VARCHAR(128)" defaultNullValue=""/>
+            <addNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                                  columnName="street" columnDataType="VARCHAR(128)" defaultNullValue=""/>
+            <addNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                                  columnName="street_number" columnDataType="VARCHAR(64)" defaultNullValue=""/>
+            <addNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                                  columnName="max_beds" columnDataType="INTEGER" defaultNullValue="0"/>
+            <addNotNullConstraint schemaName="str_rn" tableName="accommodation"
+                                  columnName="max_guests" columnDataType="INTEGER" defaultNullValue="0"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

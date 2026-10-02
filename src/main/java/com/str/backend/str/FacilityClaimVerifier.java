@@ -1,5 +1,6 @@
 package com.str.backend.str;
 
+import com.str.backend.address.CountyNames;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Provjerava tvrdnju „ovaj zahtjev se odnosi na taj postojeći eTurizam objekt".
@@ -29,6 +31,9 @@ import java.util.Locale;
  *       a eTurizam adrese su rijetko strukturirane — ulica i kućni broj su najčešće prazni, pa se
  *       dva zahtjeva za isti objekt ne prepoznaju kao ista lokacija. Opozvani RB ne blokira novi
  *       zahtjev, jer je {@code WITHDRAWN} trajan i objekt smije proći novi postupak.</li>
+ *   <li><b>Vrsta objekta.</b> Popis objekata prikazuje samo privatni smještaj, ali tuStart URL
+ *       može nositi bilo koji vlastiti objekt (hotel, restoran, agenciju) — v.
+ *       {@link #isRegistrableType}.</li>
  * </ul>
  *
  * <p><b>Usporedba se preskače kad eTurizam podatak ne zna.</b> Adrese u {@code str.address} su
@@ -72,10 +77,12 @@ public class FacilityClaimVerifier {
     }
 
     /**
-     * Podaci iz zahtjeva koji se uspoređuju s eTurizmom. Sve osim vrste i kreveta smije biti null.
+     * Podaci iz zahtjeva koji se uspoređuju s eTurizmom. Svi smiju biti null: obrazac za postojeći
+     * objekt šalje samo ono što eTurizam zna. Izostavljen podatak se ne uspoređuje — izostavljanjem
+     * se ne može podmetnuti drukčija vrijednost, nego samo ostaviti prazno.
      * {@code maxBeds} je maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2).
      */
-    public record Claim(Long accommodationTypeId, int maxBeds, String name, String county,
+    public record Claim(Long accommodationTypeId, Integer maxBeds, String name, String county,
                         String city, String settlement, String street, String streetNumber) {
     }
 
@@ -84,11 +91,13 @@ public class FacilityClaimVerifier {
      * @param facilityId {@code str.facility.id} iz tuStart handoffa; {@code null} ili prazno
      *                   znači novi objekt i provjera se preskače
      * @param claim      podaci iz zahtjeva
+     * @return provjereni eTurizam zapis — iz njega pozivatelj dopunjava ono što zahtjev nije
+     *         donio; prazno za novi objekt
      */
     @Transactional(readOnly = true)
-    public void verify(String oib, String facilityId, Claim claim) {
+    public Optional<FacilityOwnershipRow> verify(String oib, String facilityId, Claim claim) {
         if (facilityId == null || facilityId.isBlank()) {
-            return;
+            return Optional.empty();
         }
         long id;
         try {
@@ -109,13 +118,19 @@ public class FacilityClaimVerifier {
         if (!rnRepository.findRnsByFacilityIds(List.of(facilityId.trim())).isEmpty()) {
             throw new BusinessException("error.facility.alreadyRegistered");
         }
+        // Prije usporedbi: vrsta koja nije privatni smještaj (hotel, restoran, agencija) ne dobiva
+        // RB bez obzira na ostalo. Ne smije ovisiti o tome je li zahtjev vrstu uopće poslao —
+        // inače bi izostavljen typeId preskočio i ovu provjeru i zabranu u RnService.issue().
+        if (!isRegistrableType(facility, accommodationTypeRepository)) {
+            throw new BusinessException("error.facility.type.notAllowed");
+        }
 
         if (differs(facility.getSubtypeCode(), resolveSubmittedCode(claim.accommodationTypeId()))) {
             throw new BusinessException("error.facility.type.mismatch");
         }
 
         Integer expectedGuests = maxGuests(facility);
-        if (expectedGuests != null && expectedGuests != claim.maxBeds()) {
+        if (expectedGuests != null && claim.maxBeds() != null && !expectedGuests.equals(claim.maxBeds())) {
             throw new BusinessException("error.facility.beds.mismatch");
         }
 
@@ -123,13 +138,34 @@ public class FacilityClaimVerifier {
             throw new BusinessException("error.facility.name.mismatch");
         }
 
-        if (differs(facility.getCountyName(), claim.county())
+        if (differsCounty(facility.getCountyName(), claim.county())
                 || differs(facility.getMunicipalityName(), claim.city())
                 || differs(facility.getSettlementName(), claim.settlement())
                 || differs(facility.getStreetName(), claim.street())
                 || differs(facility.getHouseNumber(), claim.streetNumber())) {
             throw new BusinessException("error.facility.address.mismatch");
         }
+        return Optional.of(facility);
+    }
+
+    /**
+     * Smije li objekt te vrste dobiti RB: vrsta mora biti poznata vrsta privatnog smještaja iz
+     * šifrarnika (ista koju prikazuje popis objekata, {@code findAllCodes}) i dopuštena
+     * ({@code registrationNumberAllowed}).
+     *
+     * <p>Kad eTurizam vrstu ne zna, zabrana se ne može utemeljiti, pa RB nije blokiran — postojeći
+     * objekt mora u svakom trenutku moći dobiti RB, a {@code RnService.issue()} provjerava vrstu
+     * čim je poznata.
+     */
+    public static boolean isRegistrableType(FacilityOwnershipRow facility,
+                                            AccommodationTypeRepository accommodationTypeRepository) {
+        String code = facility.getSubtypeCode();
+        if (!known(code)) {
+            return true;
+        }
+        return accommodationTypeRepository.findByCodeIgnoreCase(code.trim())
+                .map(AccommodationTypeEntity::isRegistrationNumberAllowed)
+                .orElse(false);
     }
 
     /**
@@ -222,9 +258,24 @@ public class FacilityClaimVerifier {
         return known(b) && normalize(a).equals(normalize(b));
     }
 
+    /**
+     * Isto za županiju, ali po {@link CountyNames#key}: adresni registar piše „… županija", a
+     * eTurizam ne nužno — bez toga bi ispravan zahtjev pao na lažnoj razlici adrese.
+     */
+    private static boolean differsCounty(String expected, String submitted) {
+        String a = CountyNames.key(expected);
+        String b = CountyNames.key(submitted);
+        return known(a) && known(b) && !a.equals(b);
+    }
+
     /** Razlikuju li se, uz pravilo „nepoznato se ne uspoređuje". */
     private static boolean differs(String expected, String submitted) {
         return known(expected) && known(submitted) && !normalize(expected).equals(normalize(submitted));
+    }
+
+    /** Vrijednost iz eTurizma ako je stvarno poznata (v. {@link #known}), inače {@code null}. */
+    public static String knownOrNull(String value) {
+        return known(value) ? value.trim() : null;
     }
 
     /**

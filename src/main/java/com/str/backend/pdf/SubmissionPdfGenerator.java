@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 @Component
 public class SubmissionPdfGenerator {
@@ -139,8 +141,11 @@ public class SubmissionPdfGenerator {
             // ── OBJEKTI ───────────────────────────────────────────────────────
             addSectionHeader(main, "OBJEKTI");
 
-            String adresaObjekta = safe(ctx.street()) + " " + safe(ctx.streetNumber())
-                    + ", " + safe(ctx.postalCode()) + " " + safe(ctx.cityName()).toUpperCase();
+            // Postojeći eTurizam objekt najčešće nema ulicu ni kućni broj — prazni dijelovi se
+            // izostavljaju, da u podnesku ne ostanu viseći zarezi („ , 21000 SPLIT").
+            String adresaObjekta = joinNonBlank(", ",
+                    joinNonBlank(" ", ctx.street(), ctx.streetNumber()),
+                    joinNonBlank(" ", ctx.postalCode(), safe(ctx.cityName()).toUpperCase()));
 
             PdfPTable objektiTop = innerTable();
             addInnerRow(objektiTop, "Skupina objekta",
@@ -282,9 +287,12 @@ public class SubmissionPdfGenerator {
      * zbroj kreveta i pomoćnih kreveta — pa obrazac više nema zasebne stupce za krevete i
      * pomoćne krevete. Iz zahtjeva se ta podjela ionako ne može rekonstruirati.
      */
-    private PdfPTable buildKapacitetTable(String reqName, int maxGuests, String typeName) {
+    private PdfPTable buildKapacitetTable(String reqName, Integer maxGuests, String typeName) {
         PdfPTable t = new PdfPTable(new float[]{3.2f, 2.2f, 1.5f, 1.7f, 1.2f});
         t.setWidthPercentage(100);
+        // Nepoznat kapacitet (postojeći objekt kojem ga eTurizam ne zna) ostaje prazan, kao i
+        // ostali neupisani podaci na podnesku — ne „null" ni 0.
+        String kapacitet = maxGuests != null ? String.valueOf(maxGuests) : "";
 
         // header row
         addKapacitetHeader(t, "Vrsta objekta");
@@ -295,7 +303,7 @@ public class SubmissionPdfGenerator {
 
         // data row — no vertical separators between cells
         String[] dataValues = {typeName != null ? typeName : "", safe(reqName), "",
-                String.valueOf(maxGuests), ""};
+                kapacitet, ""};
         for (int i = 0; i < dataValues.length; i++) {
             PdfPCell c = new PdfPCell(new Phrase(dataValues[i], FNT_VALUE));
             int border = PdfPCell.TOP;
@@ -323,7 +331,7 @@ public class SubmissionPdfGenerator {
         ukupnoLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(ukupnoLabel, 3);
         t.addCell(ukupnoLabel);
-        String[] ukupnoValues = {"1", "", String.valueOf(maxGuests), ""};
+        String[] ukupnoValues = {"1", "", kapacitet, ""};
         for (int i = 0; i < ukupnoValues.length - 1; i++) {
             PdfPCell c = new PdfPCell(new Phrase(ukupnoValues[i], FNT_VALUE));
             c.setBorder(PdfPCell.BOTTOM);
@@ -483,6 +491,13 @@ public class SubmissionPdfGenerator {
 
     private static String safe(String s) {
         return s == null ? "" : s;
+    }
+
+    private static String joinNonBlank(String separator, String... parts) {
+        return Arrays.stream(parts)
+                .filter(p -> p != null && !p.isBlank())
+                .map(String::strip)
+                .collect(Collectors.joining(separator));
     }
 
     private static String fullName(LessorEntity l) {
