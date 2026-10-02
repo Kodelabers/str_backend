@@ -10,6 +10,7 @@ import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
+import com.str.backend.draft.SubmissionDraftService;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
@@ -71,7 +72,8 @@ class RegistrationServiceFacilityCompletionTest {
                 orchestrator, rnService, mock(RnRepository.class), subjectProfileService,
                 countyRepository, mock(MunicipalityRepository.class), mock(SettlementRepository.class),
                 typeRepository, verifier,
-                new CadastreResolver(mock(HouseNumberRepository.class)), mock(ApplicationEventPublisher.class));
+                new CadastreResolver(mock(HouseNumberRepository.class)), mock(ApplicationEventPublisher.class),
+                mock(SubmissionDraftService.class));
 
         when(orchestrator.execute(any(ValidationContext.class))).thenReturn(PipelineResult.passed());
         RnEntity issued = mock(RnEntity.class);

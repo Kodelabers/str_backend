@@ -28,6 +28,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -58,7 +59,7 @@ class SubmissionDraftControllerActingSubjectTest {
     void niasPerson() {
         when(niasOibResolver.resolve(any())).thenReturn(Optional.of(PERSON));
         when(ownerResolver.resolve(any(), any())).thenReturn(new DraftOwner(DraftOwnerType.NIAS_OIB, PERSON));
-        when(service.create(any(), any())).thenReturn(item());
+        when(service.create(any(), any())).thenReturn(new SubmissionDraftService.SaveResult(item(), true));
         when(service.update(any(), any(), any())).thenReturn(item());
     }
 
@@ -115,12 +116,34 @@ class SubmissionDraftControllerActingSubjectTest {
         verify(service).delete(any(), any());
     }
 
+    /** Upsert: vlasnik je za isti objekt već imao nacrt — 200 s njegovim draftId, ne 201. */
+    @Test
+    void create_upsertOfExistingFacilityDraft_is200() throws Exception {
+        DraftListItemResponse existing = item();
+        when(service.create(any(), any())).thenReturn(new SubmissionDraftService.SaveResult(existing, false));
+
+        mvc.perform(post("/api/drafts").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Apartman\",\"payload\":\"{}\",\"facilityId\":\"4711\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.draftId").value(existing.draftId().toString()));
+    }
+
+    @Test
+    void list_byFacility_passesFilterToService() throws Exception {
+        when(service.list(any(), eq("4711"))).thenReturn(List.of(item()));
+
+        mvc.perform(get("/api/drafts").param("facilityId", "4711"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+        verify(service).list(new DraftOwner(DraftOwnerType.NIAS_OIB, PERSON), "4711");
+    }
+
     private void actingForCompany() {
         when(actingSubjectService.current(any(), eq(PERSON))).thenReturn(Optional.of(new ActingSubject(
                 COMPANY, "TESTNA TVRTKA d.o.o.", List.of("Direktor"), PERSON, "Test", "Korisnik", Instant.now())));
     }
 
     private static DraftListItemResponse item() {
-        return new DraftListItemResponse(UUID.randomUUID(), "Apartman", DraftOwnerType.NIAS_OIB, Instant.now(), Instant.now());
+        return new DraftListItemResponse(UUID.randomUUID(), "Apartman", DraftOwnerType.NIAS_OIB, null, Instant.now(), Instant.now());
     }
 }

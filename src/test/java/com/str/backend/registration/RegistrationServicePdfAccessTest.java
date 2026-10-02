@@ -6,6 +6,7 @@ import com.str.backend.address.CountyRepository;
 import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.draft.SubmissionDraftService;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
@@ -52,7 +53,8 @@ class RegistrationServicePdfAccessTest {
                 mock(SubjectProfileService.class), mock(CountyRepository.class),
                 mock(MunicipalityRepository.class), mock(SettlementRepository.class),
                 mock(AccommodationTypeRepository.class), mock(FacilityClaimVerifier.class),
-                new CadastreResolver(mock(HouseNumberRepository.class)), mock(ApplicationEventPublisher.class));
+                new CadastreResolver(mock(HouseNumberRepository.class)), mock(ApplicationEventPublisher.class),
+                mock(SubmissionDraftService.class));
 
         owner = LessorEntity.create("Pero", "Perić", "Ilica", "1", "Zagreb", "Grad Zagreb", "pero@example.hr");
         owner.setLessorOib(OIB);

@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -43,9 +45,11 @@ public class SubmissionDraftController {
         this.actingSubjectGuard = actingSubjectGuard;
     }
 
+    /** {@code ?facilityId=} vraća samo nacrte tog objekta — forma ga pita pri otvaranju objekta. */
     @GetMapping
-    public List<DraftListItemResponse> list(HttpServletRequest request, HttpServletResponse response) {
-        return service.list(ownerResolver.resolve(request, response));
+    public List<DraftListItemResponse> list(@RequestParam(required = false) String facilityId,
+                                            HttpServletRequest request, HttpServletResponse response) {
+        return service.list(ownerResolver.resolve(request, response), facilityId);
     }
 
     @GetMapping("/{draftId}")
@@ -55,15 +59,19 @@ public class SubmissionDraftController {
         return service.get(draftId, ownerResolver.resolve(request, response));
     }
 
+    /**
+     * 201 za novi nacrt; 200 kad je vlasnik za isti objekt već imao nacrt pa je ažuriran taj
+     * (jedan nacrt po objektu) — tijelo tada nosi {@code draftId} postojećeg nacrta.
+     */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public DraftListItemResponse create(@Valid @RequestBody DraftRequest body,
-                                        Authentication authentication,
-                                        @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubject,
-                                        HttpServletRequest request,
-                                        HttpServletResponse response) {
+    public ResponseEntity<DraftListItemResponse> create(@Valid @RequestBody DraftRequest body,
+                                                        Authentication authentication,
+                                                        @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubject,
+                                                        HttpServletRequest request,
+                                                        HttpServletResponse response) {
         actingSubjectGuard.requireUnchanged(authentication, actingSubject);
-        return service.create(ownerResolver.resolve(request, response), body);
+        SubmissionDraftService.SaveResult result = service.create(ownerResolver.resolve(request, response), body);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.draft());
     }
 
     @PutMapping("/{draftId}")

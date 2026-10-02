@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Nacrt se veže uz postojeći eTurizam objekt: po objektu jedan nacrt vlasnika, a izdavanje
+        RB-a za objekt briše sve njegove nacrte. Payload je šifriran, pa backend objekt ne može
+        pročitati iz njega — zato zaseban stupac u čistom obliku. NULL = nacrt novog objekta.
+
+        Namjerno bez unique indexa: servis radi upsert po (vlasnik, objekt), a duplikat iz utrke
+        dvaju prozora se pobriše pri izdavanju RB-a. Stari nacrti dobivaju vrijednost iz payloada
+        pri startu aplikacije (DraftFacilityBackfill).
+    -->
+    <changeSet id="128-submission-draft-facility" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="submission_draft">
+            <column name="facility_id" type="VARCHAR(64)"
+                    remarks="eTurizam facility id objekta za koji je nacrt; NULL za novi objekt">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <createIndex schemaName="str_rn" tableName="submission_draft"
+                     indexName="idx_submission_draft_facility">
+            <column name="facility_id"/>
+        </createIndex>
+
+        <createIndex schemaName="str_rn" tableName="submission_draft"
+                     indexName="idx_submission_draft_owner_facility">
+            <column name="owner_type"/>
+            <column name="owner_key"/>
+            <column name="facility_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex schemaName="str_rn" tableName="submission_draft"
+                       indexName="idx_submission_draft_owner_facility"/>
+            <dropIndex schemaName="str_rn" tableName="submission_draft"
+                       indexName="idx_submission_draft_facility"/>
+            <dropColumn schemaName="str_rn" tableName="submission_draft" columnName="facility_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
