@@ -47,8 +47,14 @@ public class EmailTemplates {
         this.properties = properties;
     }
 
-    public String subject(MailTemplate template) {
-        return loader.subject(template);
+    /**
+     * Naslov poruke. Ne escapira se — naslov je običan tekst, ne HTML — ali se prijelomi reda
+     * uklanjaju: vrijednost s {@code \r\n} inače bi u zaglavlju poruke otvorila novi redak.
+     */
+    public String subject(MailTemplate template, Map<String, String> values) {
+        Map<String, String> oneLine = new HashMap<>();
+        values.forEach((k, v) -> oneLine.put(k, v == null ? null : v.replaceAll("[\\r\\n]+", " ")));
+        return loader.subject(template, oneLine);
     }
 
     /** Gotov HTML poruke uz dostavu u korisnički pretinac. */

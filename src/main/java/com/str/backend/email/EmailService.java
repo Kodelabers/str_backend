@@ -7,10 +7,13 @@ public interface EmailService {
     void sendRejectionNotification(String to, String firstName);
 
     /**
-     * Non-EU lessor delivery channel for the issued registration number: PDF
-     * is attached because non-EU lessors are not routed through eGOP.
+     * Obavijest o izdanom registracijskom broju, svakom iznajmljivaču. Non-EU iznajmljivaču je
+     * to ujedno dostava (PDF u privitku); ostalima samo obavijest, akt ide u korisnički pretinac.
+     *
+     * @return je li poruka predana SMTP poslužitelju. Pozivatelj po tome bilježi da je obavijest
+     *         poslana — neuspjeh se ne smije zabilježiti kao poslan, inače ga retry preskače.
      */
-    void sendRnIssuedNotification(String to, String firstName, String registrationNumber, byte[] pdf);
+    boolean sendRnIssuedNotification(RnIssuedMail mail);
 
     /**
      * Obavijest o promjeni statusa registracijskog broja (suspenzija, reaktivacija,

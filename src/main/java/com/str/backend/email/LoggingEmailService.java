@@ -17,10 +17,16 @@ public class LoggingEmailService implements EmailService {
         log.info("[mail/mock] REJECTION → to={}, firstName={}", to, firstName);
     }
 
+    /**
+     * Vraća {@code false}: poruka nije poslana, pa se ne smije zabilježiti kao poslana. Inače
+     * RB izdan dok je mail ugašen ne bi dobio obavijest ni nakon što se SMTP upali.
+     */
     @Override
-    public void sendRnIssuedNotification(String to, String firstName, String registrationNumber, byte[] pdf) {
-        log.info("[mail/mock] RN_ISSUED → to={}, firstName={}, rn={}, pdf_bytes={}",
-                to, firstName, registrationNumber, pdf == null ? 0 : pdf.length);
+    public boolean sendRnIssuedNotification(RnIssuedMail mail) {
+        log.info("[mail/mock] RN_ISSUED → to={}, ime={}, rn={}, objekt={}, dostavaMailom={}, pdf_bytes={}",
+                mail.to(), mail.ime(), mail.rn(), mail.objekt(), mail.dostavaMailom(),
+                mail.pdf() == null ? 0 : mail.pdf().length);
+        return false;
     }
 
     @Override

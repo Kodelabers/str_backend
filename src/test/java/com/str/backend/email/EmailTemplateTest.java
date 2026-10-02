@@ -27,7 +27,7 @@ class EmailTemplateTest {
     void everyTemplate_rendersWithoutLeftoverPlaceholders(MailTemplate template) {
         String html = templates.body(template, values());
 
-        assertThat(templates.subject(template)).isNotBlank();
+        assertThat(templates.subject(template, values())).isNotBlank().doesNotContain("${");
         assertThat(html).doesNotContain("${");
         assertThat(html).contains("<!doctype html>");
     }
@@ -47,6 +47,34 @@ class EmailTemplateTest {
         String html = templates.body(template, only);
 
         assertThat(html).doesNotContain("${");
+        assertThat(templates.subject(template, only)).doesNotContain("${");
+    }
+
+    /** Broj je u naslovu da se vidi već u popisu poruka. */
+    @ParameterizedTest
+    @EnumSource(value = MailTemplate.class, names = {"RB_IZDAN", "RB_IZDAN_DOSTAVA"})
+    void rnIssuedSubject_containsRegistrationNumber(MailTemplate template) {
+        assertThat(templates.subject(template, values())).contains("HR180000123456789001");
+    }
+
+    /** Prijelom reda u vrijednosti ne smije u zaglavlju poruke otvoriti novi redak. */
+    @Test
+    void subject_stripsLineBreaksFromValues() {
+        Map<String, String> values = values();
+        values.put("rn", "HR1\r\nBcc: netko@example.com");
+
+        assertThat(templates.subject(MailTemplate.RB_IZDAN, values)).doesNotContain("\r", "\n");
+    }
+
+    /** Non-EU poruka nosi akt, pa mora reći da je to dostava i da rokovi teku od nje. */
+    @Test
+    void rnIssuedNonEu_statesServiceByEmail() {
+        String html = templates.body(MailTemplate.RB_IZDAN_DOSTAVA, values(), true);
+
+        assertThat(html).contains("obavijest o dodjeli registracijskog broja");
+        assertThat(html).contains("dostavlja se elektroničkom poštom");
+        assertThat(html).contains("served by e-mail");
+        assertThat(html).doesNotContain("PDF zahtjeva");
     }
 
     /**
@@ -55,8 +83,8 @@ class EmailTemplateTest {
      */
     @ParameterizedTest
     @EnumSource(value = MailTemplate.class,
-            names = {"PRIJEDLOG_SUSPENZIJE", "SUSPENZIJA", "OBUSTAVA_SUSPENZIJE", "REAKTIVACIJA",
-                    "POVLACENJE", "OPOZIV"})
+            names = {"RB_IZDAN", "PRIJEDLOG_SUSPENZIJE", "SUSPENZIJA", "OBUSTAVA_SUSPENZIJE",
+                    "REAKTIVACIJA", "POVLACENJE", "OPOZIV"})
     void lifecycleTemplates_stateThatEmailIsNotService(MailTemplate template) {
         String html = templates.body(template, values());
 

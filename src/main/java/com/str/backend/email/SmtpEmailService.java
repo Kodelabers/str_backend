@@ -40,11 +40,15 @@ public class SmtpEmailService implements EmailService {
     }
 
     @Override
-    public void sendRnIssuedNotification(String to, String firstName, String registrationNumber,
-                                         byte[] pdf) {
-        sendWithAttachment(to, MailTemplate.RB_IZDAN,
-                Map.of("ime", nn(firstName), "rn", nn(registrationNumber)),
-                "registracija-" + registrationNumber + ".pdf", pdf);
+    public boolean sendRnIssuedNotification(RnIssuedMail mail) {
+        if (mail.dostavaMailom()) {
+            // Privitak je akt (obavijest o dodjeli), pa poruka nosi klauzulu o dostavi e-poštom.
+            return sendWithAttachment(mail.to(), MailTemplate.RB_IZDAN_DOSTAVA,
+                    Map.of("ime", nn(mail.ime()), "rn", nn(mail.rn())),
+                    "dodjela-" + mail.rn() + ".pdf", mail.pdf(), true);
+        }
+        return send(mail.to(), MailTemplate.RB_IZDAN,
+                Map.of("ime", nn(mail.ime()), "rn", nn(mail.rn()), "objekt", nn(mail.objekt())));
     }
 
     @Override
@@ -65,13 +69,14 @@ public class SmtpEmailService implements EmailService {
         }
     }
 
-    private void send(String to, MailTemplate template, Map<String, String> values) {
-        send(to, template, values, false);
+    private boolean send(String to, MailTemplate template, Map<String, String> values) {
+        return send(to, template, values, false);
     }
 
-    private void send(String to, MailTemplate template, Map<String, String> values,
-                      boolean dostavaMailom) {
-        String subject = templates.subject(template);
+    /** @return je li poruka predana SMTP poslužitelju; greška se bilježi, ne propagira. */
+    private boolean send(String to, MailTemplate template, Map<String, String> values,
+                         boolean dostavaMailom) {
+        String subject = templates.subject(template, values);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
@@ -80,22 +85,25 @@ public class SmtpEmailService implements EmailService {
             helper.setText(templates.body(template, values, dostavaMailom), true);
             mailSender.send(message);
             log.info("Sent email to {} with subject '{}'", recipient, subject);
+            return true;
         } catch (MessagingException | MailException e) {
             // Caller (TransactionalEventListener) treats this as a notification failure —
             // the underlying status change has already been committed.
             log.error("Failed to send email to {} with subject '{}': {}", to, subject, e.getMessage(), e);
+            return false;
         }
     }
 
-    private void sendWithAttachment(String to, MailTemplate template, Map<String, String> values,
-                                    String attachmentName, byte[] attachment) {
-        sendWithAttachment(to, template, values, attachmentName, attachment, false);
+    private boolean sendWithAttachment(String to, MailTemplate template, Map<String, String> values,
+                                       String attachmentName, byte[] attachment) {
+        return sendWithAttachment(to, template, values, attachmentName, attachment, false);
     }
 
-    private void sendWithAttachment(String to, MailTemplate template, Map<String, String> values,
-                                    String attachmentName, byte[] attachment,
-                                    boolean dostavaMailom) {
-        String subject = templates.subject(template);
+    /** @return je li poruka predana SMTP poslužitelju; greška se bilježi, ne propagira. */
+    private boolean sendWithAttachment(String to, MailTemplate template, Map<String, String> values,
+                                       String attachmentName, byte[] attachment,
+                                       boolean dostavaMailom) {
+        String subject = templates.subject(template, values);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
@@ -108,8 +116,10 @@ public class SmtpEmailService implements EmailService {
             mailSender.send(message);
             log.info("Sent email to {} with subject '{}' and attachment '{}' ({} bytes)",
                     recipient, subject, attachmentName, attachment == null ? 0 : attachment.length);
+            return true;
         } catch (MessagingException | MailException e) {
             log.error("Failed to send email to {} with subject '{}': {}", to, subject, e.getMessage(), e);
+            return false;
         }
     }
 

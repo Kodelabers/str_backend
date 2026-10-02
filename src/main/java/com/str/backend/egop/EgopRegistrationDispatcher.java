@@ -6,6 +6,7 @@ import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.email.EmailService;
+import com.str.backend.email.RnIssuedMail;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lookup.AccommodationTypeRepository;
@@ -20,9 +21,12 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
- * Urudžbira jednu registraciju u eGOP i (za non-EU) šalje obavijest e-mailom.
+ * Urudžbira jednu registraciju u eGOP i šalje iznajmljivaču obavijest o izdanom RB-u
+ * e-mailom (non-EU s PDF-om u privitku jer mu je to dostava; ostalima bez privitka).
  * Sve ulazne podatke rekonstruira iz baze po {@code submissionId}, pa je isti
  * ulaz siguran i za prvi pokušaj (nakon izdavanja RN-a) i za naknadni retry —
  * dijele ga {@link com.str.backend.registration.event.RnIssuedListener} i
@@ -33,8 +37,12 @@ import java.util.UUID;
  * bilježi ({@code egop_sync_status=FAILED} + broj pokušaja + vrijeme sljedećeg
  * pokušaja), RN ostaje valjan.
  *
- * <p>Dostava e-mailom je idempotentna preko {@code submission.rn_email_sent_at} —
- * bez toga bi svaki retry non-EU iznajmljivaču poslao još jedan identičan mail.
+ * <p>Obavijest e-mailom je idempotentna preko {@code submission.rn_email_sent_at} —
+ * bez toga bi svaki retry iznajmljivaču poslao još jedan identičan mail. Oznaka se upisuje
+ * samo kad je poruka stvarno predana SMTP-u, da neuspjelo slanje retry ne preskoči.
+ *
+ * <p>Retry pokriva samo predmete čije urudžbiranje nije prošlo ({@link EgopRetryJob}); mail koji
+ * padne uz uspješno urudžbiranje ostaje s {@code rn_email_sent_at = NULL} i zasad se ne ponavlja.
  */
 @Component
 public class EgopRegistrationDispatcher {
@@ -94,29 +102,27 @@ public class EgopRegistrationDispatcher {
         SubmissionPdfContext pdfContext = SubmissionPdfContext.of(accommodation, lessor,
                 resolveTypeName(accommodation.getAccommodationTypeId()), rnValue, null);
 
-        byte[] pdf;
+        Documents documents = new Documents(pdfContext, rnValue);
         try {
             EgopFilingService.FilingResult result = egopFilingService.fileRegistration(
-                    submission, lessor, new Documents(pdfContext, rnValue));
-            pdf = result.zahtjevPdf();
+                    submission, lessor, documents);
             log.info("egop_dispatch_ok submission={} rn={} filing_number={}",
                     submissionId, rnValue, result.filingNumber());
         } catch (Exception e) {
-            pdf = handleFailure(submission, pdfContext, rnValue, e);
+            handleFailure(submission, pdfContext, rnValue, e);
         }
 
-        // Dostava: non-EU dobiva PDF e-mailom; EU ide preko KP eGrađana (eGOP strana).
-        if (lessor.getLessorOib() == null) {
-            dispatchEmail(submission, lessor, rnValue, pdf);
-        }
+        // Obavijest ide svakom iznajmljivaču. Non-EU dobiva akt e-mailom (to mu je dostava);
+        // s OIB-om samo obavijest bez privitka — akt ide u korisnički pretinac (eGOP strana).
+        dispatchEmail(submission, lessor, accommodation, rnValue, documents);
     }
 
     /**
-     * Bilježi neuspjeh i vraća PDF bez urudžbenog broja — korisnik mora imati što
+     * Bilježi neuspjeh i sprema PDF zahtjeva bez urudžbenog broja — korisnik mora imati što
      * preuzeti čak i kad urudžbiranje nije prošlo (RN je valjan neovisno o dostavi).
      */
-    private byte[] handleFailure(SubmissionEntity submission, SubmissionPdfContext pdfContext,
-                                 String rnValue, Exception cause) {
+    private void handleFailure(SubmissionEntity submission, SubmissionPdfContext pdfContext,
+                               String rnValue, Exception cause) {
         UUID submissionId = submission.getSubmissionId();
         int attemptsSoFar = submission.getEgopSyncAttempts();
         Instant nextAttemptAt = retryPolicy.nextAttemptAt(Instant.now(), attemptsSoFar);
@@ -131,27 +137,62 @@ public class EgopRegistrationDispatcher {
             log.error("egop_dispatch_failed submission={} rn={} attempt={} next_attempt_at={}: {}",
                     submissionId, rnValue, attempts, nextAttemptAt, cause.getMessage(), cause);
         }
-        return pdf;
     }
 
-    private void dispatchEmail(SubmissionEntity submission, LessorEntity lessor, String rn, byte[] pdf) {
+    private void dispatchEmail(SubmissionEntity submission, LessorEntity lessor,
+                               AccommodationEntity accommodation, String rn, Documents documents) {
         UUID submissionId = submission.getSubmissionId();
         if (submission.getRnEmailSentAt() != null) {
             log.debug("egop_email_skipped reason=already_sent submission={} rn={}", submissionId, rn);
-            return;
-        }
-        if (pdf == null) {
-            log.error("egop_email_skipped reason=no_pdf submission={} rn={}", submissionId, rn);
             return;
         }
         if (lessor.getEmail() == null || lessor.getEmail().isBlank()) {
             log.warn("egop_email_skipped reason=no_email lessor={} rn={}", lessor.getLessorId(), rn);
             return;
         }
-        emailService.sendRnIssuedNotification(lessor.getEmail(), lessor.getFirstName(), rn, pdf);
+        // Non-EU nema korisnički pretinac — mail mu je dostava, pa mora nositi akt. Bez akta se
+        // ne šalje: poruka bi tvrdila da je akt u privitku. Ne zamjenjuje se PDF-om zahtjeva,
+        // jer to nije akt kojim je RB dodijeljen.
+        boolean dostavaMailom = lessor.getLessorOib() == null || lessor.getLessorOib().isBlank();
+        byte[] akt = dostavaMailom ? documents.obavijestZaDostavu() : null;
+        if (dostavaMailom && akt == null) {
+            log.error("egop_email_skipped reason=no_pdf submission={} rn={}", submissionId, rn);
+            return;
+        }
+        boolean sent = emailService.sendRnIssuedNotification(new RnIssuedMail(
+                lessor.getEmail(), ime(lessor), rn, objekt(accommodation), akt, dostavaMailom));
         // Tek nakon uspješnog slanja — ako pukne, sljedeći retry pokušava ponovo.
+        if (!sent) {
+            log.warn("egop_email_not_sent submission={} rn={} — ostaje neoznačen za ponovni pokušaj",
+                    submissionId, rn);
+            return;
+        }
         submission.markRnEmailSent();
         store.markRnEmailSent(submissionId);
+    }
+
+    /** Ime fizičke osobe, a za pravnu osobu njezin naziv — isto kao obavijesti o statusu RB-a. */
+    private static String ime(LessorEntity lessor) {
+        if (lessor.getFirstName() != null && !lessor.getFirstName().isBlank()) {
+            return lessor.getFirstName();
+        }
+        return lessor.getLegalEntityName() == null ? "" : lessor.getLegalEntityName();
+    }
+
+    /**
+     * „Naziv, Ulica broj, Naselje" od onoga što postoji. Postojeći eTurizam objekt smije doći bez
+     * adrese, pa se prazni dijelovi preskaču umjesto da u poruci ostanu viseći zarezi.
+     */
+    static String objekt(AccommodationEntity accommodation) {
+        String ulica = ((accommodation.getStreet() == null ? "" : accommodation.getStreet()) + " "
+                + (accommodation.getStreetNumber() == null ? "" : accommodation.getStreetNumber())).strip();
+        String mjesto = accommodation.getSettlement() != null && !accommodation.getSettlement().isBlank()
+                ? accommodation.getSettlement() : accommodation.getCity();
+        String opis = Stream.of(accommodation.getName(), ulica, mjesto)
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::strip)
+                .collect(Collectors.joining(", "));
+        return opis.isEmpty() ? "—" : opis;
     }
 
     private byte[] renderPdfSafe(SubmissionPdfContext pdfContext, String rn, UUID submissionId) {
@@ -176,6 +217,8 @@ public class EgopRegistrationDispatcher {
 
         private final SubmissionPdfContext pdfContext;
         private final String rn;
+        /** Obavijest o dodjeli s urudžbenim oznakama, kad ju je urudžbiranje stiglo renderirati. */
+        private byte[] obavijest;
 
         private Documents(SubmissionPdfContext pdfContext, String rn) {
             this.pdfContext = pdfContext;
@@ -188,10 +231,31 @@ public class EgopRegistrationDispatcher {
                     pdfContext.withFilingNumber(EgopFilingService.formatFilingNumber(filing)));
         }
 
+        /**
+         * Obavijest o dodjeli za dostavu e-poštom (non-EU). Ista ona koja je priložena izlaznom
+         * pismenu, s njegovim URBROJ-em. Kad urudžbiranje nije stiglo do izlaznog pismena,
+         * renderira se bez URBROJ-a (KLASA sa submissiona, ako je predmet otvoren) — RB je
+         * valjan neovisno o urudžbiranju, pa ni dostava ne čeka na njega.
+         *
+         * @return {@code null} kad se akt ne može renderirati
+         */
+        byte[] obavijestZaDostavu() {
+            if (obavijest != null) {
+                return obavijest;
+            }
+            try {
+                return documentService.render(StrDocumentType.DODJELA, rn, null);
+            } catch (RuntimeException e) {
+                log.error("egop_dodjela_pdf_failed rn={} (dostava e-poštom): {}", rn, e.getMessage(), e);
+                return null;
+            }
+        }
+
         @Override
         public byte[] obavijestODodjeli(FilingReference filing) {
             try {
-                return documentService.render(StrDocumentType.DODJELA, rn, null, filing);
+                obavijest = documentService.render(StrDocumentType.DODJELA, rn, null, filing);
+                return obavijest;
             } catch (RuntimeException e) {
                 log.error("egop_dodjela_pdf_failed rn={} urbroj={}: {} — prilaže se PDF zahtjeva",
                         rn, filing.urBroj(), e.getMessage(), e);

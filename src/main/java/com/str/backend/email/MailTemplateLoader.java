@@ -46,8 +46,10 @@ public class MailTemplateLoader {
         }
     }
 
-    public String subject(MailTemplate template) {
-        return cache.get(template).subject();
+    /** Naslov s vezanim placeholderima; nepoznata oznaka baca, kao i u tijelu. */
+    public String subject(MailTemplate template, Map<String, String> values) {
+        Parsed parsed = cache.get(template);
+        return ZupPlaceholders.bind(parsed.subject(), values, path(template) + " [SUBJECT]");
     }
 
     /** Tijelo poruke s vezanim placeholderima; nepoznata oznaka baca, kao i kod akata. */
@@ -88,9 +90,15 @@ public class MailTemplateLoader {
      */
     private static void validatePlaceholders(MailTemplate template, String subject, String body,
                                              String path) {
-        if (!ZupPlaceholders.keysIn(subject).isEmpty()) {
+        // Naslov je običan tekst, pa zajedničke oznake (klauzula, gumbi — HTML) u njemu nemaju
+        // smisla; dopuštene su samo vrijednosti same poruke.
+        Set<String> nepoznateUNaslovu = new TreeSet<>(ZupPlaceholders.keysIn(subject));
+        nepoznateUNaslovu.removeAll(template.placeholders());
+        if (!nepoznateUNaslovu.isEmpty()) {
             throw new DocumentTemplateException(
-                    "Naslov poruke u " + path + " ne podržava ${...} oznake.");
+                    "Naslov poruke u " + path + " koristi oznake koje servis ne puni: "
+                            + nepoznateUNaslovu + ". Dopuštene: "
+                            + new TreeSet<>(template.placeholders()) + ".");
         }
         Set<String> dopustene = new TreeSet<>(template.placeholders());
         dopustene.addAll(MailTemplate.Keys.ZAJEDNICKE);

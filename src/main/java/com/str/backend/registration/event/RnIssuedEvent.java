@@ -5,7 +5,7 @@ import java.util.UUID;
 /**
  * Published after the registration number has been issued and the surrounding
  * persistence committed. Listeners deferred via {@code TransactionPhase.AFTER_COMMIT}
- * file the request in eGOP and (for non-EU lessors) e-mail the PDF.
+ * file the request in eGOP and e-mail the lessor (with the PDF only for non-EU lessors).
  *
  * <p>Carries identifiers only: {@code EgopRegistrationDispatcher} has to re-read the
  * accommodation, lessor, county, type and postal code from the database anyway so that

@@ -25,11 +25,11 @@ class MailPreviewGenerator {
                 new MailProperties(true, "str@mint.hr", "https://str-test-eturizam.gov.hr/login", null));
 
         for (MailTemplate t : MailTemplate.values()) {
-            String html = "<!-- SUBJECT: " + templates.subject(t) + " -->\n"
+            String html = "<!-- SUBJECT: " + templates.subject(t, values("Ana")) + " -->\n"
                     + templates.body(t, values("Ana"), false);
             Files.writeString(OUT.resolve("mail-" + t.slug() + ".html"), html);
         }
-        String nonEu = "<!-- SUBJECT: " + templates.subject(MailTemplate.SUSPENZIJA) + " -->\n"
+        String nonEu = "<!-- SUBJECT: " + templates.subject(MailTemplate.SUSPENZIJA, values("John")) + " -->\n"
                 + templates.body(MailTemplate.SUSPENZIJA, values("John"), true);
         Files.writeString(OUT.resolve("mail-suspenzija-nonEU.html"), nonEu);
         System.out.println("MAIL PREVIEW OK -> " + OUT.toAbsolutePath());
