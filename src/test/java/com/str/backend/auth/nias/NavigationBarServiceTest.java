@@ -187,7 +187,7 @@ class NavigationBarServiceTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setSession(session);
         URI uri = service.change(request, loggedIn(), ips, izvorReg, forPersonOib, state);
-        assertThat(uri.toString()).startsWith(BASE + "/existing-objects?entitySwitch=");
+        assertThat(uri.toString()).startsWith(BASE + "/new-registration-number?entitySwitch=");
         return UriComponentsBuilder.fromUri(uri).build().getQueryParams().getFirst("entitySwitch");
     }
 
@@ -289,7 +289,7 @@ class NavigationBarServiceTest {
 
         URI uri = service.change(request, null, COMPANY, "1", null, "x");
 
-        assertThat(uri.toString()).isEqualTo(BASE + "/existing-objects?entitySwitch=loginRequired");
+        assertThat(uri.toString()).isEqualTo(BASE + "/new-registration-number?entitySwitch=loginRequired");
         verify(actingSubjectService, never()).select(any(), any(), any());
     }
 

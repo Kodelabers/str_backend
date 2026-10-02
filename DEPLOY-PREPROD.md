@@ -418,7 +418,7 @@ URL-ovi **nisu** u `.env.preprod`; dolaze iz defaulta u `application-preprod.pro
 | Naš ACS | `http://s-str-02.infodom.hr:8085/login/saml2/sso/nias` |
 | Naš SLO (HTTP) | `http://s-str-02.infodom.hr:8085/logout/saml2/slo/nias` |
 | Naš SLO (SOAP) | `http://s-str-02.infodom.hr:8085/logout/saml2/soap/nias` |
-| Nakon prijave | `http://s-str-02.infodom.hr:8085/registration-number` |
+| Nakon prijave | `http://s-str-02.infodom.hr:8085/new-registration-number` |
 | Nakon neuspjele prijave | `http://s-str-02.infodom.hr:8085/?nias_error=true` |
 | Nakon odjave | `http://s-str-02.infodom.hr:8085/` |
 | CORS / frontend base | `http://s-str-02.infodom.hr:8085` |
@@ -556,7 +556,7 @@ http://s-str-02.infodom.hr:8085
 ```
 
 „Prijava putem eGrađana" → redirect na `https://nias.gov.hr/sso-http` → nakon prijave povratak na
-`/registration-number`.
+`/new-registration-number`.
 
 ### NIAS preko HTTP-a — riješeno spremanjem AuthnRequesta u bazu
 
