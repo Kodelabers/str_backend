@@ -107,13 +107,13 @@ class NiasFacilityControllerTest {
     @Test
     void changeEntity_alwaysRedirects() throws Exception {
         when(navigationBarService.change(any(), any(), eq(COMPANY_OIB), eq("1"), eq("12312312316"), eq("st")))
-                .thenReturn(java.net.URI.create("https://str-test-eturizam.gov.hr/existing-objects?entitySwitch=ok"));
+                .thenReturn(java.net.URI.create("https://str-test-eturizam.gov.hr/new-registration-number?entitySwitch=ok"));
 
         mvc.perform(get("/api/nias/acting-subject/change-entity")
                         .param("toLegalIps", COMPANY_OIB).param("toLegalIzvorReg", "1")
                         .param("forPersonOib", "12312312316").param("state", "st"))
                 .andExpect(status().isFound())
-                .andExpect(header().string("Location", "https://str-test-eturizam.gov.hr/existing-objects?entitySwitch=ok"));
+                .andExpect(header().string("Location", "https://str-test-eturizam.gov.hr/new-registration-number?entitySwitch=ok"));
     }
 
     // ── djelovanje u ime pravne osobe (e-Zastupanja) ────────────────────────

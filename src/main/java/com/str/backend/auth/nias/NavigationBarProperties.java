@@ -33,7 +33,7 @@ public record NavigationBarProperties(
 
     public NavigationBarProperties {
         publicBaseUrl = stripTrailingSlash(publicBaseUrl);
-        returnPath = returnPath == null || returnPath.isBlank() ? "/existing-objects" : returnPath;
+        returnPath = returnPath == null || returnPath.isBlank() ? "/new-registration-number" : returnPath;
     }
 
     /** Uključena traka bez adresa ruši start — inače bi prvi korisnik dobio traku koja ne radi. */

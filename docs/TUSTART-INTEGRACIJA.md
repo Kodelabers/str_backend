@@ -18,7 +18,7 @@ Puni URL = osnovna adresa + ruta iz §2.
 
 | Forma | Ruta |
 | :--- | :--- |
-| Zahtjev za RB — postojeći **i** novi objekt | `/registration-number` (+ query, §3) |
+| Zahtjev za RB — postojeći **i** novi objekt | `/new-registration-number` (+ query, §3) |
 | Pregled prijava non-EU iznajmljivača | `/registration-approval` |
 | Moji registracijski brojevi | `/moji-registracijski-brojevi-nias` |
 | Registar registracijskih brojeva (interni) | `/registar` |
@@ -27,7 +27,7 @@ Puni URL = osnovna adresa + ruta iz §2.
 Postojeći i novi objekt dijele istu rutu: ako u URL-u stignu podaci o objektu → postojeći; ako ne
 stignu → prazna forma (novi).
 
-## 3. Query parametri za `/registration-number`
+## 3. Query parametri za `/new-registration-number`
 
 Svi su **opcionalni**. Identitet (ime, prezime, OIB) se **ne šalje** — STR ga čita iz NIAS sesije.
 
@@ -56,12 +56,12 @@ izvodi iz adrese.
 ## 4. Primjer (CDU) — postojeći objekt
 
 ```
-https://str-test-eturizam.gov.hr/registration-number?facilityId=1448035&name=ku%C4%87a%20test%2055&type=FS_KUCA_ZA_ODMOR&maxBedCount=0&maxGuestCount=0&streetNumber&street&settlement&postalCode&municipality&county
+https://str-test-eturizam.gov.hr/new-registration-number?facilityId=1448035&name=ku%C4%87a%20test%2055&type=FS_KUCA_ZA_ODMOR&maxBedCount=0&maxGuestCount=0&streetNumber&street&settlement&postalCode&municipality&county
 ```
 
 Novi objekt = ista ruta bez parametara:
 ```
-https://str-test-eturizam.gov.hr/registration-number
+https://str-test-eturizam.gov.hr/new-registration-number
 ```
 
 ## 5. Vrsta objekta — `typeId` prima i šifru
@@ -223,8 +223,9 @@ sadržaj 400 `error.categorization.file.type`.
 
 - **Identitet** (ime/prezime/OIB) iz NIAS sesije (`GET /api/nias/me`), nikad iz URL-a.
 - **Param survival:** kod hladnog ulaska (nema STR sesije) ide redirect na NIAS i query parametri se
-  gube. Frontend mora spremiti parametre u `sessionStorage` **prije** skoka na NIAS i vratiti ih nakon
-  povratka.
+  gube. Frontend prije skoka na NIAS sprema puni URL s upitom u `sessionStorage` (`nias:return-to`),
+  a nakon povratka na `nias.saml.success-redirect-url` (`/new-registration-number`) vraća korisnika
+  na njega. Zato `NIAS_SUCCESS_REDIRECT_URL` mora pokazivati na `/new-registration-number`.
 - **Adresni autocomplete:** primljene nazive (`county`/`municipality`/`settlement`) razriješiti u
   stavke kaskade (da se uhvate ID-evi koje submit traži); ako string ne pogodi, ostaviti korisniku.
 
