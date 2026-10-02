@@ -17,16 +17,25 @@ public class LoggingEmailService implements EmailService {
         log.info("[mail/mock] REJECTION → to={}, firstName={}", to, firstName);
     }
 
+    /**
+     * Vraća {@code false}: poruka nije poslana, pa {@code rn_email_sent_at} ostaje prazan i baza
+     * govori istinu. U red ponovnog slanja ne ide — {@link MailRetryStore} dok je mail ugašen ne
+     * bilježi ništa.
+     */
     @Override
-    public void sendRnIssuedNotification(String to, String firstName, String registrationNumber, byte[] pdf) {
-        log.info("[mail/mock] RN_ISSUED → to={}, firstName={}, rn={}, pdf_bytes={}",
-                to, firstName, registrationNumber, pdf == null ? 0 : pdf.length);
+    public boolean sendRnIssuedNotification(RnIssuedMail mail) {
+        log.info("[mail/mock] RN_ISSUED → to={}, ime={}, rn={}, objekt={}, dostavaMailom={}, pdf_bytes={}",
+                mail.to(), mail.ime(), mail.rn(), mail.objekt(), mail.dostavaMailom(),
+                mail.pdf() == null ? 0 : mail.pdf().length);
+        return false;
     }
 
+    /** {@code false} iz istog razloga kao {@link #sendRnIssuedNotification}. */
     @Override
-    public void sendRnLifecycleNotification(RnLifecycleMail mail) {
+    public boolean sendRnLifecycleNotification(RnLifecycleMail mail) {
         log.info("[mail/mock] RN_LIFECYCLE {} → to={}, rn={}, razlog={}, pdf_bytes={}",
                 mail.template(), mail.to(), mail.rn(), mail.razlog(),
                 mail.pdf() == null ? 0 : mail.pdf().length);
+        return false;
     }
 }

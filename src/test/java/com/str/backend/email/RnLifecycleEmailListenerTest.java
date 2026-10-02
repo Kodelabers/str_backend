@@ -30,6 +30,7 @@ class RnLifecycleEmailListenerTest {
     private RnLifecycleLookup lookup;
     private StrDocumentService documentService;
     private EmailService emailService;
+    private MailRetryStore retryStore;
     private RnLifecycleEmailListener listener;
 
     @BeforeEach
@@ -37,11 +38,13 @@ class RnLifecycleEmailListenerTest {
         lookup = mock(RnLifecycleLookup.class);
         documentService = mock(StrDocumentService.class);
         emailService = mock(EmailService.class);
+        retryStore = mock(MailRetryStore.class);
         listener = new RnLifecycleEmailListener(lookup, documentService,
-                new DocumentLabels(), emailService);
+                new DocumentLabels(), emailService, retryStore);
 
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com")));
         when(documentService.render(any(), any(), any())).thenReturn("pdf".getBytes());
+        when(emailService.sendRnLifecycleNotification(any())).thenReturn(true);
     }
 
     @Test
@@ -175,6 +178,68 @@ class RnLifecycleEmailListenerTest {
                 RnTrigger.INSPECTION, null, null));
 
         verify(emailService, never()).sendRnLifecycleNotification(any());
+        verify(retryStore, never()).recordFailure(any(), any(), any());
+    }
+
+    /** SMTP neuspjeh ide u red ponovnog slanja, pod log_id-em prijelaza. */
+    @Test
+    void sendFailure_isQueuedForRetry() {
+        when(emailService.sendRnLifecycleNotification(any())).thenReturn(false);
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INSPECTION, null, null);
+
+        listener.onLifecycleChange(event);
+
+        verify(retryStore).recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "smtp_failed");
+        verify(retryStore, never()).markSent(any(), any());
+    }
+
+    @Test
+    void sendSuccess_closesRetryRecord() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INSPECTION, null, null);
+
+        listener.onLifecycleChange(event);
+
+        verify(retryStore).markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
+    }
+
+    @Test
+    void retry_latestTransition_resendsFromAuditRecord() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, "inspekcija");
+        when(lookup.findEvent(event.logId())).thenReturn(Optional.of(event));
+        when(lookup.isLatestTransition(RN, event.logId())).thenReturn(true);
+
+        listener.retry(event.logId());
+
+        assertThat(captured().template()).isEqualTo(MailTemplate.POVLACENJE);
+        verify(retryStore).markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
+    }
+
+    /**
+     * Prijedlog suspenzije nakon kojeg je već stigla obustava: zakašnjela obavijest o prijedlogu
+     * javila bi stranci stanje koje više ne vrijedi.
+     */
+    @Test
+    void retry_supersededTransition_isAbandoned() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED,
+                RnTrigger.INSPECTION, null, null);
+        when(lookup.findEvent(event.logId())).thenReturn(Optional.of(event));
+        when(lookup.isLatestTransition(RN, event.logId())).thenReturn(false);
+
+        listener.retry(event.logId());
+
+        verify(emailService, never()).sendRnLifecycleNotification(any());
+        verify(retryStore).abandon(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "superseded");
+    }
+
+    @Test
+    void retry_missingAuditRecord_isAbandoned() {
+        UUID logId = UUID.randomUUID();
+        when(lookup.findEvent(logId)).thenReturn(Optional.empty());
+
+        listener.retry(logId);
+
+        verify(emailService, never()).sendRnLifecycleNotification(any());
+        verify(retryStore).abandon(MailRetryEntity.Kind.RN_LIFECYCLE, logId, "missing_log");
     }
 
     private RnLifecycleMail captured() {

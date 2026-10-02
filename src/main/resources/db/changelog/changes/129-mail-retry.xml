@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Red ponovnog slanja obavijesti iznajmljivaču (izdani RB, promjena statusa RB-a).
+
+        Zapis nastaje tek kad slanje padne — uspješna poruka ne ostavlja trag ovdje, pa tablica
+        ne raste sa svakim RB-om. MailRetryJob iz nje uzima dospjele zapise. Postojeći RB-ovi
+        ovdje nemaju zapis, pa se uvođenjem tablice nikome ne šalje stara obavijest.
+
+        ref_id je submission_id (RN_ISSUED) odnosno registration_number_log.log_id (RN_LIFECYCLE);
+        jedan zapis po obavijesti, otud unique (kind, ref_id).
+    -->
+    <changeSet id="129-mail-retry" author="str-backend">
+        <createTable schemaName="str_rn" tableName="mail_retry"
+                     remarks="Obavijesti iznajmljivaču čije slanje nije uspjelo i čeka ponovni pokušaj">
+            <column name="retry_id" type="UUID" remarks="PK">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="kind" type="VARCHAR(32)" remarks="RN_ISSUED / RN_LIFECYCLE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ref_id" type="UUID"
+                    remarks="submission_id za RN_ISSUED, registration_number_log.log_id za RN_LIFECYCLE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(16)" remarks="PENDING → SENT / ABANDONED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attempts" type="INTEGER" remarks="Broj neuspjelih pokušaja, uključujući prvi">
+                <constraints nullable="false"/>
+            </column>
+            <column name="next_attempt_at" type="TIMESTAMPTZ" remarks="Kad job smije pokušati ponovo"/>
+            <column name="last_error" type="VARCHAR(255)" remarks="Razlog zadnjeg neuspjeha ili odustajanja"/>
+            <column name="created_at" type="TIMESTAMPTZ" remarks="Prvi neuspjeh">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint schemaName="str_rn" tableName="mail_retry"
+                             columnNames="kind, ref_id" constraintName="uq_mail_retry_kind_ref"/>
+
+        <createIndex schemaName="str_rn" tableName="mail_retry" indexName="idx_mail_retry_due">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="mail_retry"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

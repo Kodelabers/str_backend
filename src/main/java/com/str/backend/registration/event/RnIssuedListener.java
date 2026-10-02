@@ -8,7 +8,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * Nakon izdavanja RN-a (i commita registracijske transakcije) pokreće eGOP
- * urudžbiranje + non-EU dostavu preko {@link EgopRegistrationDispatcher}, te upis
+ * urudžbiranje + obavijest iznajmljivaču preko {@link EgopRegistrationDispatcher}, te upis
  * RB-a natrag u eTurizam preko {@link FacilityRegistrationNumberWriteBack}.
  *
  * <p>Radi sinkrono nakon commita (isti thread) — PDF zahtjeva mora biti pohranjen

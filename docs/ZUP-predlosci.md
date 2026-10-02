@@ -252,12 +252,33 @@ Nema li prijedloga u tragu (jednofazna suspenzija iz starijih podataka), vrijedi
 ## 5. Poruke e-pošte
 
 `src/main/resources/documents/mail/*.html`, isti mehanizam placeholdera. Okvir (omot, gumb,
-escapiranje) ostaje u Javi jer je izgled, ne tekst.
+escapiranje) ostaje u Javi jer je izgled, ne tekst. Naslov smije koristiti oznake poruke
+(`MailTemplate.placeholders()`), ali ne zajedničke (`klauzula.dostava`, gumbi) jer su HTML.
+
+Obavijest o izdanom RB-u je idempotentna preko `submission.rn_email_sent_at`, koji se upisuje tek
+kad je poruka predana SMTP-u (`EmailService.sendRnIssuedNotification` vraća ishod). Non-EU poruka
+bez akta se ne šalje — ne zamjenjuje se PDF-om zahtjeva.
+
+**Ponovno slanje.** Neuspjelo slanje (izdani RB i promjena statusa) upisuje se u
+`str_rn.mail_retry` (`MailRetryStore`); zapis nastaje tek pri neuspjehu, pa uspješne poruke tamo
+ne ostavljaju trag. `MailRetryJob` (svakih 5 min) ponavlja dospjele zapise istim putem kao prvi
+pokušaj: izdani RB preko `EgopRegistrationDispatcher.retryEmail` (bez ponovnog urudžbiranja),
+promjenu statusa preko `RnLifecycleEmailListener.retry`, koji događaj rekonstruira iz
+`registration_number_log`. Odustaje se kad:
+
+- pokušaji su iscrpljeni (`app.mail.retry.max-attempts`) ili je obavijest starija od `max-age`;
+- iznajmljivač nema adresu;
+- obavijest je zastarjela — za prijelaz je u međuvremenu stigao noviji (npr. prijedlog suspenzije
+  pa obustava), odnosno RB o čijem se izdavanju javlja je povučen.
+
+Dok je mail ugašen (`app.mail.enabled=false`) ništa se ne bilježi: uključivanje maila ne smije
+odjednom poslati sve obavijesti iz razdoblja kad je bio ugašen.
 
 | Predložak | Okidač |
 | :--- | :--- |
 | `odobrenje`, `odbijanje` | `AdminPendingRegistrationService.approve/reject` |
-| `rb-izdan` | `EgopRegistrationDispatcher` (samo non-EU; EU ide preko KP) |
+| `rb-izdan` | `EgopRegistrationDispatcher`, iznajmljivač s OIB-om — obavijest bez privitka, akt ide u KP |
+| `rb-izdan-dostava` | `EgopRegistrationDispatcher`, non-EU — dostava e-poštom, u privitku obavijest o dodjeli (`DODJELA`) |
 | `prijedlog-suspenzije` | prijelaz → `SUSPENSION_PROPOSED` |
 | `suspenzija` | prijelaz → `SUSPENDED` uz `DEADLINE_EXCEEDED` |
 | `obustava-suspenzije` | prijelaz → `ACTIVE` uz `REVOKE_PROPOSAL` |

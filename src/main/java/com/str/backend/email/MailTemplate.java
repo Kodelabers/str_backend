@@ -20,7 +20,10 @@ public enum MailTemplate {
 
     ODOBRENJE("odobrenje", Keys.ODOBRENJE),
     ODBIJANJE("odbijanje", Keys.SAMO_IME),
+    /** Iznajmljivač s OIB-om — obavijest, akt ide u korisnički pretinac. */
     RB_IZDAN("rb-izdan", Keys.RB_IZDAN),
+    /** Non-EU iznajmljivač — e-pošta je kanal dostave, dokument je u privitku. */
+    RB_IZDAN_DOSTAVA("rb-izdan-dostava", Keys.RB_IZDAN_DOSTAVA),
     PRIJEDLOG_SUSPENZIJE("prijedlog-suspenzije", Keys.LIFECYCLE),
     SUSPENZIJA("suspenzija", Keys.LIFECYCLE),
     OBUSTAVA_SUSPENZIJE("obustava-suspenzije", Keys.LIFECYCLE),
@@ -40,7 +43,8 @@ public enum MailTemplate {
 
         static final Set<String> SAMO_IME = Set.of("ime");
         static final Set<String> ODOBRENJE = Set.of("ime", "korisnickoIme");
-        static final Set<String> RB_IZDAN = Set.of("ime", "rn");
+        static final Set<String> RB_IZDAN = Set.of("ime", "rn", "objekt");
+        static final Set<String> RB_IZDAN_DOSTAVA = Set.of("ime", "rn");
         /** Sve što {@code SmtpEmailService} puni iz {@link RnLifecycleMail}. */
         static final Set<String> LIFECYCLE = Set.of("ime", "rn", "objekt", "razlog", "rok");
 
