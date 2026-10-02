@@ -115,6 +115,38 @@ class NavigationBarServiceTest {
     }
 
     @Test
+    void scriptUrl_opensEntitySearchOnlyOnFirstLoadAfterLogin() {
+        String first = query(service.scriptUrl(session, loggedIn()).orElseThrow()).get("show_entity_search");
+        String reload = query(service.scriptUrl(session, loggedIn()).orElseThrow()).get("show_entity_search");
+
+        assertThat(first).isEqualTo("True");
+        // Traka bi inače dijalog otvarala pri svakom učitavanju, i nakon povratka s odabira.
+        assertThat(reload).isEqualTo("False");
+    }
+
+    @Test
+    void scriptUrl_doesNotOpenEntitySearchWhenSubjectAlreadySelected() {
+        when(actingSubjectService.current(any(), eq(PERSON))).thenReturn(Optional.of(new ActingSubject(
+                COMPANY, "ADRIATIQUE GROUP D.O.O.", List.of("Direktor"), PERSON, "Pero", "Perić", Instant.EPOCH)));
+
+        Map<String, String> p = query(service.scriptUrl(session, loggedIn()).orElseThrow());
+        assertThat(p).containsEntry("show_entity_search", "False");
+
+        // Ni povratak u svoje ime kasnije u istoj prijavi ne otvara ga ponovno.
+        when(actingSubjectService.current(any(), eq(PERSON))).thenReturn(Optional.empty());
+        assertThat(query(service.scriptUrl(session, loggedIn()).orElseThrow())).containsEntry("show_entity_search", "False");
+    }
+
+    @Test
+    void scriptUrl_newLoginOpensEntitySearchAgain() {
+        service.scriptUrl(session, loggedIn());
+        // Isto što NiasSamlConfig radi pri novoj prijavi.
+        session.removeAttribute(NavigationBarService.ENTITY_SEARCH_SHOWN_KEY);
+
+        assertThat(query(service.scriptUrl(session, loggedIn()).orElseThrow())).containsEntry("show_entity_search", "True");
+    }
+
+    @Test
     void scriptUrl_withoutNavToken_isEmpty() {
         assertThat(service.scriptUrl(session, saml(SAML_RESPONSE))).isEmpty();
     }

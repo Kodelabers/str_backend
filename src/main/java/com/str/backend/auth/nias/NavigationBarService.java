@@ -45,6 +45,8 @@ import java.util.stream.Collectors;
 public class NavigationBarService {
 
     static final String STATE_KEY = NavigationBarService.class.getName() + ".STATE";
+    /** Oznaka da je odabir subjekta u ovoj prijavi već ponuđen; nova prijava je briše ({@link NiasSamlConfig}). */
+    static final String ENTITY_SEARCH_SHOWN_KEY = NavigationBarService.class.getName() + ".ENTITY_SEARCH_SHOWN";
     static final String CHANGE_ENTITY_PATH = "/api/nias/acting-subject/change-entity";
     private static final String LOGIN_PATH = "/saml2/authenticate/nias";
     private static final String ATTR_NAV_TOKEN = "nav_token";
@@ -120,7 +122,7 @@ public class NavigationBarService {
         params.put("ToLegalIps", acting.map(ActingSubject::legalOib).orElse(""));
         params.put("ToLegalIzvor_reg", acting.isPresent() ? COMPANY_REGISTRY : "");
         params.put("show_entities", "True");
-        params.put("show_entity_search", "True");
+        params.put("show_entity_search", promptEntitySearch(session, acting.isPresent()) ? "True" : "False");
         params.put("language", "hr");
 
         String query = params.entrySet().stream()
@@ -191,6 +193,21 @@ public class NavigationBarService {
             log.warn("navigation_bar change failed", e);
             return Outcome.UNAVAILABLE;
         }
+    }
+
+    /**
+     * {@code show_entity_search=True} nije prikaz pretrage nego naredba: traka tada pri svakom učitavanju
+     * sama otvori odabir subjekta ({@code showEntitySearch()}). Svaki odabir se vraća punim učitavanjem
+     * stranice, pa bi se dijalog otvarao iznova i skrivao poruku o ishodu. Nudi se zato jednom po prijavi,
+     * i to samo dok subjekt nije odabran; poslije je odabir u traci pod „Promjena subjekta".
+     */
+    private static boolean promptEntitySearch(HttpSession session, boolean subjectSelected) {
+        if (session.getAttribute(ENTITY_SEARCH_SHOWN_KEY) != null) {
+            return false;
+        }
+        // I kad je subjekt već odabran: inače bi ga povratak u svoje ime kasnije ponovno otvorio.
+        session.setAttribute(ENTITY_SEARCH_SHOWN_KEY, Boolean.TRUE);
+        return !subjectSelected;
     }
 
     /** Slučajna vrijednost po sesiji; nova prijava je briše ({@link NiasSamlConfig}). */

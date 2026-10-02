@@ -57,6 +57,10 @@ ih mi kao parametre skripte (potvrđeno iz core aplikacije 30.09.2026.), pa odab
   povratak na djelovanje u svoje ime — ali samo ako `forPersonOib` nije **druga** osoba (e-Punomoć →
   `unsupported`, odabir ostaje).
 - Prijavu i odjavu iz trake preuzima frontend (odjava je SLO POST).
+- `show_entity_search=True` znači da traka pri učitavanju **sama otvori** odabir subjekta (FINA tada u
+  skriptu upiše `showEntitySearch()`). Šalje se samo pri prvom učitavanju nakon prijave, dok subjekt
+  nije odabran — inače bi se dijalog otvarao nakon svakog osvježavanja i povratka s odabira, preko
+  poruke o ishodu.
 
 Izbornik u zaglavlju (popis iz `GetNavigationData` + upis OIB-a) ostaje kao rezerva: kad traka nije
 uključena ili prijava ne nosi `nav_token`.
