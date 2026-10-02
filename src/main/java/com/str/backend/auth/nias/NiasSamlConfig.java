@@ -210,6 +210,7 @@ public class NiasSamlConfig {
                 request.getSession().removeAttribute(ActingSubjectService.SESSION_KEY);
                 request.getSession().removeAttribute(ActingSubjectService.OPTIONS_KEY);
                 request.getSession().removeAttribute(NavigationBarService.STATE_KEY);
+                request.getSession().removeAttribute(NavigationBarService.ENTITY_SEARCH_SHOWN_KEY);
                 DefaultSaml2AuthenticatedPrincipal newPrincipal = new DefaultSaml2AuthenticatedPrincipal(
                         currentPrincipal.getName(),
                         currentPrincipal.getAttributes(),
