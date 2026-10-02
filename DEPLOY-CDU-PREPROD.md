@@ -1,13 +1,24 @@
 # CDU predprodukcija — `str-preprod-eturizam.gov.hr` (PLAN)
 
-> **Status 18.09.2026.: instalacija se može pokrenuti.**
-> Recon kutije i baze je odrađen, DBA je potvrdio kako radi noćni reset (tablice se dropaju,
-> shema i role ostaju), konfiguracija je u `develop`-u (PR #84 spojen 18.09.), a **§C6 je
-> izvršni runbook korak po korak**. Tvrdo blokira samo lozinka NIAS keystorea (Simon) — i nju se
-> zaobilazi s `NIAS_SAML_ENABLED=false`, uz gubitak samo prijave eGrađanima.
-> Za **dan poslije** još fale: vrijeme reset prozora (bez njega nema crona) i potvrda da tablični
-> `SELECT` grantovi prežive reset. Kad okolina proradi, ovaj dokument prelazi u oblik kakav ima
-> `DEPLOY-CDU.md`.
+> **Status 18.09.2026.: okolina je INSTALIRANA i radi; čeka se samo gateway.**
+>
+> Backend i frontend su podignuti na `172.20.8.143:8085`, aplikacija se uredno diže, baza,
+> adresni registri, captcha i NIAS keystore su provjereni u `startup_` bloku (§C7). Interno je
+> dostupna na `http://172.20.8.143:8085`.
+>
+> **Javni URL još ne radi** i to nije do nas: `https://str-preprod-eturizam.gov.hr` prolazi TLS
+> pa se veza resetira, dok `str-test-eturizam.gov.hr` na istom IP-u vraća 200 — gatewayu
+> (F5 BigIP) nedostaje pravilo `443 → 172.20.8.143:8085`. Provjereno je i da je port dostupan
+> s mreže (`Test-NetConnection` prolazi), pa je s naše strane sve zatvoreno (A3/13).
+>
+> **Otvoreno:** vrijeme reset prozora (bez njega nema crona, §C8) i potvrda da tablični `SELECT`
+> grantovi prežive reset (A1/6). Za redeploy nove verzije vidi **§C9**.
+>
+> **10/2026 — NIAS certifikat zamijenjen.** Po novoj politici okolina se NIAS-u predstavlja
+> certifikatom **CN=e-Turizam**, a ne posuđenim „InterniTurizam". Certifikat se više ne donosi
+> `scp`-om: stoji na kutiji u `/opt/str/config-external/keystore.p12`, compose ga montira na istu
+> putanju (read-only), lozinka je u `.env.cdupreprod`. Stari `~/str-rn/secrets/nias-prod.p12` i
+> mount `/secrets` su uklonjeni. Prelazak je **§C10**.
 
 Nova okolina je **druga kutija na istom državnom VPN-u** kao CDU test. Nije nastavak
 InfoDomove predprodukcije (`s-str-02`) — s njom dijeli samo riječ „predprodukcija".
@@ -23,7 +34,7 @@ sve ostalo je u repou. Puni tekst svakog koraka, s kontrolnim točkama i zamkama
 | :---: | :--- | :--- | :--- |
 | 1 | Provjeri pristup kutiji + uzmi DB lozinku s testa | §C6.1 | 2 min |
 | 2 | Prebaci oba repoa na kutiju (`git bundle`) | §C6.2 | 5 min |
-| 3 | Prebaci NIAS keystore *(preskoči ako nemaš lozinku)* | §C6.3 | 2 min |
+| 3 | Provjeri NIAS certifikat u `/opt/str/config-external` *(preskoči ako nemaš lozinku)* | §C6.3 | 2 min |
 | 4 | Napravi `.env.cdupreprod` + generiraj dva ključa | §C6.4 | 5 min |
 | 5 | `docker compose up -d --build` | §C6.5 | 10–20 min |
 | 6 | Provjeri `startup_*` blok u logu | §C7 | 3 min |
@@ -34,7 +45,7 @@ sve ostalo je u repou. Puni tekst svakog koraka, s kontrolnim točkama i zamkama
 
 - **Imaš** → normalan put, koraci 1–7.
 - **Nemaš** → preskoči korak 3, u koraku 4 postavi `NIAS_SAML_ENABLED=false`. Okolina radi
-  **sve osim prijave eGrađanima**. Kad lozinka stigne: upišeš je, vratiš `true`, restartaš
+  **sve osim prijave eGrađanima**. Kad lozinka stigne: upišeš je, vratiš `true`, digneš (`up -d`, ne `restart`)
   backend — bez rebuilda. To je bolji ishod od čekanja.
 
 > **Jedno pravilo za sve naredbe:** svaka `ssh` naredba ide u **jednom retku**. Prelomljenu
@@ -69,7 +80,8 @@ još nema živog upstreama; to je očekivano dok ne deployamo.
 | Port 8085 | **slobodan** | `ss` ne nalazi ništa na 8085/8080/8086 |
 | Tuđi stack | `str2-str-external-app-1` (8082), `str2-str-internal-app-1` (8081) | koegzistira; **ne dirati** |
 | Internet | `github.com` → `HTTP/2 200` | izlaz na 443 radi |
-| Docker Hub | `registry-1.docker.io/v2/` → `401`, `docker pull nginx:alpine` → **OK** | **build-on-box je moguć** |
+| Docker Hub | `registry-1.docker.io/v2/` → `401`, `docker pull nginx:alpine` → **OK** | base imageovi se povlače; ali **build svejedno ne ide na kutiji** — vidi redak niže |
+| **maven / shibboleth / npm** | `repo.maven.apache.org`, `build.shibboleth.net`, `registry.npmjs.org` → **svi `000`, connection reset** | ⛔ **build na kutiji je nemoguć** — artefakti se grade lokalno i nose `scp`-om (§B3, §C9) |
 | GitHub SSH (22) | **zatvoren** (bez odgovora) | deploy ključ preko SSH-a **otpada** → §B6 |
 | `mvn` / `npm` / `java` na hostu | **nema ih** | nebitno: build ide u kontejneru |
 | Cacheirani imageovi | `eclipse-temurin:11-jre`, `str-external`, `str-internal` | naš base (**21**) i `maven`/`node` povlače se pri prvom buildu |
@@ -105,7 +117,7 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 | NIAS | `niastst.fina.hr`, demo cert | **`nias.gov.hr`, produkcijski cert** | `nias.gov.hr`, prod cert |
 | eGOP | ugašen | **ugašen** | ugašen |
 | Profil | `cdu` | **`cdupreprod`** | `preprod` |
-| Build | lokalno + `scp` (nema mvn/npm/DockerHub) | **build-on-box (potvrđeno)** | build-on-box |
+| Build | lokalno + `scp` (nema mvn/npm/DockerHub) | **lokalno + `scp`** (maven/npm blokirani) | build-on-box |
 
 ---
 
@@ -163,13 +175,14 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 ## A2. Simon / InfoDom (NIAS)
 
 10. ~~Koji NIAS?~~ **Odgovoreno: produkcijski.** Dohvatljivost s kutije je izmjerena (metadata se
-    učitava). Nosi se produkcijski keystore `nias-prod.p12` (Fina RDC 2020), **ne** CDU-ov demo.
-    **Fali još samo lozinka keystorea.**
-11. **Je li nova domena registrirana uz certifikat?** NIAS ne čita našu SP metadatu — ima
-    hardkodiranu konfiguraciju vezanu uz certifikat. Reći testerima unaprijed: prijava bi trebala
-    raditi (ACS putuje u AuthnRequestu), **odjava ne može** dok STR nema vlastiti certifikat.
-12. **Certifikat istječe 08.11.2026.** — tražiti vlastiti STR certifikat, uz registraciju obje
-    domene.
+    učitava). ~~Nosi se produkcijski keystore `nias-prod.p12`~~ — **od 10/2026 certifikat
+    CN=e-Turizam** iz `/opt/str/config-external/keystore.p12` na kutiji (§C10).
+11. ~~Je li nova domena registrirana uz certifikat?~~ **Odgovoreno (02.10.): jest** — uz e-Turizam
+    certifikat su registrirani ACS i SLO za `str-preprod-eturizam.gov.hr`, pa bi uz prijavu
+    trebala raditi i **odjava** (s posuđenim InterniTurizmom nije mogla).
+12. ~~Certifikat istječe 08.11.2026.~~ To je vrijedilo za InterniTurizam. Rok e-Turizam
+    certifikata zapisuje se iz `keytool` ispisa (§C10.1); backend ga i sam logira na startu
+    (`NIAS SP certifikat: ... vrijedi_do=`) i upozorava 90 dana prije isteka.
 
 ## A3. Mrežni tim / CDU
 
@@ -231,7 +244,8 @@ nema, pa bi ionako ubacio nula redaka.
 
 ## B2. Deploy kao vlastiti korisnik, u vlastiti home
 
-`~/str-rn/` (tj. `/home/mhangi/str-rn`), tajne u `~/str-rn/secrets/` s `chmod 600`.
+`~/str-rn/` (tj. `/home/mhangi/str-rn`), tajne u `~/str-rn/str_backend/.env.cdupreprod` s
+`chmod 600`. NIAS certifikat nije u našem home-u, nego u `/opt/str/config-external` (§C10).
 
 Ovo je bitna razlika prema CDU testu, gdje je deploy u **tuđem** home-u (`/home/vviskov/str-rn`)
 kroz grupu `kodelab-d`. Odatle dolaze `Permission denied` na `scp`-u, nečitljivi modovi za nginx
@@ -254,22 +268,42 @@ najjeftinije rješenje koristi **grupu `docker`**, u kojoj su ionako svi koji sm
 chmod 711 /home/mhangi                 # ulazak u home, bez listanja sadržaja
 chgrp -R docker ~/str-rn && chmod -R g+rX ~/str-rn
 find ~/str-rn -type d -exec chmod g+s {} \;   # nove datoteke zadržavaju grupu
-chmod 640 ~/str-rn/str_backend/.env.cdupreprod ~/str-rn/secrets/*   # tajne ostaju uže
+chmod 640 ~/str-rn/str_backend/.env.cdupreprod   # tajne ostaju uže
 ```
 
 **Ne raditi ovo unaprijed.** `chmod 711` na home je popuštanje privatnosti vlastitog direktorija
 i ima smisla tek kad postoji stvarna potreba; do tada je manje izloženosti bolji default.
 
-## B3. Build ide NA KUTIJI
+## B3. Build ide LOKALNO, ne na kutiji
 
-Docker Hub je dohvatljiv i `docker pull` prolazi, pa se koriste **postojeći `Dockerfile`-ovi iz
-oba repoa** (maven i vite u kontejneru). `BACKEND_DOCKERFILE`/`FRONTEND_DOCKERFILE` ostaju
-nepostavljeni.
+> **Ovo je bilo drukčije do prvog deploya.** Prvotno je pisalo „build ide na kutiji", jer je
+> `docker pull` prolazio pa se činilo da je sve dohvatljivo. Prvi build (18.09.) pao je na
+> `mvn dependency:go-offline` i pokazao da Docker Hub nije mjerilo: **paketni registryji su
+> blokirani**. Ostavljam trag te promjene jer je to glavna razlika u odnosu na InfoDom okolinu.
 
-Time otpada cijeli lanac s CDU testa: lokalni build, `scp` artefakata, ručni `chmod`, i
-posljedično najčešći kvar te okoline. `Dockerfile.artifact` ostaje u repou kao **rezerva** ako
-kutija ikad ostane bez pristupa registryju; FE thin varijanta se tada radi zasebno (u
-`str_frontend` repou ne postoji).
+Izmjereno s kutije — sva tri `000`, connection reset:
+
+| Host | Čemu služi | Bez njega |
+| :--- | :--- | :--- |
+| `repo.maven.apache.org` | standardne Java ovisnosti | `mvn` ne razriješi ni roditeljski POM |
+| `build.shibboleth.net` | `opensaml-saml-impl:4.3.1` — **nije na Maven Centralu** | nema SAML2, dakle nema NIAS prijave |
+| `registry.npmjs.org` | frontend ovisnosti | `npm ci` ne prolazi |
+
+Zato **oba** artefakta nastaju lokalno i nose se `scp`-om, a na kutiji se koriste thin imageovi
+koji ih samo kopiraju:
+
+```
+BACKEND_DOCKERFILE=Dockerfile.artifact       # str_backend/Dockerfile.artifact
+FRONTEND_DOCKERFILE=Dockerfile.artifact      # str_frontend/Dockerfile.artifact
+```
+
+Oba `Dockerfile.artifact` imaju `chmod -R a+rX` **u imageu**, pa modovi koje donese Windows
+`scp` više ne mogu proizvesti bijeli ekran — to je na CDU testu bio ručni korak koji se
+zaboravljao.
+
+Cijena je da svaki deploy nosi ~110 MB jara i traje ~15 minuta umjesto ~3. Ako mrežni tim ikad
+otvori `repo.maven.apache.org` i `build.shibboleth.net`, dovoljno je maknuti ta dva retka iz
+`.env.cdupreprod` i build se vraća na kutiju bez ijedne druge izmjene.
 
 ## B4. Captcha UKLJUČENA
 
@@ -364,7 +398,8 @@ Po §B6 (bundle). Rezultat mora biti:
 ~/str-rn/
   str_backend/     ← git repo, grana develop (+ .env.cdupreprod, nije u gitu)
   str_frontend/    ← git repo, grana develop (build context za compose)
-  secrets/         ← nias-prod.p12, chmod 600
+
+/opt/str/config-external/keystore.p12   ← NIAS certifikat CN=e-Turizam (nije naš, samo se montira)
 ```
 
 Compose očekuje frontend kao **susjedni direktorij** (`context: ../str_frontend`) — bez njega
@@ -457,11 +492,12 @@ nikad PR na `main`).
 
 ## C5. NIAS i gateway — što treba tražiti od drugih
 
-Ovo su **zahtjevi prema drugima**, ne koraci instalacije; sama mehanika prijenosa keystorea je
-korak §C6.3.
+Ovo su **zahtjevi prema drugima**, ne koraci instalacije; provjera certifikata na kutiji je
+korak §C6.3, a prelazak sa starog certifikata §C10.
 
-- [ ] **lozinka keystorea** od Simona → `NIAS_KEYSTORE_PASSWORD` (jedino što tvrdo blokira NIAS)
-- [ ] **registracija ACS/SLO za novu domenu** uz certifikat:
+- [x] **certifikat CN=e-Turizam** na kutiji u `/opt/str/config-external` (politika 10/2026)
+- [ ] **lozinka e-Turizam keystorea** → `NIAS_KEYSTORE_PASSWORD` (jedino što tvrdo blokira NIAS)
+- [x] **registracija ACS/SLO za novu domenu** uz e-Turizam certifikat (potvrđeno 02.10.):
       `https://str-preprod-eturizam.gov.hr/login/saml2/sso/nias` i `…/logout/saml2/slo/nias`
 - [ ] **potvrda gateway pravila** `443 → 172.20.8.143:8085` (A3/13); certifikat ne treba —
       wildcard `*.gov.hr` već pokriva ime
@@ -481,8 +517,8 @@ korak §C6.3.
 | :--- | :--- | :--- | :--- |
 | 1 | Državni VPN gore | — | ništa dalje ne radi |
 | 2 | DB lozinka | s test kutije, korak C6.1 | **blokada** |
-| 3 | Lozinka `nias-prod.p12` | Simon | **nije blokada** → `NIAS_SAML_ENABLED=false`, sve osim prijave radi |
-| 4 | Datoteka `nias-prod.p12` | lokalno (ista kao InfoDom preprod) | isto kao gore |
+| 3 | Lozinka e-Turizam keystorea | tko je postavio certifikat | **nije blokada** → `NIAS_SAML_ENABLED=false`, sve osim prijave radi |
+| 4 | `/opt/str/config-external/keystore.p12` | već na kutiji (ne donosi se) | isto kao gore |
 | 5 | Gateway `443 → .143:8085` | mrežni tim | nije blokada — provjerava se lokalno na kutiji |
 | 6 | Vrijeme noćnog reseta | Darko | nije blokada za `up`; blokira samo postavljanje crona (C8) |
 
@@ -529,10 +565,10 @@ git -C C:\Users\MladenHangi\str_frontend bundle create C:\Users\MladenHangi\str_
 scp C:\Users\MladenHangi\str_backend.bundle C:\Users\MladenHangi\str_frontend.bundle cdu-preprod:~/
 ```
 ```powershell
-ssh cdu-preprod "mkdir -p ~/str-rn/secrets && cd ~/str-rn && git clone -b develop ~/str_backend.bundle str_backend && git clone -b develop ~/str_frontend.bundle str_frontend && ls -la ~/str-rn"
+ssh cdu-preprod "mkdir -p ~/str-rn && cd ~/str-rn && git clone -b develop ~/str_backend.bundle str_backend && git clone -b develop ~/str_frontend.bundle str_frontend && ls -la ~/str-rn"
 ```
 
-**Kontrolna točka:** `~/str-rn/` sadrži `str_backend/`, `str_frontend/` i `secrets/`. Frontend
+**Kontrolna točka:** `~/str-rn/` sadrži `str_backend/` i `str_frontend/`. Frontend
 **mora** biti susjedni direktorij — compose ga gradi preko `context: ../str_frontend`.
 
 > **Provjereno na kutiji 18.09.:** `/home/mhangi` je **prazan**, a `/home/vviskov` nam je
@@ -544,24 +580,16 @@ ssh cdu-preprod "mkdir -p ~/str-rn/secrets && cd ~/str-rn && git clone -b develo
 > `docker ps` / `logs` / `restart` kroz `docker` grupu. Ako stack treba biti timski upravljiv,
 > vidi §B2.
 
-### C6.3 · KORAK 3 — NIAS keystore (preskočivo)
+### C6.3 · KORAK 3 — NIAS certifikat (preskočivo)
 
 Preskoči cijeli korak ako lozinka još nije stigla (vidi C6.4, varijanta B).
 
-```powershell
-& "C:\Program Files\Java\jdk-21.0.10\bin\keytool.exe" -list -v -keystore nias-prod.p12 -storetype PKCS12
-```
-Iz ispisa provjeri da se `Alias name` i `Owner` poklapaju s `NIAS_KEY_ALIAS` i `NIAS_ENTITY_ID`
-u `.env.cdupreprod.example`. Pogrešan alias = `null` privatni ključ i kontekst pada na dizanju.
+Certifikat **CN=e-Turizam** se ne donosi: stoji na kutiji u `/opt/str/config-external`, a
+compose montira taj direktorij na istu putanju (read-only). Ovdje se samo iz njega čitaju alias
+i DN — postupak je **§C10.1**. Rezultat ide u C6.4 (`NIAS_KEY_ALIAS`, `NIAS_ENTITY_ID`).
 
-```powershell
-scp nias-prod.p12 cdu-preprod:/tmp/
-```
-```powershell
-ssh cdu-preprod "install -m 600 /tmp/nias-prod.p12 ~/str-rn/secrets/nias-prod.p12 && rm /tmp/nias-prod.p12 && ls -l ~/str-rn/secrets/"
-```
-
-**Kontrolna točka:** `-rw------- nias-prod.p12` u `~/str-rn/secrets/`.
+**Kontrolna točka:** `keytool` prihvaća lozinku, unos je `PrivateKeyEntry`, izdavatelj je
+produkcijski FINA (`Fina RDC 2020`).
 
 ### C6.4 · KORAK 4 — `.env.cdupreprod`
 
@@ -575,7 +603,7 @@ ssh cdu-preprod 'cd ~/str-rn/str_backend && cp .env.cdupreprod.example .env.cdup
 > bash na kutiji.
 
 Ispisane vrijednosti prepiši u datoteku (`nano ~/str-rn/str_backend/.env.cdupreprod`). Postavlja
-se **pet** vrijednosti; ostalo je u predlošku već popunjeno:
+se **sedam** vrijednosti; ostalo je u predlošku već popunjeno:
 
 | Ključ | Vrijednost |
 | :--- | :--- |
@@ -583,12 +611,15 @@ se **pet** vrijednosti; ostalo je u predlošku već popunjeno:
 | `CDUPREPROD_DB_PASSWORD` | iz C6.1 |
 | `DRAFT_ENC_KEY` | generirano gore |
 | `CAPTCHA_HMAC_KEY` | generirano gore |
-| `NIAS_KEYSTORE_PASSWORD` | od Simona |
+| `NIAS_KEYSTORE_PASSWORD` | lozinka e-Turizam keystorea |
+| `NIAS_KEY_ALIAS` | `Alias name` iz C6.3 / §C10.1 |
+| `NIAS_ENTITY_ID` | `Owner` iz C6.3 / §C10.1, točno |
 
 **Varijanta B — lozinka keystorea još nije stigla:** u `.env.cdupreprod` postavi
 `NIAS_SAML_ENABLED=false` i `NIAS_KEYSTORE_PASSWORD` ostavi **zakomentiran**. Okolina radi sve
-osim prijave eGrađanima. Kad lozinka stigne: upiši je, vrati `NIAS_SAML_ENABLED=true` i
-restartaj backend — rebuild nije potreban.
+osim prijave eGrađanima. Kad lozinka stigne: upiši je, vrati `NIAS_SAML_ENABLED=true` i podigni
+backend s `docker compose … up -d` — rebuild nije potreban. **Ne `restart`**: on ne čita
+`env_file` ponovno, pa bi kontejner ostao sa starim vrijednostima.
 
 **Dvije zamke koje ovdje najviše koštaju:**
 - `.env.cdupreprod` **mora postojati** prije `up`, inače compose puca na `env_file`.
@@ -668,6 +699,9 @@ curl -I http://localhost:8085
 | `startup_captcha hmac_key=postavljen` | `PRAZAN`/`UGRAĐENI DEFAULT` = `.env` nije primijenjen |
 | `startup_mail enabled=false` | mora biti `false` |
 | `startup_nias_urls acs=… slo=…` | usporediti s onim što je NIAS registrirao |
+| `startup_nias enabled=true … keystore=… alias=…` | `keystore=/opt/str/config-external/keystore.p12`, alias e-Turizam certifikata |
+| `NIAS SP certifikat: alias=… subjectDN=… vrijedi_do=…` | `subjectDN` sadrži `CN=e-Turizam` |
+| `NIAS entity-id se NE poklapa sa Subject DN-om` (WARN) | **ne smije** se pojaviti — `NIAS_ENTITY_ID` ≠ DN certifikata |
 
 Zatim izvana: `curl -sS -o /dev/null -w '%{http_code}\n' https://str-preprod-eturizam.gov.hr`.
 Ako i dalje puca veza uz ispravan TLS, gateway pravilo nije postavljeno (A3/13) — a ne aplikacija.
@@ -688,7 +722,302 @@ stari `index.html` koji traži hash kojeg u novom buildu više nema.
 - [ ] tri jutra zaredom provjeriti log prije nego se okolina proglasi stabilnom
 - [ ] testerima napisati **što nakon reseta nestaje** — RB-ovi, skice, sesije, dakle **sve što
       unesu tijekom dana**. Inače to dolazi kao prijavljeni bug svako jutro
-- [ ] ovaj dokument prepisati iz plana u postupak + dodati `Update-only` odjeljak
+
+## C9. REDEPLOY — nova verzija koda na `develop`-u
+
+Ovo je postupak koji se koristi **nakon prve instalacije**, svaki put kad netko spoji fix u
+`develop`. Nije isto što i §C6 (prva instalacija) — repoi su već na kutiji, `.env` i NIAS
+certifikat (`/opt/str/config-external`) stoje, i ne dira ih se.
+
+> **Zašto se ne buildA na kutiji:** `repo.maven.apache.org`, `build.shibboleth.net` i
+> `registry.npmjs.org` su s te kutije blokirani (izmjereno 18.09., §C1). Build ide **lokalno**,
+> na kutiju se nose gotovi artefakti. Bez toga `mvn` na kutiji ne razriješi ni roditeljski POM.
+
+### Korak 0 — jednokratno, postavi putanje za svoju sesiju
+
+Naredbe niže koriste ove tri varijable, pa vrijede za bilo čiji račun i bilo koji checkout.
+Postavi ih na početku svake PowerShell sesije (ili ih trajno upiši u svoj `$PROFILE`):
+
+```powershell
+$BE = "C:\Users\MladenHangi\str_backend"; $FE = "C:\Users\MladenHangi\str_frontend"
+```
+```powershell
+$MVN = "C:\Users\MladenHangi\Desktop\Maven\bin\mvn.cmd"; $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.10"
+```
+
+Vrijednosti gore su s jednog konkretnog računala — **zamijeni ih svojima**. Ako su `mvn` i
+`java` kod tebe na `PATH`-u, umjesto pune putanje može stajati `$MVN = "mvn"`, a `JAVA_HOME`
+se onda ne mora postavljati. Provjera da je postavljeno ispravno:
+
+```powershell
+Test-Path $BE, $FE; & $MVN -v | Select-Object -First 1
+```
+
+### Korak 1 — PRIJE VPN-a: povuci kod (treba internet)
+
+```powershell
+git -C $BE checkout develop; git -C $BE pull; git -C $FE checkout develop; git -C $FE pull
+```
+
+**Pogledaj što je došlo** — određuje koliko posla slijedi:
+
+```powershell
+git -C $BE log --oneline -5; git -C $FE log --oneline -5
+```
+
+- Ako `str_frontend` nije donio ništa novo → **preskoči korak 3 i frontend dio koraka 4**.
+- Ako je `package-lock.json` mijenjan → prije builda treba `npm ci`, ne samo `npm run build`.
+
+**Provjeri je li stigao novi konfiguracijski ključ** (najtiša zamka pri updateu — novi ključ
+dolazi u predlošku, a `.env` na kutiji ga nema, pa Spring uzme default ili start padne):
+
+```powershell
+git -C $BE diff HEAD@{1} HEAD -- .env.cdupreprod.example
+```
+
+Ako ispis nije prazan, isti ključ dodaj i u `~/str-rn/str_backend/.env.cdupreprod` na kutiji.
+
+### Korak 2 — PRIJE VPN-a: backend jar
+
+```powershell
+& $MVN -f $BE\pom.xml clean package -DskipTests
+```
+
+**Namjerno bez `-o` (offline).** Fix može donijeti novu ovisnost — točno se to dogodilo s
+`ZXing` u PR-u #82 — a offline build bi tada pao, ili, gore, prošao sa starim artefaktima.
+Zato se builda dok još ima interneta.
+
+**Prvi put na novom računalu build MORA ići izvan VPN-a.** `opensaml-saml-impl` se povlači s
+`build.shibboleth.net`, koji je sa svih CDU okolina blokiran; jednom kad sjedne u lokalni
+`.m2`, kasniji buildovi rade i bez njega.
+
+### Korak 3 — PRIJE VPN-a: frontend (samo ako je mijenjan)
+
+```powershell
+Set-Location $FE; $env:VITE_API_URL="https://str-preprod-eturizam.gov.hr"; $env:VITE_USE_MOCK="false"; $env:VITE_NIAS_ENABLED="true"; $env:VITE_CAPTCHA_ENABLED="true"; npm run build
+```
+
+**Varijable se postavljaju svaki put.** Vrijede samo za tu PowerShell sesiju i **zapeku se u
+build**. Zaboraviš li ih, fronta će gađati `localhost:8080`; zaboraviš li ih promijeniti nakon
+builda za drugu okolinu, gađat će **testnu** domenu — a to izgleda potpuno normalno dok netko
+ne primijeti da podaci idu u krivi registar.
+
+Provjera (mora ispisati pogodak):
+
+```powershell
+Select-String -Path $FE\build\assets\*.js -Pattern "str-preprod-eturizam" | Select-Object -First 1
+```
+
+### Korak 4 — NA VPN-u: prijenos
+
+Prvo sigurnosna kopija zatečenog jara, da se pad može vratiti u minuti:
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend/target && cp -f str-backend-0.0.1-SNAPSHOT.jar str-backend-PRETHODNI.jar 2>/dev/null; ls -l"
+```
+
+Backend:
+
+```powershell
+scp $BE\target\str-backend-0.0.1-SNAPSHOT.jar cdu-preprod:~/str-rn/str_backend/target/
+```
+
+Frontend (**samo ako je mijenjan**) — staro se prvo briše:
+
+```powershell
+ssh cdu-preprod "rm -rf ~/str-rn/str_frontend/build/*"
+```
+```powershell
+scp -r $FE\build\* cdu-preprod:~/str-rn/str_frontend/build/
+```
+
+Dvije stvari koje ovdje štede sat vremena:
+
+- **`scp` ne briše zaostale datoteke.** Stari `index-<hash>.js` bi ostao uz novi; preglednik s
+  cacheanim `index.html` traži hash kojeg više nema → **bijeli ekran**. Zato `rm -rf build/*`.
+- Kopira se **`build\*`, ne `build`**. Kod same mape `scp` na kraju pokušava postaviti mod i
+  vrijeme, pa javi `remote setstat: Permission denied` iako je upis prošao.
+
+### Korak 5 — NA VPN-u: podizanje
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build"
+```
+
+`up -d --build` je dovoljan: promijenjen jar poništi cache na `COPY` sloju, image se pregradi i
+kontejner rekreira. `down` **ne treba** — bug `KeyError: 'ContainerConfig'` je iz compose v1, a
+ovdje je v2. Nove Liquibase changesete primijeni sam backend pri dizanju.
+
+### Korak 6 — provjera
+
+```powershell
+ssh cdu-preprod "docker logs --since 5m str-backend-cdupreprod 2>&1 | grep -E 'Started StrBackendApplication|startup_'"
+```
+
+Mora se vidjeti `Started StrBackendApplication` i blok `startup_` bez ERROR-a (popis očekivanih
+vrijednosti je u §C7). Zatim fronta:
+
+```powershell
+ssh cdu-preprod "curl -sI http://localhost:8085 | head -1; curl -s -o /dev/null -w 'captcha %{http_code}\n' http://localhost:8085/api/captcha/challenge"
+```
+
+U pregledniku **uvijek Ctrl+F5** — statika ima `immutable, 7 dana`.
+
+### Ako nova verzija ne valja — povratak
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend/target && cp -f str-backend-PRETHODNI.jar str-backend-0.0.1-SNAPSHOT.jar && cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build"
+```
+
+Vraća **samo aplikaciju**. Ako je nova verzija u međuvremenu primijenila Liquibase changeset,
+on **ostaje primijenjen** — shema se ne vraća unatrag. Na ovoj okolini to rijetko smeta jer se
+tablice ionako dropaju svake noći, pa idući jutarnji restart izgradi shemu po staroj verziji.
+
+### Ako deploya netko drugi — što mu treba prije prvog puta
+
+Postupak je isti, ali se **ništa od ovoga ne podrazumijeva**. Redoslijed je bitan: prve dvije
+stavke radi vlasnik kutije, ostale novi kolega sam.
+
+| # | Što | Tko | Napomena |
+| :---: | :--- | :--- | :--- |
+| 1 | Prava na `~/str-rn` za grupu `docker` | dosadašnji deployer | §B2; jednokratno |
+| 2 | `chmod 660` na `.env.cdupreprod` | dosadašnji deployer | **samo ako treba moći dodavati nove ključeve**; uz `640` ga može čitati, ali ne mijenjati |
+| 3 | SSH alias `cdu-preprod` u `~/.ssh/config` | novi kolega | `HostName 172.20.8.143`, `User <njegov račun>` |
+| 4 | Java 21 + Maven + **popunjen `.m2`** | novi kolega | prvi `mvn package` **mora izvan VPN-a** — `opensaml` se povlači sa `shibboleth`, koji je s CDU mreže blokiran |
+| 5 | Node + `npm ci` odrađen | novi kolega | isto, izvan VPN-a |
+| 6 | `umask 002` prije svakog `scp`-a | **svi** | inače datoteka ostaje `644` u njegovom vlasništvu i **sljedeći je kolega ne može prepisati** |
+
+Tajne mu **ne treba slati**: `.env.cdupreprod` i NIAS certifikat već stoje na kutiji i redeploy
+ih ne dira. To je namjerna posljedica ovog rasporeda — lozinka baze i NIAS keystorea ne putuju.
+
+Dogovorite i tko deploya kad: dvoje ljudi koji istovremeno rade `up -d --build` nad istim
+compose projektom rekreira kontejnere jedan drugome ispod ruke.
+
+## C10. Prelazak na NIAS certifikat CN=e-Turizam (jednokratno, 10/2026)
+
+Nova politika: okolina se NIAS-u predstavlja certifikatom **CN=e-Turizam**, a ne posuđenim
+„InterniTurizam". Odnosi se **samo na `cdupreprod`** — CDU test (`cdu`) i InfoDom `preprod` se
+ne diraju.
+
+| | Prije | Sada |
+| :--- | :--- | :--- |
+| Datoteka | `~/str-rn/secrets/nias-prod.p12`, donesena `scp`-om | `/opt/str/config-external/keystore.p12`, već na kutiji |
+| Mount | `../secrets:/secrets:ro` | `/opt/str/config-external:/opt/str/config-external:ro` |
+| Putanja u aplikaciji | `NIAS_KEYSTORE_PATH=/secrets/nias-prod.p12` u `.env`-u | default u `application-cdupreprod.properties`; u `.env`-u **ne postavljati** |
+| Lozinka | `NIAS_KEYSTORE_PASSWORD` u `.env.cdupreprod` | isto, nova vrijednost |
+| Odjava | nije mogla raditi (SLO registriran uz tuđi cert) | ACS i SLO registrirani uz e-Turizam → mora raditi |
+
+Prelazak ide **zajedno s redeployem** (§C9), ali uz jedan korak koji §C9 nema: §C9 prenosi samo
+jar i frontend, a compose datoteka (s novim mountom) na kutiju stiže **samo kroz git** — korak
+C10.2b. Bez njega na kutiji ostaje stari compose s `/secrets`, a nova `.env` vrijednost nema što
+pročitati.
+
+### C10.1 Izviđanje certifikata (ništa ne mijenja)
+
+```powershell
+ssh cdu-preprod "ls -la /opt/str/config-external"
+```
+Lozinku upisuješ na upit, pa ne ostaje u historyju. `keytool` dolazi iz JRE imagea, jer Jave na
+hostu nema:
+```powershell
+ssh -t cdu-preprod "docker run --rm -it -v /opt/str/config-external:/c:ro eclipse-temurin:21-jre-jammy keytool -list -v -storetype PKCS12 -keystore /c/keystore.p12"
+```
+
+| Iz ispisa | Ide u / mora biti |
+| :--- | :--- |
+| `Alias name` | `NIAS_KEY_ALIAS` |
+| `Owner` (cijeli DN, točno) | `NIAS_ENTITY_ID` |
+| `Issuer` | produkcijski FINA (`Fina RDC 2020`) — demo CA ne radi s `nias.gov.hr` |
+| `Entry type` | `PrivateKeyEntry` |
+| `Valid until` | zapisati u §A2/12 |
+
+**STOP** ako datoteka ne postoji, lozinka ne prolazi, izdavatelj je demo CA ili nema privatnog
+ključa. Redeploy se tada svejedno može odraditi s `NIAS_SAML_ENABLED=false` u `.env`-u (radi sve
+osim prijave eGrađanima) dok se certifikat ne riješi s onim tko ga je postavio. Mount ne smeta:
+dok je NIAS ugašen, keystore se uopće ne čita.
+
+### C10.2 Snimka za povratak
+
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend && cp -p .env.cdupreprod .env.cdupreprod.PRETHODNI && cp -p docker-compose.cdupreprod.yml docker-compose.cdupreprod.PRETHODNI.yml && ls -l .env.cdupreprod* docker-compose.cdupreprod*"
+```
+Uz to i kopija jara/fronte iz §C9 korak 4.
+
+### C10.2b Git na kutiji (compose s novim mountom)
+
+Lokalno, **prije VPN-a** i tek kad je ova izmjena spojena u `develop`:
+```powershell
+git -C C:\Users\MladenHangi\str_backend fetch origin; git -C C:\Users\MladenHangi\str_backend bundle create C:\Users\MladenHangi\be-upd.bundle origin/develop
+```
+Na VPN-u:
+```powershell
+scp C:\Users\MladenHangi\be-upd.bundle cdu-preprod:~/
+```
+```powershell
+ssh cdu-preprod "git -C ~/str-rn/str_backend fetch ~/be-upd.bundle origin/develop:refs/remotes/upd/develop && git -C ~/str-rn/str_backend checkout --detach upd/develop && grep -n config-external ~/str-rn/str_backend/docker-compose.cdupreprod.yml"
+```
+
+**Zamka s imenom refa:** bundle napravljen iz `origin/develop` nosi ref
+`refs/remotes/origin/develop`, pa se na kutiji dohvaća kao `origin/develop:…`. Sa samim
+`develop:…` fetch pada na `couldn't find remote ref develop` (izmjereno 02.10.).
+
+Grep na kraju mora ispisati redak s `/opt/str/config-external`. Neprećene datoteke (`.env`,
+`target/`, `*.PRETHODNI*`) checkout ne dira.
+
+### C10.3 `.env.cdupreprod`
+
+```powershell
+ssh -t cdu-preprod "nano ~/str-rn/str_backend/.env.cdupreprod"
+```
+
+| Ključ | Nova vrijednost |
+| :--- | :--- |
+| `NIAS_ENTITY_ID` | `Owner` iz C10.1, točno |
+| `NIAS_KEY_ALIAS` | `Alias name` iz C10.1 |
+| `NIAS_KEYSTORE_PASSWORD` | lozinka e-Turizam keystorea |
+| `NIAS_KEYSTORE_PATH` | **zakomentirati** — vrijedi default `/opt/str/config-external/keystore.p12` |
+| `CDUPREPROD_SECRETS_DIR` | ukloniti ako postoji (compose ga više ne koristi) |
+| `NIAS_SAML_ENABLED` | `true` |
+
+**Zamka koja ruši start:** ostane li `NIAS_KEYSTORE_PATH=/secrets/nias-prod.p12`, pregazi novi
+default, a `/secrets` se više ne montira → `FileNotFoundException` i restart petlja.
+
+Kontrola (lozinka se ne ispisuje):
+```powershell
+ssh cdu-preprod "ls -l ~/str-rn/str_backend/.env.cdupreprod; grep -nE '^#?(NIAS_|CDUPREPROD_SECRETS_DIR)' ~/str-rn/str_backend/.env.cdupreprod | grep -v PASSWORD"
+```
+
+### C10.4 Podizanje i provjera
+
+Podizanje je §C9 korak 5 (`up -d --build`). **Nikad `restart`** nakon promjene `.env`-a ili
+composea — `restart` ne čita ni `env_file` ni volumene ponovno.
+
+```powershell
+ssh cdu-preprod "docker logs --since 5m str-backend-cdupreprod 2>&1 | grep -E 'Started StrBackendApplication|startup_nias|NIAS SP certifikat|NE poklapa|ERROR'"
+```
+```powershell
+ssh cdu-preprod "docker inspect -f '{{range .Mounts}}{{.Source}} -> {{.Destination}} rw={{.RW}}{{println}}{{end}}' str-backend-cdupreprod"
+```
+Očekivano: `keystore=/opt/str/config-external/keystore.p12`, `subjectDN` s `CN=e-Turizam`, **bez**
+WARN-a „NE poklapa", i jedini mount `/opt/str/config-external -> /opt/str/config-external rw=false`.
+
+U pregledniku (Ctrl+F5): prijava eGrađanima → `/new-registration-number`, zatim **odjava** — mora
+proći kroz NIAS i vratiti na `/`. To je dokaz da je novi certifikat registriran.
+
+**Povratak** (stari keystore još postoji do C10.5):
+```powershell
+ssh cdu-preprod "cd ~/str-rn/str_backend && cp -p .env.cdupreprod.PRETHODNI .env.cdupreprod && cp -f docker-compose.cdupreprod.PRETHODNI.yml docker-compose.cdupreprod.yml && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d"
+```
+Kopija composea preko praćene datoteke ostavlja git na kutiji „prljavim" — prije idućeg
+bundle checkouta `git -C ~/str-rn/str_backend checkout -- docker-compose.cdupreprod.yml`.
+
+### C10.5 Čišćenje — tek kad su prijava I odjava prošle
+
+```powershell
+ssh cdu-preprod "rm -f ~/str-rn/secrets/nias-prod.p12 && rmdir ~/str-rn/secrets; rm -f ~/str-rn/str_backend/.env.cdupreprod.PRETHODNI ~/str-rn/str_backend/docker-compose.cdupreprod.PRETHODNI.yml; ls -la ~/str-rn"
+```
+`.env.cdupreprod.PRETHODNI` nosi staru lozinku, pa se briše zajedno s keystoreom. Lokalnu kopiju
+`nias-prod.p12` ne brisati bez odluke — InfoDom `preprod` je i dalje koristi.
 
 ---
 
@@ -706,7 +1035,10 @@ Prvo one koje na **ovoj** okolini vrijede:
 | Ujutro `Shema str_rn ne postoji` i oporavak stane | reset ju je obrisao, a nemamo `CREATE` na bazi | namjeran prekid — backend se ne restarta; rješenje je kod DBA (A1/4) |
 | `permission denied to set role` | user nije član role | A1/2 |
 | `app.captcha.hmac-key is empty or unset` → backend ne starta | `CAPTCHA_HMAC_KEY` prazan ili nepostavljen | postaviti ključ; `AltchaService` namjerno obara start umjesto tihog 500 na formularima |
-| Prijava radi, odjava ne | posuđeni „InterniTurizam" certifikat | ne debugirati; vlastiti cert + registracija (A2) |
+| Backend pada na start s `FileNotFoundException: /secrets/nias-prod.p12` | u `.env.cdupreprod` je ostao stari `NIAS_KEYSTORE_PATH`, a `/secrets` se više ne montira | redak zakomentirati (vrijedi default `/opt/str/config-external/keystore.p12`), pa `up -d` (§C10) |
+| Promijenjena lozinka/alias u `.env`-u „ne djeluje" | backend je podignut s `restart`, koji ne čita `env_file` ponovno | `docker compose … up -d` |
+| Prijava ne prolazi, u logu WARN `entity-id se NE poklapa` | `NIAS_ENTITY_ID` ≠ Subject DN e-Turizam certifikata | prepisati `Owner` iz `keytool` ispisa točno (§C10.1) |
+| Prijava radi, odjava ne | do 10/2026: posuđeni „InterniTurizam" certifikat | s e-Turizam certifikatom (SLO registriran) odjava mora raditi — ako ne radi, usporediti `startup_nias_urls slo=` s registracijom |
 | `git clone` s kutije traži lozinku / visi | repo je privatan, `github.com:22` zatvoren | §B6 (bundle ili PAT) |
 | Build stane na „no space left" | 8,5 GB slobodno, prvi build povuče ~2–3 GB | `docker system prune -f` prije builda; ne držati stare imageove |
 | Lažni nalazi iz `ssh` provjera | naredba prelomljena u više redaka → bash izvrši fragmente zasebno | remote naredbe pisati u **jednom retku** |

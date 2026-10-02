@@ -11,11 +11,11 @@
 #   ~/str-rn/
 #     str_backend/   ← ovaj repo, grana develop (+ .env.cdupreprod, nije u gitu)
 #     str_frontend/  ← build context za frontend (`context: ../str_frontend` niže)
-#     secrets/       ← nias-prod.p12, chmod 600
 #
 #   1. Oba repoa na mjestu (privatni su, a github.com:22 je zatvoren — vidi DEPLOY-CDU-PREPROD.md §B6)
-#   2. cp .env.cdupreprod.example .env.cdupreprod pa upisati tajne (5 vrijednosti)
-#   3. Produkcijski NIAS keystore u ~/str-rn/secrets/nias-prod.p12
+#   2. cp .env.cdupreprod.example .env.cdupreprod pa upisati tajne (5 vrijednosti) + NIAS alias i DN
+#   3. NIAS certifikat CN=e-Turizam već stoji na kutiji u /opt/str/config-external/keystore.p12 —
+#      ne donosi se, samo se montira (vidi `volumes` kod backenda)
 #   4. Shema `str_rn` postoji u bazi — izmjereno 18.09.: postoji, vlasnik `str_owner`, prazna.
 #      NITKO je ne kreira, a nemamo ni pravo (CREATE na bazi = f) — vidi §C3 i bootstrap SQL.
 #
@@ -33,6 +33,8 @@ services:
       #   Dockerfile.artifact           — kutija nema maven/Docker Hub: jar se builda lokalno i
       #                                   donese scp-om u target/, image ga samo COPY-a.
       # Prebacuje se retkom BACKEND_DOCKERFILE=Dockerfile.artifact u .env.cdupreprod.
+      # NA OVOJ KUTIJI JE `Dockerfile.artifact` OBAVEZAN: Maven Central, build.shibboleth.net i
+      # npm su s nje blokirani (izmjereno 18.09.) — postupak je DEPLOY-CDU-PREPROD.md §C9.
       dockerfile: ${BACKEND_DOCKERFILE:-Dockerfile}
     container_name: str-backend-cdupreprod
     restart: unless-stopped
@@ -60,10 +62,13 @@ services:
       # KLASU/URBROJ (bez prefiksa, vidi application-cdupreprod.properties).
       EGOP_ENABLED: "false"
     volumes:
-      # Relativna putanja se razrješava prema mjestu ove compose datoteke, pa je
-      # `../secrets` = ~/str-rn/secrets uz raspored iz zaglavlja. Namjerno bez apsolutne
-      # putanje s korisničkim imenom — deploy ide u vlastiti home, koji nije svima isti.
-      - ${CDUPREPROD_SECRETS_DIR:-../secrets}:/secrets:ro
+      # NIAS certifikat CN=e-Turizam (politika od 10/2026). Direktorij je na kutiji postavljen
+      # izvan našeg deploya i montira se na ISTU putanju, pa je putanja u .env-u i u
+      # application-cdupreprod.properties jednaka onoj na hostu. `:ro` — aplikacija ga samo čita.
+      # Lozinka keystorea je u .env.cdupreprod (NIAS_KEYSTORE_PASSWORD).
+      # Stari mount `../secrets:/secrets` (posuđeni InterniTurizam) uklonjen je namjerno: ostane li
+      # u .env-u NIAS_KEYSTORE_PATH=/secrets/..., start pada na FileNotFoundException.
+      - /opt/str/config-external:/opt/str/config-external:ro
 
   frontend:
     build:
