@@ -7,6 +7,7 @@ import com.str.backend.address.CountyRepository;
 import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.address.MunicipalityRepository;
 import com.str.backend.address.SettlementRepository;
+import com.str.backend.draft.SubmissionDraftService;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.exception.BusinessException;
@@ -65,7 +66,8 @@ class RegistrationServiceBuildAccommodationTest {
                 accommodationTypeRepository,
                 mock(FacilityClaimVerifier.class),
                 new CadastreResolver(houseNumberRepository),
-                mock(ApplicationEventPublisher.class));
+                mock(ApplicationEventPublisher.class),
+                mock(SubmissionDraftService.class));
     }
 
     private static HouseNumberRepository.CadastreRow registryRow(String broj, String ulica,

@@ -12,6 +12,7 @@ import com.str.backend.address.SettlementEntity;
 import com.str.backend.address.SettlementRepository;
 import com.str.backend.auth.nias.ActingSubject;
 import com.str.backend.auth.nias.NiasIdentity;
+import com.str.backend.draft.SubmissionDraftService;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -66,6 +67,7 @@ public class RegistrationService {
     private final FacilityClaimVerifier facilityClaimVerifier;
     private final CadastreResolver cadastreResolver;
     private final ApplicationEventPublisher eventPublisher;
+    private final SubmissionDraftService submissionDraftService;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -80,7 +82,8 @@ public class RegistrationService {
                                AccommodationTypeRepository accommodationTypeRepository,
                                FacilityClaimVerifier facilityClaimVerifier,
                                CadastreResolver cadastreResolver,
-                               ApplicationEventPublisher eventPublisher) {
+                               ApplicationEventPublisher eventPublisher,
+                               SubmissionDraftService submissionDraftService) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -95,6 +98,7 @@ public class RegistrationService {
         this.facilityClaimVerifier = facilityClaimVerifier;
         this.cadastreResolver = cadastreResolver;
         this.eventPublisher = eventPublisher;
+        this.submissionDraftService = submissionDraftService;
     }
 
     /** Bez NIAS assertiona (local/mock, testovi): identitet je samo OIB iz zahtjeva. */
@@ -420,6 +424,15 @@ public class RegistrationService {
         accommodationRepository.save(accommodation);
 
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
+
+        // Objekt je dobio RB, pa njegovi nacrti više nemaju svrhu — svi, i slučajni duplikati.
+        // Ista transakcija: odbijen ili poništen zahtjev nacrte ostavlja.
+        if (accommodation.getFacilityId() != null) {
+            int discarded = submissionDraftService.discardForFacility(accommodation.getFacilityId());
+            if (discarded > 0) {
+                log.info("draft_discard facility={} count={}", accommodation.getFacilityId(), discarded);
+            }
+        }
 
         eventPublisher.publishEvent(new RnIssuedEvent(submission.getSubmissionId(), rn.getRn()));
 

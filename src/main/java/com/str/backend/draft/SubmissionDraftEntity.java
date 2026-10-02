@@ -38,25 +38,41 @@ public class SubmissionDraftEntity {
     @Column(name = "payload", nullable = false)
     private byte[] payload;
 
+    /**
+     * eTurizam objekt za koji je nacrt; {@code null} za novi objekt. Payload je šifriran, pa je
+     * ovo jedino mjesto po kojem backend zna objekt nacrta — po njemu se radi upsert i brisanje
+     * pri izdavanju RB-a.
+     */
+    @Column(name = "facility_id", length = 64)
+    private String facilityId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public static SubmissionDraftEntity create(DraftOwner owner, String title, byte[] encryptedPayload) {
+    public static SubmissionDraftEntity create(DraftOwner owner, String title, byte[] encryptedPayload,
+                                               String facilityId) {
         SubmissionDraftEntity e = new SubmissionDraftEntity();
         e.draftId = UUID.randomUUID();
         e.ownerType = owner.type();
         e.ownerKey = owner.key();
         e.title = title;
         e.payload = encryptedPayload;
+        e.facilityId = facilityId;
         return e;
     }
 
-    public void update(String title, byte[] encryptedPayload) {
+    public void update(String title, byte[] encryptedPayload, String facilityId) {
         this.title = title;
         this.payload = encryptedPayload;
+        this.facilityId = facilityId;
+    }
+
+    /** Samo za {@link DraftFacilityBackfill}: objekt starog nacrta pročitan iz payloada. */
+    void assignFacilityId(String facilityId) {
+        this.facilityId = facilityId;
     }
 
     @PrePersist

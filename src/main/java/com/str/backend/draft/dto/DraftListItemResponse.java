@@ -9,6 +9,7 @@ public record DraftListItemResponse(
         UUID draftId,
         String title,
         DraftOwnerType ownerType,
+        String facilityId,
         Instant createdAt,
         Instant updatedAt
 ) {

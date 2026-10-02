@@ -9,6 +9,7 @@ public record DraftResponse(
         UUID draftId,
         String title,
         DraftOwnerType ownerType,
+        String facilityId,
         String payload,
         Instant createdAt,
         Instant updatedAt

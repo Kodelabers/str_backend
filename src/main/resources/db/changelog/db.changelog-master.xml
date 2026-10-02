@@ -213,4 +213,7 @@
     <!-- Postojeći eTurizam objekt: adresa i kapacitet smiju izostati kad ih eTurizam ne zna. -->
     <include file="db/changelog/changes/127-accommodation-optional-facility-data.xml"/>
 
+    <!-- Nacrt vezan uz eTurizam objekt: jedan po objektu, briše se pri izdavanju RB-a. -->
+    <include file="db/changelog/changes/128-submission-draft-facility.xml"/>
+
 </databaseChangeLog>
