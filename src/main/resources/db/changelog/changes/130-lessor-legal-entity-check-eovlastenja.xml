@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        chk_lessor_legal_entity_owner (040) je napisan za STRANU pravnu osobu iz non-EU
+        samoregistracije: uz is_legal_entity_owner traži državu, grad i matični broj sjedišta.
+
+        Pravna osoba iz e-Zastupanja (NIAS osoba djeluje u ime tvrtke, LessorEntity.applyNiasLegalEntity)
+        postavlja istu zastavicu, ali ta tri podatka nema — e-Ovlaštenja daju samo OIB i naziv tvrtke.
+        INSERT je zato padao na CHECK-u (SQLState 23514 → 500 „Interna greška poslužitelja"), transakcija
+        se poništavala i RB se nije izdao. Testovi to nisu vidjeli jer test profil gradi shemu iz
+        entiteta, bez CHECK ograničenja iz changeloga.
+
+        Razlika između dva slučaja je lessor_oib: postavlja ga samo NIAS tok (SubjectProfileService),
+        non-EU iznajmljivač ga nema. Naziv ostaje obavezan za oba — on je iznajmljivač na PDF-u i aktima.
+
+        040 se ne mijenja (primijenjeni changeseti su nepromjenjivi). Postojeći redovi zadovoljavaju
+        strože ograničenje, pa i ovo blaže.
+    -->
+    <changeSet id="130-lessor-legal-entity-check-eovlastenja" author="str-backend">
+        <sql>ALTER TABLE str_rn.lessor DROP CONSTRAINT IF EXISTS chk_lessor_legal_entity_owner</sql>
+        <sql>
+            ALTER TABLE str_rn.lessor
+                ADD CONSTRAINT chk_lessor_legal_entity_owner
+                    CHECK (
+                        is_legal_entity_owner = FALSE OR (
+                            legal_entity_name IS NOT NULL AND (
+                                lessor_oib IS NOT NULL OR (
+                                    legal_entity_country_id IS NOT NULL AND
+                                    legal_entity_city IS NOT NULL AND
+                                    legal_entity_registration_number IS NOT NULL
+                                )
+                            )
+                        )
+                    )
+        </sql>
+
+        <!-- NOT VALID: nakon ovog changeseta u bazi smiju postojati pravne osobe iz e-Zastupanja bez
+             podataka o sjedištu. Strogo ograničenje bi ih pri vraćanju provjerilo i rollback bi pao;
+             ovako vrijedi za nove retke, a postojeći ostaju. -->
+        <rollback>
+            <sql>ALTER TABLE str_rn.lessor DROP CONSTRAINT IF EXISTS chk_lessor_legal_entity_owner</sql>
+            <sql>
+                ALTER TABLE str_rn.lessor
+                    ADD CONSTRAINT chk_lessor_legal_entity_owner
+                        CHECK (
+                            is_legal_entity_owner = FALSE OR (
+                                legal_entity_name IS NOT NULL AND
+                                legal_entity_country_id IS NOT NULL AND
+                                legal_entity_city IS NOT NULL AND
+                                legal_entity_registration_number IS NOT NULL
+                            )
+                        ) NOT VALID
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
