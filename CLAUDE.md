@@ -125,6 +125,7 @@ Format `HR` + 18 decimal digits encoding county code, group code, type code, and
 
 - `ddl-auto=none` always. Schema changes go in a new numbered Liquibase changeset under `db/changelog/changes/`.
 - **Liquibase changesets are immutable once applied.** Never edit the content of an existing changeset file — doing so changes its checksum and Liquibase will refuse to start (`ValidationFailedException`). Any correction or improvement to an already-applied changeset must go into a new, higher-numbered changeset. This applies even to "harmless" changes like adding `IF EXISTS` or a defensive `UPDATE`.
+- **JUnit tests do not see CHECK constraints.** The test profile disables Liquibase and lets Hibernate build the H2 schema from the entities, so DDL that exists only in changesets is absent. A write that violates a CHECK passes every test and fails only on PostgreSQL, as a 500 (`GlobalExceptionHandler` maps only 23505 to 409). That is how e-Zastupanja RN issuance broke on `chk_lessor_legal_entity_owner` (fixed in changeset 130). A new code path that writes a `str_rn` table needs its constraints checked; `LessorLegalEntityCheckConstraintTest` shows how to apply one straight from the changeset XML in a `@DataJpaTest`.
 - No field injection — constructor injection only.
 - Read-only repository/service methods must carry `@Transactional(readOnly = true)`.
 - All `@Table` annotations must declare `schema =` explicitly.

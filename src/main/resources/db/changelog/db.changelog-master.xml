@@ -219,4 +219,7 @@
     <!-- Ponovno slanje obavijesti iznajmljivaču kad SMTP padne. -->
     <include file="db/changelog/changes/129-mail-retry.xml"/>
 
+    <!-- CHECK za pravnu osobu: država/grad/matični broj samo za stranu (bez OIB-a); e-Zastupanja ih nemaju. -->
+    <include file="db/changelog/changes/130-lessor-legal-entity-check-eovlastenja.xml"/>
+
 </databaseChangeLog>
