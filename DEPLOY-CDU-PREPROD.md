@@ -116,6 +116,7 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 | Captcha | uključena | **uključena** (ima HTTPS) | ugašena (nema HTTPS) |
 | NIAS | `niastst.fina.hr`, demo cert | **`nias.gov.hr`, produkcijski cert** | `nias.gov.hr`, prod cert |
 | eGOP | ugašen | **ugašen** | ugašen |
+| E-pošta | `servmail.ssc.gov.hr`, stvarnim primateljima | **isto kao CDU test**: uključena, bez redirecta (§B5) | InfoDom SMTP |
 | Profil | `cdu` | **`cdupreprod`** | `preprod` |
 | Build | lokalno + `scp` (nema mvn/npm/DockerHub) | **lokalno + `scp`** (maven/npm blokirani) | build-on-box |
 
@@ -166,7 +167,10 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
    preživljavaju li ti grantovi noćni reset (t. 6).
 8. **Je li u `str` shemi produkcijski dump** (prave adrese i e-mailovi)? Čitanje radi, ali ne
    znamo čije su to osobe. Odgovor određuje smije li se ikad upaliti e-pošta i smije li se
-   okolina koristiti za prezentaciju. Do odgovora vrijedi `APP_MAIL_ENABLED=false`.
+   okolina koristiti za prezentaciju. ~~Do odgovora vrijedi `APP_MAIL_ENABLED=false`.~~
+   **10/2026: pošta je uključena kao na CDU testu, stvarnim primateljima** (§B5). Primatelj je
+   kontakt iz podneska, a ne adresa iz `str`, i `str_rn` se svake noći briše, pa poruka ne može
+   otići na adresu iz eTurizma — samo na ono što su testeri taj dan upisali.
 9. ~~Treba li `GRANT UPDATE (registration_number) ON str.facility`?~~ **Izmjereno: `UPDATE = f`.**
    Nije blokada za deploy — `FacilityRegistrationNumberWriteBack` guta grešku i logira
    `facility_writeback_failed`, RB ostaje valjan. Posljedica: **tuStart handoff se ne može
@@ -312,10 +316,47 @@ ALTCHA traži sigurni kontekst (Web Crypto), a okolina je iza HTTPS-a. Oba preki
 zajedno** — razidu li se, okolina je neupotrebljiva. `CAPTCHA_HMAC_KEY` je obavezan;
 `AltchaService` odbija i prazan ključ i ugrađeni default, pa backend bez njega ne starta.
 
-## B5. E-pošta i eGOP ugašeni
+## B5. E-pošta kao na CDU testu, eGOP ugašen
 
-`APP_MAIL_ENABLED=false`, `EGOP_ENABLED=false`. Ugašen eGOP **ne znači** da se ništa ne
-urudžbira — `EgopClientMock` i dalje dodjeljuje KLASU/URBROJ, ovdje bez `MOCK-` prefiksa.
+**E-pošta (od 10/2026): uključena, stvarnim primateljima — kao na CDU testu.** Relay je isti kao
+na CDU testu i kao kod InfoDomovog `str2` stacka na ovoj kutiji: `servmail.ssc.gov.hr:25`, interni
+DNS, otvoren po IP-u kutije, bez autentikacije i bez STARTTLS-a. Pošiljatelj je
+`eturizam@mints.hr`. Oboje su defaulti u `application-cdupreprod.properties` (prekidač tamo stoji
+na `false`, da okolina bez `.env`-a ne šalje). Na kutiji se u `.env.cdupreprod` postavlja **samo
+jedan redak**, a `APP_MAIL_REDIRECT_TO` ostaje nepostavljen (odluka 03.10.2026.):
+
+```
+APP_MAIL_ENABLED=true
+#APP_MAIL_REDIRECT_TO=
+```
+
+Primatelj je iznajmljivač, na kontakt iz podneska: obavijest o izdanom RB-u, akti
+obustave/povlačenja, odobrenje/odbijanje non-EU registracije. `str_rn` se svake noći briše, pa su
+to samo adrese koje su testeri taj dan upisali. Neuspjelo slanje ne poništava radnju;
+`MailRetryJob` ga ponavlja (svakih 5 min, razmak raste do 2 h, najviše 10 pokušaja).
+
+Zatreba li ikad sve poruke preusmjeriti na jednu adresu: `APP_MAIL_REDIRECT_TO=<adresa>` pa
+`up -d` — stvarni primatelj tada ide u predmet (`[za: …] `). Prazan `APP_MAIL_REDIRECT_TO=` vrijedi
+isto kao nepostavljen.
+
+Prije paljenja provjeri relay s kutije i iz kontejnera (ime postoji samo u internom DNS-u):
+
+```powershell
+ssh cdu-preprod "timeout 5 bash -c 'exec 3<>/dev/tcp/servmail.ssc.gov.hr/25; head -1 <&3' || echo NEDOHVATLJIV"
+```
+```powershell
+ssh cdu-preprod "docker exec str-backend-cdupreprod getent hosts servmail.ssc.gov.hr || echo DNS_NE_RADI"
+```
+Očekuj `220 servmail.ssc.gov.hr ESMTP …` i IP (npr. `172.31.0.21`). Ne prođe li, pošta ostaje
+`false`, a ostatak okoline radi normalno.
+
+U startup logu: `startup_mail enabled=true host=servmail.ssc.gov.hr from=eturizam@mints.hr
+redirect_to=- — POZOR: poruke stvarno izlaze`. Ovdje je to **očekivano**. Piše li
+`enabled=false … (LoggingEmailService, ništa ne izlazi)`, `APP_MAIL_ENABLED=true` nije primijenjen
+(`.env` + `up -d`, ne `restart`).
+
+**eGOP: ugašen** (`EGOP_ENABLED=false`). Ugašen eGOP **ne znači** da se ništa ne urudžbira:
+`EgopClientMock` i dalje dodjeljuje KLASU/URBROJ, ovdje bez `MOCK-` prefiksa.
 
 ## B6. Kako privatni repozitoriji dolaze na kutiju
 
@@ -697,7 +738,7 @@ curl -I http://localhost:8085
 | `startup_schema_ok tablica=str.facility` | pravi eTurizam podaci |
 | `startup_schema_missing shema=rpj_dgu` (ERROR) | grant nije stigao → adresna kaskada ne radi |
 | `startup_captcha hmac_key=postavljen` | `PRAZAN`/`UGRAĐENI DEFAULT` = `.env` nije primijenjen |
-| `startup_mail enabled=false` | mora biti `false` |
+| `startup_mail enabled=true host=servmail.ssc.gov.hr from=eturizam@mints.hr redirect_to=-` | uz `POZOR: poruke stvarno izlaze` — **očekivano** (stvarni primatelji, §B5) |
 | `startup_nias_urls acs=… slo=…` | usporediti s onim što je NIAS registrirao |
 | `startup_nias enabled=true … keystore=… alias=…` | `keystore=/opt/str/config-external/keystore.p12`, alias e-Turizam certifikata |
 | `NIAS SP certifikat: alias=… subjectDN=… vrijedi_do=…` | `subjectDN` sadrži `CN=e-Turizam` |
