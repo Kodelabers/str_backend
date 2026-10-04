@@ -7,6 +7,8 @@ import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDate;
@@ -79,6 +81,42 @@ class LessorRegistrationRequestValidationTest {
         assertThat(violations)
                 .anyMatch(v -> v.getPropertyPath().toString().equals("legalEntityGroupComplete")
                         && v.getMessage().equals("lessor.legalEntity.incomplete"));
+    }
+
+    @Test
+    void elevenDigitsWithWrongCheckDigit_isNotOib() {
+        LessorRegistrationRequest req = validRequest();
+        req.setPorezniBroj("12345678901");
+
+        assertThat(violationKeys(req)).doesNotContain("porezniBroj", "brojIsprave");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "399-865-406-78", "399.865.406.78", "HR39986540678", "hr 39986540678",
+            "399" + (char) 0xA0 + "865" + (char) 0xA0 + "40678" // tvrdi razmak iz kopiranog teksta
+    })
+    void oibWrittenWithSeparatorsOrVatPrefix_reportsViolation(String taxNumber) {
+        LessorRegistrationRequest req = validRequest();
+        req.setPorezniBroj(taxNumber);
+
+        assertThat(violationKeys(req)).contains("porezniBroj");
+    }
+
+    @Test
+    void oibAsDocumentNumber_reportsViolation() {
+        LessorRegistrationRequest req = validRequest();
+        req.setBrojIsprave("39986540678");
+
+        assertThat(violationKeys(req)).contains("brojIsprave");
+    }
+
+    @Test
+    void oibAsTaxNumberWithSpaces_reportsViolation() {
+        LessorRegistrationRequest req = validRequest();
+        req.setPorezniBroj("399 865 406 78");
+
+        assertThat(violationKeys(req)).contains("porezniBroj");
     }
 
     private static Set<String> violationKeys(LessorRegistrationRequest req) {
