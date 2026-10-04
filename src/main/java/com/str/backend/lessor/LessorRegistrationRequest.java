@@ -25,7 +25,7 @@ public class LessorRegistrationRequest {
     @NotNull @Past
     private LocalDate datumRodjenja;
 
-    @NotBlank @Size(max = 64)
+    @NotBlank @Size(max = 64) @NotOib
     private String porezniBroj;
 
     @NotNull
@@ -37,7 +37,7 @@ public class LessorRegistrationRequest {
     @NotBlank @Size(max = 32)
     private String vrstaIsprave;
 
-    @NotBlank @Size(max = 64)
+    @NotBlank @Size(max = 64) @NotOib
     private String brojIsprave;
 
     @NotBlank @Email @Size(max = 255)
