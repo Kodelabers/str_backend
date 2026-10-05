@@ -107,7 +107,20 @@ public enum StrDocumentType {
     OBUSTAVA_SUSPENZIJE("obustava-suspenzije",
             "Obavijest o obustavi postupka suspenzije registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O OBUSTAVI POSTUPKA SUSPENZIJE REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA));
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
+     * Podnesak stranke, kao {@link #PRIGOVOR}: iznajmljivač je pri izdavanju RB-a označio da
+     * podaci preuzeti iz registra eTurizma nisu točni, pa ga forma preusmjerava na eTurizmov
+     * obrazac „Zahtjev za promjenu podataka". Pismeno bilježi u našem spisu da je taj zahtjev
+     * započet; sam zahtjev se vodi u eTurizmu.
+     *
+     * <p><b>Ne urudžbira se</b> — {@code EgopAktiBezSifre} ga drži na popisu neovisno o
+     * konfiguraciji, jer vrsta nije među dogovorenim vrstama pismena i nema eGOP šifru.
+     */
+    ZAHTJEV_PROMJENE_PODATAKA("zahtjev-promjene-podataka", "Zahtjev za promjenu podataka",
+            Smjer.ULAZNO, "ZAHTJEV ZA PROMJENU PODATAKA", true,
+            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.OBRAZLOZENJE));
 
     /** Smjer pismena u urudžbenom zapisniku. Preslikava se na {@code EgopPismenoEntity.Smjer}. */
     public enum Smjer { ULAZNO, IZLAZNO }

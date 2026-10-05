@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,8 +42,10 @@ class NiasFacilityServiceTest {
     private final RnRepository rnRepository = mock(RnRepository.class);
     private final CategorizationDecisionRepository decisionRepository = mock(CategorizationDecisionRepository.class);
 
+    private static final String ETURIZAM_BASE = "https://et2-test-external-eturizam.gov.hr";
+
     private final NiasFacilityService service = new NiasFacilityService(
-            facilityRepository, typeRepository, rnRepository, decisionRepository);
+            facilityRepository, typeRepository, rnRepository, decisionRepository, ETURIZAM_BASE);
 
     @BeforeEach
     void setUp() {
@@ -218,6 +221,63 @@ class NiasFacilityServiceTest {
         assertThat(claim.zakljucanaPolja()).contains("maxBeds");
         // eTurizam vrstu ne zna — zabrana se ne može utemeljiti, RB se smije izdati.
         assertThat(claim.vrstaDopustena()).isTrue();
+    }
+
+    /** Claim nosi adresu eTurizmova zahtjeva za promjenu podataka: dokument objekta + id šifre. */
+    @Test
+    void claim_returnsChangeRequestUrl() {
+        FacilityOwnershipRow row = activeOwnRow();
+        when(row.getDocumentId()).thenReturn(892408L);
+        when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
+
+        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isEqualTo(
+                ETURIZAM_BASE + "/tu-start/podnesi-novi-zahtjev-za-promjenu-podataka/892408?idZahtjeva=454");
+    }
+
+    /** Bez dokumenta, šifre ili okoline eTurizma URL se ne slaže — forma tada ne nudi kvačicu. */
+    @Test
+    void claim_omitsChangeRequestUrl_whenItCannotBeBuilt() {
+        FacilityOwnershipRow row = activeOwnRow();
+        when(row.getDocumentId()).thenReturn(null);
+        when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
+        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isNull();
+
+        when(row.getDocumentId()).thenReturn(892408L);
+        when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.empty());
+        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isNull();
+
+        when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
+        NiasFacilityService bezEturizma = new NiasFacilityService(
+                facilityRepository, typeRepository, rnRepository, decisionRepository, "");
+        assertThat(bezEturizma.claim(OIB, "153049").zahtjevPromjenaUrl()).isNull();
+    }
+
+    /** Šifrarnik se ne mijenja: id se čita jednom, ne pri svakom claimu. */
+    @Test
+    void claim_readsChangeRequestTypeIdOnce() {
+        FacilityOwnershipRow row = activeOwnRow();
+        when(row.getDocumentId()).thenReturn(892408L);
+        when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
+
+        service.claim(OIB, "153049");
+        service.claim(OIB, "153049");
+
+        verify(facilityRepository, times(1)).findCodebookElementId("DST_Z_PROMJ_POD");
+    }
+
+    @Test
+    void changeRequestUrl_toleratesTrailingSlashInBase() {
+        assertThat(NiasFacilityService.changeRequestUrl(ETURIZAM_BASE + "/", 1L, 2L))
+                .isEqualTo(ETURIZAM_BASE + "/tu-start/podnesi-novi-zahtjev-za-promjenu-podataka/1?idZahtjeva=2");
+    }
+
+    private FacilityOwnershipRow activeOwnRow() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn(OIB);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+        return row;
     }
 
     /**

@@ -7,6 +7,7 @@ import com.str.backend.auth.dto.MeResponse;
 import com.str.backend.categorization.CategorizationDecisionRequest;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
+import com.str.backend.egop.ChangeRequestFilingService;
 import com.str.backend.lessor.LessorDocumentEntity;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
@@ -59,6 +60,7 @@ public class NiasController {
     private final ActingSubjectService actingSubjectService;
     private final ActingSubjectGuard actingSubjectGuard;
     private final NavigationBarService navigationBarService;
+    private final ChangeRequestFilingService changeRequestFilingService;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -73,7 +75,8 @@ public class NiasController {
                           EffectiveOibResolver effectiveOibResolver,
                           ActingSubjectService actingSubjectService,
                           ActingSubjectGuard actingSubjectGuard,
-                          NavigationBarService navigationBarService) {
+                          NavigationBarService navigationBarService,
+                          ChangeRequestFilingService changeRequestFilingService) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -88,6 +91,7 @@ public class NiasController {
         this.actingSubjectService = actingSubjectService;
         this.actingSubjectGuard = actingSubjectGuard;
         this.navigationBarService = navigationBarService;
+        this.changeRequestFilingService = changeRequestFilingService;
     }
 
     /**
@@ -302,6 +306,21 @@ public class NiasController {
         String oib = ownerOibForChange(authentication, actingSubjectHeader);
         String reason = body != null ? body.reason() : null;
         return rnActionService.withdrawOwnByOib(rn, oib, reason);
+    }
+
+    /**
+     * Iznajmljivač je pri izdavanju RB-a označio da podaci preuzeti iz registra eTurizma nisu
+     * točni, a frontend ga upravo preusmjerava na eTurizmov „Zahtjev za promjenu podataka". Uz RB
+     * se zapisuje pismeno da je zahtjev započet (bez urudžbiranja). Zapis mijenja spis, pa ide
+     * kroz {@link #ownerOibForChange}; tuđi RB daje 404, a ponovljeni poziv ne stvara drugo pismeno.
+     */
+    @PostMapping("/registrations/{rn}/zahtjev-promjene-podataka")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void fileChangeRequest(
+            @PathVariable String rn,
+            Authentication authentication,
+            @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
+        changeRequestFilingService.file(rn, ownerOibForChange(authentication, actingSubjectHeader));
     }
 
     /**

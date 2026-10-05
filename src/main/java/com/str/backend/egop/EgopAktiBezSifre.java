@@ -35,10 +35,18 @@ public class EgopAktiBezSifre {
      */
     private static final String NIJEDNA = "";
 
+    /**
+     * Vrste koje se ne urudžbiraju <b>neovisno o konfiguraciji</b>. Okolina s posudbenim šiframa
+     * popis prazni ({@code EGOP_AKTI_BEZ_SIFRE=}), a ove vrste ne smiju u eGOP ni ondje: nisu među
+     * dogovorenim vrstama pismena, pa bi otišle pod tuđom šifrom.
+     */
+    static final Set<StrDocumentType> UVIJEK_BEZ_SIFRE = Set.of(StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA);
+
     private final Set<String> slugovi;
 
     public EgopAktiBezSifre(@Value("${str.egop.akti-bez-sifre:}") Set<String> slugovi) {
         Set<String> ocisceni = new LinkedHashSet<>();
+        UVIJEK_BEZ_SIFRE.forEach(t -> ocisceni.add(t.slug()));
         for (String slug : slugovi) {
             String s = slug == null ? "" : slug.strip();
             if (s.isEmpty()) {

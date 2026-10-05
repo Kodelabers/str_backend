@@ -210,6 +210,12 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
          */
         String getContactEmail();
         String getContactPhone();
+
+        /**
+         * Dokument eTurizma uz koji je vezana ova verzija objekta ({@code facility.document_id}) —
+         * prvi segment URL-a eTurizmova zahtjeva za promjenu podataka. {@code null} kad ga zapis nema.
+         */
+        Long getDocumentId();
     }
 
     /**
@@ -250,6 +256,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    coalesce(a.postal_code, se.postal_code) AS postalCode,
                    f.email     AS contactEmail,
                    f.phone     AS contactPhone,
+                   f.document_id AS documentId,
                    coalesce(
                        (SELECT sum(fc.quantity) FROM str.facility_capacity fc
                           JOIN str.codebook_element ce ON ce.id = fc.type_id
@@ -298,6 +305,20 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
             LIMIT 1
             """, nativeQuery = true)
     Optional<FacilityOwnershipRow> findOwnership(@Param("facilityId") long facilityId);
+
+    /**
+     * Id elementa eTurizmova šifrarnika po šifri. Id se među okolinama može razlikovati, šifra ne —
+     * zato se traži po šifri (npr. {@code DST_Z_PROMJ_POD} je na CDU testu id 454).
+     */
+    @Query(value = """
+            SELECT ce.id
+              FROM str.codebook_element ce
+             WHERE ce.code = :code
+               AND coalesce(ce.active, true) = true
+             ORDER BY ce.id DESC
+             LIMIT 1
+            """, nativeQuery = true)
+    Optional<Long> findCodebookElementId(@Param("code") String code);
 
     /**
      * Upisuje dodijeljeni RB natrag u eTurizam registar, po dogovoru s tuStartom.
