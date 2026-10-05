@@ -61,6 +61,7 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `RnService.withdraw` |
 | `prigovor` | Prigovor na prijedlog suspenzije | **ulazno** | čl. 71. — podnesak stranke | ❌ nema |
 | `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `opoziv` | `RnService.reactivate` |
+| `zahtjev-promjene-podataka` | Zahtjev za promjenu podataka | **ulazno** | kao `prigovor` | `ChangeRequestFilingService.file` (`POST /api/nias/registrations/{rn}/zahtjev-promjene-podataka`) |
 
 Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i šalje poziv na
 izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku roka prelazi u
@@ -72,6 +73,12 @@ nemaju šifru u eGOP šifrarniku (obje su nastale uz dvofaznu suspenziju, koje u
 nije bilo). Predlošci i okidači postoje; urudžbiranje je iza `str.egop.akti-bez-sifre` (vidi §6),
 ali se akt **svejedno zapisuje i vidi u popisu dokumenata RB-a**, a obavijest e-poštom ide
 neovisno o tome. `ZupTemplateLoaderTest` drži taj popis u šahu.
+
+`zahtjev-promjene-podataka` nastaje kad iznajmljivač pri izdavanju RB-a za objekt iz eTurizma označi
+da podaci iz registra nisu točni: frontend nakon izdavanja zove endpoint pa ga preusmjerava na
+eTurizmov „Zahtjev za promjenu podataka" (adresu vraća claim objekta). Pismeno je jedno po RB-u i
+**nikad se ne urudžbira** — `EgopAktiBezSifre.UVIJEK_BEZ_SIFRE` ga drži izvan eGOP-a neovisno o
+`str.egop.akti-bez-sifre`, jer nije među dogovorenim vrstama pismena.
 
 `prigovor` **nema okidač** — ne postoji nigdje u `src/main`. Predložak je isporučen i dostupan
 preko endpointa, ali automatike nema dok se ne uvede domenski model prigovora.

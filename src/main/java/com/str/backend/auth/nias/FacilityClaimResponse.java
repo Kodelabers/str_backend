@@ -45,5 +45,12 @@ public record FacilityClaimResponse(
          * popis objekata takve ne prikazuje, ali do njih se može doći tuStart URL-om. Frontend
          * tada blokira obrazac, a predaju bi ionako odbio verifier.
          */
-        boolean vrstaDopustena) {
+        boolean vrstaDopustena,
+        /**
+         * Adresa eTurizmova obrasca „Zahtjev za promjenu podataka" za ovaj objekt
+         * ({@code facility.document_id} + id šifre {@code DST_Z_PROMJ_POD}), na okolini iz
+         * {@code app.eturizam.external-base-url}. {@code null} kad se ne može složiti — frontend
+         * tada ne nudi kvačicu „podaci iz registra nisu točni".
+         */
+        String zahtjevPromjenaUrl) {
 }

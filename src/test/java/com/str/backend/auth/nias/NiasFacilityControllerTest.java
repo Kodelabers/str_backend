@@ -5,6 +5,7 @@ import com.str.backend.auth.SessionIdentityResolver;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.egop.ChangeRequestFilingService;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorDocumentRepository;
@@ -75,6 +76,7 @@ class NiasFacilityControllerTest {
     @MockBean SessionIdentityResolver identityResolver;
     @MockBean SubjectProfileService subjectProfileService;
     @MockBean NavigationBarService navigationBarService;
+    @MockBean ChangeRequestFilingService changeRequestFilingService;
 
     // ── FINA navigacijska traka ─────────────────────────────────────────────
 
@@ -314,6 +316,56 @@ class NiasFacilityControllerTest {
                 .andExpect(header().string("Retry-After", "42"))
                 .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_RATE_LIMIT"))
                 .andExpect(jsonPath("$.details.retryAfterSeconds").value(42));
+    }
+
+    // ── pismeno „Zahtjev za promjenu podataka" ──────────────────────────────
+
+    private static final String CHANGE_REQUEST =
+            "/api/nias/registrations/HR120001000000000123/zahtjev-promjene-podataka";
+
+    @Test
+    void changeRequest_ownName_filesForPerson() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+
+        mvc.perform(post(CHANGE_REQUEST).header("X-Acting-Subject", "SELF")).andExpect(status().isNoContent());
+
+        verify(actingSubjectService, never()).reverify(any(), any(), any());
+        verify(changeRequestFilingService).file("HR120001000000000123", OIB);
+    }
+
+    /** Mijenja spis tvrtke — u ime tvrtke tek nakon ponovne potvrde zastupanja. */
+    @Test
+    void changeRequest_actingForCompany_reverifiesAndFilesForCompany() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+        when(actingSubjectService.reverify(any(), any(), any())).thenReturn(companySubject());
+
+        mvc.perform(post(CHANGE_REQUEST).header("X-Acting-Subject", COMPANY_OIB)).andExpect(status().isNoContent());
+
+        verify(actingSubjectService).reverify(any(), any(), eq(companySubject()));
+        verify(changeRequestFilingService).file("HR120001000000000123", COMPANY_OIB);
+    }
+
+    /** Obrazac popunjen u svoje ime, a sesija sada djeluje za tvrtku: pismeno ne ide u tvrtkin spis. */
+    @Test
+    void changeRequest_subjectChanged_is409_andFilesNothing() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+
+        mvc.perform(post(CHANGE_REQUEST).header("X-Acting-Subject", "SELF"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.details.code").value("ACTING_SUBJECT_CHANGED"));
+
+        verify(changeRequestFilingService, never()).file(any(), any());
+    }
+
+    @Test
+    void changeRequest_withoutNiasIdentity_is401() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.empty());
+
+        mvc.perform(post(CHANGE_REQUEST)).andExpect(status().isUnauthorized());
+
+        verify(changeRequestFilingService, never()).file(any(), any());
     }
 
     /** U svoje ime povlačenje ne zove e-Ovlaštenja. */

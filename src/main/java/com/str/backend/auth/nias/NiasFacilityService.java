@@ -13,6 +13,7 @@ import com.str.backend.str.StrFacilityRepository.FacilityListingRow;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,19 +38,30 @@ public class NiasFacilityService {
     static final int DEFAULT_PAGE_SIZE = 20;
     static final int MAX_PAGE_SIZE = 100;
 
+    /** Šifra vrste „Zahtjev za promjenu podataka" u eTurizmovu šifrarniku ({@code str.codebook_element}). */
+    static final String CHANGE_REQUEST_TYPE_CODE = "DST_Z_PROMJ_POD";
+
     private final StrFacilityRepository facilityRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final RnRepository rnRepository;
     private final CategorizationDecisionRepository decisionRepository;
+    private final String eturizamExternalBaseUrl;
+    /**
+     * Id šifre {@link #CHANGE_REQUEST_TYPE_CODE}; šifrarnik se za rada ne mijenja, pa se čita jednom.
+     * Pamti se samo pronađen — dok ga nema, svaki claim pita ponovo i upozorenje ostaje vidljivo.
+     */
+    private volatile Long changeRequestTypeId;
 
     public NiasFacilityService(StrFacilityRepository facilityRepository,
                                AccommodationTypeRepository accommodationTypeRepository,
                                RnRepository rnRepository,
-                               CategorizationDecisionRepository decisionRepository) {
+                               CategorizationDecisionRepository decisionRepository,
+                               @Value("${app.eturizam.external-base-url:}") String eturizamExternalBaseUrl) {
         this.facilityRepository = facilityRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.rnRepository = rnRepository;
         this.decisionRepository = decisionRepository;
+        this.eturizamExternalBaseUrl = eturizamExternalBaseUrl;
     }
 
     @Transactional(readOnly = true)
@@ -128,7 +140,39 @@ public class NiasFacilityService {
                 row.getContactEmail(),
                 row.getContactPhone(),
                 FacilityClaimVerifier.lockedFields(row),
-                FacilityClaimVerifier.isRegistrableType(row, accommodationTypeRepository));
+                FacilityClaimVerifier.isRegistrableType(row, accommodationTypeRepository),
+                changeRequestUrl(row.getDocumentId()));
+    }
+
+    /**
+     * Adresa eTurizmova obrasca „Zahtjev za promjenu podataka" za ovaj objekt — onamo se korisnik
+     * preusmjerava nakon izdavanja RB-a kad kaže da podaci iz registra nisu točni.
+     *
+     * <p>{@code null} kad je ne možemo složiti (okolina bez eTurizma, zapis bez dokumenta, šifra
+     * nije u šifrarniku). Frontend tada ne nudi ni kvačicu, pa korisnik ne može tražiti
+     * preusmjeravanje koje se ne bi dogodilo.
+     */
+    private String changeRequestUrl(Long documentId) {
+        if (eturizamExternalBaseUrl == null || eturizamExternalBaseUrl.isBlank() || documentId == null) {
+            return null;
+        }
+        Long requestTypeId = changeRequestTypeId;
+        if (requestTypeId == null) {
+            requestTypeId = facilityRepository.findCodebookElementId(CHANGE_REQUEST_TYPE_CODE).orElse(null);
+            if (requestTypeId == null) {
+                log.warn("codebook_element {} nije pronađen — zahtjev za promjenu podataka se ne nudi",
+                        CHANGE_REQUEST_TYPE_CODE);
+                return null;
+            }
+            changeRequestTypeId = requestTypeId;
+        }
+        return changeRequestUrl(eturizamExternalBaseUrl, documentId, requestTypeId);
+    }
+
+    static String changeRequestUrl(String baseUrl, long documentId, long requestTypeId) {
+        String base = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        return base + "/tu-start/podnesi-novi-zahtjev-za-promjenu-podataka/" + documentId
+                + "?idZahtjeva=" + requestTypeId;
     }
 
     private List<FacilityResponse> fromEturizam(String oib, List<String> codes, int limit, int offset) {

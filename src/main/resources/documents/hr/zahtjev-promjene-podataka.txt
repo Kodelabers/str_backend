@@ -1,0 +1,30 @@
+# Zahtjev za promjenu podataka
+# Vrsta pismena: „Zahtjev za promjenu podataka" — ULAZNO, NE urudžbira se (EgopAktiBezSifre)
+#
+# Podnesak stranke kao i prigovor (čl. 71. st. 2 ZUP-a): naziv tijela, naznaka upravne stvari,
+# ime i adresa te OIB stranke. Nastaje kad iznajmljivač pri izdavanju RB-a označi da podaci
+# preuzeti iz registra eTurizma nisu točni — forma ga tada preusmjerava na eTurizmov obrazac
+# „Zahtjev za promjenu podataka". Ovo pismeno u našem spisu bilježi da je taj zahtjev započet;
+# sam zahtjev se vodi u eTurizmu.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${tijelo.naziv}
+${tijelo.ustrojstvenaJedinica}
+${tijelo.adresa}
+${tijelo.mjesto}
+
+[UVOD]
+Podnositelj: ${stranka.naziv}, ${stranka.identifikator}
+
+${stranka.zastupnik}
+
+${stranka.adresaRedak}
+
+Predmet: zahtjev za promjenu podataka o smještajnoj jedinici s registracijskim brojem ${rn.broj}
+
+[OBRAZLOZENJE]
+Podnositelj je pri izdavanju registracijskog broja ${rn.broj} za smještajnu jedinicu „${objekt.naziv}" na adresi ${objekt.adresa} izjavio da podaci o smještajnoj jedinici preuzeti iz registra sustava eTurizam nisu točni.
+
+Podnositelj je nakon izdavanja registracijskog broja preusmjeren na podnošenje zahtjeva za promjenu podataka, koji se vodi u sustavu eTurizam.

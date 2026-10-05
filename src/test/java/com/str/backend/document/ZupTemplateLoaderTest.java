@@ -184,6 +184,7 @@ class ZupTemplateLoaderTest {
         assertThat(StrDocumentType.values())
                 .filteredOn(t -> !dogovoreni.contains(t.vrstaPismenaNaziv()))
                 .containsExactlyInAnyOrder(
-                        StrDocumentType.REAKTIVACIJA, StrDocumentType.OBUSTAVA_SUSPENZIJE);
+                        StrDocumentType.REAKTIVACIJA, StrDocumentType.OBUSTAVA_SUSPENZIJE,
+                        StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA);
     }
 }
