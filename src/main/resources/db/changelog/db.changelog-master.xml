@@ -225,4 +225,7 @@
     <!-- Lokalni mock za pravila aktualnih jedinica (eTurizam view): predmet, verifikacija, vrsta dokumenta. -->
     <include file="db/changelog/changes/131-str-facility-actual-rules-local.xml"/>
 
+    <!-- B-3, lokalni mock: smještajni sadržaji (kreveti apartmana i kuća), W-8, kapacitet migriranog objekta. -->
+    <include file="db/changelog/changes/132-str-facility-capacity-b3-local.xml"/>
+
 </databaseChangeLog>

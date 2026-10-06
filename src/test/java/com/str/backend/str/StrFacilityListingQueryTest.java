@@ -115,6 +115,16 @@ class StrFacilityListingQueryTest {
                   type_id BIGINT, quantity INTEGER)
                 """);
         jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS str.facility_content (
+                  id BIGINT PRIMARY KEY, active BOOLEAN, facility_id BIGINT,
+                  type_id BIGINT, quantity INTEGER)
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS str.facility_content_capacity (
+                  id BIGINT PRIMARY KEY, active BOOLEAN, facility_content_id BIGINT,
+                  type_id BIGINT, quantity INTEGER)
+                """);
+        jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS str.address (
                   id BIGINT PRIMARY KEY, active BOOLEAN, county_id BIGINT, municipality_id BIGINT,
                   settlement_id BIGINT, street_id BIGINT, house_number_id BIGINT,
@@ -132,7 +142,7 @@ class StrFacilityListingQueryTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS str.house_number (id BIGINT PRIMARY KEY, name VARCHAR(32))");
 
         for (String table : List.of("facility", "facility_type", "facility_capacity", "facility_unit",
-                "facility_unit_capacity", "document", "business_case", "business_case_verification",
+                "facility_unit_capacity", "facility_content", "facility_content_capacity", "document", "business_case", "business_case_verification",
                 "sif_vrsta_dokumenata", "sif_podvrsta_dokumenta", "organizational_unit", "address",
                 "county", "municipality", "settlement", "street", "house_number", "codebook_element",
                 "subject_address", "subject_version", "subject")) {
@@ -151,6 +161,9 @@ class StrFacilityListingQueryTest {
                   (1031, true, 'FBS_INACTIVE', 'Odjavljen'),
                   (1040, true, 'CAT_BROJ_KREVETA', 'Broj kreveta'),
                   (1041, true, 'CAT_BROJ_POM_KREVETA', 'Broj pomocnih kreveta'),
+                  (1045, true, 'CT_DVO_SOBA', 'Dvokrevetna soba'),
+                  (1046, true, 'CT_TRO_SOBA', 'Trokrevetna soba'),
+                  (1047, true, 'CT_DJEC_IGR', 'Djecje igraliste'),
                   (1050, true, 'BCST_RJES_IZVRSNO', 'Rjesenje izvrsno'),
                   (1051, true, 'BCST_U_RJESAVANJU', 'U rjesavanju'),
                   (1060, true, 'BCVS_U_IZRADI', 'U izradi'),
@@ -669,6 +682,153 @@ class StrFacilityListingQueryTest {
     }
 
     // -------------------------------------------------------------------------------------------
+    // Kapacitet (B-3): isto pravilo za popis i claim
+    // -------------------------------------------------------------------------------------------
+
+    /**
+     * Apartmani i kuće za odmor drže krevete u smještajnim sadržajima: kreveti jednog sadržaja ×
+     * broj jednakih sadržaja. TuRegistar za „Vilu Luciju" (10 trokrevetnih soba) prikazuje 30.
+     */
+    @Test
+    void countsBedsFromAccommodationContents_bedsTimesEqualContents() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Vila Lucija", SLUZBENIK, "2024-01-01 10:00:00");
+        content(500, 10, 1046, 10, true);
+        contentCapacity(600, 500, 1040, 3, true);
+        content(501, 10, 1047, null, true); // sadržaj bez kreveta (igralište) ne mijenja zbroj
+        capacity(101, 10, 1041, 2);
+
+        FacilityListingRow row = list(OIB).getFirst();
+        FacilityOwnershipRow owned = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getBeds()).isEqualTo(30);
+        assertThat(row.getAuxiliaryBeds()).isEqualTo(2);
+        assertThat(row.getObjectLevelCapacity()).isFalse();
+        assertThat(owned.getBeds()).isEqualTo(30);
+        assertThat(FacilityClaimVerifier.maxGuests(owned)).isEqualTo(32);
+    }
+
+    /** W-8 (CDU preprod): 2 dvokrevetne sobe + 2 pomoćna kreveta — TuRegistar „4 + 2". */
+    @Test
+    void countsW8Apartment_asFourPlusTwo() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-w8", "1", SLUZBENIK, "2026-03-30 07:09:48");
+        content(500, 10, 1045, 2, true);
+        contentCapacity(600, 500, 1040, 2, true);
+        capacity(101, 10, 1041, 2);
+
+        FacilityListingRow row = list(OIB).getFirst();
+
+        assertThat(row.getBeds()).isEqualTo(4);
+        assertThat(row.getAuxiliaryBeds()).isEqualTo(2);
+        assertThat(FacilityClaimVerifier.maxGuests(repository.findOwnership(10L).orElseThrow())).isEqualTo(6);
+    }
+
+    /** Svaka izmjena u eTurizmu ostavi stari redak neaktivnim — ne smije ući u zbroj. */
+    @Test
+    void ignoresInactiveContentAndContentCapacityRows() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
+        content(500, 10, 1045, 2, false);           // stara verzija sadržaja
+        contentCapacity(600, 500, 1040, 2, true);
+        content(501, 10, 1045, 1, true);
+        contentCapacity(601, 501, 1040, 2, false);  // stara verzija kapaciteta
+        contentCapacity(602, 501, 1040, 2, true);
+
+        assertThat(list(OIB).getFirst().getBeds()).isEqualTo(2);
+        assertThat(repository.findOwnership(10L).orElseThrow().getBeds()).isEqualTo(2);
+    }
+
+    /**
+     * Popis i claim čitaju isti kapacitet. Claim je ranije redak s {@code active} NULL brojao kao
+     * aktivan, a popis nije — isti objekt je imao „-" u popisu i zaključan broj gostiju u formi.
+     */
+    @Test
+    void listingAndClaimIgnoreSameCapacityRows() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+        capacity(100, 10, 1040, 2);
+        jdbc.update("INSERT INTO str.facility_capacity (id, active, facility_id, type_id, quantity)"
+                + " VALUES (101, NULL, 10, 1040, 5), (102, false, 10, 1041, 3)");
+
+        FacilityListingRow row = list(OIB).getFirst();
+        FacilityOwnershipRow owned = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getBeds()).isEqualTo(2);
+        assertThat(owned.getBeds()).isEqualTo(2);
+        assertThat(row.getAuxiliaryBeds()).isNull();
+        assertThat(owned.getAuxiliaryBeds()).isNull();
+    }
+
+    /** Sobe drže krevete u facility_capacity; to pravilo ima prednost pred sadržajima. */
+    @Test
+    void prefersFacilityCapacity_overContents() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+        capacity(100, 10, 1040, 2);
+        content(500, 10, 1045, 3, true);
+        contentCapacity(600, 500, 1040, 2, true);
+
+        assertThat(list(OIB).getFirst().getBeds()).isEqualTo(2);
+    }
+
+    /**
+     * Migracija je na svaku jedinicu objekta upisala kapacitet cijelog objekta (CDU: objekt s 3
+     * jedinice, svaka s retcima 2, 3 i 4). Kreveti su tada kapacitet objekta, a broj gostiju
+     * jedinice nije poznat (P-22).
+     */
+    @Test
+    void marksObjectLevelCapacity_forMigratedObjectWithSeveralUnits() {
+        migratedCase(900, 1);
+        for (long id = 10; id <= 12; id++) {
+            unit(id, 900, "uuid-migr", "Studio apartmani", MIGRACIJA, "2023-01-19 13:00:00." + id);
+            capacity(id * 10, id, 1040, 2);
+            capacity(id * 10 + 1, id, 1040, 3);
+            capacity(id * 10 + 2, id, 1040, 4);
+        }
+
+        List<FacilityListingRow> rows = list(OIB);
+        FacilityOwnershipRow owned = repository.findOwnership(11L).orElseThrow();
+
+        assertThat(rows).extracting(FacilityListingRow::getObjectLevelCapacity).containsOnly(true);
+        assertThat(rows).extracting(FacilityListingRow::getBeds).containsOnly(9);
+        assertThat(owned.getObjectLevelCapacity()).isTrue();
+        assertThat(FacilityClaimVerifier.maxGuests(owned)).isNull();
+        assertThat(FacilityClaimVerifier.lockedFields(owned)).doesNotContain(FacilityClaimVerifier.FIELD_BEDS);
+    }
+
+    /** Migrirani objekt s jednom jedinicom: kapacitet je kapacitet te jedinice. */
+    @Test
+    void keepsUnitCapacity_forMigratedObjectWithOneUnit() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba", MIGRACIJA, "2023-01-19 13:00:00");
+        content(500, 10, 1045, 1, true);
+        contentCapacity(600, 500, 1040, 4, true);
+
+        FacilityOwnershipRow owned = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(list(OIB).getFirst().getObjectLevelCapacity()).isFalse();
+        assertThat(owned.getObjectLevelCapacity()).isFalse();
+        assertThat(FacilityClaimVerifier.maxGuests(owned)).isEqualTo(4);
+    }
+
+    /** Novi eTurizam vodi kapacitet po jedinici (W-8: jedinice „1", „2"), pa se ne dira. */
+    @Test
+    void keepsUnitCapacity_forVerifiedObjectWithSeveralUnits() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-obj", "1", SLUZBENIK, "2024-01-01 10:00:00.001");
+        unit(11, 900, "uuid-obj", "2", SLUZBENIK, "2024-01-01 10:00:00.002");
+        capacity(100, 10, 1040, 2);
+        capacity(110, 11, 1040, 4);
+
+        List<FacilityListingRow> rows = list(OIB);
+
+        assertThat(rows).extracting(FacilityListingRow::getObjectLevelCapacity).containsOnly(false);
+        assertThat(rows).extracting(FacilityListingRow::getBeds).containsExactly(2, 4);
+        assertThat(repository.findOwnership(11L).orElseThrow().getObjectLevelCapacity()).isFalse();
+    }
+
+    // -------------------------------------------------------------------------------------------
     // Vlasnički upit (claim i FacilityClaimVerifier)
     // -------------------------------------------------------------------------------------------
 
@@ -853,6 +1013,17 @@ class StrFacilityListingQueryTest {
     private void capacity(long id, long facilityId, long typeId, int quantity) {
         jdbc.update("INSERT INTO str.facility_capacity (id, active, facility_id, type_id, quantity)"
                 + " VALUES (?, true, ?, ?, ?)", id, facilityId, typeId, quantity);
+    }
+
+    private void content(long id, long facilityId, long typeId, Integer quantity, boolean active) {
+        jdbc.update("INSERT INTO str.facility_content (id, active, facility_id, type_id, quantity)"
+                + " VALUES (?, ?, ?, ?, ?)", id, active, facilityId, typeId, quantity);
+    }
+
+    private void contentCapacity(long id, long contentId, long typeId, int quantity, boolean active) {
+        jdbc.update("INSERT INTO str.facility_content_capacity"
+                + " (id, active, facility_content_id, type_id, quantity) VALUES (?, ?, ?, ?, ?)",
+                id, active, contentId, typeId, quantity);
     }
 
     private static List<Long> ids(List<FacilityListingRow> rows) {

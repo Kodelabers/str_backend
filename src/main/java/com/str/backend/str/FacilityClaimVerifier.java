@@ -191,10 +191,16 @@ public class FacilityClaimVerifier {
      * sastanka). Jedno mjesto za taj račun — po njemu se predpopunjava claim, zaključava polje i
      * provjerava predaja, pa se ta tri ne mogu razići.
      *
-     * <p>{@code null} kad eTurizam ne zna broj kreveta: tada polje nije zaključano i usporedba se
-     * preskače. Pomoćni kreveti bez kreveta ne čine kapacitet, pa se sami ne računaju.
+     * <p>{@code null} kad eTurizam ne zna broj kreveta jedinice: tada polje nije zaključano i
+     * usporedba se preskače. Pomoćni kreveti bez kreveta ne čine kapacitet, pa se sami ne računaju.
+     * Ne zna ga ni kad su kreveti kapacitet cijelog migriranog objekta
+     * ({@link FacilityOwnershipRow#getObjectLevelCapacity()}): zaključati ga značilo bi upisati
+     * kapacitet objekta uz registracijski broj jedinice (B-3, P-22).
      */
     public static Integer maxGuests(FacilityOwnershipRow facility) {
+        if (Boolean.TRUE.equals(facility.getObjectLevelCapacity())) {
+            return null;
+        }
         Integer beds = facility.getBeds();
         if (beds == null || beds <= 0) {
             return null;

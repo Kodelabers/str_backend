@@ -73,13 +73,15 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * razmotriti), pa {@link #RANGIRANE_JEDINICE_DO} i alias.
      *
      * <p>Stupci: {@code id, su, verificiran, created_date, bc_id, bc_sv, predmet_zadnji,
-     * predmet_rang}. Svi zapisi objekta ulaze u rang (i tuđi), pa noviji predmet drugog vlasnika
-     * skriva stariji.
+     * predmet_rang, predmet_jedinica}. Svi zapisi objekta ulaze u rang (i tuđi), pa noviji predmet
+     * drugog vlasnika skriva stariji. {@code predmet_jedinica} je broj aktualnih jedinica objekta u
+     * istom predmetu (v. {@link FacilityListingRow#getObjectLevelCapacity()}).
      */
     String RANGIRANE_JEDINICE_OD = """
             (SELECT a.*,
                     dense_rank() OVER (PARTITION BY a.su
-                                       ORDER BY a.predmet_zadnji DESC NULLS LAST, a.bc_id DESC) AS predmet_rang
+                                       ORDER BY a.predmet_zadnji DESC NULLS LAST, a.bc_id DESC) AS predmet_rang,
+                    count(*) OVER (PARTITION BY a.su, a.bc_id) AS predmet_jedinica
                FROM (SELECT x.*,
                             max(x.created_date) OVER (PARTITION BY x.su, x.bc_id) AS predmet_zadnji
                        FROM (SELECT id,
@@ -142,10 +144,10 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     /**
      * Jedinice koje iznajmljivač {@code :oib} vidi na popisu: aktualne jedinice najnovijeg predmeta
      * svojih objekata, kojima je predmet njegov, koje posluju ({@code FBS_ACTIVE}, W-5) i koje su
-     * privatni smještaj ({@code :codes}). Stupci: {@code id, su, verificiran, bc_sv}.
+     * privatni smještaj ({@code :codes}). Stupci: {@code id, su, verificiran, bc_sv, predmet_jedinica}.
      */
     String PRIKAZ_ZA_OIB = """
-            SELECT r.id, r.su, r.verificiran, r.bc_sv
+            SELECT r.id, r.su, r.verificiran, r.bc_sv, r.predmet_jedinica
               FROM """ + RANGIRANE_JEDINICE_OD + """
                    (SELECT DISTINCT f.system_uuid
                       FROM str.subject s
@@ -169,6 +171,60 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                                 WHERE s.jips = :oib)
                AND c_st.code = 'FBS_ACTIVE'
                AND c_sub.code IN (:codes)
+            """;
+
+    /*
+     * ---------------------------------------------------------------------------------------------
+     * Kapacitet jedinice — jedno pravilo za popis i za claim (B-3, docs/ETURIZAM-OBJEKTI.md)
+     *
+     * Provjereno na CDU testu i CDU preprodu 6. 10. 2026. (docs/sql/b3-dijagnostika-*.sql) i
+     * usporedbom s TuRegistrom (W-8 „4 + 2”, „Vila Lucija” 30 kreveta, „KZO pristojba” 2 kreveta):
+     *   - kreveti su ILI u facility_capacity (sobe, studio apartmani) ILI u smještajnim sadržajima
+     *     (apartmani, kuće za odmor: facility_content → facility_content_capacity), nikad u oba;
+     *   - sadržaj: facility_content.quantity je „broj jednakih smještajnih sadržaja", a kapacitet
+     *     sadržaja broj kreveta jednog sadržaja — ukupno je umnožak (TuRegistar: 3 × 10 = 30);
+     *   - pomoćni kreveti su uvijek u facility_capacity;
+     *   - samo active = true: neaktivni retci su stare verzije koje eTurizam ostavi kod svake
+     *     izmjene (jedinica 243335: 11 neaktivnih + 1 aktivan redak pomoćnih kreveta).
+     * facility_unit_capacity ostaje zadnja rezerva (hoteli i sl.; na popisu privatnog smještaja
+     * nema nijednog retka).
+     * ---------------------------------------------------------------------------------------------
+     */
+
+    /** Broj kreveta jedinice {@code f}; {@code NULL} kad ga eTurizam ne zna. */
+    String KREVETI_JEDINICE = """
+            coalesce(
+                (SELECT sum(fc.quantity) FROM str.facility_capacity fc
+                   JOIN str.codebook_element ce ON ce.id = fc.type_id
+                  WHERE fc.facility_id = f.id AND fc.active = true
+                    AND ce.code = 'CAT_BROJ_KREVETA'),
+                (SELECT sum(fcc.quantity * c.quantity) FROM str.facility_content c
+                   JOIN str.facility_content_capacity fcc
+                     ON fcc.facility_content_id = c.id AND fcc.active = true
+                   JOIN str.codebook_element ce ON ce.id = fcc.type_id
+                  WHERE c.facility_id = f.id AND c.active = true
+                    AND ce.code = 'CAT_BROJ_KREVETA'),
+                (SELECT sum(fuc.quantity) FROM str.facility_unit fu
+                   JOIN str.facility_unit_capacity fuc
+                     ON fuc.facility_unit_id = fu.id AND fuc.active = true
+                   JOIN str.codebook_element ce ON ce.id = fuc.type_id
+                  WHERE fu.facility_id = f.id AND fu.active = true
+                    AND ce.code = 'CAT_BROJ_KREVETA'))
+            """;
+
+    /** Broj pomoćnih kreveta jedinice {@code f}; {@code NULL} kad ga eTurizam ne zna. */
+    String POMOCNI_KREVETI_JEDINICE = """
+            coalesce(
+                (SELECT sum(fc.quantity) FROM str.facility_capacity fc
+                   JOIN str.codebook_element ce ON ce.id = fc.type_id
+                  WHERE fc.facility_id = f.id AND fc.active = true
+                    AND ce.code = 'CAT_BROJ_POM_KREVETA'),
+                (SELECT sum(fuc.quantity) FROM str.facility_unit fu
+                   JOIN str.facility_unit_capacity fuc
+                     ON fuc.facility_unit_id = fu.id AND fuc.active = true
+                   JOIN str.codebook_element ce ON ce.id = fuc.type_id
+                  WHERE fu.facility_id = f.id AND fu.active = true
+                    AND ce.code = 'CAT_BROJ_POM_KREVETA'))
             """;
 
     interface FacilityListingRow {
@@ -195,8 +251,20 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getHouseNumber();
         String getPostalCode();
         String getFullAddress();
+        /**
+         * Kreveti po {@link StrFacilityRepository#KREVETI_JEDINICE}; kad je
+         * {@link #getObjectLevelCapacity()}, kreveti cijelog objekta.
+         */
         Integer getBeds();
         Integer getAuxiliaryBeds();
+        /**
+         * {@code true} kad {@link #getBeds()} i {@link #getAuxiliaryBeds()} nisu kapacitet jedinice
+         * nego cijelog objekta: migrirani objekt s više jedinica u istom predmetu. Migracija je na
+         * <b>svaku</b> jedinicu upisala kapacitet cijelog objekta (N redaka {@code facility_capacity}
+         * ili isti sadržaj na svakoj jedinici — 5.887 od 5.887 takvih objekata na CDU), pa se
+         * kapacitet pojedine jedinice iz podataka ne može saznati (P-22).
+         */
+        Boolean getObjectLevelCapacity();
         /** Kontakt objekta iz eTurizma — za predpopunu forme (vidi {@link FacilityOwnershipRow}). */
         String getContactEmail();
         String getContactPhone();
@@ -234,30 +302,11 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    a.full_address                          AS fullAddress,
                    f.email                                 AS contactEmail,
                    f.phone                                 AS contactPhone,
-                   coalesce(
-                       (SELECT sum(fc.quantity) FROM str.facility_capacity fc
-                          JOIN str.codebook_element ce ON ce.id = fc.type_id
-                         WHERE fc.facility_id = f.id AND fc.active = true
-                           AND ce.code = 'CAT_BROJ_KREVETA'),
-                       (SELECT sum(fuc.quantity) FROM str.facility_unit fu
-                          JOIN str.facility_unit_capacity fuc
-                            ON fuc.facility_unit_id = fu.id AND fuc.active = true
-                          JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
-                         WHERE fu.facility_id = f.id AND fu.active = true
-                           AND ce2.code = 'CAT_BROJ_KREVETA')
-                   )                                       AS beds,
-                   coalesce(
-                       (SELECT sum(fc2.quantity) FROM str.facility_capacity fc2
-                          JOIN str.codebook_element ce3 ON ce3.id = fc2.type_id
-                         WHERE fc2.facility_id = f.id AND fc2.active = true
-                           AND ce3.code = 'CAT_BROJ_POM_KREVETA'),
-                       (SELECT sum(fuc2.quantity) FROM str.facility_unit fu2
-                          JOIN str.facility_unit_capacity fuc2
-                            ON fuc2.facility_unit_id = fu2.id AND fuc2.active = true
-                          JOIN str.codebook_element ce4 ON ce4.id = fuc2.type_id
-                         WHERE fu2.facility_id = f.id AND fu2.active = true
-                           AND ce4.code = 'CAT_BROJ_POM_KREVETA')
-                   )                                       AS auxiliaryBeds
+                   """ + KREVETI_JEDINICE + """
+                                                           AS beds,
+                   """ + POMOCNI_KREVETI_JEDINICE + """
+                                                           AS auxiliaryBeds,
+                   (NOT s.verificiran AND s.predmet_jedinica > 1) AS objectLevelCapacity
               FROM (SELECT u.*,
                            max(u.redni) OVER () AS ukupno_objekata,
                            count(*) OVER ()     AS ukupno_jedinica
@@ -316,6 +365,12 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         Integer getBeds();
         /** Pomoćni kreveti ({@code CAT_BROJ_POM_KREVETA}); ulaze u maksimalan broj gostiju. */
         Integer getAuxiliaryBeds();
+        /**
+         * {@code true} kad su kreveti kapacitet cijelog objekta, ne jedinice — isto značenje kao
+         * {@link FacilityListingRow#getObjectLevelCapacity()}. Tada broj gostiju jedinice nije
+         * poznat (v. {@link FacilityClaimVerifier#maxGuests}).
+         */
+        Boolean getObjectLevelCapacity();
         Boolean getActive();
         /**
          * Šifra poslovnog statusa ({@code FBS_ACTIVE} / {@code FBS_INACTIVE}), {@code null} kad je
@@ -389,11 +444,9 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * NULL (njihov vlastiti view ga uopće ne filtrira); {@code active = true} bi za takve zapise
      * izgubio vrstu i provjera bi se tiho preskočila.
      *
-     * <p>Broj kreveta ima isti {@code facility_unit_capacity} fallback kao
-     * {@link #findListingByOib} — bez njega objekt s jedinicama vrati {@code NULL} kreveta i
-     * provjera kapaciteta se tiho preskoči, pa bi popis i provjera vidjeli različit podatak.
-     * Pomoćni kreveti imaju isti fallback, jer se zbrajaju s krevetima u maksimalan broj
-     * gostiju (v. {@link FacilityClaimVerifier#maxGuests}).
+     * <p>Kapacitet se računa istim fragmentima kao popis ({@link #KREVETI_JEDINICE},
+     * {@link #POMOCNI_KREVETI_JEDINICE}), strogo nad aktivnim retcima, i nosi istu oznaku
+     * {@code objectLevelCapacity} — popis i provjera ne smiju vidjeti različit kapacitet (B-3).
      *
      * <p>Adresa i naziv se čitaju istom join-mapom kao popis (isti {@code CASE} za
      * {@code same_address_subject}), jer se uspoređuju s onim što je korisnik vidio u formi.
@@ -418,30 +471,11 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    f.phone     AS contactPhone,
                    f.document_id AS documentId,
                    c_cat.name  AS categoryName,
-                   coalesce(
-                       (SELECT sum(fc.quantity) FROM str.facility_capacity fc
-                          JOIN str.codebook_element ce ON ce.id = fc.type_id
-                         WHERE fc.facility_id = f.id AND coalesce(fc.active, true) = true
-                           AND ce.code = 'CAT_BROJ_KREVETA'),
-                       (SELECT sum(fuc.quantity) FROM str.facility_unit fu
-                          JOIN str.facility_unit_capacity fuc
-                            ON fuc.facility_unit_id = fu.id AND coalesce(fuc.active, true) = true
-                          JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
-                         WHERE fu.facility_id = f.id AND coalesce(fu.active, true) = true
-                           AND ce2.code = 'CAT_BROJ_KREVETA')
-                   ) AS beds,
-                   coalesce(
-                       (SELECT sum(fc.quantity) FROM str.facility_capacity fc
-                          JOIN str.codebook_element ce ON ce.id = fc.type_id
-                         WHERE fc.facility_id = f.id AND coalesce(fc.active, true) = true
-                           AND ce.code = 'CAT_BROJ_POM_KREVETA'),
-                       (SELECT sum(fuc.quantity) FROM str.facility_unit fu
-                          JOIN str.facility_unit_capacity fuc
-                            ON fuc.facility_unit_id = fu.id AND coalesce(fuc.active, true) = true
-                          JOIN str.codebook_element ce2 ON ce2.id = fuc.type_id
-                         WHERE fu.facility_id = f.id AND coalesce(fu.active, true) = true
-                           AND ce2.code = 'CAT_BROJ_POM_KREVETA')
-                   ) AS auxiliaryBeds
+                   """ + KREVETI_JEDINICE + """
+                               AS beds,
+                   """ + POMOCNI_KREVETI_JEDINICE + """
+                               AS auxiliaryBeds,
+                   coalesce(f.created_by = 'optimit' AND r.predmet_jedinica > 1, false) AS objectLevelCapacity
             FROM str.facility f
             JOIN str.document d         ON d.id  = f.document_id
             JOIN str.business_case bc   ON bc.id = d.business_case_id

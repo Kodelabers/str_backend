@@ -47,5 +47,13 @@ public record FacilityResponse(
          * {@code true} — objekt obrađen u novom eTurizmu; {@code false} — migriran iz starog
          * sustava i još neprovjeren; {@code null} za privremeno rješenje, koje nije u eTurizmu.
          */
-        Boolean verificiran
+        Boolean verificiran,
+        /**
+         * Kapacitet cijelog objekta kad kapacitet jedinice nije poznat: migrirani objekt s više
+         * jedinica nosi na svakoj jedinici kapacitet cijelog objekta (B-3, P-22). Tada su
+         * {@code brKreveta} i {@code brPomocnihKreveta} jedinice {@code null}, a ovdje je isti
+         * kapacitet objekta na svakoj jedinici. Inače {@code null}.
+         */
+        Integer objektBrKreveta,
+        Integer objektBrPomocnihKreveta
 ) {}

@@ -209,6 +209,8 @@ public class NiasFacilityService {
         for (FacilityListingRow row : rows) {
             String facilityId = String.valueOf(row.getFacilityId());
             String rn = blankToNull(row.getRegistrationNumber());
+            // Kapacitet migriranog objekta s više jedinica je kapacitet objekta, ne jedinice (B-3)
+            boolean objectLevel = Boolean.TRUE.equals(row.getObjectLevelCapacity());
             items.add(new FacilityResponse(
                     facilityId,
                     row.getName(),
@@ -216,8 +218,8 @@ public class NiasFacilityService {
                     row.getSubtypeName(),
                     row.getCategoryName(),
                     row.getStatusName(),
-                    row.getBeds(),
-                    row.getAuxiliaryBeds(),
+                    objectLevel ? null : row.getBeds(),
+                    objectLevel ? null : row.getAuxiliaryBeds(),
                     row.getCountyName(),
                     row.getMunicipalityName(),
                     row.getSettlementName(),
@@ -230,7 +232,9 @@ public class NiasFacilityService {
                     row.getContactPhone(),
                     FacilitySource.ETURIZAM,
                     row.getSystemUuid(),
-                    row.getVerified()));
+                    row.getVerified(),
+                    objectLevel ? row.getBeds() : null,
+                    objectLevel ? row.getAuxiliaryBeds() : null));
         }
         return items;
     }
@@ -277,6 +281,8 @@ public class NiasFacilityService {
                 null,
                 FacilitySource.PRIVREMENO_RJESENJE,
                 id,
+                null,
+                null,
                 null);
     }
 

@@ -15,8 +15,9 @@ piše drukčije.
 | Kategorija | `facility.category_id` → `codebook_element` (`C_3_ZVJEZDICE`) |
 | Poslovni status | `facility.business_status_id` → `codebook_element` (`FBS_ACTIVE` / `FBS_INACTIVE`) |
 | Adresa | `facility.address_id` → `str.address`, imena preko `str.settlement` / `street` / `house_number` / `municipality` / `county`; `facility.same_address_subject = true` → adresa subjekta predmeta (`business_case.subject_version_id` → `subject_address` → `address`) |
-| Broj kreveta | `str.facility_capacity` (`active`) → `codebook_element.code = 'CAT_BROJ_KREVETA'` (pomoćni: `CAT_BROJ_POM_KREVETA`) |
-| Broj kreveta (hoteli i sl.) | `facility_unit` → `facility_unit_capacity` → `CAT_BROJ_KREVETA` |
+| Broj kreveta | `str.facility_capacity` (`active`) → `CAT_BROJ_KREVETA` (sobe, studio apartmani); inače Σ `facility_content_capacity.CAT_BROJ_KREVETA` × `facility_content.quantity`, oba `active` (apartmani, kuće za odmor); v. § B-3 i `StrFacilityRepository.KREVETI_JEDINICE` |
+| Pomoćni kreveti | `str.facility_capacity` (`active`) → `CAT_BROJ_POM_KREVETA` |
+| Broj kreveta (hoteli i sl.) | `facility_unit` → `facility_unit_capacity` → `CAT_BROJ_KREVETA` (zadnja rezerva) |
 | Objekt | `facility.system_uuid` |
 | Predmet i OIB | `facility.document_id → document.business_case_id → business_case.subject_version_id → subject.jips` |
 | RB | `facility.registration_number` |
@@ -34,8 +35,9 @@ razlikuju među okolinama — vezati se isključivo na `code`.
 - **Registracijski broj ide po jedinici**: `accommodation.facility_id` i write-back
   (`writeBackRegistrationNumber`) su po `facility.id`.
 - Migrirane jedinice nemaju vlastitu oznaku — svi stupci osim `id`, `address_id` i datuma su im isti
-  (provjereno na 500 objekata), a kapacitet je po jedinici („Vila Tamaris" = 10 soba po 2 kreveta).
-  Frontend ih zato prikazuje ispod objekta s rednim brojem; novi eTurizam jedinicama daje naziv
+  (provjereno na 500 objekata). **Kapacitet migrirane jedinice je kapacitet cijelog objekta** —
+  migracija ga je kopirala na svaku jedinicu (B-3), pa se prikazuje samo na objektu. Frontend
+  migrirane jedinice prikazuje ispod objekta s rednim brojem; novi eTurizam jedinicama daje naziv
   (`facility.name`), pa se tada prikazuje naziv.
 
 Ranije se deduplikiralo po `system_uuid` (vidio se jedan zapis po objektu). To je skrivalo jedinice:
@@ -135,8 +137,11 @@ izvučen iz kompiliranih `@Query` anotacija).
   i apartmani u domaćinstvu nemaju `facility_unit` redaka. Iz eTurizma se dobije samo broj kreveta.
 - **Legacy registracijski brojevi.** `facility.registration_number` je na CDU popunjen u 4 zapisa —
   kolona je odredište write-backa iz STR-a (v. `docs/TUSTART-INTEGRACIJA.md` §6).
-- **Strukturirana adresa u `str.address`.** Upotrebljivi su `full_address`, `settlement` i ID-evi prema
-  hijerarhiji — zato se imena razrješavaju joinovima, a denormalizirane kolone su samo fallback.
+- **Strukturirana adresa migriranih objekata.** Migrirani zapisi nemaju ulicu ni kućni broj, nego
+  samo `full_address` u obliku „Ulica 12" (bez naselja). Verificirani imaju ulicu i kućni broj preko
+  ID-eva hijerarhije, a `full_address` im je često prazna (B-3). Imena se razrješavaju joinovima, a
+  denormalizirane kolone su samo fallback.
+- **Kapacitet pojedine migrirane jedinice** u objektu s više jedinica (B-3, P-22).
 - **Oznaka migrirane jedinice.** Ne postoji ni u jednoj koloni zapisa ni u povezanim tablicama.
 
 ## Preduvjeti na okolini (provjeriti prije testiranja na CDU / preprod)
@@ -212,5 +217,281 @@ adrese i objekte mock OIB-a `99999999990` (`nias.mock.fixed-oib`). Changeset
 | 214 | migrirana soba | 1 objekt, „Nije verificiran" |
 | 215 | migrirana kopija objekta 203, starija | skrivena |
 
+Changeset `132-str-facility-capacity-b3-local.xml` (`context="local"`, B-3) dodaje tablice
+`facility_content` i `facility_content_capacity` te:
+
+| Zapisi | Slučaj | Prikaz |
+| :--- | :--- | :--- |
+| 220 | „1" — objekt iz W-8: apartman, 2 dvokrevetne sobe + 2 pomoćna, Ulica Vile Velebita 4, Nin | „Ulica Vile Velebita 4, 23232 Nin", „4 kreveta + 2 pomoćna", broj gostiju 6 (zaključan) |
+| 221 | „Vila Lucija": kuća za odmor, 10 trokrevetnih soba (+ jedna neaktivna verzija sadržaja), prazna `full_address`, ulica i kućni broj popunjeni | „Blato 3, 21420 Bol", „30 kreveta + 2 pomoćna", broj gostiju 32 |
+| 210–213 | „Vila Mare": svaka jedinica dobiva retke cijelog objekta (2, 2, 2, 3) | kapacitet 9 samo na objektu; jedinice bez kapaciteta, broj gostiju nije zaključan |
+
 Mock objekti ostalih lokalnih subjekata (changeseti 112/115/116) nemaju predmet, pa se na popisu više
 ne prikazuju.
+
+## B-3 · Adresa i kapacitet u popisu objekata
+
+Povod: Z-18, Z-19 i W-8. Ministarstvo javlja da adresa i kapacitet u tablici „Vaši smještajni objekti
+u sustavu” ne odgovaraju TuRegistru. Iste vrijednosti predpopunjavaju i zaključavaju formu (claim) i
+dopunjuju se uz izdani registracijski broj (`completeFrom`).
+
+Skripte su `docs/sql/b3-dijagnostika.sql`, `-2`, `-3`, `-4` i `-w8`. Rezultati s **CDU testa**
+(6. 10. 2026.) su u `docs/sql/results/sql_1`, `sql_2`, `sql_3` i `sql_w8`. Skup je ono što popis može
+prikazati, bez filtra OIB-a: 423 verificirane jedinice (421 objekt) i 119.252 neverificirane jedinice
+(81.441 objekt).
+
+**Objekt iz W-8 na CDU ne postoji** (`sql_w8`, B1-0 = 0). Kućni broj 6 i oznaka „2” zato još nisu
+dokazani; nalaz niže vrijedi za CDU.
+
+### Hipoteze
+
+| | Hipoteza | Nalaz na CDU | Odluka |
+| :--- | :--- | :--- | :--- |
+| H1 | `same_address_subject = true` → prikazuje se adresa vlasnika | Nijedna jedinica na popisu nema `true`. Verificirane: 408 NULL, 15 `false`. Neverificirane: sve `false`. | **Odbačeno** |
+| H2 | Više adresa subjekta, `max(address_id)` bira krivu | Bez H1 se pravilo ne primjenjuje | **Odbačeno** |
+| H3 | Jedinice istog objekta imaju različite adrese | 5.879 objekata s više jedinica: svaka jedinica ima svoj `address_id`, ali je sadržaj adrese (puna adresa, kućni broj, naselje) u **svih** jednak | **Odbačeno** |
+| H4 | Kapacitet: `active` NULL/false, više redaka, dva izvora, popis ≠ claim | Popis i claim na CDU se ne razlikuju (nema `active` NULL). Nađena su **dva druga problema**, v. „Kapacitet” | **Potvrđeno u drugom obliku** |
+| H5 | Oznaka jedinice nije `facility.name` | Verificirani objekti s više jedinica (2) imaju jedinstvene nazive (`facility.name`). Migrirani nemaju oznaku. `facility_unit` je prazan, a `parent_facility_id` nema nijedna jedinica s popisa (u registru 1.732 zapisa) | **Odbačeno**: oznaka je `facility.name` |
+| H6 | `full_address` nije usklađen s ostalim stupcima | `full_address` nije puna adresa ni kod verificiranih ni kod migriranih, v. „Adresa” | **Potvrđeno** (uzrok je u prikazu) |
+| H7 | Očekuje se kapacitet po jedinici i maksimalan broj gostiju | Nije podatkovno pitanje | **Otvoreno** (pitanje ministarstvu) |
+
+### Adresa: uzrok je prikaz, ne upit
+
+`PostojeciObjektiTable` prikazuje `full_address`, a kad je ona prazna, „naselje, općina”. Ulicu i
+kućni broj nikad ne slaže, jer polazi od toga da su ta polja gotovo uvijek prazna. To vrijedi za
+migrirane, ali ne i za verificirane objekte (`sql_2`, A1a, A1b, A2, A2b):
+
+| Skupina | Jedinica | Prikaz danas | Što postoji u bazi |
+| :--- | ---: | :--- | :--- |
+| Verificirane, `full_address` popunjena | 137 | puna adresa („Bol, Blato 3, 21420 BOL”) | i ulica (135) i kućni broj (133) |
+| **Verificirane, `full_address` prazna** | **247** | **„Split, SPLIT”** | ulica 234, kućni broj 231, poštanski broj 246. Naselje = općina u 211 |
+| Verificirane, prazan redak adrese | 24 | „-” | ništa. Subjekt predmeta ima adresu u 21 |
+| Verificirane bez `address_id` (`same_address_subject` false/NULL) | 15 | „-” | ništa. Subjekt ima adresu u 12 |
+| **Migrirane** | **119.252** | `full_address` + županija | `full_address` je samo „ulica kbr” („Kurmanova 12”, „RADINI 9”): 102.471 ne sadrži naselje, 128 sadrži poštanski broj. Strukturirane ulice i kućnog broja nema ni u jednoj; naselje, poštanski broj i županija postoje odvojeno |
+
+Usporedba s viewom (`sql_1`, S1/S2): kad view ima adresu, naša `full_address` i kućni broj su jednaki
+u 100 % jedinica. Upit, dakle, čita ispravan zapis; pogrešno je samo ono što se od njega prikazuje.
+
+Ista ograničenja vrijede i za formu: migrirani objekt nema strukturiranu ulicu ni kućni broj. Ta polja
+zato nisu zaključana i ne upisuju se uz registracijski broj, osim ako ih korisnik upiše sam.
+
+### Kapacitet: dva odvojena problema
+
+**1. Migrirani objekt s više jedinica: svaka jedinica nosi kapacitet cijelog objekta** (`sql_3`, R1,
+R1b, R1c).
+
+- Kod svih 22.121 jedinice objekata s više jedinica koje imaju retke kreveta broj aktivnih redaka
+  `CAT_BROJ_KREVETA` jednak je broju jedinica objekta. Isto vrijedi i za pomoćne krevete.
+- U svih 5.877 takvih objekata **sve jedinice imaju isti skup redaka**. Primjer: objekt s 3 jedinice
+  ima na svakoj jedinici retke 2, 3 i 4 kreveta.
+- Objekti s jednom jedinicom imaju 0 ili 1 redak (0 ih ima više).
+
+Aplikacija retke zbraja. Jedinica zato prikazuje kapacitet **cijelog objekta** (2 + 3 + 4 = 9). Redak
+objekta u tablici zbraja jedinice, pa prikazuje N puta više (27). Isti zbroj ide u claim i u
+`maxGuests`, pa se broj gostiju cijelog objekta zaključava na svakoj jedinici i upisuje uz njezin
+registracijski broj.
+
+Koji redak pripada kojoj jedinici, iz podataka se ne vidi. Svi redovi su stvoreni istog dana, a
+redoslijed `facility_capacity.id` unutar jedinice ne mora odgovarati redoslijedu `facility.id`
+jedinica. To je pitanje za eTurizam.
+
+**2. Verificirani apartmani i kuće za odmor drže krevete u kapacitetu sadržaja** (`sql_3`, R2, R2b,
+R2c).
+
+- `facility_capacity.CAT_BROJ_KREVETA` imaju samo sobe i studio apartmani.
+- Nijedan verificirani `FS_APARTMAN` ni `FS_KUCA_ZA_ODMOR` (252 jedinice na CDU) nema retka kreveta u
+  `facility_capacity`.
+- Njihovi kreveti su u `facility_content` (spavaće sobe: `CT_DVO_SOBA`, `CT_JEDNO_SOBA`,
+  `CT_TRO_SOBA`) → `facility_content_capacity.CAT_BROJ_KREVETA`: 252 jedinice, 384 retka, 754 kreveta.
+
+Popis i claim taj izvor ne čitaju, pa je kapacitet „-”, a polje broja gostiju nije zaključano.
+Pomoćni kreveti su i za apartmane u `facility_capacity`. Pravila `active` i zbrajanja za kapacitet
+sadržaja provjerava `b3-dijagnostika-4.sql`.
+
+### View nije referenca za kapacitet
+
+Živa definicija `vw_src_facility_actual` na CDU (`sql_2`, C0a) odgovara DDL-u. Za kapacitet se ipak ne
+može koristiti kao mjerilo:
+
+- `facility_capacity` spaja bez filtra `active`. Svaka izmjena u eTurizmu ostavlja neaktivni redak, pa
+  view zbraja povijest. Jedinica 243335 ima 11 neaktivnih redaka i 1 aktivan redak pomoćnih kreveta, a
+  view daje 12 (`sql_2`, K3).
+- Tip jediničnog kapaciteta spaja na `fu.type_id` umjesto na `fuc.type_id`.
+- `facility_content_capacity` uopće ne čita.
+
+Pravilo `active = true` koje aplikacija koristi je ispravno.
+
+### Otvoreno
+
+- W-8: `b3-dijagnostika-w8.sql` na dev, preprodu i CDU preprodu.
+- Kapacitet sadržaja verificiranih objekata (`active`, verzije, zbroj): `b3-dijagnostika-4.sql`.
+- eTurizam: koji redak kapaciteta migriranog objekta pripada kojoj jedinici; prikazuje li TuRegistar
+  adresu subjekta kad je `same_address_subject` NULL, a adresa objekta prazna (39 verificiranih
+  jedinica na CDU).
+- Ministarstvo (H7, W-7, W-10): prikazuje li se kapacitet po jedinici i kao maksimalan broj gostiju.
+
+**Odluka 6. 10. 2026. (do odgovora eTurizma, P-22):**
+- Kapacitet migriranog objekta s više jedinica prikazuje se samo u retku objekta, kao zbroj jednog
+  skupa redaka.
+- Jedinice kapacitet ne prikazuju.
+- Broj gostiju jedinice se ne zaključava i ne dopunjuje iz eTurizma, nego ga upisuje korisnik
+  (obavezan je po V-2).
+
+### Kapacitet sadržaja: kako ga računa TuRegistar (4. krug, `sql_4`)
+
+Primjer iz TuRegistra (CDU), kuća za odmor „KZO pristojba” (`facility.id` 240986):
+
+| U TuRegistru | Vrijednost |
+| :--- | :--- |
+| Ulica | „Biokovska” |
+| Kućni broj | prazno |
+| Županija, grad/općina, naselje | prazno u obrascu (u bazi postoje: naselje Split, općina SPLIT, poštanski broj 21000) |
+| „Smještajni sadržaji objekta” | broj kreveta 2, broj jednakih smještajnih sadržaja 1, **UKUPNO 2** |
+
+STR je za taj objekt prikazao adresu „Split, SPLIT” bez ulice, a kapacitet „-”.
+
+Model sadržaja:
+
+- `facility_content.quantity` je **broj jednakih smještajnih sadržaja** (npr. 10 trokrevetnih soba).
+- `facility_content_capacity` (`CAT_BROJ_KREVETA`) je **broj kreveta jednog sadržaja**. U svim
+  primjerima `CT_JEDNO_SOBA` = 1, `CT_DVO_SOBA` = 2, `CT_TRO_SOBA` = 3.
+- **Ukupno kreveta = Σ (kreveti sadržaja × broj jednakih sadržaja)**, samo za aktivne retke
+  (`facility_content.active` i `facility_content_capacity.active`). Neaktivni retci su stare verzije
+  (T1: 26 neaktivnih redaka `CT_DVO_SOBA`). Zbroj bi mijenjali kod 19 jedinica (T2), a `active` nije
+  NULL ni u jednom retku.
+
+Umnožak je **potvrđen u TuRegistru** na objektu „Vila Lucija” (`facility.id` 73, predmet
+UP/I-100/22-1): broj kreveta 3, broj jednakih smještajnih sadržaja 10, **UKUPNO 30**. Adresa u
+TuRegistru je ulica „Blato”, kućni broj „3”. STR za taj objekt prikazuje kapacitet „-”.
+
+Izvor kreveta po podvrsti verificiranih jedinica (T2), dvije skupine se nigdje ne preklapaju:
+
+| Podvrsta | Kreveti u `facility_capacity` | Kreveti u sadržaju | Bez kreveta |
+| :--- | ---: | ---: | ---: |
+| `FS_SOBA` | 95 | 0 | 8 |
+| `FS_STUDIO_APARTMAN` | 39 | 0 | 0 |
+| `FS_APARTMAN` | 0 | 180 | 19 |
+| `FS_KUCA_ZA_ODMOR` | 0 | 71 | 17 |
+
+Pomoćni kreveti su za sve podvrste u `facility_capacity` (`CAT_BROJ_POM_KREVETA`).
+
+**Migrirani zapisi** (T4): svaki od 125.559 migriranih zapisa sa sadržajem ima točno jedan sadržaj i
+jedan kapacitet sadržaja. Je li to kapacitet same jedinice (odgovor na P-22 a) provjerava
+`b3-dijagnostika-5.sql`.
+
+### Kapacitet migriranih jedinica (5. krug, `sql_5`)
+
+Migrirani zapisi drže krevete u **jednom od dva izvora, nikad u oba**:
+
+- u `facility_capacity`;
+- ili u jednom sadržaju `CT_SOBA` s kapacitetom `CAT_BROJ_KREVETA` i količinom 1 (U1: 67.998
+  jedinica; 61.387 jedinica nema sadržaj).
+
+Kod objekata s jednom jedinicom 46.433 jedinice imaju krevete u sadržaju, a 29.563 u
+`facility_capacity`. Nijedna nema oba izvora (U2).
+
+**Objekti s više jedinica:** 5.887 objekata, 43.712 jedinica (U3). Podaci su kopija kapaciteta
+objekta na svakoj jedinici:
+
+- 3.225 objekata ima kapacitet u sadržaju. **U svim je vrijednost na svakoj jedinici ista** (npr. obje
+  jedinice imaju po 7 kreveta). To je ili ukupan kapacitet objekta ili kapacitet svake jedinice.
+- Ostali imaju N redaka `facility_capacity`, kao u 3. krugu: isti skup redaka na svakoj jedinici, a
+  zbroj jednog skupa je kapacitet objekta.
+
+Ni u jednom izvoru se ne vidi kapacitet pojedine migrirane jedinice. Odluka od 6. 10. (kapacitet
+samo na objektu, P-22) zato vrijedi za oba izvora.
+
+**Pravilo za broj kreveta jedinice:**
+
+```
+kreveti = Σ facility_capacity.CAT_BROJ_KREVETA (active)
+          inače Σ (facility_content_capacity.CAT_BROJ_KREVETA × facility_content.quantity) (oba active)
+pomoćni = Σ facility_capacity.CAT_BROJ_POM_KREVETA (active)
+```
+
+Iznimka je migrirani objekt s više jedinica u istom predmetu. Ondje se isto pravilo primijenjeno na
+**jednu** jedinicu daje kapacitet objekta, a kapacitet jedinice je nepoznat.
+
+Za objekte čiji je kapacitet u sadržaju ostaje otvoreno je li vrijednost ukupna za objekt ili po
+jedinici. Treba je usporediti s TuRegistrom, npr. objekt `00182b7e-319f-41a3-bd9f-ec88fbb90478`
+(jedinice 54734 i 54735, svaka po 7 kreveta).
+
+### W-8 (CDU preprod, `sql_w8_preprod`)
+
+Objekt `12bcff39-74e9-4696-b5f0-4444216ee8e9` postoji na **CDU preprodu** (`172.20.8.212`) i ima 5
+zapisa:
+
+| `facility.id` | Naziv | Stanje | Adresa objekta |
+| ---: | :--- | :--- | :--- |
+| 1100263 | (naziv objekta) | migriran, `active = false`, predmet neaktivan | „Nin, 23232 NIN” (bez ulice) |
+| 1440696 | (naziv objekta) | zahtjev za promjenu podataka (`DST_Z_PROMJ_POD`), bez predmeta i poslovnog statusa | Ulica Vile Velebita 4 |
+| 1444993 | 1 | `historical = true` | Ulica Vile Velebita 4 |
+| **1444999** | **1** | **jedina aktualna jedinica** (rang 1, verificiran, `FBS_ACTIVE`, jedina u viewu) | **Ulica Vile Velebita 4** |
+| 1445081 | 1 | `historical = true`, rješenje o ukidanju, `FBS_INACTIVE` | Ulica Vile Velebita 4 |
+
+**Kućni broj 6** postoji **samo u adresi prebivališta vlasnika** (`subject_address` tipa
+`PREBIVALISTE` subjekta predmeta). Nijedan zapis objekta nema kućni broj 6. Adresa vlasnika se ovdje
+namjerno ne navodi: osobni je podatak, a nalazi se u izvozu rezultata koji se ne commita.
+
+Svi zapisi imaju `same_address_subject` NULL ili `false`, pa popis i claim tu adresu za objekt ne
+uzimaju. Danas i staro pravilo prikazuju „Nin, Ulica Vile Velebita 4, 23232 NIN” (B1e). STR adresu
+prebivališta prikazuje u odjeljku **podnositelja** (izvor `STR_SUBJEKT`). Najvjerojatnije je
+kućni broj 6 viđen ondje, a ne kao adresa objekta. Snimke onoga što je ministarstvo vidjelo nemamo
+(P-5).
+
+**Oznaka „2”:** nijedan zapis nema naziv „2"; aktualna jedinica ima naziv „1”, kao u TuRegistru.
+Jedini podatak „2” su pomoćni kreveti (`CAT_BROJ_POM_KREVETA` = 2). Odakle je „2” na snimci, ne može
+se utvrditi bez snimke (P-5).
+
+**Kapacitet** (`sql_w8_preprod_2`, W1) je **potvrđen**:
+
+- Jedinica 1444999 je `FS_APARTMAN`. Ima aktivan sadržaj `CT_DVO_SOBA` s 2 jednaka sadržaja po 2
+  kreveta, što daje **4 kreveta**.
+- U `facility_capacity` ima **2 pomoćna kreveta**.
+- Zajedno to je **4 + 2, isto kao u TuRegistru**.
+
+STR krevete ne prikazuje jer ne čita sadržaj. Migrirani zapis (1100263, neaktivan) imao je jedan
+sadržaj `CT_SOBA` s 4 kreveta.
+
+STR za ove zapise na CDU preprodu nema ni zahtjev ni izdan registracijski broj (W2, W3 prazni).
+Primjedba W-8 dakle dolazi s popisa ili iz forme, ne iz izdanog broja.
+
+### Ispravak (B-3, grana `feature/b-3-adresa-kapacitet`)
+
+**Kapacitet — backend.** Jedno pravilo za popis i claim (`StrFacilityRepository`):
+
+- `KREVETI_JEDINICE` i `POMOCNI_KREVETI_JEDINICE` koriste i `findListingByOib` i `findOwnership`.
+- Kreveti dolaze iz `facility_capacity`; kad ondje nema redaka, uzima se umnožak iz smještajnih
+  sadržaja, a zadnja rezerva je `facility_unit_capacity`.
+- Uzimaju se samo aktivni retci. Claim je ranije redak s `active` NULL brojao kao aktivan, a popis
+  nije.
+- `objectLevelCapacity` je `true` za migriranu jedinicu iz objekta s više jedinica u istom predmetu
+  (`predmet_jedinica` iz `RANGIRANE_JEDINICE_OD`).
+  - Popis tada kapacitet vraća u `objektBrKreveta` / `objektBrPomocnihKreveta`, a jedinica nema
+    svoj.
+  - `FacilityClaimVerifier.maxGuests` vraća `null`: broj gostiju se ne zaključava, ne dopunjuje
+    (`completeFrom`) i ne uspoređuje.
+  - Korisnik ga upisuje sam, a obavezan je po V-2.
+
+**Adresa i kapacitet — frontend.**
+
+- `formatAdresaZaPopis` (`src/utils/address.ts`) slaže „Ulica kbr, poštanski broj naselje" kad
+  je ulica poznata.
+- Inače uzima `full_address` i dodaje naselje kad ga ona ne sadrži. Općina se prikazuje samo kad
+  naselja nema.
+- `objectCapacity` (`src/utils/facilityGroups.ts`) kapacitet objekta uzima jednom, a ne zbraja ga
+  po jedinicama.
+- Prikaz ostaje „N kreveta" i sivo „N pomoćnih" (odluka 6. 10.; P-23 otvoren).
+
+**Već izdani brojevi.** Podaci se ne mijenjaju. Izvještaj `docs/sql/b3-izdani-brojevi.sql` (I1, I2)
+broji i navodi brojeve izdane na migriranoj jedinici objekta s više jedinica, uz koje je mogao biti
+upisan kapacitet cijelog objekta.
+
+**CDU, 6. 10. 2026.:** STR je izdao 7 brojeva (2 `ACTIVE`, 5 `WITHDRAWN`). Nijedan nije na migriranoj
+jedinici objekta s više jedinica (I1 = 0, I2 prazan), pa na CDU nema pogođenih brojeva. Na preprodu
+i produkciji izvještaj treba pokrenuti prije deploya.
+
+**Indeksi (`b3-indeksi.sql`, CDU):** `facility_content.facility_id`,
+`facility_content_capacity.facility_content_id`, `facility_capacity.facility_id`,
+`facility_unit.facility_id` i `facility_unit_capacity.facility_unit_id` imaju btree indeks. Novi
+podupit za kapacitet sadržaja zato ide po indeksu.
