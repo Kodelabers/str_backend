@@ -192,7 +192,8 @@ public class AccommodationEntity {
      */
     public record FacilityData(String name, Long accommodationTypeId, Integer maxGuests,
                                String county, String city, String settlement,
-                               String street, String streetNumber, String postalCode) {
+                               String street, String streetNumber, String postalCode,
+                               String category) {
     }
 
     /**
@@ -217,6 +218,7 @@ public class AccommodationEntity {
         if (isBlank(street)) street = fit(data.street(), 128);
         if (isBlank(streetNumber)) streetNumber = fit(data.streetNumber(), 64);
         if (isBlank(postalCode)) postalCode = fit(data.postalCode(), 32);
+        if (isBlank(category)) category = fit(data.category(), 32);
         this.updatedAt = Instant.now();
     }
 
