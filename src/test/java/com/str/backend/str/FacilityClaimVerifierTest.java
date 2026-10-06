@@ -318,6 +318,29 @@ class FacilityClaimVerifierTest {
         assertThat(FacilityClaimVerifier.lockedFields(row)).doesNotContain("maxBeds");
     }
 
+    /**
+     * Migrirani objekt s više jedinica nosi na svakoj jedinici kapacitet cijelog objekta (B-3,
+     * P-22): to nije broj gostiju jedinice, pa se ne zaključava, ne dopunjuje i ne uspoređuje.
+     */
+    @Test
+    void maxGuests_isNullWhenCapacityBelongsToWholeObject() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getBeds()).thenReturn(9);
+        when(row.getObjectLevelCapacity()).thenReturn(true);
+
+        assertThat(FacilityClaimVerifier.maxGuests(row)).isNull();
+        assertThat(FacilityClaimVerifier.lockedFields(row)).doesNotContain("maxBeds");
+    }
+
+    @Test
+    void passes_whenSubmittedGuestsDifferFromObjectLevelCapacity() {
+        stubFacility(OIB, "FS_SOBA", 9, true);
+        when(stubbedRow.getObjectLevelCapacity()).thenReturn(true);
+        stubSubmittedType(1L, "FS_SOBA");
+
+        assertThatCode(() -> verifier.verify(OIB, "153049", claim(1L, 3))).doesNotThrowAnyException();
+    }
+
     /** Vrsta bez FS_ šifre (npr. hotel) — usporedba se preskače, ne laže. */
     @Test
     void passes_whenSubmittedTypeHasNoCode() {

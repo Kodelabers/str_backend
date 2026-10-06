@@ -24,3 +24,6 @@ secrets/
 *.pfx
 *.key
 *.pem
+
+# Izvozi rezultata dijagnostičkih upita s okolina (osobni podaci) — ne commitati
+docs/sql/results/

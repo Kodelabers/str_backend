@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      B-3: lokalni mock za kapacitet i adresu objekta (docs/ETURIZAM-OBJEKTI.md § B-3).
+      Samo context="local"; na dev/CDU/preprod tablice posjeduje eTurizam i read-only su.
+
+      - Smještajni sadržaji (facility_content → facility_content_capacity): apartmani i kuće za odmor
+        drže krevete ondje, a ne u facility_capacity. Ukupno = kreveti sadržaja × broj jednakih sadržaja.
+      - Migrirani objekt s više jedinica nosi na svakoj jedinici kapacitet cijelog objekta.
+      - Verificirani objekt s praznom full_address, a popunjenom ulicom i kućnim brojem
+        (u tablici se prikazivalo „naselje, općina" bez ulice).
+
+      INTENTIONALLY LOOSE SCHEMA, kao 100 / 123 / 131: bez FK-ova i NOT NULL-ova.
+    -->
+
+    <changeSet id="132-str-facility-content" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="facility_content"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="facility_content">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="facility_id" type="BIGINT"/>
+            <column name="type_id" type="BIGINT"/>
+            <column name="quantity" type="INTEGER"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="facility_content" indexName="idx_str_facility_content_facility">
+            <column name="facility_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="132-str-facility-content-capacity" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="facility_content_capacity"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="facility_content_capacity">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="facility_content_id" type="BIGINT"/>
+            <column name="type_id" type="BIGINT"/>
+            <column name="quantity" type="INTEGER"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="facility_content_capacity"
+                     indexName="idx_str_facility_content_capacity_content">
+            <column name="facility_content_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!--
+      Mock iznajmljivač 99999999990 (nias.mock.fixed-oib). Dodano:
+        220     „1" — objekt iz W-8 (CDU preprod, jedinica 1444999): apartman, Ulica Vile Velebita 4,
+                Nin; 2 dvokrevetne sobe + 2 pomoćna kreveta → TuRegistar „4 + 2", broj gostiju 6;
+        221     „Vila Lucija" (CDU, jedinica 73): kuća za odmor, 10 trokrevetnih soba = 30 kreveta
+                + 2 pomoćna; jedna stara (neaktivna) verzija sadržaja; full_address prazna, ulica
+                „Blato" i kućni broj „3" popunjeni;
+        210-213 „Vila Mare" (131): svaka jedinica dobiva retke cijelog objekta (2, 2, 2, 3), kao
+                migrirani objekti na CDU → kapacitet objekta 9, jedinice bez vlastitog kapaciteta.
+    -->
+    <changeSet id="132-str-mock-oib-capacity-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.business_case WHERE id BETWEEN 9020 AND 9029</sqlCheck>
+            <sqlCheck expectedResult="1">SELECT COUNT(*) FROM str.subject WHERE jips = '99999999990'</sqlCheck>
+            <sqlCheck expectedResult="4">SELECT COUNT(*) FROM str.facility WHERE id BETWEEN 210 AND 213</sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.codebook_element (id, active, code, name) VALUES
+              (1070, true, 'CT_JEDNO_SOBA', 'Jednokrevetna soba'),
+              (1071, true, 'CT_DVO_SOBA',   'Dvokrevetna soba'),
+              (1072, true, 'CT_TRO_SOBA',   'Trokrevetna soba'),
+              (1073, true, 'CT_DJEC_IGR',   'Dječje igralište');
+
+            INSERT INTO str.county (id, name)                  VALUES (9202, 'Zadarska županija');
+            INSERT INTO str.municipality (id, name, county_id) VALUES (9102, 'NIN', 9202), (9103, 'BOL', 9201);
+            INSERT INTO str.settlement (id, name, municipality_id, postal_code) VALUES
+              (9002, 'Nin', 9102, '23232'),
+              (9003, 'Bol', 9103, '21420');
+            INSERT INTO str.street (id, name, settlement_id) VALUES
+              (9302, 'Ulica Vile Velebita', 9002),
+              (9303, 'Blato', 9003);
+            INSERT INTO str.house_number (id, name, street_id) VALUES (9402, '4', 9302), (9403, '3', 9303);
+
+            INSERT INTO str.address (id, active, county_id, municipality_id, settlement_id, street_id,
+                                     house_number_id, full_address) VALUES
+              (920, true, 9202, 9102, 9002, 9302, 9402, 'Nin, Ulica Vile Velebita 4, 23232 NIN'),
+              (921, true, 9201, 9103, 9003, 9303, 9403, NULL);
+
+            INSERT INTO str.business_case (id, active, status_type_id, jurisdiction_organizational_unit_id, subject_version_id) VALUES
+              (9020, true, 1050, 1, 99), (9021, true, 1050, 1, 99);
+            INSERT INTO str.document (id, active, business_case_id, subject_version_id, subtype_code, execution_date) VALUES
+              (920, true, 9020, 99, 'DST_R_OD_UG_DOM', TIMESTAMP '2020-10-26 00:00:00'),
+              (921, true, 9021, 99, 'DST_R_OD_UG_DOM', TIMESTAMP '2022-06-01 00:00:00');
+
+            INSERT INTO str.facility (id, active, subject_id, subject_version_id, name, system_uuid,
+                                      document_id, address_id, category_id, business_status_id,
+                                      same_address_subject, historical, registration_number,
+                                      created_by, created_date) VALUES
+              (220, true, 99, 99, '1',           'mock-uuid-w8',     920, 920, 1020, 1030, NULL, false, NULL, 'sluzbenik', TIMESTAMP '2026-03-30 07:09:48'),
+              (221, true, 99, 99, 'Vila Lucija', 'mock-uuid-lucija', 921, 921, 1020, 1030, NULL, false, NULL, 'sluzbenik', TIMESTAMP '2022-06-01 10:00:00');
+
+            INSERT INTO str.facility_type (id, active, facility_id, type_id, sub_type_id) VALUES
+              (220, true, 220, 1000, 1011),
+              (221, true, 221, 1000, 1013);
+
+            -- pomoćni kreveti su i za apartmane u facility_capacity
+            INSERT INTO str.facility_capacity (id, active, facility_id, type_id, quantity) VALUES
+              (2200, true, 220, 1041, 2),
+              (2210, true, 221, 1041, 2);
+
+            INSERT INTO str.facility_content (id, active, facility_id, type_id, quantity) VALUES
+              (2200, true,  220, 1071, 2),
+              (2210, false, 221, 1072, 8),     -- stara verzija: ne broji se
+              (2211, true,  221, 1072, 10),
+              (2212, true,  221, 1073, NULL);  -- sadržaj bez kreveta
+            INSERT INTO str.facility_content_capacity (id, active, facility_content_id, type_id, quantity) VALUES
+              (2200, true, 2200, 1040, 2),
+              (2210, true, 2210, 1040, 3),
+              (2211, true, 2211, 1040, 3);
+
+            -- Vila Mare: svaka jedinica nosi retke cijelog objekta (2, 2, 2, 3)
+            INSERT INTO str.facility_capacity (id, active, facility_id, type_id, quantity) VALUES
+              (2100, true, 210, 1040, 2), (2101, true, 210, 1040, 2), (2102, true, 210, 1040, 3),
+              (2110, true, 211, 1040, 2), (2111, true, 211, 1040, 2), (2112, true, 211, 1040, 3),
+              (2120, true, 212, 1040, 2), (2121, true, 212, 1040, 2), (2122, true, 212, 1040, 3),
+              (2130, true, 213, 1040, 2), (2131, true, 213, 1040, 2), (2132, true, 213, 1040, 2);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

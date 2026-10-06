@@ -452,7 +452,7 @@ class NiasFacilityControllerTest {
                         "Aktivan", 2, null, "Splitsko-dalmatinska", "Makarska", "Makarska",
                         "Kraljevska", "88", "21300", "Kraljevska 88", null,
                         "soba1@example.com", "021111222", FacilitySource.ETURIZAM,
-                        "8a3e5c1e-0000-4000-8000-000000000001", true)),
+                        "8a3e5c1e-0000-4000-8000-000000000001", true, null, null)),
                 0, 20, 1, 1));
 
         mvc.perform(get("/api/nias/facilities").param("page", "0").param("size", "20"))

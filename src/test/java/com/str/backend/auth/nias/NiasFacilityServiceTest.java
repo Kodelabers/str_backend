@@ -88,6 +88,37 @@ class NiasFacilityServiceTest {
     }
 
     /**
+     * Migrirani objekt s više jedinica nosi na svakoj jedinici kapacitet cijelog objekta (B-3) —
+     * jedinica ga ne smije prikazati kao svoj, nego ide u polja objekta.
+     */
+    @Test
+    void mapsObjectLevelCapacity_toObjectFields() {
+        FacilityListingRow unit = row(85064L, "uuid-m", false, "Studio apartmani", "FS_STUDIO_APARTMAN",
+                "Studio apartman", null, 9);
+        when(unit.getAuxiliaryBeds()).thenReturn(0);
+        when(unit.getObjectLevelCapacity()).thenReturn(true);
+        stubFacilities(unit);
+
+        FacilityResponse item = service.list(OIB, 0, 20).items().getFirst();
+
+        assertThat(item.brKreveta()).isNull();
+        assertThat(item.brPomocnihKreveta()).isNull();
+        assertThat(item.objektBrKreveta()).isEqualTo(9);
+        assertThat(item.objektBrPomocnihKreveta()).isZero();
+    }
+
+    @Test
+    void leavesObjectFieldsEmpty_whenCapacityBelongsToUnit() {
+        stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", null, 2));
+
+        FacilityResponse item = service.list(OIB, 0, 20).items().getFirst();
+
+        assertThat(item.brKreveta()).isEqualTo(2);
+        assertThat(item.objektBrKreveta()).isNull();
+        assertThat(item.objektBrPomocnihKreveta()).isNull();
+    }
+
+    /**
      * Write-back RB-a u str.facility je best-effort — kad padne, RB je samo na našoj strani.
      * Bez ovog fallbacka objekt s izdanim RB-om izgledao bi kao da ga nema.
      */
@@ -293,6 +324,27 @@ class NiasFacilityServiceTest {
         assertThat(claim.zakljucanaPolja()).contains("maxBeds");
         // eTurizam vrstu ne zna — zabrana se ne može utemeljiti, RB se smije izdati.
         assertThat(claim.vrstaDopustena()).isTrue();
+    }
+
+    /**
+     * Kapacitet cijelog migriranog objekta nije broj gostiju jedinice (B-3, P-22): claim ga ne
+     * predpopunjava i ne zaključava, pa ga korisnik upisuje sam.
+     */
+    @Test
+    void claim_leavesGuestsOpen_whenCapacityIsObjectLevel() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn(OIB);
+        lenient().when(row.getBeds()).thenReturn(9);
+        when(row.getObjectLevelCapacity()).thenReturn(true);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getCurrent()).thenReturn(true);
+        when(facilityRepository.findOwnership(85064L)).thenReturn(Optional.of(row));
+
+        FacilityClaimResponse claim = service.claim(OIB, "85064");
+
+        assertThat(claim.brKreveta()).isNull();
+        assertThat(claim.zakljucanaPolja()).doesNotContain("maxBeds");
     }
 
     /** Claim nosi adresu eTurizmova zahtjeva za promjenu podataka: dokument objekta + id šifre. */
