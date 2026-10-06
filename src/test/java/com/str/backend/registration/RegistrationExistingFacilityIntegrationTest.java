@@ -96,25 +96,46 @@ class RegistrationExistingFacilityIntegrationTest {
         assertPdfStored(body);
     }
 
-    /** Ni eTurizam ne zna ništa — RB se svejedno izdaje, samo bez koda županije i vrste. */
+    /**
+     * Ni eTurizam ne zna ništa — RB se svejedno izdaje, samo bez koda županije i vrste. Broj
+     * gostiju tada upisuje korisnik (V-2), pa se sprema njegova vrijednost.
+     */
     @Test
     void issuesRn_evenWhenEturizamKnowsNothing() throws Exception {
         FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
         when(facilityClaimVerifier.verify(eq(OIB), eq("700002"), any())).thenReturn(Optional.of(facility));
 
-        JsonNode body = submit("700002");
+        JsonNode body = submit("700002", 4);
 
         assertThat(body.get("registrationNumber").asText()).matches("HR00\\d{16}");
         AccommodationEntity saved = accommodationOf("700002");
         assertThat(saved.getCounty()).isNull();
-        assertThat(saved.getMaxBeds()).isNull();
+        assertThat(saved.getMaxBeds()).isEqualTo(4);
         assertPdfStored(body);
     }
 
+    /** V-2: eTurizam ne zna kapacitet, a korisnik ga nije upisao — RB se ne izdaje. */
+    @Test
+    void rejects_whenNeitherEturizamNorUserKnowsMaxGuests() throws Exception {
+        FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
+        when(facilityClaimVerifier.verify(eq(OIB), eq("700003"), any())).thenReturn(Optional.of(facility));
+
+        mvc.perform(post("/api/generateRegistrationNumber")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(om.writeValueAsBytes(requestWithoutFacilityData("700003", null))))
+                .andExpect(status().isBadRequest());
+
+        assertThat(accommodationRepository.findAll()).noneMatch(a -> "700003".equals(a.getFacilityId()));
+    }
+
     private JsonNode submit(String facilityId) throws Exception {
+        return submit(facilityId, null);
+    }
+
+    private JsonNode submit(String facilityId, Integer maxBeds) throws Exception {
         byte[] response = mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(om.writeValueAsBytes(requestWithoutFacilityData(facilityId))))
+                        .content(om.writeValueAsBytes(requestWithoutFacilityData(facilityId, maxBeds))))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsByteArray();
         return om.readTree(response);
@@ -132,10 +153,13 @@ class RegistrationExistingFacilityIntegrationTest {
         assertThat(submission.getPdfContent()).startsWith(new byte[]{'%', 'P', 'D', 'F'});
     }
 
-    /** Kakav obrazac šalje za postojeći objekt kad ništa od podataka iz eTurizma ne razriješi. */
-    private static RegistrationRequest requestWithoutFacilityData(String facilityId) {
+    /**
+     * Kakav obrazac šalje za postojeći objekt kad ništa od podataka iz eTurizma ne razriješi;
+     * {@code maxBeds} je broj gostiju koji je korisnik upisao (ili {@code null}).
+     */
+    private static RegistrationRequest requestWithoutFacilityData(String facilityId, Integer maxBeds) {
         return new RegistrationRequest(
-                OIB, null, null, null, null, null, null, null, null, null, null,
+                OIB, null, null, null, null, null, null, null, null, null, maxBeds,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, "1", false, true,
                 null, null, null, null, null, null, facilityId,
                 "iznajmljivac@example.com", "0991234567", null, null, null);
