@@ -11,6 +11,7 @@ import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrFacilityRepository;
 import com.str.backend.str.StrFacilityRepository.FacilityListingRow;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
+import com.str.backend.str.StrFacilityRepository.ListingTotals;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,9 +27,11 @@ import java.util.Map;
  * Popis objekata prijavljenog iznajmljivača, spojen iz dva izvora: eTurizam registra i naših
  * uploadanih skeniranih rješenja koja još nisu upisana u eTurizam.
  *
- * <p>Privremena rješenja idu na početak popisa — čekaju radnju nadležnog tijela, a ima ih malo.
- * Paginacija ih uračunava, pa je {@code total} zbroj obaju izvora i stranica nikad ne vrati više
- * od {@code size} redaka.
+ * <p>Redoslijed: verificirani eTurizam objekti, zatim neverificirani (migrirani iz starog
+ * sustava), zatim privremena rješenja. Redak je smještajna jedinica, a paginacija broji
+ * <b>objekte</b> ({@code system_uuid}): stranica nosi najviše {@code size} objekata sa svim
+ * njihovim jedinicama. Privremeno rješenje je zaseban objekt s jednom jedinicom, pa je
+ * {@code total} zbroj eTurizam objekata i privremenih rješenja.
  */
 @Service
 public class NiasFacilityService {
@@ -80,21 +83,41 @@ public class NiasFacilityService {
             log.warn("accommodation_type nema ni jednu FS_* šifru — popis eTurizam objekata je prazan "
                     + "za sve korisnike; provjeriti str_rn.accommodation_type.code na ovoj okolini");
         }
-        long eturizamTotal = codes.isEmpty() ? 0 : facilityRepository.countListingByOib(oib, codes);
 
         // long, pa page=999999999 ne prelije int u negativan OFFSET (Postgres bi na to pao s 500)
         long skip = (long) pageIndex * pageSize;
-        List<FacilityResponse> items = new ArrayList<>(pageSize);
+        List<FacilityListingRow> rows = codes.isEmpty()
+                ? List.of()
+                : facilityRepository.findListingByOib(oib, codes, pageSize, skip);
 
-        for (long i = skip; i < temporary.size() && items.size() < pageSize; i++) {
+        // Ukupno nosi svaki redak stranice; prazna stranica (iza zadnjeg objekta ili bez objekata)
+        // ga ne nosi, pa se tek tada pita zasebno.
+        long eturizamObjects;
+        long eturizamUnits;
+        if (!rows.isEmpty()) {
+            eturizamObjects = rows.getFirst().getTotalObjects();
+            eturizamUnits = rows.getFirst().getTotalUnits();
+        } else if (codes.isEmpty()) {
+            eturizamObjects = 0;
+            eturizamUnits = 0;
+        } else {
+            ListingTotals totals = facilityRepository.countListingByOib(oib, codes);
+            eturizamObjects = totals.getObjects();
+            eturizamUnits = totals.getUnits();
+        }
+
+        List<FacilityResponse> items = new ArrayList<>(fromEturizam(rows));
+        long objectsOnPage = rows.stream().map(FacilityListingRow::getSystemUuid).distinct().count();
+
+        // Privremena rješenja dolaze iza svih eTurizam objekata: na stranicu ulaze tek kad je
+        // eTurizam iscrpljen, od pomaka koji preostaje nakon njegovih objekata.
+        for (long i = Math.max(skip - eturizamObjects, 0);
+             i < temporary.size() && objectsOnPage < pageSize; i++, objectsOnPage++) {
             items.add(temporary.get((int) i));
         }
-        if (items.size() < pageSize && !codes.isEmpty() && skip - temporary.size() <= Integer.MAX_VALUE) {
-            int facilityOffset = (int) Math.max(skip - temporary.size(), 0);
-            items.addAll(fromEturizam(oib, codes, pageSize - items.size(), facilityOffset));
-        }
 
-        return new FacilityPageResponse(items, pageIndex, pageSize, temporary.size() + eturizamTotal);
+        return new FacilityPageResponse(items, pageIndex, pageSize,
+                eturizamObjects + temporary.size(), eturizamUnits + temporary.size());
     }
 
     /**
@@ -175,8 +198,10 @@ public class NiasFacilityService {
                 + "?idZahtjeva=" + requestTypeId;
     }
 
-    private List<FacilityResponse> fromEturizam(String oib, List<String> codes, int limit, int offset) {
-        List<FacilityListingRow> rows = facilityRepository.findListingByOib(oib, codes, limit, offset);
+    private List<FacilityResponse> fromEturizam(List<FacilityListingRow> rows) {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
         Map<String, String> ownRns = ownRegistrationNumbers(rows);
 
         List<FacilityResponse> items = new ArrayList<>(rows.size());
@@ -202,7 +227,9 @@ public class NiasFacilityService {
                     rn != null ? rn : ownRns.get(facilityId),
                     row.getContactEmail(),
                     row.getContactPhone(),
-                    FacilitySource.ETURIZAM));
+                    FacilitySource.ETURIZAM,
+                    row.getSystemUuid(),
+                    row.getVerified()));
         }
         return items;
     }
@@ -232,8 +259,9 @@ public class NiasFacilityService {
     }
 
     private static FacilityResponse toResponse(CategorizationDecisionEntity d) {
+        String id = d.getDecisionId().toString();
         return new FacilityResponse(
-                d.getDecisionId().toString(),
+                id,
                 d.getObjectName() != null ? d.getObjectName() : d.getFileName(),
                 d.getAccommodationTypeCode(),
                 null,
@@ -246,7 +274,9 @@ public class NiasFacilityService {
                 null,
                 null,
                 null,
-                FacilitySource.PRIVREMENO_RJESENJE);
+                FacilitySource.PRIVREMENO_RJESENJE,
+                id,
+                null);
     }
 
     private static String blankToNull(String value) {

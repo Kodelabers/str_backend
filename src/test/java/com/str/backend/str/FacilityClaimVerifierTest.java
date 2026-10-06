@@ -112,12 +112,40 @@ class FacilityClaimVerifierTest {
     void isActive_requiresActiveRowAndActiveBusinessStatus() {
         FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
         when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getCurrent()).thenReturn(true);
 
         when(row.getActive()).thenReturn(null);
         assertThat(FacilityClaimVerifier.isActive(row)).isFalse();
 
         when(row.getActive()).thenReturn(true);
         assertThat(FacilityClaimVerifier.isActive(row)).isTrue();
+    }
+
+    /**
+     * Zapis koji nije aktualan (stara verzija, predmet u obradi, migrirana kopija koju je
+     * zamijenio noviji predmet) ne prolazi ni kad je aktivan i posluje — popis ga ne prikazuje.
+     */
+    @Test
+    void isActive_requiresCurrentRow() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+
+        when(row.getCurrent()).thenReturn(false);
+        assertThat(FacilityClaimVerifier.isActive(row)).isFalse();
+
+        when(row.getCurrent()).thenReturn(null);
+        assertThat(FacilityClaimVerifier.isActive(row)).isFalse();
+    }
+
+    @Test
+    void rejects_whenRowIsNotCurrent() {
+        stubFacility(OIB, "FS_SOBA", 2, true);
+        when(stubbedRow.getCurrent()).thenReturn(false);
+
+        assertThatThrownBy(() -> verifier.verify(OIB, "153049", claim(1L, 2)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.inactive");
     }
 
     /**
@@ -506,6 +534,7 @@ class FacilityClaimVerifierTest {
         when(stubbedRow.getBeds()).thenReturn(beds);
         when(stubbedRow.getActive()).thenReturn(active);
         when(stubbedRow.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(stubbedRow.getCurrent()).thenReturn(true);
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(stubbedRow));
         // Šifrarnik vrsta privatnog smještaja: podvrsta objekta je dopuštena, osim ako test kaže drukčije.
         when(typeRepository.findByCodeIgnoreCase(anyString()))

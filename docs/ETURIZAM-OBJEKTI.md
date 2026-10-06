@@ -1,132 +1,175 @@
-# eTurizam objekti (`str.facility`) — mapiranje za popis objekata iznajmljivača
+# eTurizam objekti (`str.facility`) — popis objekata iznajmljivača
 
-Podloga za `GET /api/nias/facilities`. Sve niže je provjereno queryjima nad dev bazom
-(`s-str-02.infodom.hr:5431/str2`), jer shema `str` **nema deklarirane FK-ove** pa se joinovi ne mogu
-izvesti iz metapodataka.
+Podloga za `GET /api/nias/facilities` i za provjeru objekta pri zahtjevu za RB
+(`GET /api/nias/facilities/{id}`, `FacilityClaimVerifier`). Shema `str` **nema deklarirane FK-ove**, pa
+su joinovi i pravila provjereni upitima nad bazom — skripte su u `docs/sql/m1-dijagnostika-*.sql`, a
+nalazi niže su s **CDU test okoline** (`172.20.8.196/eturizam`, PostgreSQL 13), 6. 10. 2026., osim gdje
+piše drukčije.
 
 ## Mapiranje
 
 | Podatak | Izvor |
 | :--- | :--- |
-| Naziv | `str.facility.name` — često `-` ili ime iznajmljivača, ne naziv objekta |
+| Naziv | `str.facility.name` — često `-` ili ime iznajmljivača; kod novog eTurizma oznaka jedinice |
 | Vrsta / podvrsta | `str.facility_type` (`facility_id`, `active`) → `str.codebook_element` po `type_id` i `sub_type_id` |
 | Kategorija | `facility.category_id` → `codebook_element` (`C_3_ZVJEZDICE`) |
 | Poslovni status | `facility.business_status_id` → `codebook_element` (`FBS_ACTIVE` / `FBS_INACTIVE`) |
-| Adresa | `facility.address_id` → `str.address`, imena preko `str.settlement` / `street` / `house_number` / `municipality` / `county`; `facility.same_address_subject = true` → adresa iznajmljivača (`subject_address` → `address`) |
+| Adresa | `facility.address_id` → `str.address`, imena preko `str.settlement` / `street` / `house_number` / `municipality` / `county`; `facility.same_address_subject = true` → adresa subjekta predmeta (`business_case.subject_version_id` → `subject_address` → `address`) |
 | Broj kreveta | `str.facility_capacity` (`active`) → `codebook_element.code = 'CAT_BROJ_KREVETA'` (pomoćni: `CAT_BROJ_POM_KREVETA`) |
 | Broj kreveta (hoteli i sl.) | `facility_unit` → `facility_unit_capacity` → `CAT_BROJ_KREVETA` |
-| OIB | `facility.subject_version_id` → `subject_version` → `subject.jips` |
+| Objekt | `facility.system_uuid` |
+| Predmet i OIB | `facility.document_id → document.business_case_id → business_case.subject_version_id → subject.jips` |
 | RB | `facility.registration_number` |
 
 **`str.codebook_element` je zajednički šifrarnik** (id → code, name) za vrstu, podvrstu, kategoriju,
-poslovni status i tipove kapaciteta. Kodovi su stabilni, ID-evi se razlikuju među okolinama — vezati
-se isključivo na `code`.
+poslovni status, statuse predmeta i verifikacije te tipove kapaciteta. Kodovi su stabilni, ID-evi se
+razlikuju među okolinama — vezati se isključivo na `code`.
 
-Podvrste privatnog smještaja su **`FS_SOBA`, `FS_APARTMAN`, `FS_STUDIO_APARTMAN`, `FS_KUCA_ZA_ODMOR`**
-— identične `str_rn.accommodation_type.code` (changeset 060), pa je mapiranje vrste 1:1 i usporedba
-direktna. Iznajmljivač u eTurizmu može imati i `FT_RESTORAN`, `FT_TUR_AGENCIJA`, `FT_TUR_VODIC` i
-slično; popis filtrira po šifrarniku iz `accommodation_type`.
+## Model: jedinica i objekt
+
+- **Zapis `str.facility` je smještajna jedinica** (soba, apartman, studio, kuća za odmor).
+- **`system_uuid` je objekt.** Više jedinica istog objekta stoji u istom predmetu: na CDU ~5.900
+  migriranih objekata ima 2–217 jedinica (ukupno ~43.700 zapisa). Novi eTurizam radi isto — dvije
+  jedinice u istom predmetu s različitim nazivima i kapacitetima.
+- **Registracijski broj ide po jedinici**: `accommodation.facility_id` i write-back
+  (`writeBackRegistrationNumber`) su po `facility.id`.
+- Migrirane jedinice nemaju vlastitu oznaku — svi stupci osim `id`, `address_id` i datuma su im isti
+  (provjereno na 500 objekata), a kapacitet je po jedinici („Vila Tamaris" = 10 soba po 2 kreveta).
+  Frontend ih zato prikazuje ispod objekta s rednim brojem; novi eTurizam jedinicama daje naziv
+  (`facility.name`), pa se tada prikazuje naziv.
+
+Ranije se deduplikiralo po `system_uuid` (vidio se jedan zapis po objektu). To je skrivalo jedinice:
+iznajmljivač s najviše migriranih jedinica na CDU vidio je 51 redak od 3.741 jedinice. Vjerojatni
+uzrok primjedbi Z-16 („nije se prikazao iako ima isti UUID") i W-8 (prikazana jedinica „2" umjesto „1").
+
+## Koje jedinice su aktualne — pravila eTurizma
+
+Pravila su prepisana **1:1 iz `f_active` CTE-a eTurizmova viewa `str.vw_src_facility_actual`** (DDL
+koji je poslao Simon, eTurizam, 4. 10. 2026.). Sam view se ne čita:
+
+1. agregira cijeli registar — **1,2 s po pozivu** bez obzira na OIB (filtar po `f_id` se ne spušta);
+2. nema OIB vlasnika;
+3. ne zna za migrirane objekte (v. niže).
+
+Vjernost kopije provjerena je na CDU: 1.122 verificirana zapisa, **0 razlika u oba smjera**
+(`m1-dijagnostika.sql`, Q3).
+
+Zajednički uvjeti (kao u viewu): `facility.active`; `historical` NULL ili `false`; aktivan dokument
+čija je vrsta (`sif_podvrsta_dokumenta → sif_vrsta_dokumenata`) `DOT_RJESENJE` ili
+`DOT_POTVRDA_O_UPISU`; aktivan predmet s organizacijskom jedinicom; ako je predmet izvor verifikacije,
+ona je `BCVS_U_IZRADI`; ako je cilj verifikacije, ona je `BCVS_ZAVRSENA`;
+`HAVING count(system_uuid) = 1` (bez `system_uuid` ili s više redaka verifikacije zapis ispada).
+
+| Skup | Uvjet | CDU |
+| :--- | :--- | ---: |
+| **Verificiran** | `created_by <> 'optimit'` + zajednički uvjeti + „predmet gotov": status predmeta `BCST_RJES_IZVRSNO` i `execution_date` u prošlosti | 1.122 |
+| **Neverificiran** | `created_by = 'optimit'` (migracija iz starog sustava, siječanj 2023.) + zajednički uvjeti, **bez** „predmet gotov" | 129.350 |
+
+**Zašto neverificirani nemaju uvjet „predmet gotov".** Migrirani predmeti nemaju ni status (237.140
+od 237.140) ni datum izvršnosti (238.682 od 238.682). Doslovna inverzija viewa koju je predložio
+eTurizam (`created_by = 'optimit'` + target verifikacije nije završen) zato daje **0 neverificiranih**
+— testni iznajmljivač 06756460531 ostao bi bez ijednog od svojih 38 objekata. Na CDU podacima obje
+varijante uvjeta verifikacije daju isti skup (migrirani predmet je u `business_case_verification`
+uvijek izvor, nikad cilj; nakon završene verifikacije stari predmet je neaktivan).
+**Čeka potvrdu eTurizma.**
+
+`created_by IS NULL` ne ulazi ni u jedan skup (kao u viewu: i `<>` i `=` daju NULL).
+
+## Najnoviji predmet po objektu
+
+Objekt može biti aktualan u više predmeta:
+
+- rješenje pa promjena podataka / ukidanje — view oba vodi kao aktualna (22 objekta na CDU);
+- migracija je isti objekt upisala u više predmeta, a verifikacija ugasi samo jedan — kopije u
+  ostalim predmetima ostanu aktivne (26 zapisa na CDU).
+
+Vrijede **samo jedinice najnovijeg predmeta**: predmet s najkasnijim `facility.created_date`, kod
+jednakosti veći `business_case.id`. Rang se računa nad **svim** aktualnim zapisima objekta, i tuđima,
+**prije** filtara vlasnika, statusa i vrste — noviji odjavljeni ili na drugog vlasnika preneseni
+predmet skriva stariji. Na CDU pravilo skriva 7.486 zapisa (1.719 objekata), a **nijedan verificirani
+zapis nije skriven iza migriranog** (verificirani iz 2022. bi po datumu mogli biti stariji od migracije).
+
+## Vlasnik, filtri i adresa
+
+- **Vlasnik je subjekt predmeta**: `business_case.subject_version_id → subject_version → subject.jips`,
+  kao u viewu. Preko `facility.subject_version_id` 43 od 1.129 aktualnih zapisa na CDU nemaju
+  vlasnika. **Čeka potvrdu eTurizma.**
+- `subject.active` se **ne** filtrira — jedan OIB ima više `subject` redaka, identitet nosi `jips`.
+- **Prikazuju se samo jedinice s poslovnim statusom `FBS_ACTIVE`** (W-5). `facility.active` je
+  zastavica verzije zapisa, ne podatak o tome posluje li objekt — na CDU je 103.033 zapisa smještaja s
+  `active = true` „Odjavljeno". Jedinica bez statusa se ne prikazuje.
+- **Vrsta**: samo `FS_SOBA`, `FS_APARTMAN`, `FS_STUDIO_APARTMAN`, `FS_KUCA_ZA_ODMOR` — po šifrarniku
+  `str_rn.accommodation_type.code`.
+- **Adresa subjekta** (`same_address_subject = true`) čita se preko subjekta predmeta, kao u viewu.
+- `coalesce(active, true)` na `facility_type`, kapacitetima i `subject_address` — eTurizam
+  `facility_type.active` ne filtrira, pa NULL znači „aktivno".
+
+Ista pravila vrijede za **claim i `FacilityClaimVerifier`**: `findOwnership` vraća `current`, a
+`FacilityClaimVerifier.isActive` traži `active`, `FBS_ACTIVE` **i** `current`. Jedinica koja se ne vidi
+na popisu (stara verzija, predmet u obradi, migrirana kopija koju je zamijenio noviji predmet) ne može
+proći ni kroz tuStart handoff (400 `error.facility.inactive`).
+
+## Redoslijed i paginacija
+
+Redoslijed: **verificirani objekti, neverificirani, pa privremena rješenja** (`str_rn.categorization_decision`
+bez RB-a i bez `facility_id`). Paginacija broji **objekte**: stranica nosi najviše `size` objekata sa
+svim njihovim jedinicama (najveći objekt na CDU ima 217). `total` je broj objekata, `totalUnits` broj
+jedinica. Svaki redak eTurizma nosi ukupno; kad je stranica prazna, ukupno daje `countListingByOib`.
+
+## Oblik upita i brzina
+
+Upit je **ugniježđen u podupite, bez `WITH`**:
+
+- „najnoviji predmet" je prozorska funkcija nad jednim skupom — oblik sa samospajanjem CTE-ova
+  planer je zbog procjene od 1 retka slagao ugniježđenom petljom: **55,9 s** za 3.741 jedinicu;
+- H2 (testovi) krivo izvršava parametar u CTE-u na koji se nastavlja drugi CTE — vrati prazno.
+
+Izmjereno na CDU (oblik s CTE-ovima i istim prozorskim funkcijama, `m1-dijagnostika-8.sql`): 3.741
+jedinica **75 ms**, 215 jedinica **25 ms**, isto s generičkim planom (pgjdbc nakon 5. izvršavanja).
+**Konačni oblik iz aplikacije ponovo izmjeriti** skriptom `m1-dijagnostika-9.sql` (tekst upita je
+izvučen iz kompiliranih `@Query` anotacija).
 
 ## Što u podacima ne postoji
 
 - **Broj gostiju za domaćinstva.** `CAT_BROJ_GOSTIJU` postoji samo u `facility_unit_capacity`, a sobe
   i apartmani u domaćinstvu nemaju `facility_unit` redaka. Iz eTurizma se dobije samo broj kreveta.
-- **Legacy registracijski brojevi.** `facility.registration_number` je neprazan u **0 od 245.044**
-  redaka, `facility_unit.registration_number` u 0 od 43.984. Kolona je isključivo odredište
-  write-backa iz STR-a (v. `docs/TUSTART-INTEGRACIJA.md` §6), pa dok STR ne izda prvi RB nijedan
-  objekt na dev-u nije „s RB-om".
-- **Strukturirana adresa u `str.address`.** Od 285.874 adresa samo **1** ima ispunjenu `county`, 1544
-  `municipality`, 217 `street`, 27 `postal_code`. Upotrebljivi su `full_address` (98,3 %),
-  `settlement` (97,7 %) i ID-evi prema hijerarhiji — zato se imena razrješavaju joinovima, a
-  denormalizirane kolone su samo fallback.
+- **Legacy registracijski brojevi.** `facility.registration_number` je na CDU popunjen u 4 zapisa —
+  kolona je odredište write-backa iz STR-a (v. `docs/TUSTART-INTEGRACIJA.md` §6).
+- **Strukturirana adresa u `str.address`.** Upotrebljivi su `full_address`, `settlement` i ID-evi prema
+  hijerarhiji — zato se imena razrješavaju joinovima, a denormalizirane kolone su samo fallback.
+- **Oznaka migrirane jedinice.** Ne postoji ni u jednoj koloni zapisa ni u povezanim tablicama.
 
-## Zašto se `str.vw_src_facility_actual` ne koristi
+## Preduvjeti na okolini (provjeriti prije testiranja na CDU / preprod)
 
-View izgleda kao gotovo rješenje (nosi `f_subtype_code`, razriješenu adresu, kapacitete), ali:
-
-1. Njegov `f_active` CTE ima `facility.created_by <> 'optimit'` — **izbacuje sve migrirane objekte**.
-   Pokriva 1124 od 245.044 objekta; za stvarnog iznajmljivača (38 objekata) join na view vraća **0
-   redaka**.
-2. Izvršava se **1,2 s**: `GROUP BY` + `string_agg` nad cijelim registrom, s external merge sortom od
-   22 MB na disk. Predikat po OIB-u se ne može propagirati u agregaciju.
-3. Ima bug: `f_unit_capacity_type` joina `codebook_element` po `fu.type_id` (tip jedinice) umjesto
-   `fuc.type_id`, pa vraća `FU_*` kodove tamo gdje bi trebali biti `CAT_*`.
-
-Koristi se **samo njegova join-mapa**; query je vlastiti (`StrFacilityRepository.findListingByOib`).
-
-## Dedup i filtriranje
-
-Dedup je po `coalesce(system_uuid, document.business_case_id)`, kako je eTurizam predložio — jedan
-objekt ima više `facility` redaka kroz povijest, a `system_uuid` je stabilan identitet (predlošci u
-radu ga nemaju, pa se grupiraju po predmetu).
-
-- **Dedup ide unutar redaka samog OIB-a.** Globalni dedup (join po izračunatom bucketu) tjera parallel
-  seq scan cijelog `facility` + `document` → 102 ms po pozivu neovisno o iznajmljivaču. Ovako:
-  **20 ms za 38 objekata, 33 ms za 1530** (→ 1150 nakon dedupa), sve indeksnim putem.
-- **`NOT EXISTS` na `system_uuid`** vraća korektnost koju bi globalni dedup dao: objekt prenesen na
-  drugog vlasnika ne visi na starom. Kod OIB-a 12312312316 izbaci 16 nadjačanih zapisa.
-- **`historical` se ne filtrira.** 74.177 redaka s `historical = true` preživi dedup, a najveća
-  skupina (85.596) ima `historical` NULL — filtriranje bi izbrisalo pola registra. Što točno
-  `historical` znači, otvoreno je pitanje za eTurizam.
-- **`facility.active` filtrira se nakon dedupa.** Unutar dedupa bi objekt čiji je najnoviji zapis
-  neaktivan „oživio" kroz stariji aktivni red.
-- **Prikazuju se samo objekti s poslovnim statusom `FBS_ACTIVE`**, također nakon dedupa (zahtjev
-  naručitelja). `facility.active` je zastavica verzije zapisa, ne podatak o tome posluje li objekt.
-  Na CDU, među zapisima smještaja (`FS_*`) s `active = true`, prije dedupa:
-
-  | Poslovni status | Zapisa |
-  | :--- | ---: |
-  | `FBS_ACTIVE` („Aktivan") | 120.119 |
-  | `FBS_INACTIVE` („Odjavljen") | 103.033 |
-  | bez statusa (`business_status_id` NULL) | 1.512 |
-
-  Drugih šifri nema, a `business_status_activation_date` ni u jednom zapisu nije u budućnosti.
-  **Objekt bez statusa se ne prikazuje**: ne zna se da posluje, a za njega bi se izdao RB i upisao
-  natrag u eTurizam. Isto pravilo vrijedi za `GET /api/nias/facilities/{id}` i za
-  `FacilityClaimVerifier` (`FacilityClaimVerifier.isActive`), pa objekt koji se ne vidi na popisu
-  ne može proći ni kroz tuStart handoff s `facilityId` (400 `error.facility.inactive`).
-- **`subject.active` se NE filtrira.** Objekt vodi na točno jednu verziju subjekta, pa filtar ne može
-  spriječiti multiplikaciju — može samo sakriti objekt čiji je zapis subjekta nadjačan novijim
-  (jedan OIB ima više `subject` redaka; unique indeks je `(jips, jips_source_id, subtype_id) WHERE
-  active`). Identitet nosi `jips`. U `findOwnership` bi taj filtar bio gori od skrivanja: legitiman
-  handoff iz tuStarta bio bi odbijen kao „objekt ne postoji".
-- **Bucket ima treću granu: `'facility-' || f.id`.** Objekt bez `system_uuid` **i** bez dokumenta
-  inače pada u `PARTITION BY NULL`, gdje se svi takvi objekti jednog iznajmljivača skupe u jednu
-  grupu i prikaže se samo najnoviji.
-- **`coalesce(active, true)` na child tablicama** (`facility_type`, `facility_capacity`,
-  `facility_unit(_capacity)`, `subject_address`). eTurizam u svom viewu `facility_type.active` uopće
-  ne filtrira, dakle NULL je moguć; uz `active = true` objekt bi ostao bez vrste, a bez vrste ga
-  izbaci filtar podvrsta — objekt bi nestao s dashboarda.
-- Skalarni podqueryji u `JOIN` uvjetima (`facility_type`, `subject_address`) drže rezultat na jednom
-  redu po objektu, pa su `LIMIT`/`OFFSET` i `count` točni.
-
-Nedostatak koji ostaje: objekti bez `system_uuid` grupiraju se po `document.business_case_id`, a
-jedan predmet može pokrivati **više** objekata (u stvarnim podacima sedam `facility` redaka dijeli
-`document_id = 99148`). Za takve bi se prikazao samo najnoviji. Pravilo je eTurizamovo i odnosi se na
-objekte „u radu / predloške", pa je vezano na otvoreno pitanje prikazuju li se oni uopće.
-
-## Preduvjeti na okolini (provjeriti prije testiranja na CDU)
-
-Popis čita **dvanaest** tablica u shemi `str` koje ovaj servis dosad nije dirao. Ako DB korisniku
-fali `SELECT` na bilo kojoj, endpoint vraća 500 (namjerno se ne guta — prazna lista bi sakrila
-konfiguracijski problem):
+Popis čita tablice u shemi `str` koje DB korisnik mora smjeti čitati. Ako fali `SELECT` na bilo
+kojoj, endpoint vraća 500 (namjerno se ne guta — prazna lista bi sakrila konfiguracijski problem).
+Na CDU (`shorttermrental`) sva prava postoje (`m1-dijagnostika.sql`, Q0).
 
 ```sql
 -- sve mora vratiti red; greška = nema GRANT-a
 SELECT 'facility' t, count(*) FROM str.facility WHERE false
-UNION ALL SELECT 'facility_type',          count(*) FROM str.facility_type WHERE false
-UNION ALL SELECT 'facility_capacity',      count(*) FROM str.facility_capacity WHERE false
-UNION ALL SELECT 'facility_unit',          count(*) FROM str.facility_unit WHERE false
-UNION ALL SELECT 'facility_unit_capacity', count(*) FROM str.facility_unit_capacity WHERE false
-UNION ALL SELECT 'codebook_element',       count(*) FROM str.codebook_element WHERE false
-UNION ALL SELECT 'document',               count(*) FROM str.document WHERE false
-UNION ALL SELECT 'address',                count(*) FROM str.address WHERE false
-UNION ALL SELECT 'county',                 count(*) FROM str.county WHERE false
-UNION ALL SELECT 'municipality',           count(*) FROM str.municipality WHERE false
-UNION ALL SELECT 'settlement',             count(*) FROM str.settlement WHERE false
-UNION ALL SELECT 'street',                 count(*) FROM str.street WHERE false
-UNION ALL SELECT 'house_number',           count(*) FROM str.house_number WHERE false;
+UNION ALL SELECT 'facility_type',              count(*) FROM str.facility_type WHERE false
+UNION ALL SELECT 'facility_capacity',          count(*) FROM str.facility_capacity WHERE false
+UNION ALL SELECT 'facility_unit',              count(*) FROM str.facility_unit WHERE false
+UNION ALL SELECT 'facility_unit_capacity',     count(*) FROM str.facility_unit_capacity WHERE false
+UNION ALL SELECT 'codebook_element',           count(*) FROM str.codebook_element WHERE false
+UNION ALL SELECT 'document',                   count(*) FROM str.document WHERE false
+UNION ALL SELECT 'business_case',              count(*) FROM str.business_case WHERE false
+UNION ALL SELECT 'business_case_verification', count(*) FROM str.business_case_verification WHERE false
+UNION ALL SELECT 'sif_podvrsta_dokumenta',     count(*) FROM str.sif_podvrsta_dokumenta WHERE false
+UNION ALL SELECT 'sif_vrsta_dokumenata',       count(*) FROM str.sif_vrsta_dokumenata WHERE false
+UNION ALL SELECT 'organizational_unit',        count(*) FROM str.organizational_unit WHERE false
+UNION ALL SELECT 'address',                    count(*) FROM str.address WHERE false
+UNION ALL SELECT 'subject_address',            count(*) FROM str.subject_address WHERE false
+UNION ALL SELECT 'county',                     count(*) FROM str.county WHERE false
+UNION ALL SELECT 'municipality',               count(*) FROM str.municipality WHERE false
+UNION ALL SELECT 'settlement',                 count(*) FROM str.settlement WHERE false
+UNION ALL SELECT 'street',                     count(*) FROM str.street WHERE false
+UNION ALL SELECT 'house_number',               count(*) FROM str.house_number WHERE false;
 ```
+
+Shema mora biti **str2** (`document.subtype_code` + `sif_podvrsta_dokumenta`); stara shema (str1,
+`document.document_subtype_id`) nije podržana — `m1-dijagnostika.sql` Q0 to provjerava.
 
 Drugi preduvjet je **naš** šifrarnik: filtar podvrsta radi na `str_rn.accommodation_type.code`, koji
 changeset 060 popunjava **po nazivu vrste** (`LOWER(name) = 'soba'` itd.). Ako se nazivi na okolini
@@ -140,23 +183,34 @@ SELECT type_id, name, code FROM str_rn.accommodation_type ORDER BY type_id;
 Aplikacija taj slučaj logira kao WARN (`accommodation_type nema ni jednu FS_* šifru`), pa se u
 logovima prepoznaje bez pogađanja.
 
-**Paginacija je obavezna** — testni iznajmljivač ima 1530 objekata.
+## Testni podaci (CDU)
 
-## Testni podaci (dev)
-
-| OIB | Objekata | Napomena |
+| OIB | Objekata / jedinica | Napomena |
 | :--- | ---: | :--- |
-| `06756460531` | 38 | Tonći Beroš, sve `FS_SOBA` u Makarskoj, 2–3 kreveta |
-| `12312312316` | 1530 | Pero Perić — za provjeru paginacije; ima dva `subject` reda |
-| `98765432106` | 262 | Marko Markić |
+| `06756460531` | 38 / 38 | svi migrirani (neverificirani) |
+| `12312312316` | 213 / 215 | svi verificirani; ranije 207 redaka |
+| `98765432106` | 23 / 23 | svi verificirani; ranije 20 redaka |
+| (najveći migrirani) | 51 / 3.741 | do 217 jedinica u objektu; ranije 51 redak |
 
-Nijedan nema RB, pa se scenarij „ima RB → Prikaži" na dev-u može testirati samo nakon što STR izda
-prvi RB za taj objekt.
+Objekt iz W-8 (`12bcff39-74e9-4696-b5f0-4444216ee8e9`) na CDU ne postoji — tražiti ga na ostalim
+okolinama (`m1-dijagnostika-3.sql`, U1).
 
 ## Lokalni mock
 
-Changeset `123-str-facility-lookup-mock-local.xml` (`context="local"`) stvara `codebook_element`,
-`document`, `facility_type`, `facility_capacity`, `facility_unit(_capacity)`, `address` i adresnu
-hijerarhiju, te seeda iznajmljivača za mock OIB `99999999990` (`nias.mock.fixed-oib`) s objektima
-koji pokrivaju sve slučajeve prikaza: s RB-om i bez, neaktivan, restoran koji filter izbacuje i par
-zapisa s istim `system_uuid` za dedup.
+Changeset `123-str-facility-lookup-mock-local.xml` stvara šifrarnik, dokumente, vrste, kapacitete,
+adrese i objekte mock OIB-a `99999999990` (`nias.mock.fixed-oib`). Changeset
+`131-str-facility-actual-rules-local.xml` (`context="local"`) dodaje predmete, verifikaciju i
+šifrarnik vrsta dokumenta te slučajeve prikaza:
+
+| Zapisi | Slučaj | Prikaz |
+| :--- | :--- | :--- |
+| 200–203 | verificirani, svaki svoj predmet (201, 203 s RB-om) | 4 objekta |
+| 204 | pizzeria | izbačen filtrom vrste |
+| 205 | odjavljen | izbačen |
+| 206 / 207 | isti objekt u dva predmeta | samo 207 (noviji predmet) |
+| 210–213 | migrirani objekt „Vila Mare" s 4 jedinice | 1 objekt, 4 jedinice, „Nije verificiran" |
+| 214 | migrirana soba | 1 objekt, „Nije verificiran" |
+| 215 | migrirana kopija objekta 203, starija | skrivena |
+
+Mock objekti ostalih lokalnih subjekata (changeseti 112/115/116) nemaju predmet, pa se na popisu više
+ne prikazuju.
