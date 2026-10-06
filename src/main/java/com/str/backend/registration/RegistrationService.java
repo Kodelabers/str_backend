@@ -254,7 +254,8 @@ public class RegistrationService {
                 FacilityClaimVerifier.knownOrNull(facility.getSettlementName()),
                 FacilityClaimVerifier.knownOrNull(facility.getStreetName()),
                 FacilityClaimVerifier.knownOrNull(facility.getHouseNumber()),
-                FacilityClaimVerifier.knownOrNull(facility.getPostalCode()));
+                FacilityClaimVerifier.knownOrNull(facility.getPostalCode()),
+                FacilityClaimVerifier.knownOrNull(facility.getCategoryName()));
     }
 
     /**

@@ -190,6 +190,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         String getStreetName();
         String getHouseNumber();
         String getPostalCode();
+        String getCategoryName();
 
         /**
          * Kontakt objekta iz eTurizma — služi <b>samo</b> za predpopunu forme, ne i za provjeru.
@@ -257,6 +258,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    f.email     AS contactEmail,
                    f.phone     AS contactPhone,
                    f.document_id AS documentId,
+                   c_cat.name  AS categoryName,
                    coalesce(
                        (SELECT sum(fc.quantity) FROM str.facility_capacity fc
                           JOIN str.codebook_element ce ON ce.id = fc.type_id
@@ -289,6 +291,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                                 WHERE x.facility_id = f.id AND coalesce(x.active, true) = true)
             LEFT JOIN str.codebook_element c_sub ON c_sub.id = ft.sub_type_id
             LEFT JOIN str.codebook_element c_st  ON c_st.id  = f.business_status_id
+            LEFT JOIN str.codebook_element c_cat ON c_cat.id = f.category_id
             LEFT JOIN str.address a
                    ON a.id = CASE WHEN f.same_address_subject = true
                                   THEN (SELECT max(x.address_id) FROM str.subject_address x
