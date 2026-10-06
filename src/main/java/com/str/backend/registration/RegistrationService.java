@@ -130,6 +130,7 @@ public class RegistrationService {
         }
         AccommodationEntity accommodation = buildAccommodation(req, countyName(req.countyId()));
         verifyAndCompleteFacility(req.oib(), accommodation);
+        requireMaxBeds(accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
         // Identitet i adresa iz NIAS-a / registra, na serveru — ne iz zahtjeva. Nedostupan
@@ -163,6 +164,7 @@ public class RegistrationService {
 
         AccommodationEntity accommodation = buildAccommodation(req, countyName);
         verifyAndCompleteFacility(lessor.getLessorOib(), accommodation);
+        requireMaxBeds(accommodation);
         checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
 
         // Iznajmljivač je već pohranjen (samoregistracija), pa se e-mail ne dira — on je
@@ -224,6 +226,12 @@ public class RegistrationService {
      * (šifrarnik nije stigao, naziv se ne nađe u adresnom registru), pa bi bez dopune RB nosio
      * kod županije ili vrste 00 i GO-1 ne bi znao županiju. Dopuna mijenja samo prazna polja.
      */
+    private void requireMaxBeds(AccommodationEntity accommodation) {
+        if (accommodation.getFacilityId() != null && accommodation.getMaxBeds() == null) {
+            throw new BusinessException("error.accommodation.maxBedsRequired");
+        }
+    }
+
     private void verifyAndCompleteFacility(String oib, AccommodationEntity accommodation) {
         facilityClaimVerifier.verify(oib, accommodation.getFacilityId(),
                         new FacilityClaimVerifier.Claim(
