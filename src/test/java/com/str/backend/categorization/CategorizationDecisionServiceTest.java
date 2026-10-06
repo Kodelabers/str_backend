@@ -10,6 +10,8 @@ import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.StrFacilityRepository;
+import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -46,8 +49,9 @@ class CategorizationDecisionServiceTest {
     private final AccommodationTypeRepository typeRepository = mock(AccommodationTypeRepository.class);
     private final RnRepository rnRepository = mock(RnRepository.class);
     private final AccommodationRepository accommodationRepository = mock(AccommodationRepository.class);
-    private final CategorizationDecisionService service =
-            new CategorizationDecisionService(repository, typeRepository, rnRepository, accommodationRepository);
+    private final StrFacilityRepository facilityRepository = mock(StrFacilityRepository.class);
+    private final CategorizationDecisionService service = new CategorizationDecisionService(
+            repository, typeRepository, rnRepository, accommodationRepository, facilityRepository);
 
     private final RnEntity rn = mock(RnEntity.class);
     private final AccommodationEntity accommodation = mock(AccommodationEntity.class);
@@ -127,12 +131,75 @@ class CategorizationDecisionServiceTest {
         verify(repository, never()).saveAndFlush(any());
     }
 
-    /** Objekt iz eTurizma kategorizaciju već ima — rješenje uz njegov RB nema smisla. */
+    /** Verificiran objekt iz eTurizma kategorizaciju već ima — rješenje uz njegov RB nema smisla. */
     @Test
     void rejects_whenAccommodationComesFromETurizam() {
         when(accommodation.getFacilityId()).thenReturn("153049");
+        facilityVerified(153049L, true);
 
         assertConflict("CATEGORIZATION_NOT_REQUIRED");
+    }
+
+    /** Neverificiran (migriran) objekt: podaci nisu provjereni, pa iznajmljivač smije priložiti rješenje. */
+    @Test
+    void stores_whenAccommodationIsUnverifiedETurizamFacility() {
+        when(accommodation.getFacilityId()).thenReturn("153049");
+        facilityVerified(153049L, false);
+
+        CategorizationDecisionEntity saved = capture(request(file("rjesenje.pdf", "application/pdf", PDF)));
+
+        assertThat(saved.getRn()).isEqualTo(RN);
+        assertThat(saved.getStatus()).isEqualTo(CategorizationDecisionStatus.SUBMITTED);
+    }
+
+    /** Objekt koji eTurizam ne pronađe, ni onaj bez autora, nije dokazano neverificiran. */
+    @Test
+    void rejects_whenETurizamFacilityNotFoundOrVerificationUnknown() {
+        when(accommodation.getFacilityId()).thenReturn("153049");
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.empty());
+        assertConflict("CATEGORIZATION_NOT_REQUIRED");
+
+        facilityVerified(153049L, null);
+        assertConflict("CATEGORIZATION_NOT_REQUIRED");
+    }
+
+    /** Neverificiran objekt ne zaobilazi ostale provjere: status RB-a i jedno aktivno rješenje. */
+    @Test
+    void unverifiedFacility_stillChecksRnStatusAndActiveDecision() {
+        when(accommodation.getFacilityId()).thenReturn("153049");
+        facilityVerified(153049L, false);
+
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+        assertConflict("CATEGORIZATION_RN_STATUS");
+
+        when(rn.getStatus()).thenReturn(RnStatus.ACTIVE);
+        when(repository.existsByRnAndStatusIn(eq(RN), anyCollection())).thenReturn(true);
+        assertConflict("CATEGORIZATION_ALREADY_SUBMITTED");
+    }
+
+    /** Vlasništvo prije svega: za tuđi RB eTurizam se ni ne pita. */
+    @Test
+    void rejects_unownedRn_beforeAskingETurizam() {
+        when(rnRepository.isOwnedByOib(RN, OIB)).thenReturn(false);
+        when(accommodation.getFacilityId()).thenReturn("153049");
+        facilityVerified(153049L, false);
+
+        assertThatThrownBy(() -> service.upload(OIB, request(file("rjesenje.pdf", "application/pdf", PDF))))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(facilityRepository, never()).findOwnership(anyLong());
+    }
+
+    @Test
+    void rejects_whenFacilityIdNotNumeric() {
+        when(accommodation.getFacilityId()).thenReturn("nije-broj");
+
+        assertConflict("CATEGORIZATION_NOT_REQUIRED");
+    }
+
+    private void facilityVerified(long facilityId, Boolean verified) {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getVerified()).thenReturn(verified);
+        when(facilityRepository.findOwnership(facilityId)).thenReturn(Optional.of(row));
     }
 
     @Test

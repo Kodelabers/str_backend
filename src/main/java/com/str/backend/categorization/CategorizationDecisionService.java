@@ -11,6 +11,7 @@ import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.StrFacilityRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,20 +54,25 @@ public class CategorizationDecisionService {
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final RnRepository rnRepository;
     private final AccommodationRepository accommodationRepository;
+    private final StrFacilityRepository facilityRepository;
 
     public CategorizationDecisionService(CategorizationDecisionRepository repository,
                                         AccommodationTypeRepository accommodationTypeRepository,
                                         RnRepository rnRepository,
-                                        AccommodationRepository accommodationRepository) {
+                                        AccommodationRepository accommodationRepository,
+                                        StrFacilityRepository facilityRepository) {
         this.repository = repository;
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.rnRepository = rnRepository;
         this.accommodationRepository = accommodationRepository;
+        this.facilityRepository = facilityRepository;
     }
 
     /**
-     * Predaja rješenja uz RB vlasnika {@code oib}. Rješenje traži samo RB novog objekta —
-     * objekt iz eTurizma (smještaj s {@code facilityId}) kategorizaciju već ima.
+     * Predaja rješenja uz RB vlasnika {@code oib}. Rješenje traži RB novog objekta. Objekt iz
+     * eTurizma (smještaj s {@code facilityId}) kategorizaciju već ima, pa se uz njegov RB
+     * rješenje ne predaje — osim kad je objekt neverificiran (migriran iz starog sustava, podaci
+     * nisu provjereni): tada ga iznajmljivač smije priložiti, neobavezno.
      *
      * <p>Redoslijed provjera: prvo vlasništvo (404 i za nepostojeći i za tuđi RB, da se ne
      * otkriva postoji li), zatim smisao predaje (409), a tek onda datoteka (400).
@@ -83,7 +89,8 @@ public class CategorizationDecisionService {
         AccommodationEntity accommodation = accommodationRepository.findById(rnEntity.getAccommodationId())
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
 
-        if (trimToNull(accommodation.getFacilityId()) != null) {
+        String facilityId = trimToNull(accommodation.getFacilityId());
+        if (facilityId != null && !isUnverifiedFacility(facilityId)) {
             throw new ConflictException("error.categorization.notRequired", "CATEGORIZATION_NOT_REQUIRED");
         }
         if (!UPLOAD_ALLOWED_RN_STATUSES.contains(rnEntity.getStatus())) {
@@ -105,6 +112,30 @@ public class CategorizationDecisionService {
                 metadataOf(accommodation));
 
         return CategorizationDecisionResponse.of(saveActive(entity));
+    }
+
+    /**
+     * Je li eTurizam objekt neverificiran — pita se eTurizam u trenutku predaje, ne stanje pri
+     * izdavanju RB-a. Objekt koji eTurizam ne pronađe, kao i id koji nije broj, ne računa se kao
+     * neverificiran.
+     *
+     * <p>Gleda se zapis jedinice spremljen uz RB ({@code accommodation.facility_id}), ne aktualna
+     * jedinica objekta. Kad eTurizam migrirani zapis zamijeni novim verificiranim (nova verzija
+     * istog {@code system_uuid}), stari zapis i dalje kaže {@code optimit}, pa bi izravan poziv
+     * API-ja rješenje i dalje primio. Prihvaćeno (odluka 6. 10. 2026.): forma prilog nudi samo
+     * prema claimu aktualne jedinice, predaja ide odmah nakon izdavanja, a rješenje svejedno
+     * pregledava nadležno tijelo.
+     */
+    private boolean isUnverifiedFacility(String facilityId) {
+        long id;
+        try {
+            id = Long.parseLong(facilityId);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        return facilityRepository.findOwnership(id)
+                .map(row -> Boolean.FALSE.equals(row.getVerified()))
+                .orElse(false);
     }
 
     /**

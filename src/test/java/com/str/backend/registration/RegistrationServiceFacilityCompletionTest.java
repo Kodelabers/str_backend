@@ -11,6 +11,7 @@ import com.str.backend.address.SettlementRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.draft.SubmissionDraftService;
+import com.str.backend.exception.BusinessException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
@@ -37,11 +38,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -136,19 +139,33 @@ class RegistrationServiceFacilityCompletionTest {
         assertThat(saved.getStreetNumber()).isEqualTo("5");
     }
 
-    /** Popunjivač iz eTurizma nije podatak: prazno ostaje prazno, RB se svejedno izdaje. */
+    /**
+     * Popunjivač iz eTurizma nije podatak: prazno ostaje prazno, RB se svejedno izdaje. Broj
+     * gostiju koji eTurizam ne zna (0 kreveta) upisuje korisnik (V-2) i ostaje njegov.
+     */
     @Test
     void placeholdersStayEmpty() {
         when(facility.getStreetName()).thenReturn("-");
         when(facility.getHouseNumber()).thenReturn(null);
         when(facility.getBeds()).thenReturn(0);
 
-        service.generateRegistrationNumber(emptyFacilityRequest());
+        service.generateRegistrationNumber(request(null, null, null, null, 3));
 
         AccommodationEntity saved = savedAccommodation();
         assertThat(saved.getStreet()).isNull();
         assertThat(saved.getStreetNumber()).isNull();
-        assertThat(saved.getMaxBeds()).isNull();
+        assertThat(saved.getMaxBeds()).isEqualTo(3);
+    }
+
+    /** V-2: kapacitet ne zna ni eTurizam (0 kreveta) ni korisnik — RB se ne izdaje. */
+    @Test
+    void rejects_whenMaxGuestsUnknownEverywhere() {
+        when(facility.getBeds()).thenReturn(0);
+
+        assertThatThrownBy(() -> service.generateRegistrationNumber(emptyFacilityRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.accommodation.maxBedsRequired");
+        verify(accommodationRepository, never()).save(any());
     }
 
     /** Županija koje nema u registru ostaje kakvu je eTurizam dao — bolje od praznog, ne blokira. */

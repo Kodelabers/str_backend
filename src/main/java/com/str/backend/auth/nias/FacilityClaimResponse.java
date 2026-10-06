@@ -52,5 +52,11 @@ public record FacilityClaimResponse(
          * {@code app.eturizam.external-base-url}. {@code null} kad se ne može složiti — frontend
          * tada ne nudi kvačicu „podaci iz registra nisu točni".
          */
-        String zahtjevPromjenaUrl) {
+        String zahtjevPromjenaUrl,
+        /**
+         * {@code false} za objekt migriran iz starog sustava koji nadležno tijelo još nije
+         * provjerilo — uz njegov RB rješenje o kategorizaciji smije se (neobavezno) priložiti
+         * ({@code CategorizationDecisionService#upload}). {@code null} kad se ne zna.
+         */
+        Boolean verificiran) {
 }

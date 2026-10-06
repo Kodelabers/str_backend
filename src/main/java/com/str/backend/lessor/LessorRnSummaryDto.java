@@ -12,7 +12,7 @@ import java.time.LocalDate;
  * {@code facilityId}) koji nije povučen — samo uz takav RB rješenje o kategorizaciji ima smisla,
  * isto pravilo kao {@code CategorizationDecisionService.UPLOAD_ALLOWED_RN_STATUSES}.
  * {@code categorizationStatus} je status mjerodavnog rješenja uz RB ili {@code null} kad ga
- * nema. Non-EU popis ta polja ne računa (ondje nema NIAS predaje rješenja), pa su {@code false}
+ * nema — postoji i uz RB neverificiranog eTurizam objekta kad je rješenje (neobavezno) predano. Non-EU popis ta polja ne računa (ondje nema NIAS predaje rješenja), pa su {@code false}
  * i {@code null}.
  */
 public record LessorRnSummaryDto(
