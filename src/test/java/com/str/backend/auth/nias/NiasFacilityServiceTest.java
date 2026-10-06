@@ -12,6 +12,7 @@ import com.str.backend.rn.RnRepository.FacilityRnRow;
 import com.str.backend.str.StrFacilityRepository;
 import com.str.backend.str.StrFacilityRepository.FacilityListingRow;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
+import com.str.backend.str.StrFacilityRepository.ListingTotals;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -58,12 +60,12 @@ class NiasFacilityServiceTest {
 
     @Test
     void maps_eturizamRowToResponse() {
-        stubFacilities(row(153049L, "Soba 1", "FS_SOBA", "Soba", null, 2));
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(1L);
+        stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", null, 2));
 
         FacilityPageResponse page = service.list(OIB, null, null);
 
         assertThat(page.total()).isEqualTo(1);
+        assertThat(page.totalUnits()).isEqualTo(1);
         assertThat(page.size()).isEqualTo(NiasFacilityService.DEFAULT_PAGE_SIZE);
         FacilityResponse item = page.items().getFirst();
         assertThat(item.id()).isEqualTo("153049");
@@ -71,6 +73,18 @@ class NiasFacilityServiceTest {
         assertThat(item.brKreveta()).isEqualTo(2);
         assertThat(item.registracijskiBroj()).isNull();
         assertThat(item.izvor()).isEqualTo(FacilitySource.ETURIZAM);
+        assertThat(item.objektId()).isEqualTo("uuid-a");
+        assertThat(item.verificiran()).isTrue();
+        // ukupno nosi redak stranice — zaseban count se ne pita
+        verify(facilityRepository, never()).countListingByOib(anyString(), any());
+    }
+
+    /** Neverificirani (migrirani) objekt nosi zastavicu, da ga frontend označi. */
+    @Test
+    void mapsUnverifiedFlag() {
+        stubFacilities(row(153049L, "uuid-m", false, "Soba 1", "FS_SOBA", "Soba", null, 2));
+
+        assertThat(service.list(OIB, 0, 20).items().getFirst().verificiran()).isFalse();
     }
 
     /**
@@ -79,8 +93,7 @@ class NiasFacilityServiceTest {
      */
     @Test
     void fallsBackToOwnRegistrationNumber_whenWriteBackMissing() {
-        stubFacilities(row(153049L, "Soba 1", "FS_SOBA", "Soba", null, 2));
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(1L);
+        stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", null, 2));
         // mock se gradi prije when(...) — ugniježđeno stubiranje Mockito odbija
         FacilityRnRow ourRn = rnRow("153049", "HR100000000000000001");
         when(rnRepository.findRnsByFacilityIds(List.of("153049"))).thenReturn(List.of(ourRn));
@@ -92,8 +105,7 @@ class NiasFacilityServiceTest {
 
     @Test
     void prefersEturizamRegistrationNumber_andSkipsOwnLookup() {
-        stubFacilities(row(153049L, "Soba 1", "FS_SOBA", "Soba", "HR100000000000000009", 2));
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(1L);
+        stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", "HR100000000000000009", 2));
 
         FacilityPageResponse page = service.list(OIB, 0, 20);
 
@@ -102,7 +114,7 @@ class NiasFacilityServiceTest {
     }
 
     /**
-     * FacilityResponse je record sa 17 pozicijskih komponenti, pa pin na mapiranje privremenog
+     * FacilityResponse je record s pozicijskim komponentama, pa pin na mapiranje privremenog
      * zapisa: umetanje novog polja koje pomakne redoslijed mora oboriti test, ne tiho zamijeniti
      * adresu i naziv u odgovoru.
      */
@@ -114,7 +126,7 @@ class NiasFacilityServiceTest {
                         "Kraljevska 88, Makarska", "UP/I-334-01/26", null, 3, null));
         stubDecisions(decision);
         stubFacilities();
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(0L);
+        stubTotals(0, 0);
 
         FacilityResponse item = service.list(OIB, 0, 20).items().getFirst();
 
@@ -125,6 +137,9 @@ class NiasFacilityServiceTest {
         assertThat(item.punaAdresa()).isEqualTo("Kraljevska 88, Makarska");
         assertThat(item.registracijskiBroj()).isNull();
         assertThat(item.izvor()).isEqualTo(FacilitySource.PRIVREMENO_RJESENJE);
+        // svako rješenje je zaseban objekt; nije u eTurizmu pa nije ni (ne)verificirano
+        assertThat(item.objektId()).isEqualTo(decision.getDecisionId().toString());
+        assertThat(item.verificiran()).isNull();
     }
 
     /** Bez unesenog naziva red se prikazuje pod nazivom datoteke — inače bi bio bezimen. */
@@ -132,57 +147,113 @@ class NiasFacilityServiceTest {
     void fallsBackToFileName_whenObjectNameMissing() {
         stubDecisions(decision("skan-rjesenja.pdf"));
         stubFacilities();
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(0L);
+        stubTotals(0, 0);
 
         assertThat(service.list(OIB, 0, 20).items().getFirst().naziv()).isEqualTo("skan-rjesenja.pdf");
     }
 
+    /** Redoslijed: eTurizam objekti (verificirani pa neverificirani, iz upita), zatim privremena rješenja. */
     @Test
-    void putsTemporaryDecisionsFirst_andCountsThemInTotal() {
+    void putsTemporaryDecisionsAfterEturizam_andCountsThemInTotal() {
         stubDecisions(decision("Soba iz rjesenja.pdf"));
-        stubFacilities(row(1L, "Soba 1", "FS_SOBA", "Soba", null, 2));
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(3L);
+        stubFacilities(row(1L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", null, 2, 1, 1));
 
         FacilityPageResponse page = service.list(OIB, 0, 20);
 
-        assertThat(page.total()).isEqualTo(4);
+        assertThat(page.total()).isEqualTo(2);
+        assertThat(page.totalUnits()).isEqualTo(2);
         assertThat(page.items()).hasSize(2);
-        assertThat(page.items().getFirst().izvor()).isEqualTo(FacilitySource.PRIVREMENO_RJESENJE);
-        assertThat(page.items().getFirst().registracijskiBroj()).isNull();
-        assertThat(page.items().get(1).izvor()).isEqualTo(FacilitySource.ETURIZAM);
-        // prva stranica trazi 19 eTurizam redaka jer je jedno mjesto zauzelo privremeno rjesenje
-        verify(facilityRepository).findListingByOib(OIB, CODES, 19, 0);
+        assertThat(page.items().getFirst().izvor()).isEqualTo(FacilitySource.ETURIZAM);
+        assertThat(page.items().get(1).izvor()).isEqualTo(FacilitySource.PRIVREMENO_RJESENJE);
+        verify(facilityRepository).findListingByOib(OIB, CODES, 20, 0L);
     }
 
-    /** Druga stranica ne smije preskočiti eTurizam redak zbog privremenog zapisa na prvoj. */
+    /**
+     * Stranica broji objekte, ne jedinice: tri jedinice dvaju objekata na stranici veličine 2
+     * popunjavaju je, pa privremeno rješenje ide na sljedeću.
+     */
     @Test
-    void offsetsEturizamByTemporaryCount_onLaterPages() {
-        stubDecisions(decision("Skan 1"), decision("Skan 2"));
+    void countsObjectsNotUnits_whenFillingPage() {
+        stubDecisions(decision("Skan.pdf"));
+        stubFacilities(
+                row(1L, "uuid-a", true, "Apartman A1", "FS_APARTMAN", "Apartman", null, 2, 3, 4),
+                row(2L, "uuid-a", true, "Apartman A2", "FS_APARTMAN", "Apartman", null, 2, 3, 4),
+                row(3L, "uuid-b", false, "Soba B1", "FS_SOBA", "Soba", null, 2, 3, 4));
+
+        FacilityPageResponse page = service.list(OIB, 0, 2);
+
+        assertThat(page.items()).hasSize(3);
+        assertThat(page.items()).extracting(FacilityResponse::izvor).containsOnly(FacilitySource.ETURIZAM);
+        assertThat(page.items()).extracting(FacilityResponse::objektId)
+                .containsExactly("uuid-a", "uuid-a", "uuid-b");
+        assertThat(page.total()).isEqualTo(4);       // 3 eTurizam objekta + 1 rješenje
+        assertThat(page.totalUnits()).isEqualTo(5);  // 4 eTurizam jedinice + 1 rješenje
+    }
+
+    /** Zadnja stranica eTurizma dopunjava se privremenim rješenjima od početka njihova popisa. */
+    @Test
+    void fillsLastEturizamPage_withTemporaryDecisions() {
+        stubDecisions(decision("Skan 1"), decision("Skan 2"), decision("Skan 3"));
+        stubFacilities(row(21L, "uuid-z", true, "Soba Z", "FS_SOBA", "Soba", null, 2, 21, 21));
+
+        FacilityPageResponse page = service.list(OIB, 1, 20);
+
+        // stranica 2 nosi 21. eTurizam objekt i prva 3 rješenja (ukupno 4 objekta < 20)
+        assertThat(page.items()).extracting(FacilityResponse::izvor).containsExactly(
+                FacilitySource.ETURIZAM, FacilitySource.PRIVREMENO_RJESENJE,
+                FacilitySource.PRIVREMENO_RJESENJE, FacilitySource.PRIVREMENO_RJESENJE);
+        assertThat(page.total()).isEqualTo(24);
+        verify(facilityRepository).findListingByOib(OIB, CODES, 20, 20L);
+    }
+
+    /**
+     * Stranica iza svih eTurizam objekata: upit vrati prazno, ukupno se pita zasebno, a rješenja
+     * se nastavljaju od pomaka koji preostaje nakon eTurizma.
+     */
+    @Test
+    void offsetsTemporaryDecisions_pastEturizamObjects() {
+        stubDecisions(decision("Skan 1"), decision("Skan 2"), decision("Skan 3"));
         stubFacilities();
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(50L);
+        stubTotals(10, 15);
 
-        service.list(OIB, 1, 10);
+        FacilityPageResponse page = service.list(OIB, 1, 10);
 
-        verify(facilityRepository).findListingByOib(OIB, CODES, 10, 8);
+        // svih 10 eTurizam objekata je na prvoj stranici; druga počinje prvim rješenjem
+        assertThat(page.items()).hasSize(3);
+        assertThat(page.total()).isEqualTo(13);
+        assertThat(page.totalUnits()).isEqualTo(18);
+    }
+
+    @Test
+    void skipsTemporaryDecisionsAlreadyShown_onLaterPages() {
+        stubDecisions(decision("Skan 1"), decision("Skan 2"), decision("Skan 3"));
+        stubFacilities();
+        stubTotals(8, 8);
+
+        FacilityPageResponse page = service.list(OIB, 2, 5);
+
+        // pomak 10: 8 eTurizam objekata + 2 rješenja su na prethodnim stranicama → ostaje treće
+        assertThat(page.items()).extracting(FacilityResponse::naziv).containsExactly("Skan 3");
+        assertThat(page.total()).isEqualTo(11);
     }
 
     /** page * size je long — inače bi veliki page prelio int u negativan OFFSET i oborio query. */
     @Test
     void survivesHugePageNumber_withoutNegativeOffset() {
         stubFacilities();
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(5L);
+        stubTotals(5, 7);
 
         FacilityPageResponse page = service.list(OIB, Integer.MAX_VALUE, 100);
 
         assertThat(page.items()).isEmpty();
         assertThat(page.total()).isEqualTo(5);
-        verify(facilityRepository, never()).findListingByOib(anyString(), any(), anyInt(), anyInt());
+        verify(facilityRepository).findListingByOib(OIB, CODES, 100, (long) Integer.MAX_VALUE * 100);
     }
 
     @Test
     void clampsPageSize_andNormalisesNegativePage() {
         stubFacilities();
-        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(0L);
+        stubTotals(0, 0);
 
         FacilityPageResponse page = service.list(OIB, -5, 5000);
 
@@ -200,7 +271,7 @@ class NiasFacilityServiceTest {
 
         assertThat(page.total()).isEqualTo(1);
         assertThat(page.items()).hasSize(1);
-        verify(facilityRepository, never()).findListingByOib(anyString(), any(), anyInt(), anyInt());
+        verify(facilityRepository, never()).findListingByOib(anyString(), any(), anyInt(), anyLong());
         verify(facilityRepository, never()).countListingByOib(anyString(), any());
     }
 
@@ -213,6 +284,7 @@ class NiasFacilityServiceTest {
         when(row.getAuxiliaryBeds()).thenReturn(2);
         when(row.getActive()).thenReturn(true);
         when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getCurrent()).thenReturn(true);
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
 
         FacilityClaimResponse claim = service.claim(OIB, "153049");
@@ -276,6 +348,7 @@ class NiasFacilityServiceTest {
         when(row.getOib()).thenReturn(OIB);
         when(row.getActive()).thenReturn(true);
         when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getCurrent()).thenReturn(true);
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
         return row;
     }
@@ -290,6 +363,7 @@ class NiasFacilityServiceTest {
         when(row.getOib()).thenReturn(OIB);
         when(row.getActive()).thenReturn(true);
         when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getCurrent()).thenReturn(true);
         when(row.getSubtypeCode()).thenReturn("FS_HOTEL");
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
         when(typeRepository.findByCodeIgnoreCase("FS_HOTEL")).thenReturn(Optional.empty());
@@ -314,6 +388,20 @@ class NiasFacilityServiceTest {
                 .hasMessage("error.facility.inactive");
     }
 
+    /**
+     * Vlastita jedinica koja nije aktualna (npr. stara verzija ili migrirana kopija koju je
+     * zamijenio noviji predmet): popis je ne prikazuje, pa je ni tuStart handoff ne smije otvoriti.
+     */
+    @Test
+    void claim_rejectsRowThatIsNotCurrent() {
+        FacilityOwnershipRow row = activeOwnRow();
+        when(row.getCurrent()).thenReturn(false);
+
+        assertThatThrownBy(() -> service.claim(OIB, "153049"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.facility.inactive");
+    }
+
     /** Tuđi odjavljeni objekt i dalje daje 404 — provjera statusa ide tek nakon vlasništva. */
     @Test
     void claim_returnsNotFound_forInactiveFacilityOfAnotherLessor() {
@@ -327,8 +415,16 @@ class NiasFacilityServiceTest {
     }
 
     private void stubFacilities(FacilityListingRow... rows) {
-        when(facilityRepository.findListingByOib(eq(OIB), eq(CODES), anyInt(), anyInt()))
+        when(facilityRepository.findListingByOib(eq(OIB), eq(CODES), anyInt(), anyLong()))
                 .thenReturn(List.of(rows));
+    }
+
+    /** Ukupno za praznu stranicu — kad ga ne nosi nijedan redak. */
+    private void stubTotals(long objects, long units) {
+        ListingTotals totals = mock(ListingTotals.class);
+        when(totals.getObjects()).thenReturn(objects);
+        when(totals.getUnits()).thenReturn(units);
+        when(facilityRepository.countListingByOib(OIB, CODES)).thenReturn(totals);
     }
 
     private void stubDecisions(CategorizationDecisionEntity... decisions) {
@@ -336,10 +432,23 @@ class NiasFacilityServiceTest {
                 OIB, CategorizationDecisionStatus.REJECTED)).thenReturn(List.of(decisions));
     }
 
-    private static FacilityListingRow row(Long id, String name, String subtypeCode, String subtypeName,
+    /** Jedinica jedinog objekta iznajmljivača (ukupno 1 objekt, 1 jedinica). */
+    private static FacilityListingRow row(Long id, String systemUuid, boolean verified, String name,
+                                          String subtypeCode, String subtypeName,
                                           String registrationNumber, Integer beds) {
+        return row(id, systemUuid, verified, name, subtypeCode, subtypeName, registrationNumber, beds, 1, 1);
+    }
+
+    private static FacilityListingRow row(Long id, String systemUuid, boolean verified, String name,
+                                          String subtypeCode, String subtypeName,
+                                          String registrationNumber, Integer beds,
+                                          long totalObjects, long totalUnits) {
         FacilityListingRow row = mock(FacilityListingRow.class);
         lenient().when(row.getFacilityId()).thenReturn(id);
+        lenient().when(row.getSystemUuid()).thenReturn(systemUuid);
+        lenient().when(row.getVerified()).thenReturn(verified);
+        lenient().when(row.getTotalObjects()).thenReturn(totalObjects);
+        lenient().when(row.getTotalUnits()).thenReturn(totalUnits);
         lenient().when(row.getName()).thenReturn(name);
         lenient().when(row.getSubtypeCode()).thenReturn(subtypeCode);
         lenient().when(row.getSubtypeName()).thenReturn(subtypeName);

@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock tablica i podataka za pravila „aktualne jedinice" (StrFacilityRepository,
+      RANGIRANE_JEDINICE_*) — prepisana iz eTurizmova viewa str.vw_src_facility_actual.
+      Samo context="local"; na dev/CDU/preprod tablice posjeduje eTurizam i read-only su.
+
+      Popis sada traži predmet (business_case) s organizacijskom jedinicom, dokument koji je
+      rješenje (sif_podvrsta_dokumenta → sif_vrsta_dokumenata) i, za verificirane, izvršno
+      rješenje (status BCST_RJES_IZVRSNO + execution_date). Bez ovoga bi lokalni popis bio prazan.
+
+      INTENTIONALLY LOOSE SCHEMA, kao i 100-str-schema-local / 123: bez FK-ova i NOT NULL-ova.
+    -->
+
+    <changeSet id="131-str-business-case" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="business_case"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="business_case">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="status_type_id" type="BIGINT"/>
+            <column name="jurisdiction_organizational_unit_id" type="BIGINT"/>
+            <column name="subject_version_id" type="BIGINT"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="business_case" indexName="idx_str_business_case_subject_version">
+            <column name="subject_version_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="131-str-business-case-verification" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="business_case_verification"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="business_case_verification">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="unverified_business_case_id" type="BIGINT"/>
+            <column name="verified_business_case_id" type="BIGINT"/>
+            <column name="status_id" type="BIGINT"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="131-str-sif-vrsta-dokumenata" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="sif_vrsta_dokumenata"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="sif_vrsta_dokumenata">
+            <column name="code" type="VARCHAR(64)"><constraints primaryKey="true" nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="131-str-sif-podvrsta-dokumenta" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="sif_podvrsta_dokumenta"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="sif_podvrsta_dokumenta">
+            <column name="code" type="VARCHAR(64)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="vrsta_dokumenata_code" type="VARCHAR(64)"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="131-str-organizational-unit" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="organizational_unit"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="organizational_unit">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="131-str-document-execution-date" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="document" columnName="execution_date"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="document">
+            <column name="execution_date" type="TIMESTAMP"/>
+        </addColumn>
+    </changeSet>
+
+    <!-- Šifre su stvarne (provjerene na CDU), ID-evi lokalni. -->
+    <changeSet id="131-str-codebook-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.codebook_element WHERE code = 'BCST_RJES_IZVRSNO'</sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.codebook_element (id, active, code, name) VALUES
+              (1050, true, 'BCST_RJES_IZVRSNO', 'Rješenje izvršno'),
+              (1051, true, 'BCST_U_RJESAVANJU', 'U rješavanju'),
+              (1060, true, 'BCVS_U_IZRADI',     'U izradi'),
+              (1061, true, 'BCVS_ZAVRSENA',     'Završena');
+            INSERT INTO str.sif_vrsta_dokumenata (code) VALUES ('DOT_RJESENJE'), ('DOT_ZAHTJEV');
+            INSERT INTO str.sif_podvrsta_dokumenta (code, vrsta_dokumenata_code) VALUES
+              ('DST_R_OD_UG_DOM', 'DOT_RJESENJE'),
+              ('DST_R_MIN_VR_KAT_UG', 'DOT_RJESENJE'),
+              ('DST_Z_PROMJ_POD', 'DOT_ZAHTJEV');
+            INSERT INTO str.organizational_unit (id) VALUES (1);
+        </sql>
+    </changeSet>
+
+    <!--
+      Mock iznajmljivač 99999999990 (nias.mock.fixed-oib), objekti iz changeseta 123:
+        200-203 verificirani, izvršno rješenje, svaki svoj predmet (201, 203 imaju RB);
+        204 pizzeria (filter vrste je izbacuje), 205 odjavljen;
+        206/207 isti objekt u dva predmeta — prikazuje se samo noviji predmet (207).
+      Dodano:
+        210-213 migriran objekt „Vila Mare" s 4 jedinice (sobe) u jednom predmetu — neverificiran;
+        214     migrirana soba, sama u predmetu — neverificirana;
+        215     migrirana kopija objekta 203, starija od verificiranog predmeta — skrivena.
+    -->
+    <changeSet id="131-str-mock-oib-actual-rules-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.business_case WHERE id BETWEEN 9000 AND 9099</sqlCheck>
+            <sqlCheck expectedResult="1">SELECT COUNT(*) FROM str.subject WHERE jips = '99999999990'</sqlCheck>
+        </preConditions>
+        <sql>
+            -- verificirani predmeti 200-207 (206 dobiva vlastiti, stariji predmet 9007)
+            INSERT INTO str.business_case (id, active, status_type_id, jurisdiction_organizational_unit_id, subject_version_id)
+            SELECT 9000 + g, true, 1050, 1, 99 FROM generate_series(0, 7) AS g;
+
+            UPDATE str.document
+               SET subtype_code = 'DST_R_OD_UG_DOM', execution_date = TIMESTAMP '2024-03-01 00:00:00'
+             WHERE id BETWEEN 900 AND 907;
+            UPDATE str.document SET business_case_id = 9007 WHERE id = 906;
+
+            UPDATE str.facility SET created_by = 'sluzbenik', created_date = TIMESTAMP '2024-03-01 10:00:00'
+             WHERE id BETWEEN 200 AND 205;
+            UPDATE str.facility SET created_by = 'sluzbenik', created_date = TIMESTAMP '2024-02-01 10:00:00'
+             WHERE id = 206;
+            UPDATE str.facility SET created_by = 'sluzbenik', created_date = TIMESTAMP '2025-05-01 10:00:00'
+             WHERE id = 207;
+
+            -- migrirani predmeti: bez statusa i bez datuma izvršnosti (kao svi migrirani na CDU)
+            INSERT INTO str.business_case (id, active, status_type_id, jurisdiction_organizational_unit_id, subject_version_id) VALUES
+              (9010, true, NULL, 1, 99), (9011, true, NULL, 1, 99), (9012, true, NULL, 1, 99);
+            INSERT INTO str.document (id, active, business_case_id, subject_version_id, subtype_code, execution_date) VALUES
+              (910, true, 9010, 99, 'DST_R_MIN_VR_KAT_UG', NULL),
+              (911, true, 9011, 99, 'DST_R_OD_UG_DOM', NULL),
+              (912, true, 9012, 99, 'DST_R_OD_UG_DOM', NULL);
+
+            INSERT INTO str.facility (id, active, subject_id, subject_version_id, name, system_uuid,
+                                      document_id, address_id, category_id, business_status_id,
+                                      same_address_subject, historical, registration_number,
+                                      created_by, created_date) VALUES
+              (210, true, 99, 99, 'Vila Mare',      'mock-uuid-vila', 910, 900, 1020, 1030, false, NULL, NULL, 'optimit', TIMESTAMP '2023-01-19 13:19:36.964'),
+              (211, true, 99, 99, 'Vila Mare',      'mock-uuid-vila', 910, 900, 1020, 1030, false, NULL, NULL, 'optimit', TIMESTAMP '2023-01-19 13:19:36.966'),
+              (212, true, 99, 99, 'Vila Mare',      'mock-uuid-vila', 910, 900, 1020, 1030, false, NULL, NULL, 'optimit', TIMESTAMP '2023-01-19 13:19:36.968'),
+              (213, true, 99, 99, 'Vila Mare',      'mock-uuid-vila', 910, 900, 1020, 1030, false, NULL, NULL, 'optimit', TIMESTAMP '2023-01-19 13:19:36.970'),
+              (214, true, 99, 99, 'Soba Marina',    'mock-uuid-214',  911, 901, 1021, 1030, false, NULL, NULL, 'optimit', TIMESTAMP '2023-01-19 14:00:00'),
+              (215, true, 99, 99, 'Kuća Krešimir',  'mock-uuid-203',  912, 903, 1020, 1030, false, NULL, NULL, 'optimit', TIMESTAMP '2023-01-12 16:00:00');
+
+            INSERT INTO str.facility_type (id, active, facility_id, type_id, sub_type_id) VALUES
+              (210, true, 210, 1000, 1010), (211, true, 211, 1000, 1010),
+              (212, true, 212, 1000, 1010), (213, true, 213, 1000, 1010),
+              (214, true, 214, 1000, 1010), (215, true, 215, 1000, 1013);
+
+            INSERT INTO str.facility_capacity (id, active, facility_id, type_id, quantity) VALUES
+              (210, true, 210, 1040, 2), (211, true, 211, 1040, 2),
+              (212, true, 212, 1040, 2), (213, true, 213, 1040, 3),
+              (214, true, 214, 1040, 2), (215, true, 215, 1040, 6);
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

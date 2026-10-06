@@ -169,17 +169,21 @@ public class FacilityClaimVerifier {
     }
 
     /**
-     * Posluje li objekt: zapis je aktivan <b>i</b> poslovni status je {@code FBS_ACTIVE}. Isto
-     * pravilo kao popis objekata ({@code StrFacilityRepository.LISTING_FROM}) — objekt koji se na
-     * popisu ne vidi ne smije proći ni kroz tuStart handoff s {@code facilityId}.
+     * Posluje li jedinica i je li aktualna: zapis je aktivan, poslovni status je {@code FBS_ACTIVE}
+     * <b>i</b> zapis je aktualan po pravilima eTurizma ({@code StrFacilityRepository.RANGIRANE_JEDINICE_OD}).
+     * Isto pravilo kao popis objekata ({@code StrFacilityRepository.PRIKAZ_ZA_OIB}) — jedinica koja se
+     * na popisu ne vidi ne smije proći ni kroz tuStart handoff s {@code facilityId}.
      *
      * <p>Samo {@code facility.active} nije dovoljan: to je zastavica verzije zapisa, pa je na CDU
      * „Odjavljen" gotovo polovica zapisa s {@code active = true}. Objekt bez statusa ne prolazi —
-     * ne zna se da posluje, a RB bi se upisao natrag u eTurizam.
+     * ne zna se da posluje, a RB bi se upisao natrag u eTurizam. Ne prolazi ni zapis koji nije
+     * aktualan (stara verzija, predmet u obradi, migrirana kopija koju je zamijenio noviji predmet):
+     * RB bi završio na zapisu koji eTurizam više ne smatra objektom.
      */
     public static boolean isActive(FacilityOwnershipRow facility) {
         return Boolean.TRUE.equals(facility.getActive())
-                && StrFacilityRepository.ACTIVE_BUSINESS_STATUS.equals(facility.getBusinessStatusCode());
+                && StrFacilityRepository.ACTIVE_BUSINESS_STATUS.equals(facility.getBusinessStatusCode())
+                && Boolean.TRUE.equals(facility.getCurrent());
     }
 
     /**

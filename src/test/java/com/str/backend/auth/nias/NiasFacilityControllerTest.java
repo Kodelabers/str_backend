@@ -179,7 +179,7 @@ class NiasFacilityControllerTest {
     void facilities_useCompanyOib_whenActingForCompany() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
-        when(facilityService.list(any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0));
+        when(facilityService.list(any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
 
         mvc.perform(get("/api/nias/facilities")).andExpect(status().isOk());
 
@@ -451,8 +451,9 @@ class NiasFacilityControllerTest {
                 List.of(new FacilityResponse("153049", "Soba 1", "FS_SOBA", "Soba", "Tri zvjezdice",
                         "Aktivan", 2, null, "Splitsko-dalmatinska", "Makarska", "Makarska",
                         "Kraljevska", "88", "21300", "Kraljevska 88", null,
-                        "soba1@example.com", "021111222", FacilitySource.ETURIZAM)),
-                0, 20, 1));
+                        "soba1@example.com", "021111222", FacilitySource.ETURIZAM,
+                        "8a3e5c1e-0000-4000-8000-000000000001", true)),
+                0, 20, 1, 1));
 
         mvc.perform(get("/api/nias/facilities").param("page", "0").param("size", "20"))
                 .andExpect(status().isOk())
@@ -460,7 +461,10 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.items[0].id").value("153049"))
                 .andExpect(jsonPath("$.items[0].vrstaSifra").value("FS_SOBA"))
                 .andExpect(jsonPath("$.items[0].registracijskiBroj").doesNotExist())
-                .andExpect(jsonPath("$.items[0].izvor").value("ETURIZAM"));
+                .andExpect(jsonPath("$.items[0].izvor").value("ETURIZAM"))
+                .andExpect(jsonPath("$.items[0].objektId").value("8a3e5c1e-0000-4000-8000-000000000001"))
+                .andExpect(jsonPath("$.items[0].verificiran").value(true))
+                .andExpect(jsonPath("$.totalUnits").value(1));
     }
 
     @Test

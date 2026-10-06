@@ -2,6 +2,7 @@ package com.str.backend.str;
 
 import com.str.backend.str.StrFacilityRepository.FacilityListingRow;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
+import com.str.backend.str.StrFacilityRepository.ListingTotals;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,12 +16,17 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Native query popisa objekata na pravoj bazi (H2), jer je dedup ono što nosi najveći rizik.
+ * Native query popisa objekata na pravoj bazi (H2), jer su pravila aktualnosti ono što nosi
+ * najveći rizik. Pravila su prepisana iz eTurizmova viewa {@code str.vw_src_facility_actual}
+ * (v. komentar u {@link StrFacilityRepository}); ovdje je svako pokriveno zasebnim slučajem.
  *
  * <p>Tablice koje query joina nemaju entitete, pa ih Hibernate ne stvara — ovaj test ih kreira
  * sam i dopunjava {@code str.facility} kolonama koje {@link StrFacilityEntity} ne mapira (entitet
- * je namjerno minimalan i {@code @Immutable}). Struktura odgovara pravoj eTurizam shemi, provjerenoj
- * na dev-u.
+ * je namjerno minimalan i {@code @Immutable}). Struktura odgovara pravoj eTurizam shemi (str2),
+ * provjerenoj na CDU testu.
+ *
+ * <p>Model: zapis {@code facility} je smještajna jedinica, {@code system_uuid} je objekt. Svaki
+ * predmet ovdje ima točno jedan dokument s istim id-em kao predmet.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -29,6 +35,16 @@ class StrFacilityListingQueryTest {
     private static final String OIB = "06756460531";
     private static final String OTHER_OIB = "12312312316";
     private static final List<String> CODES = List.of("FS_SOBA", "FS_APARTMAN", "FS_KUCA_ZA_ODMOR");
+
+    private static final long STATUS_IZVRSNO = 1050;
+    private static final long STATUS_U_RJESAVANJU = 1051;
+    private static final long VERIFIKACIJA_U_IZRADI = 1060;
+    private static final long VERIFIKACIJA_ZAVRSENA = 1061;
+
+    private static final String RJESENJE = "DST_R_OD_UG_DOM";
+    private static final String ZAHTJEV = "DST_Z_PROMJ_POD";
+    private static final String MIGRACIJA = "optimit";
+    private static final String SLUZBENIK = "sluzbenik";
 
     @Autowired private StrFacilityRepository repository;
     @Autowired private JdbcTemplate jdbc;
@@ -47,6 +63,10 @@ class StrFacilityListingQueryTest {
         // Kontakt objekta — čita se za predpopunu kontakt bloka u formi (stavka 11, 10.09.2026.).
         jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS email VARCHAR(255)");
         jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS phone VARCHAR(50)");
+        // Pravila aktualnosti iz eTurizmova viewa
+        jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS created_by VARCHAR(255)");
+        jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS created_date TIMESTAMP");
+        jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS historical BOOLEAN");
 
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS str.codebook_element (
@@ -56,6 +76,24 @@ class StrFacilityListingQueryTest {
                 CREATE TABLE IF NOT EXISTS str.document (
                   id BIGINT PRIMARY KEY, active BOOLEAN, business_case_id BIGINT)
                 """);
+        jdbc.execute("ALTER TABLE str.document ADD COLUMN IF NOT EXISTS subtype_code VARCHAR(64)");
+        jdbc.execute("ALTER TABLE str.document ADD COLUMN IF NOT EXISTS execution_date TIMESTAMP");
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS str.business_case (
+                  id BIGINT PRIMARY KEY, active BOOLEAN, status_type_id BIGINT,
+                  jurisdiction_organizational_unit_id BIGINT, subject_version_id BIGINT)
+                """);
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS str.business_case_verification (
+                  id BIGINT PRIMARY KEY, unverified_business_case_id BIGINT,
+                  verified_business_case_id BIGINT, status_id BIGINT)
+                """);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.sif_vrsta_dokumenata (code VARCHAR(64) PRIMARY KEY)");
+        jdbc.execute("""
+                CREATE TABLE IF NOT EXISTS str.sif_podvrsta_dokumenta (
+                  code VARCHAR(64) PRIMARY KEY, vrsta_dokumenata_code VARCHAR(64))
+                """);
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.organizational_unit (id BIGINT PRIMARY KEY)");
         jdbc.execute("""
                 CREATE TABLE IF NOT EXISTS str.facility_type (
                   id BIGINT PRIMARY KEY, active BOOLEAN, facility_id BIGINT,
@@ -94,8 +132,9 @@ class StrFacilityListingQueryTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS str.house_number (id BIGINT PRIMARY KEY, name VARCHAR(32))");
 
         for (String table : List.of("facility", "facility_type", "facility_capacity", "facility_unit",
-                "facility_unit_capacity", "document", "address", "county", "municipality",
-                "settlement", "street", "house_number", "codebook_element",
+                "facility_unit_capacity", "document", "business_case", "business_case_verification",
+                "sif_vrsta_dokumenata", "sif_podvrsta_dokumenta", "organizational_unit", "address",
+                "county", "municipality", "settlement", "street", "house_number", "codebook_element",
                 "subject_address", "subject_version", "subject")) {
             jdbc.execute("DELETE FROM str." + table);
         }
@@ -111,15 +150,28 @@ class StrFacilityListingQueryTest {
                   (1030, true, 'FBS_ACTIVE', 'Aktivan'),
                   (1031, true, 'FBS_INACTIVE', 'Odjavljen'),
                   (1040, true, 'CAT_BROJ_KREVETA', 'Broj kreveta'),
-                  (1041, true, 'CAT_BROJ_POM_KREVETA', 'Broj pomocnih kreveta')
+                  (1041, true, 'CAT_BROJ_POM_KREVETA', 'Broj pomocnih kreveta'),
+                  (1050, true, 'BCST_RJES_IZVRSNO', 'Rjesenje izvrsno'),
+                  (1051, true, 'BCST_U_RJESAVANJU', 'U rjesavanju'),
+                  (1060, true, 'BCVS_U_IZRADI', 'U izradi'),
+                  (1061, true, 'BCVS_ZAVRSENA', 'Zavrsena')
                 """);
+        jdbc.execute("""
+                INSERT INTO str.sif_vrsta_dokumenata (code) VALUES ('DOT_RJESENJE'), ('DOT_ZAHTJEV')
+                """);
+        jdbc.execute("""
+                INSERT INTO str.sif_podvrsta_dokumenta (code, vrsta_dokumenata_code) VALUES
+                  ('DST_R_OD_UG_DOM', 'DOT_RJESENJE'), ('DST_Z_PROMJ_POD', 'DOT_ZAHTJEV')
+                """);
+        jdbc.execute("INSERT INTO str.organizational_unit (id) VALUES (1)");
         jdbc.execute("""
                 INSERT INTO str.subject (id, active, jips) VALUES
                   (1, true, '06756460531'), (2, true, '12312312316'), (3, false, '06756460531')
                 """);
         jdbc.execute("""
-                INSERT INTO str.subject_version (id, active, subject_id, historical) VALUES
-                  (1, true, 1, false), (2, true, 2, false), (3, true, 3, false)
+                INSERT INTO str.subject_version (id, active, subject_id, historical, first_name, last_name) VALUES
+                  (1, true, 1, false, 'Tonci', 'Beros'), (2, true, 2, false, 'Pero', 'Peric'),
+                  (3, true, 3, false, 'Tonci', 'Beros')
                 """);
         jdbc.execute("""
                 INSERT INTO str.county (id, name) VALUES (91, 'Splitsko-dalmatinska zupanija')
@@ -127,31 +179,35 @@ class StrFacilityListingQueryTest {
         jdbc.execute("INSERT INTO str.municipality (id, name) VALUES (81, 'Makarska')");
         jdbc.execute("INSERT INTO str.settlement (id, name, postal_code) VALUES (71, 'Makarska', '21300')");
         jdbc.execute("INSERT INTO str.street (id, name) VALUES (61, 'Kraljevska')");
-        jdbc.execute("INSERT INTO str.house_number (id, name) VALUES (51, '88')");
+        jdbc.execute("INSERT INTO str.house_number (id, name) VALUES (51, '88'), (52, '4')");
         jdbc.execute("""
                 INSERT INTO str.address (id, active, county_id, municipality_id, settlement_id,
-                                         street_id, house_number_id, full_address)
-                VALUES (41, true, 91, 81, 71, 61, 51, 'Kraljevska 88, 21300 Makarska')
-                """);
-        jdbc.execute("""
-                INSERT INTO str.document (id, active, business_case_id) VALUES
-                  (31, true, 900), (32, true, 901), (33, true, 902), (34, true, 903),
-                  (35, true, 904), (36, true, 905), (37, true, 905)
+                                         street_id, house_number_id, full_address) VALUES
+                  (41, true, 91, 81, 71, 61, 51, 'Kraljevska 88, 21300 Makarska'),
+                  (42, true, 91, 81, 71, 61, 52, 'Kraljevska 4, 21300 Makarska')
                 """);
     }
 
+    // -------------------------------------------------------------------------------------------
+    // Prikaz i mapiranje
+    // -------------------------------------------------------------------------------------------
+
     @Test
-    void returnsOwnFacilities_withTypeAddressAndCapacity() {
-        facility(10, 1, "Soba 1", "uuid-10", 31, true);
-        type(10, 1010);
+    void returnsOwnUnit_withTypeAddressCapacityAndObject() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba 1", SLUZBENIK, "2024-01-01 10:00:00");
         capacity(100, 10, 1040, 2);
         capacity(101, 10, 1041, 1);
 
-        List<FacilityListingRow> rows = repository.findListingByOib(OIB, CODES, 20, 0);
+        List<FacilityListingRow> rows = list(OIB);
 
         assertThat(rows).hasSize(1);
         FacilityListingRow row = rows.getFirst();
         assertThat(row.getFacilityId()).isEqualTo(10L);
+        assertThat(row.getSystemUuid()).isEqualTo("uuid-10");
+        assertThat(row.getVerified()).isTrue();
+        assertThat(row.getTotalObjects()).isEqualTo(1);
+        assertThat(row.getTotalUnits()).isEqualTo(1);
         assertThat(row.getName()).isEqualTo("Soba 1");
         assertThat(row.getSubtypeCode()).isEqualTo("FS_SOBA");
         assertThat(row.getSubtypeName()).isEqualTo("Soba");
@@ -168,127 +224,393 @@ class StrFacilityListingQueryTest {
         assertThat(row.getFullAddress()).isEqualTo("Kraljevska 88, 21300 Makarska");
     }
 
+    /**
+     * Migriran objekt (stari sustav, siječanj 2023.): predmet nema ni status ni datum izvršnosti,
+     * a ipak se prikazuje — kao neverificiran.
+     */
     @Test
-    void excludesFacilitiesOfOtherLessors() {
-        facility(10, 1, "Moja soba", "uuid-10", 31, true);
-        type(10, 1010);
-        facility(11, 2, "Tuda soba", "uuid-11", 32, true);
-        type(11, 1010);
+    void listsMigratedUnit_asUnverified() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba 1", MIGRACIJA, "2023-01-19 13:00:00");
 
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(10L);
+        List<FacilityListingRow> rows = list(OIB);
+
+        assertThat(ids(rows)).containsExactly(10L);
+        assertThat(rows.getFirst().getVerified()).isFalse();
     }
 
-    /** Dedup po system_uuid: prikazuje se samo najnoviji zapis istog objekta. */
+    /** Verificirani objekti idu prije neverificiranih, neovisno o id-u. */
     @Test
-    void keepsOnlyNewestRowPerSystemUuid() {
-        facility(10, 1, "Stara verzija", "uuid-shared", 31, true);
-        type(10, 1010);
-        facility(12, 1, "Nova verzija", "uuid-shared", 32, true);
-        type(12, 1010);
+    void ordersVerifiedObjectsBeforeUnverified() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-migr", "Migrirana soba", MIGRACIJA, "2023-01-19 13:00:00");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-verif", "Verificirana soba", SLUZBENIK, "2024-01-01 10:00:00");
 
-        List<FacilityListingRow> rows = repository.findListingByOib(OIB, CODES, 20, 0);
-
-        assertThat(rows).hasSize(1);
-        assertThat(rows.getFirst().getName()).isEqualTo("Nova verzija");
-    }
-
-    /** Objekti u radu nemaju system_uuid, pa se grupiraju po business_case_id dokumenta. */
-    @Test
-    void dedupsByBusinessCaseId_whenSystemUuidMissing() {
-        facility(13, 1, "Predlozak stari", null, 36, true);  // document 36 → business_case 905
-        type(13, 1010);
-        facility(14, 1, "Predlozak novi", null, 37, true);   // document 37 → isti business_case 905
-        type(14, 1010);
-
-        List<FacilityListingRow> rows = repository.findListingByOib(OIB, CODES, 20, 0);
-
-        assertThat(rows).hasSize(1);
-        assertThat(rows.getFirst().getName()).isEqualTo("Predlozak novi");
+        assertThat(ids(list(OIB))).containsExactly(20L, 10L);
     }
 
     /**
-     * Objekt prenesen na drugog vlasnika: noviji zapis istog system_uuid pripada drugom subjektu,
-     * pa stari vlasnik objekt više ne vidi. Dedup unutar OIB-a to sam ne bi uhvatio.
+     * Objekt s više jedinica u istom predmetu: prikazuju se sve jedinice (svaka dobiva svoj RB), a
+     * stranica broji objekte — objekt se ne lomi preko dviju stranica.
      */
     @Test
-    void hidesFacilitySupersededByRowOfAnotherLessor() {
-        facility(10, 1, "Prodana soba", "uuid-transfer", 31, true);
-        type(10, 1010);
-        facility(20, 2, "Ista soba, novi vlasnik", "uuid-transfer", 32, true);
-        type(20, 1010);
+    void listsEveryUnitOfObject_andPaginatesByObject() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-vila", "Vila", MIGRACIJA, "2023-01-19 13:00:00.001");
+        unit(11, 900, "uuid-vila", "Vila", MIGRACIJA, "2023-01-19 13:00:00.002");
+        unit(12, 900, "uuid-vila", "Vila", MIGRACIJA, "2023-01-19 13:00:00.003");
+        migratedCase(901, 1);
+        unit(20, 901, "uuid-kuca", "Kuca", MIGRACIJA, "2023-01-19 14:00:00");
 
-        assertThat(repository.findListingByOib(OIB, CODES, 20, 0)).isEmpty();
-        assertThat(ids(repository.findListingByOib(OTHER_OIB, CODES, 20, 0))).containsExactly(20L);
+        List<FacilityListingRow> first = repository.findListingByOib(OIB, CODES, 1, 0);
+        List<FacilityListingRow> second = repository.findListingByOib(OIB, CODES, 1, 1);
+
+        assertThat(ids(first)).containsExactly(10L, 11L, 12L);
+        assertThat(first).extracting(FacilityListingRow::getSystemUuid).containsOnly("uuid-vila");
+        assertThat(first.getFirst().getTotalObjects()).isEqualTo(2);
+        assertThat(first.getFirst().getTotalUnits()).isEqualTo(4);
+        assertThat(ids(second)).containsExactly(20L);
+        assertThat(repository.findListingByOib(OIB, CODES, 1, 2)).isEmpty();
     }
 
-    /** active se filtrira nakon dedupa — stariji aktivni zapis ne smije "oživjeti" objekt. */
     @Test
-    void excludesInactiveFacility_withoutRevivingOlderActiveRow() {
-        facility(10, 1, "Aktivna stara", "uuid-shared", 31, true);
-        type(10, 1010);
-        facility(12, 1, "Neaktivna nova", "uuid-shared", 32, false);
-        type(12, 1010);
+    void countsObjectsAndUnits() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-vila", "Vila", MIGRACIJA, "2023-01-19 13:00:00.001");
+        unit(11, 900, "uuid-vila", "Vila", MIGRACIJA, "2023-01-19 13:00:00.002");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-kuca", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
 
-        assertThat(repository.findListingByOib(OIB, CODES, 20, 0)).isEmpty();
+        ListingTotals totals = repository.countListingByOib(OIB, CODES);
+
+        assertThat(totals.getObjects()).isEqualTo(2);
+        assertThat(totals.getUnits()).isEqualTo(3);
     }
+
+    @Test
+    void countsZero_whenLessorHasNothing() {
+        ListingTotals totals = repository.countListingByOib(OIB, CODES);
+
+        assertThat(totals.getObjects()).isZero();
+        assertThat(totals.getUnits()).isZero();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Vlasnik
+    // -------------------------------------------------------------------------------------------
+
+    @Test
+    void excludesUnitsOfOtherLessors() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Moja soba", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 2);
+        unit(11, 901, "uuid-11", "Tuda soba", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(ids(list(OIB))).containsExactly(10L);
+    }
+
+    /**
+     * Vlasnik je subjekt predmeta, kao u eTurizmovu viewu — na CDU 43 aktualna zapisa nemaju
+     * {@code facility.subject_version_id}, pa preko objekta ne bi bili ničiji.
+     */
+    @Test
+    void ownerComesFromBusinessCase_evenWithoutFacilitySubjectVersion() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba 1", SLUZBENIK, "2024-01-01 10:00:00");
+        jdbc.update("UPDATE str.facility SET subject_version_id = NULL WHERE id = 10");
+
+        assertThat(ids(list(OIB))).containsExactly(10L);
+        assertThat(repository.findOwnership(10L).orElseThrow().getOib()).isEqualTo(OIB);
+    }
+
+    /**
+     * Zapis subjekta se s vremenom nadjača novijim, pa stari ostane {@code active = false}.
+     * Predmet vodi na verziju tog starog zapisa, a OIB je isti — mora se i dalje prikazati.
+     */
+    @Test
+    void includesUnitsOfSupersededSubjectRow() {
+        verifiedCase(900, 3); // subject_version 3 → subject 3 (active = false)
+        unit(18, 900, "uuid-18", "Soba na starom subjektu", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(ids(list(OIB))).containsExactly(18L);
+        assertThat(repository.findOwnership(18L).orElseThrow().getOib()).isEqualTo(OIB);
+    }
+
+    /** Adresa subjekta ({@code same_address_subject}) čita se preko subjekta predmeta. */
+    @Test
+    void readsSubjectAddress_viaBusinessCaseSubject() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba 1", SLUZBENIK, "2024-01-01 10:00:00");
+        jdbc.update("UPDATE str.facility SET same_address_subject = true, subject_version_id = NULL,"
+                + " address_id = NULL WHERE id = 10");
+        jdbc.update("INSERT INTO str.subject_address (id, active, subject_version_id, address_id)"
+                + " VALUES (1, true, 1, 42)");
+
+        assertThat(list(OIB).getFirst().getHouseNumber()).isEqualTo("4");
+        assertThat(repository.findOwnership(10L).orElseThrow().getHouseNumber()).isEqualTo("4");
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Najnoviji predmet po objektu
+    // -------------------------------------------------------------------------------------------
+
+    /** Rješenje pa promjena podataka: oba su aktualna po viewu, vrijedi samo noviji predmet. */
+    @Test
+    void newestCaseWins_forVersionsOfSameObject() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-obj", "Stara verzija", SLUZBENIK, "2023-03-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-obj", "Nova verzija", SLUZBENIK, "2024-03-01 10:00:00");
+
+        List<FacilityListingRow> rows = list(OIB);
+
+        assertThat(ids(rows)).containsExactly(11L);
+        assertThat(repository.findOwnership(10L).orElseThrow().getCurrent()).isFalse();
+        assertThat(repository.findOwnership(11L).orElseThrow().getCurrent()).isTrue();
+    }
+
+    /**
+     * Migracija je isti objekt upisala u više predmeta, a verifikacija ugasi samo jedan. Noviji,
+     * verificirani predmet skriva sve migrirane kopije — objekt se ne prikazuje dvaput.
+     */
+    @Test
+    void verifiedCaseHidesMigratedCopiesOfSameObject() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-obj", "Kopija 1", MIGRACIJA, "2023-01-11 20:00:00");
+        migratedCase(901, 1);
+        unit(11, 901, "uuid-obj", "Kopija 2", MIGRACIJA, "2023-01-12 16:00:00");
+        verifiedCase(902, 1);
+        unit(12, 902, "uuid-obj", "Verificirana", SLUZBENIK, "2025-10-10 15:00:00");
+
+        List<FacilityListingRow> rows = list(OIB);
+
+        assertThat(ids(rows)).containsExactly(12L);
+        assertThat(rows.getFirst().getVerified()).isTrue();
+        assertThat(repository.findOwnership(10L).orElseThrow().getCurrent()).isFalse();
+    }
+
+    /**
+     * Predmet čiji zapisi nemaju {@code created_date} nije „najnoviji" — Postgres bi bez
+     * {@code NULLS LAST} kod {@code DESC} stavio NULL na prvo mjesto i sakrio stvarno noviji predmet.
+     */
+    @Test
+    void caseWithoutCreatedDate_doesNotWinOverDatedCase() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-obj", "Bez datuma", SLUZBENIK, null);
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-obj", "S datumom", SLUZBENIK, "2024-03-01 10:00:00");
+
+        // H2 inače NULL drži manjim (kod DESC zadnji); HIGH = ponašanje Postgresa, gdje je greška
+        jdbc.execute("SET DEFAULT_NULL_ORDERING HIGH");
+        try {
+            assertThat(ids(list(OIB))).containsExactly(11L);
+        } finally {
+            jdbc.execute("SET DEFAULT_NULL_ORDERING LOW");
+        }
+    }
+
+    /** Sve jedinice najnovijeg predmeta ostaju — rang je po predmetu, ne po zapisu. */
+    @Test
+    void newestCaseKeepsAllItsUnits() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-obj", "Stara soba", SLUZBENIK, "2023-03-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-obj", "Soba A", SLUZBENIK, "2024-03-01 10:00:00.000");
+        unit(12, 901, "uuid-obj", "Soba B", SLUZBENIK, "2024-03-01 10:00:00.013");
+
+        assertThat(ids(list(OIB))).containsExactly(11L, 12L);
+    }
+
+    /**
+     * Objekt prenesen na drugog vlasnika: noviji predmet istog objekta pripada drugom subjektu,
+     * pa stari vlasnik objekt više ne vidi.
+     */
+    @Test
+    void hidesObjectTransferredToAnotherLessor() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-transfer", "Prodana soba", SLUZBENIK, "2023-03-01 10:00:00");
+        verifiedCase(901, 2);
+        unit(20, 901, "uuid-transfer", "Ista soba, novi vlasnik", SLUZBENIK, "2024-03-01 10:00:00");
+
+        assertThat(list(OIB)).isEmpty();
+        assertThat(repository.countListingByOib(OIB, CODES).getObjects()).isZero();
+        assertThat(ids(list(OTHER_OIB))).containsExactly(20L);
+    }
+
+    /** Noviji predmet s odjavljenim objektom ne smije pustiti da stariji aktivni „oživi". */
+    @Test
+    void newerDeregisteredCase_doesNotReviveOlderActiveOne() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-obj", "Aktivna stara", SLUZBENIK, "2023-03-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-obj", "Odjavljena nova", SLUZBENIK, "2024-03-01 10:00:00");
+        businessStatus(11, 1031L);
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Uvjeti eTurizmova viewa
+    // -------------------------------------------------------------------------------------------
+
+    @Test
+    void excludesHistoricalRow() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Povijesna", SLUZBENIK, "2024-01-01 10:00:00");
+        jdbc.update("UPDATE str.facility SET historical = true WHERE id = 10");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    @Test
+    void excludesInactiveRow() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Neaktivna", SLUZBENIK, "2024-01-01 10:00:00");
+        jdbc.update("UPDATE str.facility SET active = false WHERE id = 10");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    /** Verificiran predmet čije rješenje još nije izvršno (u rješavanju) nije aktualan. */
+    @Test
+    void excludesVerifiedCaseThatIsNotExecutable() {
+        businessCase(900, 1, STATUS_U_RJESAVANJU);
+        document(900, RJESENJE, "2024-01-01 00:00:00");
+        unit(10, 900, "uuid-10", "U rjesavanju", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    @Test
+    void excludesVerifiedCaseWithoutOrFutureExecutionDate() {
+        businessCase(900, 1, STATUS_IZVRSNO);
+        document(900, RJESENJE, null);
+        unit(10, 900, "uuid-10", "Bez datuma", SLUZBENIK, "2024-01-01 10:00:00");
+        businessCase(901, 1, STATUS_IZVRSNO);
+        document(901, RJESENJE, "2999-01-01 00:00:00");
+        unit(11, 901, "uuid-11", "Buduci datum", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    /** Zapis vezan uz zahtjev (npr. za promjenu podataka), a ne uz rješenje, nije objekt. */
+    @Test
+    void excludesRowOnRequestDocument() {
+        businessCase(900, 1, STATUS_IZVRSNO);
+        document(900, ZAHTJEV, "2024-01-01 00:00:00");
+        unit(10, 900, "uuid-10", "Zahtjev", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    @Test
+    void excludesInactiveDocumentOrBusinessCase() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Neaktivan dokument", SLUZBENIK, "2024-01-01 10:00:00");
+        jdbc.update("UPDATE str.document SET active = false WHERE id = 900");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-11", "Neaktivan predmet", SLUZBENIK, "2024-01-01 10:00:00");
+        jdbc.update("UPDATE str.business_case SET active = false WHERE id = 901");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    @Test
+    void excludesCaseWithoutOrganizationalUnit() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Bez org. jedinice", SLUZBENIK, "2024-01-01 10:00:00");
+        jdbc.update("UPDATE str.business_case SET jurisdiction_organizational_unit_id = 99 WHERE id = 900");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    /** Kao u viewu: zapis bez {@code created_by} nije ni verificiran ni migriran. */
+    @Test
+    void excludesRowWithoutCreatedBy() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Bez autora", null, "2024-01-01 10:00:00");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    /** Bez {@code system_uuid} nema objekta (view ga izbaci kroz {@code HAVING count = 1}). */
+    @Test
+    void excludesRowWithoutSystemUuid() {
+        verifiedCase(900, 1);
+        unit(10, 900, null, "Bez uuid-a", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    /** Migrirani objekt u verifikaciji (izvor u izradi) i dalje se prikazuje kao neverificiran. */
+    @Test
+    void keepsMigratedUnitWhileVerificationIsInProgress() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-10", "Migrirana", MIGRACIJA, "2023-01-19 13:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-10", "U verifikaciji", SLUZBENIK, "2025-10-10 15:00:00");
+        verification(1, 900, 901L, VERIFIKACIJA_U_IZRADI);
+
+        List<FacilityListingRow> rows = list(OIB);
+
+        // novi predmet je cilj verifikacije koja nije završena → nije aktualan, ne skriva stari
+        assertThat(ids(rows)).containsExactly(10L);
+        assertThat(rows.getFirst().getVerified()).isFalse();
+    }
+
+    /** Izvor završene verifikacije nije aktualan, čak i kad mu je predmet ostao aktivan. */
+    @Test
+    void excludesSourceOfCompletedVerification() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-10", "Migrirana", MIGRACIJA, "2023-01-19 13:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-10", "Verificirana", SLUZBENIK, "2025-10-10 15:00:00");
+        verification(1, 900, 901L, VERIFIKACIJA_ZAVRSENA);
+
+        assertThat(ids(list(OIB))).containsExactly(11L);
+    }
+
+    /** Kao u viewu ({@code HAVING count(system_uuid) = 1}): više redaka verifikacije izbaci zapis. */
+    @Test
+    void excludesRowWithSeveralVerificationRows() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-10", "Dvije verifikacije", MIGRACIJA, "2023-01-19 13:00:00");
+        verification(1, 900, null, VERIFIKACIJA_U_IZRADI);
+        verification(2, 900, null, VERIFIKACIJA_U_IZRADI);
+
+        assertThat(list(OIB)).isEmpty();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Naši filtri: poslovni status (W-5) i vrsta smještaja
+    // -------------------------------------------------------------------------------------------
 
     /**
      * Zapis je aktivan, ali objekt je odjavljen. {@code facility.active} je zastavica verzije
      * zapisa, pa je na CDU takvih gotovo polovica — ne smiju na popis.
      */
     @Test
-    void excludesDeregisteredFacility_evenWhenRowIsActive() {
-        facility(10, 1, "Aktivna soba", "uuid-10", 31, true);
-        type(10, 1010);
-        facility(11, 1, "Odjavljena soba", "uuid-11", 32, true);
-        type(11, 1010);
+    void excludesDeregisteredUnit_evenWhenRowIsActive() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Aktivna soba", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-11", "Odjavljena soba", SLUZBENIK, "2024-01-01 10:00:00");
         businessStatus(11, 1031L);
 
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(10L);
-        assertThat(repository.countListingByOib(OIB, CODES)).isEqualTo(1);
+        assertThat(ids(list(OIB))).containsExactly(10L);
+        assertThat(repository.countListingByOib(OIB, CODES).getObjects()).isEqualTo(1);
     }
 
     /** Bez poslovnog statusa se ne zna da objekt posluje, pa se ne prikazuje. */
     @Test
-    void excludesFacilityWithoutBusinessStatus() {
-        facility(10, 1, "Soba bez statusa", "uuid-10", 31, true);
-        type(10, 1010);
+    void excludesUnitWithoutBusinessStatus() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba bez statusa", SLUZBENIK, "2024-01-01 10:00:00");
         businessStatus(10, null);
 
-        assertThat(repository.findListingByOib(OIB, CODES, 20, 0)).isEmpty();
-        assertThat(repository.countListingByOib(OIB, CODES)).isZero();
-    }
-
-    /** Status se gleda nakon dedupa — stariji zapis s FBS_ACTIVE ne smije "oživjeti" odjavljen objekt. */
-    @Test
-    void excludesDeregisteredFacility_withoutRevivingOlderActiveStatus() {
-        facility(10, 1, "Aktivna stara", "uuid-shared", 31, true);
-        type(10, 1010);
-        facility(12, 1, "Odjavljena nova", "uuid-shared", 32, true);
-        type(12, 1010);
-        businessStatus(12, 1031L);
-
-        assertThat(repository.findListingByOib(OIB, CODES, 20, 0)).isEmpty();
-    }
-
-    /**
-     * Objekti bez {@code system_uuid} I bez dokumenta: bucket pada na vlastiti id, pa se ne skupe
-     * svi u istu grupu. Bez toga bi {@code PARTITION BY NULL} od svih takvih objekata jednog
-     * iznajmljivača prikazao samo najnoviji.
-     */
-    @Test
-    void doesNotCollapseFacilitiesWithoutUuidAndWithoutDocument() {
-        jdbc.update("INSERT INTO str.facility (id, active, subject_version_id, name, system_uuid,"
-                + " document_id, address_id, category_id, business_status_id, same_address_subject)"
-                + " VALUES (16, true, 1, 'Bez dokumenta A', NULL, NULL, 41, 1020, 1030, false)");
-        type(16, 1010);
-        jdbc.update("INSERT INTO str.facility (id, active, subject_version_id, name, system_uuid,"
-                + " document_id, address_id, category_id, business_status_id, same_address_subject)"
-                + " VALUES (17, true, 1, 'Bez dokumenta B', NULL, NULL, 41, 1020, 1030, false)");
-        type(17, 1010);
-
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(16L, 17L);
-        assertThat(repository.countListingByOib(OIB, CODES)).isEqualTo(2);
+        assertThat(list(OIB)).isEmpty();
+        assertThat(repository.countListingByOib(OIB, CODES).getObjects()).isZero();
     }
 
     /**
@@ -297,72 +619,51 @@ class StrFacilityListingQueryTest {
      */
     @Test
     void resolvesType_whenFacilityTypeActiveIsNull() {
-        facility(10, 1, "Soba 1", "uuid-10", 31, true);
+        verifiedCase(900, 1);
+        unitWithoutType(10, 900, "uuid-10", "Soba 1", SLUZBENIK, "2024-01-01 10:00:00");
         jdbc.update("INSERT INTO str.facility_type (id, active, facility_id, type_id, sub_type_id)"
                 + " VALUES (100, NULL, 10, 1000, 1010)");
 
-        List<FacilityListingRow> rows = repository.findListingByOib(OIB, CODES, 20, 0);
+        List<FacilityListingRow> rows = list(OIB);
 
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().getSubtypeCode()).isEqualTo("FS_SOBA");
     }
 
-    /**
-     * Zapis subjekta se s vremenom nadjača novijim, pa stari ostane {@code active = false}.
-     * Objekt vodi na verziju tog starog zapisa, a OIB je isti — mora se i dalje prikazati.
-     */
-    @Test
-    void includesFacilitiesOfSupersededSubjectRow() {
-        facility(18, 3, "Soba na starom subjektu", "uuid-18", 31, true); // subject_version 3 → subject 3 (active = false)
-        type(18, 1010);
-
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(18L);
-        assertThat(repository.findOwnership(18L).orElseThrow().getOib()).isEqualTo(OIB);
-    }
-
     /** Iznajmljivač u eTurizmu može imati i restoran — na dashboard smještaja ne ide. */
     @Test
     void excludesNonAccommodationSubtypes() {
-        facility(10, 1, "Soba 1", "uuid-10", 31, true);
-        type(10, 1010);
-        facility(15, 1, "Pizzeria", "uuid-15", 33, true);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba 1", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 1);
+        unitWithoutType(15, 901, "uuid-15", "Pizzeria", SLUZBENIK, "2024-01-01 10:00:00");
         jdbc.update("INSERT INTO str.facility_type (id, active, facility_id, type_id, sub_type_id)"
-                + " VALUES (?, true, ?, 1001, 1014)", 150, 15);
+                + " VALUES (150, true, 15, 1001, 1014)");
 
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(10L);
-    }
-
-    @Test
-    void paginatesAndCountsConsistently() {
-        facility(10, 1, "Soba 1", "uuid-10", 31, true);
-        type(10, 1010);
-        facility(11, 1, "Soba 2", "uuid-11", 32, true);
-        type(11, 1011);
-        facility(12, 1, "Soba 3", "uuid-12", 33, true);
-        type(12, 1010);
-
-        assertThat(repository.countListingByOib(OIB, CODES)).isEqualTo(3);
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 2, 0))).containsExactly(10L, 11L);
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 2, 2))).containsExactly(12L);
+        assertThat(ids(list(OIB))).containsExactly(10L);
     }
 
     /** Kapacitet objekta koji ga vodi po jedinicama (hoteli i sl.), a ne u facility_capacity. */
     @Test
     void fallsBackToUnitCapacity_whenFacilityCapacityMissing() {
-        facility(10, 1, "Apartmani", "uuid-10", 31, true);
-        type(10, 1011);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Apartmani", SLUZBENIK, "2024-01-01 10:00:00");
         jdbc.update("INSERT INTO str.facility_unit (id, active, facility_id, type_id, number_of_units)"
                 + " VALUES (200, true, 10, 1011, 3)");
         jdbc.update("INSERT INTO str.facility_unit_capacity"
                 + " (id, active, facility_unit_id, type_id, quantity) VALUES (300, true, 200, 1040, 4)");
 
-        assertThat(repository.findListingByOib(OIB, CODES, 20, 0).getFirst().getBeds()).isEqualTo(4);
+        assertThat(list(OIB).getFirst().getBeds()).isEqualTo(4);
     }
+
+    // -------------------------------------------------------------------------------------------
+    // Vlasnički upit (claim i FacilityClaimVerifier)
+    // -------------------------------------------------------------------------------------------
 
     @Test
     void findsOwnership_forFacilityClaimVerification() {
-        facility(10, 1, "Soba 1", "uuid-10", 31, true);
-        type(10, 1010);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba 1", SLUZBENIK, "2024-01-01 10:00:00");
         capacity(100, 10, 1040, 2);
 
         Optional<FacilityOwnershipRow> row = repository.findOwnership(10L);
@@ -373,17 +674,44 @@ class StrFacilityListingQueryTest {
         assertThat(row.get().getBeds()).isEqualTo(2);
         assertThat(row.get().getAuxiliaryBeds()).isNull();
         assertThat(row.get().getActive()).isTrue();
-        // Literal u LISTING_FROM i konstanta koju čita verifier moraju biti isti kod
+        assertThat(row.get().getCurrent()).isTrue();
+        assertThat(row.get().getOwnerFullName()).isEqualTo("Tonci Beros");
+        // Literal u PRIKAZ_ZA_OIB i konstanta koju čita verifier moraju biti isti kod
         assertThat(row.get().getBusinessStatusCode()).isEqualTo(StrFacilityRepository.ACTIVE_BUSINESS_STATUS);
         assertThat(FacilityClaimVerifier.isActive(row.get())).isTrue();
-        assertThat(ids(repository.findListingByOib(OIB, CODES, 20, 0))).containsExactly(10L);
+        assertThat(ids(list(OIB))).containsExactly(10L);
+    }
+
+    /** Migrirana jedinica je aktualna, pa smije dobiti RB (odluka 6. 10. 2026.). */
+    @Test
+    void findsOwnership_ofMigratedUnit_asCurrent() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-10", "Migrirana", MIGRACIJA, "2023-01-19 13:00:00");
+
+        FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getCurrent()).isTrue();
+        assertThat(FacilityClaimVerifier.isActive(row)).isTrue();
+    }
+
+    /** Zapis koji nije aktualan (predmet u rješavanju) vraća se s {@code current = false}. */
+    @Test
+    void findsOwnership_ofRowThatIsNotCurrent() {
+        businessCase(900, 1, STATUS_U_RJESAVANJU);
+        document(900, RJESENJE, "2024-01-01 00:00:00");
+        unit(10, 900, "uuid-10", "U rjesavanju", SLUZBENIK, "2024-01-01 10:00:00");
+
+        FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
+
+        assertThat(row.getCurrent()).isFalse();
+        assertThat(FacilityClaimVerifier.isActive(row)).isFalse();
     }
 
     /** Vlasnički upit vraća odjavljen objekt (da verifier kaže zašto), ali ga ne pušta. */
     @Test
-    void findsOwnership_ofDeregisteredFacility_asInactive() {
-        facility(10, 1, "Odjavljena soba", "uuid-10", 31, true);
-        type(10, 1010);
+    void findsOwnership_ofDeregisteredUnit_asInactive() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Odjavljena soba", SLUZBENIK, "2024-01-01 10:00:00");
         businessStatus(10, 1031L);
 
         FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
@@ -394,8 +722,8 @@ class StrFacilityListingQueryTest {
 
     @Test
     void findsOwnership_withoutBusinessStatus_asInactive() {
-        facility(10, 1, "Soba bez statusa", "uuid-10", 31, true);
-        type(10, 1010);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba bez statusa", SLUZBENIK, "2024-01-01 10:00:00");
         businessStatus(10, null);
 
         FacilityOwnershipRow row = repository.findOwnership(10L).orElseThrow();
@@ -407,8 +735,8 @@ class StrFacilityListingQueryTest {
     /** Pomoćni kreveti ulaze u maksimalan broj gostiju, pa ih vlasnički upit mora vratiti. */
     @Test
     void findsOwnership_withAuxiliaryBeds() {
-        facility(10, 1, "Soba 1", "uuid-10", 31, true);
-        type(10, 1010);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba 1", SLUZBENIK, "2024-01-01 10:00:00");
         capacity(100, 10, 1040, 4);
         capacity(101, 10, 1041, 2);
 
@@ -422,8 +750,8 @@ class StrFacilityListingQueryTest {
     /** Isti fallback na jedinice kao za krevete — inače bi zbroj kod takvih objekata izgubio pomoćne. */
     @Test
     void findsOwnership_fallsBackToUnitCapacity_forBedsAndAuxiliaryBeds() {
-        facility(10, 1, "Apartmani", "uuid-10", 31, true);
-        type(10, 1011);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Apartmani", SLUZBENIK, "2024-01-01 10:00:00");
         jdbc.update("INSERT INTO str.facility_unit (id, active, facility_id, type_id, number_of_units)"
                 + " VALUES (200, true, 10, 1011, 3)");
         jdbc.update("INSERT INTO str.facility_unit_capacity"
@@ -436,26 +764,78 @@ class StrFacilityListingQueryTest {
         assertThat(row.getBeds()).isEqualTo(4);
         assertThat(row.getAuxiliaryBeds()).isEqualTo(1);
         // Popis objekata mora vidjeti isti podatak kao provjera
-        assertThat(repository.findListingByOib(OIB, CODES, 20, 0).getFirst().getAuxiliaryBeds()).isEqualTo(1);
+        assertThat(list(OIB).getFirst().getAuxiliaryBeds()).isEqualTo(1);
     }
 
-    private void facility(long id, long subjectVersionId, String name, String systemUuid,
-                          long documentId, boolean active) {
+    @Test
+    void findsNoOwnership_forUnknownFacility() {
+        assertThat(repository.findOwnership(404L)).isEmpty();
+    }
+
+    // -------------------------------------------------------------------------------------------
+
+    private List<FacilityListingRow> list(String oib) {
+        return repository.findListingByOib(oib, CODES, 20, 0);
+    }
+
+    /** Predmet novog sustava s izvršnim rješenjem (dokument ima isti id kao predmet). */
+    private void verifiedCase(long caseId, long subjectVersionId) {
+        businessCase(caseId, subjectVersionId, STATUS_IZVRSNO);
+        document(caseId, RJESENJE, "2024-01-01 00:00:00");
+    }
+
+    /** Migrirani predmet: bez statusa i bez datuma izvršnosti, kao svi migrirani na CDU. */
+    private void migratedCase(long caseId, long subjectVersionId) {
+        businessCase(caseId, subjectVersionId, null);
+        document(caseId, RJESENJE, null);
+    }
+
+    private void businessCase(long id, long subjectVersionId, Long statusId) {
+        jdbc.update("""
+                INSERT INTO str.business_case (id, active, status_type_id,
+                                               jurisdiction_organizational_unit_id, subject_version_id)
+                VALUES (?, true, ?, 1, ?)
+                """, id, statusId, subjectVersionId);
+    }
+
+    private void document(long caseId, String subtypeCode, String executionDate) {
+        jdbc.update("""
+                INSERT INTO str.document (id, active, business_case_id, subtype_code, execution_date)
+                VALUES (?, true, ?, ?, CAST(? AS TIMESTAMP))
+                """, caseId, caseId, subtypeCode, executionDate);
+    }
+
+    private void verification(long id, long unverifiedCaseId, Long verifiedCaseId, long statusId) {
+        jdbc.update("""
+                INSERT INTO str.business_case_verification
+                  (id, unverified_business_case_id, verified_business_case_id, status_id)
+                VALUES (?, ?, ?, ?)
+                """, id, unverifiedCaseId, verifiedCaseId, statusId);
+    }
+
+    /** Jedinica (soba) na predmetu {@code caseId}; {@code facility.subject_version_id} kao u predmetu. */
+    private void unit(long id, long caseId, String systemUuid, String name, String createdBy,
+                      String createdDate) {
+        unitWithoutType(id, caseId, systemUuid, name, createdBy, createdDate);
+        jdbc.update("INSERT INTO str.facility_type (id, active, facility_id, type_id, sub_type_id)"
+                + " VALUES (?, true, ?, 1000, 1010)", id * 10, id);
+    }
+
+    private void unitWithoutType(long id, long caseId, String systemUuid, String name, String createdBy,
+                                 String createdDate) {
         jdbc.update("""
                 INSERT INTO str.facility (id, active, subject_version_id, name, system_uuid,
                                           document_id, address_id, category_id, business_status_id,
-                                          same_address_subject, registration_number)
-                VALUES (?, ?, ?, ?, ?, ?, 41, 1020, 1030, false, NULL)
-                """, id, active, subjectVersionId, name, systemUuid, documentId);
+                                          same_address_subject, registration_number, created_by,
+                                          created_date, historical)
+                SELECT ?, true, bc.subject_version_id, ?, ?, ?, 41, 1020, 1030, false, NULL, ?,
+                       CAST(? AS TIMESTAMP), NULL
+                  FROM str.business_case bc WHERE bc.id = ?
+                """, id, name, systemUuid, caseId, createdBy, createdDate, caseId);
     }
 
     private void businessStatus(long facilityId, Long statusId) {
         jdbc.update("UPDATE str.facility SET business_status_id = ? WHERE id = ?", statusId, facilityId);
-    }
-
-    private void type(long facilityId, long subTypeId) {
-        jdbc.update("INSERT INTO str.facility_type (id, active, facility_id, type_id, sub_type_id)"
-                + " VALUES (?, true, ?, 1000, ?)", facilityId * 10, facilityId, subTypeId);
     }
 
     private void capacity(long id, long facilityId, long typeId, int quantity) {
