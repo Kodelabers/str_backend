@@ -324,6 +324,18 @@ class StrFacilityListingQueryTest {
         assertThat(repository.findOwnership(10L).orElseThrow().getOib()).isEqualTo(OIB);
     }
 
+    /** Predaja rješenja uz RB pita jedinicu je li migrirana — po autoru zapisa, kao popis. */
+    @Test
+    void ownershipCarriesVerifiedFlag() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Verificirana soba", SLUZBENIK, "2024-01-01 10:00:00");
+        migratedCase(901, 1);
+        unit(11, 901, "uuid-11", "Migrirana soba", MIGRACIJA, "2023-01-19 13:00:00");
+
+        assertThat(repository.findOwnership(10L).orElseThrow().getVerified()).isTrue();
+        assertThat(repository.findOwnership(11L).orElseThrow().getVerified()).isFalse();
+    }
+
     /**
      * Zapis subjekta se s vremenom nadjača novijim, pa stari ostane {@code active = false}.
      * Predmet vodi na verziju tog starog zapisa, a OIB je isti — mora se i dalje prikazati.

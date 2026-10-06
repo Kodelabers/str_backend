@@ -328,6 +328,13 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
          * Isto pravilo kao popis — jedinica koja se na popisu ne vidi ne smije dobiti RB.
          */
         Boolean getCurrent();
+        /**
+         * {@code true} verificiran (zapis novog eTurizma), {@code false} migriran iz starog sustava
+         * ({@code created_by = 'optimit'}), {@code null} kad zapis nema autora. Čita se iz samog
+         * zapisa, ne iz {@link #RANGIRANE_JEDINICE_OD}: tamo je NULL čim jedinica nije aktualna, a
+         * predaja rješenja uz već izdan RB pita i za takvu.
+         */
+        Boolean getVerified();
         String getName();
         /** Naziv/ime iznajmljivača — služi samo da se prepozna kad je `facility.name` zapravo on. */
         String getOwnerName();
@@ -397,6 +404,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    f.active    AS active,
                    c_st.code   AS businessStatusCode,
                    coalesce(r.predmet_rang = 1, false) AS current,
+                   f.created_by <> 'optimit' AS verified,
                    f.name      AS name,
                    sv.name     AS ownerName,
                    btrim(coalesce(sv.first_name,'') || ' ' || coalesce(sv.last_name,'')) AS ownerFullName,

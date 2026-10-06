@@ -281,7 +281,8 @@ public class NiasController {
 
     /**
      * Predaja skeniranog rješenja o kategorizaciji uz izdani RB novog objekta — odmah nakon
-     * izdavanja RB-a (ista forma) ili naknadno s „Mojih registracijskih brojeva". Zapis ide u
+     * izdavanja RB-a (ista forma) ili naknadno s „Mojih registracijskih brojeva" — ili, neobavezno,
+     * uz RB neverificiranog eTurizam objekta (samo uz zahtjev). Zapis ide u
      * {@code str_rn.categorization_decision} i čeka obradu nadležnog tijela; uz RB može biti
      * najviše jedno predano ili potvrđeno rješenje (409 inače).
      */

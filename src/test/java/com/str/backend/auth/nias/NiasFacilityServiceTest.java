@@ -337,6 +337,17 @@ class NiasFacilityServiceTest {
         verify(facilityRepository, times(1)).findCodebookElementId("DST_Z_PROMJ_POD");
     }
 
+    /** Claim kaže je li objekt verificiran — po tome forma nudi neobavezni prilog rješenja. */
+    @Test
+    void claim_carriesVerifiedFlag() {
+        FacilityOwnershipRow row = activeOwnRow();
+        when(row.getVerified()).thenReturn(false);
+        assertThat(service.claim(OIB, "153049").verificiran()).isFalse();
+
+        when(row.getVerified()).thenReturn(true);
+        assertThat(service.claim(OIB, "153049").verificiran()).isTrue();
+    }
+
     @Test
     void changeRequestUrl_toleratesTrailingSlashInBase() {
         assertThat(NiasFacilityService.changeRequestUrl(ETURIZAM_BASE + "/", 1L, 2L))

@@ -164,7 +164,8 @@ public class NiasFacilityService {
                 row.getContactPhone(),
                 FacilityClaimVerifier.lockedFields(row),
                 FacilityClaimVerifier.isRegistrableType(row, accommodationTypeRepository),
-                changeRequestUrl(row.getDocumentId()));
+                changeRequestUrl(row.getDocumentId()),
+                row.getVerified());
     }
 
     /**
