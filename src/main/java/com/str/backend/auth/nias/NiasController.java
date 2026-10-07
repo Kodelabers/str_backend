@@ -17,7 +17,9 @@ import com.str.backend.lessor.LessorRnActionResponse;
 import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.LessorWithdrawRequest;
+import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.str.StrSubjectRepository;
 import com.str.backend.rn.RnRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -61,6 +63,7 @@ public class NiasController {
     private final ActingSubjectGuard actingSubjectGuard;
     private final NavigationBarService navigationBarService;
     private final ChangeRequestFilingService changeRequestFilingService;
+    private final StrSubjectRepository strSubjectRepository;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -76,7 +79,8 @@ public class NiasController {
                           ActingSubjectService actingSubjectService,
                           ActingSubjectGuard actingSubjectGuard,
                           NavigationBarService navigationBarService,
-                          ChangeRequestFilingService changeRequestFilingService) {
+                          ChangeRequestFilingService changeRequestFilingService,
+                          StrSubjectRepository strSubjectRepository) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -92,6 +96,7 @@ public class NiasController {
         this.actingSubjectGuard = actingSubjectGuard;
         this.navigationBarService = navigationBarService;
         this.changeRequestFilingService = changeRequestFilingService;
+        this.strSubjectRepository = strSubjectRepository;
     }
 
     /**
@@ -193,8 +198,13 @@ public class NiasController {
         if (acting.isPresent()) {
             return SubjectProfileResponse.ofRepresentative(acting.get());
         }
-        return SubjectProfileResponse.of(
-                subjectProfileService.load(identity.oib(), identity.firstName(), identity.lastName()));
+        SubjectProfile profile = subjectProfileService.load(identity.oib(), identity.firstName(), identity.lastName());
+        StrSubjectRepository.DocumentContactRow contact =
+                strSubjectRepository.findDocumentContactByOib(identity.oib()).orElse(null);
+        return SubjectProfileResponse.of(profile,
+                contact != null ? contact.getMobile() : null,
+                contact != null ? contact.getPhone() : null,
+                contact != null ? contact.getName() : null);
     }
 
     /**

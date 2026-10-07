@@ -8,8 +8,9 @@ import com.str.backend.lessor.SubjectProfile;
  * implicitno). Svaka grupa nosi izvor, da frontend može označiti odakle je podatak.
  *
  * <p>Sve je samo za prikaz — pri izdavanju RB-a backend iste podatke dohvaća sam, pa izmjena na
- * klijentu nema učinka. <b>Kontakta nema</b>: ne vodi ga ni OIB sustav ni {@code str.subject},
- * pa ga korisnik upisuje u {@code kontakt*} polja zahtjeva.
+ * klijentu nema učinka. <b>Kontakt</b> ({@code kontaktMobitel}, {@code kontaktTelefon},
+ * {@code kontaktOsoba}) dolazi iz {@code str.document_contact} ako postoji — korisnik ga smije
+ * izmijeniti na formi; polje je neobavezno ako se ne pronađe.
  *
  * <p>{@code adresaIzvor} je {@code STR_SUBJEKT} dok OIB sustav nije uključen, a
  * {@code OIB_REGISTAR} nakon toga.
@@ -32,15 +33,25 @@ public record SubjectProfileResponse(
          * ime. Kad je postavljena, podaci iznad su podaci o <b>zastupniku</b>: OIB i ime, bez
          * adrese — iznajmljivač je tvrtka, pa se prebivalište zastupnika ne dohvaća.
          */
-        ActingSubjectResponse pravnaOsoba
+        ActingSubjectResponse pravnaOsoba,
+        /** Iz {@code str.document_contact.mobile}; {@code null} ako nije pronađen. */
+        String kontaktMobitel,
+        /** Iz {@code str.document_contact.phone}; {@code null} ako nije pronađen. */
+        String kontaktTelefon,
+        /** Iz {@code str.document_contact.name}; {@code null} ako nije pronađen. */
+        String kontaktOsoba
 ) {
 
     /** Korisnik djeluje u svoje ime: podaci o njemu iz NIAS-a i registra. */
-    static SubjectProfileResponse of(SubjectProfile p) {
+    static SubjectProfileResponse of(SubjectProfile p,
+                                     String kontaktMobitel,
+                                     String kontaktTelefon,
+                                     String kontaktOsoba) {
         return new SubjectProfileResponse(
                 p.oib(), p.firstName(), p.lastName(), p.nameSource(), p.legalEntityName(),
                 p.street(), p.streetNumber(), p.place(), p.postalCode(), p.municipality(),
-                p.county(), p.addressSource(), null);
+                p.county(), p.addressSource(), null,
+                kontaktMobitel, kontaktTelefon, kontaktOsoba);
     }
 
     /** Korisnik djeluje u ime tvrtke: zastupnik bez adrese i tvrtka iz e-Ovlaštenja. */
@@ -49,6 +60,6 @@ public record SubjectProfileResponse(
                 s.representativeOib(), s.representativeFirstName(), s.representativeLastName(),
                 SubjectDataSource.NIAS, null,
                 null, null, null, null, null, null, null,
-                ActingSubjectResponse.of(s));
+                ActingSubjectResponse.of(s), null, null, null);
     }
 }
