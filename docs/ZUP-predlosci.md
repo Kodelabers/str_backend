@@ -283,7 +283,8 @@ odjednom poslati sve obavijesti iz razdoblja kad je bio ugašen.
 
 | Predložak | Okidač |
 | :--- | :--- |
-| `odobrenje`, `odbijanje` | `AdminPendingRegistrationService.approve/reject` |
+| `registracija` | `LessorRegistrationService.register` — non-EU, odmah po registraciji: korisničko ime i lozinka, prijava bez čekanja na odobrenje. Ne ide u red ponovnog slanja (lozinka se ne sprema) |
+| `odbijanje` | `AdminPendingRegistrationService.reject` (odobrenje ne šalje poruku) |
 | `rb-izdan` | `EgopRegistrationDispatcher`, iznajmljivač s OIB-om — obavijest bez privitka, akt ide u KP |
 | `rb-izdan-dostava` | `EgopRegistrationDispatcher`, non-EU — dostava e-poštom, u privitku obavijest o dodjeli (`DODJELA`) |
 | `prijedlog-suspenzije` | prijelaz → `SUSPENSION_PROPOSED` |

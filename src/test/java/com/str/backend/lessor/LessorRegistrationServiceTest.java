@@ -2,9 +2,11 @@ package com.str.backend.lessor;
 
 import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
+import com.str.backend.email.event.RegistrationSubmittedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,6 +31,7 @@ class LessorRegistrationServiceTest {
     private LessorDocumentRepository documentRepository;
     private PasswordEncoder passwordEncoder;
     private CountryRepository countryRepository;
+    private ApplicationEventPublisher eventPublisher;
     private LessorRegistrationService service;
 
     @BeforeEach
@@ -42,8 +45,38 @@ class LessorRegistrationServiceTest {
         CountryEntity activeCountry = mock(CountryEntity.class);
         when(activeCountry.isActive()).thenReturn(true);
         when(countryRepository.findById(anyLong())).thenReturn(Optional.of(activeCountry));
+        eventPublisher = mock(ApplicationEventPublisher.class);
         service = new LessorRegistrationService(
-                lessorRepository, documentRepository, passwordEncoder, countryRepository);
+                lessorRepository, documentRepository, passwordEncoder, countryRepository, eventPublisher);
+    }
+
+    /** Pristupni podaci idu mailom odmah po registraciji, s lozinkom koju je korisnik upisao. */
+    @Test
+    void register_publishesSubmittedEventWithCredentials() throws IOException {
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
+
+        LessorRegistrationResponse response = service.register(validRequest());
+
+        ArgumentCaptor<RegistrationSubmittedEvent> captor =
+                ArgumentCaptor.forClass(RegistrationSubmittedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        RegistrationSubmittedEvent event = captor.getValue();
+        assertThat(event.lessorId()).isEqualTo(response.lessorId());
+        assertThat(event.email()).isEqualTo("john@example.com");
+        assertThat(event.firstName()).isEqualTo("John");
+        assertThat(event.username()).isEqualTo("john@example.com");
+        assertThat(event.password()).isEqualTo("StrongPassw0rd!");
+        assertThat(event.toString()).doesNotContain("StrongPassw0rd!");
+    }
+
+    @Test
+    void register_rejectedRequest_publishesNoEvent() {
+        LessorRegistrationRequest req = validRequest();
+        req.setPasswordPotvrda("DifferentPassword!");
+
+        assertThatThrownBy(() -> service.register(req)).isInstanceOf(ResponseStatusException.class);
+
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

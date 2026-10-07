@@ -9,7 +9,6 @@ import com.str.backend.admin.dto.PendingRegistrationSummaryDto;
 import com.str.backend.common.SearchTokens;
 import com.str.backend.common.Strings;
 import com.str.backend.domain.LessorApplicationStatus;
-import com.str.backend.email.event.RegistrationApprovedEvent;
 import com.str.backend.email.event.RegistrationRejectedEvent;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorDocumentEntity;
@@ -124,21 +123,19 @@ public class AdminPendingRegistrationService {
         return doc.getBackImage();
     }
 
-    // @Transactional is load-bearing: RegistrationApprovedEvent fires @TransactionalEventListener(AFTER_COMMIT)
+    /**
+     * Bez poruke: iznajmljivač je pristupne podatke dobio već pri registraciji
+     * ({@code RegistrationSubmittedEvent}) i otad se može prijaviti.
+     */
     @Transactional
     public void approve(UUID lessorId, String actorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
         lessor.approveRegistration(actorId);
         auditService.record(actorId, "LESSOR_APPROVE", "LESSOR", lessorId.toString(), null);
-        eventPublisher.publishEvent(new RegistrationApprovedEvent(
-                lessor.getLessorId(),
-                lessor.getEmail(),
-                lessor.getFirstName(),
-                lessor.getUsername()
-        ));
     }
 
     // @Transactional is load-bearing: RegistrationRejectedEvent fires @TransactionalEventListener(AFTER_COMMIT)
+    // (mail o odbijanju i gašenje otvorenih sesija iznajmljivača)
     @Transactional
     public void reject(UUID lessorId, String actorId) {
         LessorEntity lessor = findPendingOrThrow(lessorId);
@@ -147,7 +144,8 @@ public class AdminPendingRegistrationService {
         eventPublisher.publishEvent(new RegistrationRejectedEvent(
                 lessor.getLessorId(),
                 lessor.getEmail(),
-                lessor.getFirstName()
+                lessor.getFirstName(),
+                lessor.getUsername()
         ));
     }
 

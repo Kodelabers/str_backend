@@ -118,6 +118,29 @@ class SmtpEmailServiceTest {
         assertThat(ok).isFalse();
     }
 
+    /** Mail po registraciji nosi pristupne podatke; lozinka je u tijelu, nikad u naslovu. */
+    @Test
+    void registration_bodyCarriesCredentials_subjectDoesNot() throws Exception {
+        boolean ok = service(null).sendRegistrationNotification(LESSOR, "John", LESSOR, "Tajna<123>!");
+
+        MimeMessage sent = sent();
+        sent.saveChanges();
+        assertThat(ok).isTrue();
+        assertThat(recipients(sent)).containsExactly(LESSOR);
+        assertThat(sent.getSubject()).isEqualTo(subject(MailTemplate.REGISTRACIJA)).doesNotContain("Tajna");
+        String body = (String) sent.getContent();
+        assertThat(body).contains(LESSOR);
+        assertThat(body).contains("Tajna&lt;123&gt;!");
+        assertThat(body).contains("https://str.example.com/login");
+    }
+
+    @Test
+    void registration_smtpFailure_returnsFalse() {
+        doThrow(new MailSendException("relay down")).when(mailSender).send(any(MimeMessage.class));
+
+        assertThat(service(null).sendRegistrationNotification(LESSOR, "John", LESSOR, "x")).isFalse();
+    }
+
     /** Prazna env varijabla ({@code APP_MAIL_REDIRECT_TO=}) ne smije preusmjeriti na praznu adresu. */
     @Test
     void blankRedirect_meansNoRedirect() throws Exception {

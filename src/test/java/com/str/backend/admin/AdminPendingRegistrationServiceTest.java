@@ -2,6 +2,7 @@ package com.str.backend.admin;
 
 import com.str.backend.address.CountryRepository;
 import com.str.backend.domain.LessorApplicationStatus;
+import com.str.backend.email.event.RegistrationRejectedEvent;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
@@ -38,7 +39,7 @@ class AdminPendingRegistrationServiceTest {
     }
 
     @Test
-    void approve_writesAuditAndPublishesEvent() {
+    void approve_writesAudit_andSendsNoMail() {
         UUID lessorId = UUID.randomUUID();
         LessorEntity lessor = mock(LessorEntity.class);
         when(lessorRepository.findByLessorIdAndApplicationStatus(lessorId, LessorApplicationStatus.PENDING))
@@ -48,6 +49,8 @@ class AdminPendingRegistrationServiceTest {
 
         verify(lessor).approveRegistration("officer-7");
         verify(auditService).record("officer-7", "LESSOR_APPROVE", "LESSOR", lessorId.toString(), null);
+        // Pristupni podaci su poslani već pri registraciji.
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -57,10 +60,18 @@ class AdminPendingRegistrationServiceTest {
         when(lessorRepository.findByLessorIdAndApplicationStatus(lessorId, LessorApplicationStatus.PENDING))
                 .thenReturn(Optional.of(lessor));
 
+        when(lessor.getLessorId()).thenReturn(lessorId);
+        when(lessor.getEmail()).thenReturn("john@example.com");
+        when(lessor.getFirstName()).thenReturn("John");
+        when(lessor.getUsername()).thenReturn("john@example.com");
+
         service.reject(lessorId, "officer-7");
 
         verify(lessor).rejectRegistration("officer-7");
         verify(auditService).record("officer-7", "LESSOR_REJECT", "LESSOR", lessorId.toString(), null);
+        // Korisničko ime nosi gašenje otvorenih sesija (RejectedLessorSessionTerminator).
+        verify(eventPublisher).publishEvent(new RegistrationRejectedEvent(
+                lessorId, "john@example.com", "John", "john@example.com"));
     }
 
     @Test

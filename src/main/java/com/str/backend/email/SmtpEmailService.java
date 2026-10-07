@@ -29,9 +29,10 @@ public class SmtpEmailService implements EmailService {
     }
 
     @Override
-    public void sendApprovalNotification(String to, String firstName, String username) {
-        send(to, MailTemplate.ODOBRENJE,
-                Map.of("ime", nn(firstName), "korisnickoIme", nn(username)));
+    public boolean sendRegistrationNotification(String to, String firstName, String username,
+                                                String password) {
+        return send(to, MailTemplate.REGISTRACIJA,
+                Map.of("ime", nn(firstName), "korisnickoIme", nn(username), "lozinka", nn(password)));
     }
 
     @Override

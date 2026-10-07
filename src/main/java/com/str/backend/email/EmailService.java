@@ -2,7 +2,14 @@ package com.str.backend.email;
 
 public interface EmailService {
 
-    void sendApprovalNotification(String to, String firstName, String username);
+    /**
+     * Pristupni podaci non-EU iznajmljivaču odmah po registraciji. {@code password} je u
+     * čitljivom obliku — implementacija ga ne smije logirati ni spremati.
+     *
+     * @return je li poruka predana SMTP poslužitelju; neuspjeh se ne ponavlja, jer bi red
+     *         ponovnog slanja morao čuvati lozinku
+     */
+    boolean sendRegistrationNotification(String to, String firstName, String username, String password);
 
     void sendRejectionNotification(String to, String firstName);
 
