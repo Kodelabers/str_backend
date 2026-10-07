@@ -108,6 +108,7 @@ class EmailTemplateTest {
         Map<String, String> values = new HashMap<>();
         values.put("ime", "Ana");
         values.put("korisnickoIme", "ana.anic");
+        values.put("lozinka", "Lozinka123!");
         values.put("rn", "HR180000123456789001");
         values.put("objekt", "Apartman Sunce, Ilica 1");
         values.put("razlog", "nepotpuna dokumentacija");

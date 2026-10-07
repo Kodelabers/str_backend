@@ -3,6 +3,8 @@ package com.str.backend.lessor;
 import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.address.EuEftaMembership;
+import com.str.backend.email.event.RegistrationSubmittedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -19,15 +21,18 @@ public class LessorRegistrationService {
     private final LessorDocumentRepository lessorDocumentRepository;
     private final PasswordEncoder passwordEncoder;
     private final CountryRepository countryRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public LessorRegistrationService(LessorRepository lessorRepository,
                                      LessorDocumentRepository lessorDocumentRepository,
                                      PasswordEncoder passwordEncoder,
-                                     CountryRepository countryRepository) {
+                                     CountryRepository countryRepository,
+                                     ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
         this.passwordEncoder = passwordEncoder;
         this.countryRepository = countryRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     public LessorRegistrationResponse register(LessorRegistrationRequest req) throws IOException {
@@ -86,6 +91,12 @@ public class LessorRegistrationService {
                 req.getIspravaPrednja().getBytes(), back
         );
         lessorDocumentRepository.save(doc);
+
+        // Pristupni podaci odmah, bez čekanja na odobrenje; šalju se tek nakon commita
+        // (RegistrationEmailListener), pa propala registracija ne šalje lozinku.
+        eventPublisher.publishEvent(new RegistrationSubmittedEvent(
+                lessor.getLessorId(), lessor.getEmail(), lessor.getFirstName(),
+                username, req.getPassword()));
 
         return new LessorRegistrationResponse(lessor.getLessorId(), username);
     }

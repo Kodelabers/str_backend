@@ -8,8 +8,11 @@ public class LoggingEmailService implements EmailService {
     private static final Logger log = LoggerFactory.getLogger(LoggingEmailService.class);
 
     @Override
-    public void sendApprovalNotification(String to, String firstName, String username) {
-        log.info("[mail/mock] APPROVAL → to={}, firstName={}, username={}", to, firstName, username);
+    public boolean sendRegistrationNotification(String to, String firstName, String username,
+                                                String password) {
+        // Lozinka se namjerno ne logira.
+        log.info("[mail/mock] REGISTRATION → to={}, firstName={}, username={}", to, firstName, username);
+        return false;
     }
 
     @Override

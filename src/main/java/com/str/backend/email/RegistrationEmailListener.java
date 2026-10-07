@@ -1,7 +1,7 @@
 package com.str.backend.email;
 
-import com.str.backend.email.event.RegistrationApprovedEvent;
 import com.str.backend.email.event.RegistrationRejectedEvent;
+import com.str.backend.email.event.RegistrationSubmittedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -19,13 +19,21 @@ public class RegistrationEmailListener {
         this.emailService = emailService;
     }
 
+    /**
+     * Pristupni podaci odmah po registraciji — iznajmljivač se prijavljuje bez čekanja na
+     * odobrenje. AFTER_COMMIT: lozinka se ne šalje za račun koji nije spremljen.
+     */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onApproved(RegistrationApprovedEvent event) {
+    public void onSubmitted(RegistrationSubmittedEvent event) {
         if (event.email() == null || event.email().isBlank()) {
-            log.warn("Skipping approval email for lessor {} — no email on record", event.lessorId());
+            log.warn("Skipping registration email for lessor {} — no email on record", event.lessorId());
             return;
         }
-        emailService.sendApprovalNotification(event.email(), event.firstName(), event.username());
+        if (!emailService.sendRegistrationNotification(
+                event.email(), event.firstName(), event.username(), event.password())) {
+            log.warn("Registration email for lessor {} not sent — no retry, the password is not stored",
+                    event.lessorId());
+        }
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)

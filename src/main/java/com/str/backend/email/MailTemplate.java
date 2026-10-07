@@ -18,7 +18,8 @@ import java.util.Set;
  */
 public enum MailTemplate {
 
-    ODOBRENJE("odobrenje", Keys.ODOBRENJE),
+    /** Non-EU iznajmljivač odmah po registraciji — pristupni podaci, prije pregleda zahtjeva. */
+    REGISTRACIJA("registracija", Keys.REGISTRACIJA),
     ODBIJANJE("odbijanje", Keys.SAMO_IME),
     /** Iznajmljivač s OIB-om — obavijest, akt ide u korisnički pretinac. */
     RB_IZDAN("rb-izdan", Keys.RB_IZDAN),
@@ -42,7 +43,7 @@ public enum MailTemplate {
                 Set.of("klauzula.dostava", "gumb.prijava", "gumb.logIn");
 
         static final Set<String> SAMO_IME = Set.of("ime");
-        static final Set<String> ODOBRENJE = Set.of("ime", "korisnickoIme");
+        static final Set<String> REGISTRACIJA = Set.of("ime", "korisnickoIme", "lozinka");
         static final Set<String> RB_IZDAN = Set.of("ime", "rn", "objekt");
         static final Set<String> RB_IZDAN_DOSTAVA = Set.of("ime", "rn");
         /** Sve što {@code SmtpEmailService} puni iz {@link RnLifecycleMail}. */

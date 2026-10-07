@@ -22,10 +22,9 @@ public class LessorUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return repository.findByUsername(username)
                 .filter(l -> l.getPasswordHash() != null)
-                .filter(l -> {
-                    LessorApplicationStatus s = l.getApplicationStatus();
-                    return s == null || s == LessorApplicationStatus.ACCEPTED;
-                })
+                // Non-EU iznajmljivač se prijavljuje odmah po registraciji, dok zahtjev još čeka
+                // pregled (PENDING); blokira ga samo odbijanje.
+                .filter(l -> l.getApplicationStatus() != LessorApplicationStatus.REJECTED)
                 .map(LessorPrincipal::new)
                 .orElseThrow(() -> new UsernameNotFoundException("Iznajmljivač s korisničkim imenom '" + username + "' nije pronađen."));
     }

@@ -39,6 +39,7 @@ class MailPreviewGenerator {
         Map<String, String> v = new HashMap<>();
         v.put("ime", ime);
         v.put("korisnickoIme", "ana.anic");
+        v.put("lozinka", "Lozinka123!");
         v.put("rn", RN);
         v.put("objekt", "Apartman Sunce, Ilica 1");
         v.put("razlog", "istek suglasnosti suvlasnika");
