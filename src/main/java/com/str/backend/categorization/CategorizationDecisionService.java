@@ -71,9 +71,8 @@ public class CategorizationDecisionService {
     /**
      * Predaja rješenja uz RB vlasnika {@code oib}. Rješenje traži RB novog objekta. Objekt iz
      * eTurizma (smještaj s {@code facilityId}) kategorizaciju već ima, pa se uz njegov RB
-     * rješenje ne predaje — osim kad je objekt neverificiran (migriran iz starog sustava ili u
-     * verifikaciji koja traje, podaci nisu provjereni): tada ga iznajmljivač smije priložiti,
-     * neobavezno.
+     * rješenje ne predaje — osim kad je objekt neverificiran (migriran iz starog sustava, podaci
+     * nisu provjereni): tada ga iznajmljivač smije priložiti, neobavezno.
      *
      * <p>Redoslijed provjera: prvo vlasništvo (404 i za nepostojeći i za tuđi RB, da se ne
      * otkriva postoji li), zatim smisao predaje (409), a tek onda datoteka (400).

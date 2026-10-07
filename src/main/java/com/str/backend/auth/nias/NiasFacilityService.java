@@ -28,7 +28,7 @@ import java.util.Map;
  * uploadanih skeniranih rješenja koja još nisu upisana u eTurizam.
  *
  * <p>Redoslijed: verificirani eTurizam objekti, zatim neverificirani (migrirani iz starog
- * sustava ili u verifikaciji koja traje), zatim privremena rješenja. Redak je smještajna jedinica, a paginacija broji
+ * sustava), zatim privremena rješenja. Redak je smještajna jedinica, a paginacija broji
  * <b>objekte</b> ({@code system_uuid}): stranica nosi najviše {@code size} objekata sa svim
  * njihovim jedinicama. Privremeno rješenje je zaseban objekt s jednom jedinicom, pa je
  * {@code total} zbroj eTurizam objekata i privremenih rješenja.

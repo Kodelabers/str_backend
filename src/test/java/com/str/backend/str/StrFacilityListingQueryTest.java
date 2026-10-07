@@ -619,74 +619,18 @@ class StrFacilityListingQueryTest {
     }
 
     /**
-     * Novi objekt upisan izravno u verifikaciju (bez izvornog predmeta), predmet u rješavanju:
-     * TuStart ga prikazuje kao neverificiranog („Pero 1A”, CDU 7. 10. 2026.), pa i popis. Kapacitet
-     * je kapacitet jedinice — to nije migrirani objekt.
+     * Novi objekt u verifikaciji koja traje (CDU: „Pero 1A”) nije neverificiran — neverificiran
+     * je samo migrirani (optimit), odluka eTurizma 7. 10. 2026. Ne prikazuje se i ne prolazi claim.
      */
     @Test
-    void listsUnitsInOngoingVerification_asUnverified() {
+    void excludesUnitsInOngoingVerification() {
         businessCase(900, 1, STATUS_U_RJESAVANJU);
         document(900, RJESENJE, "2026-05-19 00:00:00");
         unit(10, 900, "uuid-10", "Pero 1A", SLUZBENIK, "2026-10-07 10:56:00");
-        unit(11, 900, "uuid-11", "Pero 2A", SLUZBENIK, "2026-10-07 10:57:00");
-        capacity(100, 10, 1040, 2);
         verification(1, null, 900L, VERIFIKACIJA_U_IZRADI);
 
-        List<FacilityListingRow> rows = list(OIB);
-
-        assertThat(ids(rows)).containsExactly(10L, 11L);
-        assertThat(rows).extracting(FacilityListingRow::getVerified).containsOnly(false);
-        assertThat(rows).extracting(FacilityListingRow::getObjectLevelCapacity).containsOnly(false);
-        assertThat(rows.getFirst().getBeds()).isEqualTo(2);
-    }
-
-    /** Claim i predaja rješenja vide jedinicu u verifikaciji isto kao popis: aktualna, neverificirana. */
-    @Test
-    void ownershipOfUnitInOngoingVerification_isCurrentAndUnverified() {
-        businessCase(900, 1, STATUS_U_RJESAVANJU);
-        document(900, RJESENJE, null);
-        unit(10, 900, "uuid-10", "Pero 1A", SLUZBENIK, "2026-10-07 10:56:00");
-        verification(1, null, 900L, VERIFIKACIJA_U_IZRADI);
-
-        FacilityOwnershipRow owned = repository.findOwnership(10L).orElseThrow();
-
-        assertThat(owned.getCurrent()).isTrue();
-        assertThat(owned.getVerified()).isFalse();
-        assertThat(owned.getObjectLevelCapacity()).isFalse();
-    }
-
-    /**
-     * Ponovna verifikacija već verificiranog objekta: dok traje, vrijedi dosadašnja verzija, iako je
-     * verzija iz verifikacije novija.
-     */
-    @Test
-    void verifiedVersionWins_overNewerVersionInOngoingVerification() {
-        verifiedCase(900, 1);
-        unit(10, 900, "uuid-10", "Dosadasnja", SLUZBENIK, "2024-01-01 10:00:00");
-        businessCase(901, 1, STATUS_U_RJESAVANJU);
-        document(901, RJESENJE, null);
-        unit(11, 901, "uuid-10", "U verifikaciji", SLUZBENIK, "2026-10-07 10:00:00");
-        verification(1, 900L, 901L, VERIFIKACIJA_U_IZRADI);
-
-        List<FacilityListingRow> rows = list(OIB);
-
-        assertThat(ids(rows)).containsExactly(10L);
-        assertThat(rows.getFirst().getVerified()).isTrue();
-        assertThat(repository.findOwnership(11L).orElseThrow().getCurrent()).isFalse();
-    }
-
-    /** Kad verifikacija završi, verificirana verzija je obična verificirana jedinica. */
-    @Test
-    void listsTargetOfCompletedVerification_asVerified() {
-        verifiedCase(900, 1);
-        unit(10, 900, "uuid-10", "Verificirana", SLUZBENIK, "2026-10-07 10:00:00");
-        verification(1, null, 900L, VERIFIKACIJA_ZAVRSENA);
-
-        List<FacilityListingRow> rows = list(OIB);
-
-        assertThat(ids(rows)).containsExactly(10L);
-        assertThat(rows.getFirst().getVerified()).isTrue();
-        assertThat(repository.findOwnership(10L).orElseThrow().getVerified()).isTrue();
+        assertThat(list(OIB)).isEmpty();
+        assertThat(repository.findOwnership(10L).orElseThrow().getCurrent()).isFalse();
     }
 
     /** Kao u viewu ({@code HAVING count(system_uuid) = 1}): više redaka verifikacije izbaci zapis. */

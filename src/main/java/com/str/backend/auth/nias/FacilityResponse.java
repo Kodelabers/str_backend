@@ -45,8 +45,7 @@ public record FacilityResponse(
         String objektId,
         /**
          * {@code true} — objekt obrađen u novom eTurizmu; {@code false} — migriran iz starog
-         * sustava i još neprovjeren, ili u verifikaciji koja traje; {@code null} za privremeno
-         * rješenje, koje nije u eTurizmu.
+         * sustava i još neprovjeren; {@code null} za privremeno rješenje, koje nije u eTurizmu.
          */
         Boolean verificiran,
         /**

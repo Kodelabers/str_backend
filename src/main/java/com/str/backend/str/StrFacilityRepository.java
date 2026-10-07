@@ -45,10 +45,9 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      *   237.140 na CDU), pa bi ih doslovna zamjena u viewu sve izbacila.
      *   Migrirani predmet je u verifikaciji uvijek izvor, nikad cilj; kad verifikacija završi,
      *   stari predmet postaje neaktivan, a verificiranu verziju istog objekta bira rang predmeta.
-     * U VERIFIKACIJI (također neverificiran) = created_by <> 'optimit', predmet je CILJ verifikacije
-     *   koja nije BCVS_ZAVRSENA, uvjet na izvor kao u viewu, BEZ „predmet gotov" (predmet je u
-     *   rješavanju). TuStart takve objekte prikazuje kao neverificirane (CDU 7. 10. 2026.: „Pero 1A",
-     *   „Pero 2A" — verifikacija 96418 bez izvornog predmeta; docs/sql/m1-neverificirani-*.sql).
+     *   Objekti u verifikaciji koja traje (cilj nije BCVS_ZAVRSENA, autor nije optimit) namjerno
+     *   nisu ni u jednom skupu: neverificiran je SAMO optimit (odluka eTurizma 7. 10. 2026.), iako
+     *   ih TuStart prikazuje (CDU: „Pero 1A", „Pero 2A"; docs/sql/m1-neverificirani-*.sql).
      * created_by IS NULL ne ulazi ni u jedan skup (kao u viewu: <> i = daju NULL).
      *
      * NAJNOVIJI PREDMET: objekt može biti aktualan u više predmeta (rješenje pa promjena podataka;
@@ -58,9 +57,6 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      *   NULL inače stavlja prvi). Računa se PRIJE filtara vlasnika, statusa i vrste: noviji odjavljeni ili
      *   na drugog vlasnika preneseni predmet skriva stariji. Na CDU nijedan verificirani zapis nije
      *   skriven iza migriranog.
-     *   Iznimka: predmet U VERIFIKACIJI dolazi u rangu iza svih ostalih, bez obzira na datum. Dok
-     *   verifikacija traje, vrijedi dosadašnja verzija objekta (verificirana ili migrirana); verzija
-     *   iz verifikacije prikazuje se samo kad objekt druge aktualne verzije nema.
      *
      * VLASNIK = business_case.subject_version_id → subject.jips, kao u viewu. Preko
      *   facility.subject_version_id 43 od 1.129 aktualnih zapisa na CDU nemaju vlasnika.
@@ -79,41 +75,28 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * Pozivatelj nastavlja podupitom koji daje stupac {@code system_uuid} (objekti koje treba
      * razmotriti), pa {@link #RANGIRANE_JEDINICE_DO} i alias.
      *
-     * <p>Stupci: {@code id, su, verificiran, migriran, u_verifikaciji, created_date, bc_id, bc_sv,
-     * predmet_zadnji, predmet_rang, predmet_jedinica}. Svi zapisi objekta ulaze u rang (i tuđi), pa
-     * noviji predmet drugog vlasnika skriva stariji. {@code predmet_jedinica} je broj aktualnih
-     * jedinica objekta u istom predmetu (v. {@link FacilityListingRow#getObjectLevelCapacity()}).
-     * Neverificiran je zapis koji je {@code migriran} ili {@code u_verifikaciji}.
+     * <p>Stupci: {@code id, su, verificiran, created_date, bc_id, bc_sv, predmet_zadnji,
+     * predmet_rang, predmet_jedinica}. Svi zapisi objekta ulaze u rang (i tuđi), pa noviji predmet
+     * drugog vlasnika skriva stariji. {@code predmet_jedinica} je broj aktualnih jedinica objekta u
+     * istom predmetu (v. {@link FacilityListingRow#getObjectLevelCapacity()}).
      */
     String RANGIRANE_JEDINICE_OD = """
             (SELECT a.*,
                     dense_rank() OVER (PARTITION BY a.su
-                                       ORDER BY a.u_verifikaciji, a.predmet_zadnji DESC NULLS LAST,
-                                                a.bc_id DESC) AS predmet_rang,
+                                       ORDER BY a.predmet_zadnji DESC NULLS LAST, a.bc_id DESC) AS predmet_rang,
                     count(*) OVER (PARTITION BY a.su, a.bc_id) AS predmet_jedinica
                FROM (SELECT x.*,
                             max(x.created_date) OVER (PARTITION BY x.su, x.bc_id) AS predmet_zadnji
                        FROM (SELECT id,
-                                    max(su)                  AS su,
-                                    bool_and(verificiran)    AS verificiran,
-                                    bool_or(migriran)        AS migriran,
-                                    bool_or(u_verifikaciji)  AS u_verifikaciji,
-                                    max(created_date)        AS created_date,
-                                    max(bc_id)               AS bc_id,
-                                    max(bc_sv)               AS bc_sv
+                                    max(su)               AS su,
+                                    bool_and(verificiran) AS verificiran,
+                                    max(created_date)     AS created_date,
+                                    max(bc_id)            AS bc_id,
+                                    max(bc_sv)            AS bc_sv
                                FROM (SELECT facility.id,
                                             cast(facility.system_uuid AS varchar(64)) AS su,
                                             facility.created_date,
-                                            (facility.created_by <> 'optimit'
-                                             AND (verification_target.id IS NULL
-                                                  OR coalesce(verification_target_status.code = 'BCVS_ZAVRSENA',
-                                                              false)))                 AS verificiran,
-                                            facility.created_by = 'optimit'          AS migriran,
-                                            (facility.created_by <> 'optimit'
-                                             AND verification_target.id IS NOT NULL
-                                             AND (verification_target_status.code IS NULL
-                                                  OR verification_target_status.code <> 'BCVS_ZAVRSENA'))
-                                                                                       AS u_verifikaciji,
+                                            facility.created_by <> 'optimit'          AS verificiran,
                                             business_case.id                           AS bc_id,
                                             business_case.subject_version_id           AS bc_sv
                                        FROM """;
@@ -158,12 +141,6 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                                               AND document.execution_date < now())
                                           OR (facility.created_by = 'optimit'
                                               AND (verification_target.id IS NULL
-                                                   OR verification_target_status.code <> 'BCVS_ZAVRSENA'))
-                                          OR (facility.created_by <> 'optimit'
-                                              AND (verification_source.id IS NULL
-                                                   OR verification_source_status.code = 'BCVS_U_IZRADI')
-                                              AND verification_target.id IS NOT NULL
-                                              AND (verification_target_status.code IS NULL
                                                    OR verification_target_status.code <> 'BCVS_ZAVRSENA')))
                                     ) redovi
                               GROUP BY id
@@ -173,11 +150,10 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     /**
      * Jedinice koje iznajmljivač {@code :oib} vidi na popisu: aktualne jedinice najnovijeg predmeta
      * svojih objekata, kojima je predmet njegov, koje posluju ({@code FBS_ACTIVE}, W-5) i koje su
-     * privatni smještaj ({@code :codes}). Stupci: {@code id, su, verificiran, migriran, bc_sv,
-     * predmet_jedinica}.
+     * privatni smještaj ({@code :codes}). Stupci: {@code id, su, verificiran, bc_sv, predmet_jedinica}.
      */
     String PRIKAZ_ZA_OIB = """
-            SELECT r.id, r.su, r.verificiran, r.migriran, r.bc_sv, r.predmet_jedinica
+            SELECT r.id, r.su, r.verificiran, r.bc_sv, r.predmet_jedinica
               FROM """ + RANGIRANE_JEDINICE_OD + """
                    (SELECT DISTINCT f.system_uuid
                       FROM str.subject s
@@ -261,10 +237,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         Long getFacilityId();
         /** {@code system_uuid} — oznaka objekta kojem jedinica pripada; frontend po njoj grupira. */
         String getSystemUuid();
-        /**
-         * {@code true} verificiran (novi eTurizam), {@code false} migriran iz starog sustava ili u
-         * verifikaciji koja traje.
-         */
+        /** {@code true} verificiran (novi eTurizam), {@code false} migriran iz starog sustava. */
         Boolean getVerified();
         /** Ukupno objekata iznajmljivača (ne samo na ovoj stranici). */
         Long getTotalObjects();
@@ -339,7 +312,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                                                            AS beds,
                    """ + POMOCNI_KREVETI_JEDINICE + """
                                                            AS auxiliaryBeds,
-                   (s.migriran AND s.predmet_jedinica > 1) AS objectLevelCapacity
+                   (NOT s.verificiran AND s.predmet_jedinica > 1) AS objectLevelCapacity
               FROM (SELECT u.*,
                            max(u.redni) OVER () AS ukupno_objekata,
                            count(*) OVER ()     AS ukupno_jedinica
@@ -418,10 +391,9 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
         Boolean getCurrent();
         /**
          * {@code true} verificiran (zapis novog eTurizma), {@code false} migriran iz starog sustava
-         * ({@code created_by = 'optimit'}) ili u predmetu koji je cilj verifikacije koja nije
-         * završena, {@code null} kad zapis nema autora. Čita se iz samog zapisa i njegova predmeta,
-         * ne iz {@link #RANGIRANE_JEDINICE_OD}: tamo je NULL čim jedinica nije aktualna, a predaja
-         * rješenja uz već izdan RB pita i za takvu.
+         * ({@code created_by = 'optimit'}), {@code null} kad zapis nema autora. Čita se iz samog
+         * zapisa, ne iz {@link #RANGIRANE_JEDINICE_OD}: tamo je NULL čim jedinica nije aktualna, a
+         * predaja rješenja uz već izdan RB pita i za takvu.
          */
         Boolean getVerified();
         String getName();
@@ -491,11 +463,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    f.active    AS active,
                    c_st.code   AS businessStatusCode,
                    coalesce(r.predmet_rang = 1, false) AS current,
-                   (f.created_by <> 'optimit'
-                    AND NOT EXISTS (SELECT 1 FROM str.business_case_verification v
-                                      LEFT JOIN str.codebook_element vce ON vce.id = v.status_id
-                                     WHERE v.verified_business_case_id = bc.id
-                                       AND (vce.code IS NULL OR vce.code <> 'BCVS_ZAVRSENA'))) AS verified,
+                   f.created_by <> 'optimit' AS verified,
                    f.name      AS name,
                    sv.name     AS ownerName,
                    btrim(coalesce(sv.first_name,'') || ' ' || coalesce(sv.last_name,'')) AS ownerFullName,

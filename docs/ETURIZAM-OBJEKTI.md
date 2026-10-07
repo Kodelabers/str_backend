@@ -65,17 +65,12 @@ ona je `BCVS_U_IZRADI`; ako je cilj verifikacije, ona je `BCVS_ZAVRSENA`;
 | Skup | Uvjet | CDU |
 | :--- | :--- | ---: |
 | **Verificiran** | `created_by <> 'optimit'` + zajednički uvjeti + „predmet gotov": status predmeta `BCST_RJES_IZVRSNO` i `execution_date` u prošlosti | 1.122 |
-| **Neverificiran — migriran** | `created_by = 'optimit'` (migracija iz starog sustava, siječanj 2023.) + cilj verifikacije ne postoji ili nije `BCVS_ZAVRSENA` (Simonovo pravilo, 7. 10. 2026., bez uvjeta na izvor) + ostali zajednički uvjeti, **bez** „predmet gotov" | 129.350 |
-| **Neverificiran — u verifikaciji** | `created_by <> 'optimit'` + predmet je **cilj** verifikacije koja nije `BCVS_ZAVRSENA` + izvor kao u viewu + ostali zajednički uvjeti, **bez** „predmet gotov" (predmet je u rješavanju) | 248 verifikacija, 61 zapis za popis |
+| **Neverificiran** | `created_by = 'optimit'` (migracija iz starog sustava, siječanj 2023.) + cilj verifikacije ne postoji ili nije `BCVS_ZAVRSENA` (Simonovo pravilo, 7. 10. 2026., bez uvjeta na izvor) + ostali zajednički uvjeti, **bez** „predmet gotov" | 129.350 |
 
-**Objekti u verifikaciji.** TuStart kao neverificirane prikazuje i objekte čiji je predmet cilj
-verifikacije koja traje — npr. „Pero 1A” i „Pero 2A” (CDU, verifikacija 96418 bez izvornog predmeta,
-`docs/sql/m1-neverificirani-dijagnostika*.sql`, rezultati u `docs/sql/results/m1-nerverificirani*`).
-Ni view ni Simonovo pravilo za migrirane ih ne obuhvaćaju. U rangu predmeta dolaze **iza** svih
-ostalih verzija istog objekta: dok verifikacija traje, vrijedi dosadašnja (verificirana ili migrirana)
-verzija, a verzija iz verifikacije prikazuje se samo kad objekt druge aktualne verzije nema. Claim i
-predaja rješenja ih vide kao aktualne i neverificirane, pa takav objekt može dobiti RB.
-**Čeka potvrdu eTurizma** (prikaz stare ili nove verzije tijekom verifikacije, RB tijekom verifikacije).
+**Objekti u verifikaciji se ne prikazuju.** Novi objekti u predmetu koji je cilj verifikacije koja
+traje (npr. „Pero 1A” i „Pero 2A” na CDU, verifikacija 96418) TuStart prikazuje kao neverificirane,
+ali po odluci eTurizma od 7. 10. 2026. neverificiran je **samo** `optimit`. Nisu ni u jednom skupu,
+pa nisu na popisu i ne prolaze claim. Dijagnostika: `docs/sql/m1-neverificirani-dijagnostika*.sql`.
 
 **Zašto neverificirani nemaju uvjet „predmet gotov".** Migrirani predmeti nemaju ni status (237.140
 od 237.140) ni datum izvršnosti (238.682 od 238.682). Doslovna inverzija viewa koju je predložio

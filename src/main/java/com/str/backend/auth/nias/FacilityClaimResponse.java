@@ -55,7 +55,7 @@ public record FacilityClaimResponse(
         String zahtjevPromjenaUrl,
         /**
          * {@code false} za objekt migriran iz starog sustava koji nadležno tijelo još nije
-         * provjerilo, ili za objekt u verifikaciji koja traje — uz njegov RB rješenje o kategorizaciji smije se (neobavezno) priložiti
+         * provjerilo — uz njegov RB rješenje o kategorizaciji smije se (neobavezno) priložiti
          * ({@code CategorizationDecisionService#upload}). {@code null} kad se ne zna.
          */
         Boolean verificiran) {
