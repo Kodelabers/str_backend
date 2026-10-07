@@ -38,13 +38,16 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      *
      * VERIFICIRAN = created_by <> 'optimit' i svi uvjeti viewa, uključujući „predmet gotov"
      *   (status predmeta BCST_RJES_IZVRSNO i execution_date u prošlosti).
-     * NEVERIFICIRAN = created_by = 'optimit' (migracija iz starog sustava, siječanj 2023.) i isti
-     *   uvjeti BEZ „predmet gotov": migrirani predmeti nemaju ni status ni datum izvršnosti
-     *   (237.140 od 237.140 na CDU), pa bi ih doslovna inverzija viewa sve izbacila.
-     *   ČEKA POTVRDU eTurizma (Simon) — ako kaže drukčije, mijenja se samo zadnji uvjet u
-     *   RANGIRANE_JEDINICE_DO.
-     *   Migrirani predmet je u business_case_verification uvijek izvor (unverified), pa ga uvjeti
-     *   verifikacije iz viewa skrivaju tek kad je verifikacija završena.
+     * NEVERIFICIRAN = created_by = 'optimit' (migracija iz starog sustava, siječanj 2023.) i
+     *   cilj verifikacije ne postoji ili nije BCVS_ZAVRSENA — Simonovo pravilo (eTurizam,
+     *   7. 10. 2026.), bez uvjeta na izvor verifikacije. Ostali uvjeti viewa vrijede, ali BEZ
+     *   „predmet gotov": migrirani predmeti nemaju ni status ni datum izvršnosti (237.140 od
+     *   237.140 na CDU), pa bi ih doslovna zamjena u viewu sve izbacila.
+     *   Migrirani predmet je u verifikaciji uvijek izvor, nikad cilj; kad verifikacija završi,
+     *   stari predmet postaje neaktivan, a verificiranu verziju istog objekta bira rang predmeta.
+     *   Objekti u verifikaciji koja traje (cilj nije BCVS_ZAVRSENA, autor nije optimit) namjerno
+     *   nisu ni u jednom skupu: neverificiran je SAMO optimit (odluka eTurizma 7. 10. 2026.), iako
+     *   ih TuStart prikazuje (CDU: „Pero 1A", „Pero 2A"; docs/sql/m1-neverificirani-*.sql).
      * created_by IS NULL ne ulazi ni u jedan skup (kao u viewu: <> i = daju NULL).
      *
      * NAJNOVIJI PREDMET: objekt može biti aktualan u više predmeta (rješenje pa promjena podataka;
@@ -126,16 +129,19 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                                       WHERE facility.active = true
                                         AND facility.created_by IS NOT NULL
                                         AND (facility.historical IS NULL OR facility.historical = false)
-                                        AND (verification_source.id IS NULL
-                                             OR verification_source_status.code = 'BCVS_U_IZRADI')
-                                        AND (verification_target.id IS NULL
-                                             OR verification_target_status.code = 'BCVS_ZAVRSENA')
                                         AND EXISTS (SELECT 1 FROM str.organizational_unit ou
                                                      WHERE ou.id = business_case.jurisdiction_organizational_unit_id)
-                                        AND (facility.created_by = 'optimit'
-                                             OR (bc_status_ce.code = 'BCST_RJES_IZVRSNO'
-                                                 AND document.execution_date IS NOT NULL
-                                                 AND document.execution_date < now()))
+                                        AND ((facility.created_by <> 'optimit'
+                                              AND (verification_source.id IS NULL
+                                                   OR verification_source_status.code = 'BCVS_U_IZRADI')
+                                              AND (verification_target.id IS NULL
+                                                   OR verification_target_status.code = 'BCVS_ZAVRSENA')
+                                              AND bc_status_ce.code = 'BCST_RJES_IZVRSNO'
+                                              AND document.execution_date IS NOT NULL
+                                              AND document.execution_date < now())
+                                          OR (facility.created_by = 'optimit'
+                                              AND (verification_target.id IS NULL
+                                                   OR verification_target_status.code <> 'BCVS_ZAVRSENA')))
                                     ) redovi
                               GROUP BY id
                              HAVING count(su) = 1) x) a)

@@ -65,7 +65,12 @@ ona je `BCVS_U_IZRADI`; ako je cilj verifikacije, ona je `BCVS_ZAVRSENA`;
 | Skup | Uvjet | CDU |
 | :--- | :--- | ---: |
 | **Verificiran** | `created_by <> 'optimit'` + zajednički uvjeti + „predmet gotov": status predmeta `BCST_RJES_IZVRSNO` i `execution_date` u prošlosti | 1.122 |
-| **Neverificiran** | `created_by = 'optimit'` (migracija iz starog sustava, siječanj 2023.) + zajednički uvjeti, **bez** „predmet gotov" | 129.350 |
+| **Neverificiran** | `created_by = 'optimit'` (migracija iz starog sustava, siječanj 2023.) + cilj verifikacije ne postoji ili nije `BCVS_ZAVRSENA` (Simonovo pravilo, 7. 10. 2026., bez uvjeta na izvor) + ostali zajednički uvjeti, **bez** „predmet gotov" | 129.350 |
+
+**Objekti u verifikaciji se ne prikazuju.** Novi objekti u predmetu koji je cilj verifikacije koja
+traje (npr. „Pero 1A” i „Pero 2A” na CDU, verifikacija 96418) TuStart prikazuje kao neverificirane,
+ali po odluci eTurizma od 7. 10. 2026. neverificiran je **samo** `optimit`. Nisu ni u jednom skupu,
+pa nisu na popisu i ne prolaze claim. Dijagnostika: `docs/sql/m1-neverificirani-dijagnostika*.sql`.
 
 **Zašto neverificirani nemaju uvjet „predmet gotov".** Migrirani predmeti nemaju ni status (237.140
 od 237.140) ni datum izvršnosti (238.682 od 238.682). Doslovna inverzija viewa koju je predložio

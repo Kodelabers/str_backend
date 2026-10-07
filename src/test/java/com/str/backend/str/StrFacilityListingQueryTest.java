@@ -575,7 +575,7 @@ class StrFacilityListingQueryTest {
         unit(10, 900, "uuid-10", "Migrirana", MIGRACIJA, "2023-01-19 13:00:00");
         verifiedCase(901, 1);
         unit(11, 901, "uuid-10", "U verifikaciji", SLUZBENIK, "2025-10-10 15:00:00");
-        verification(1, 900, 901L, VERIFIKACIJA_U_IZRADI);
+        verification(1, 900L, 901L, VERIFIKACIJA_U_IZRADI);
 
         List<FacilityListingRow> rows = list(OIB);
 
@@ -584,16 +584,53 @@ class StrFacilityListingQueryTest {
         assertThat(rows.getFirst().getVerified()).isFalse();
     }
 
-    /** Izvor završene verifikacije nije aktualan, čak i kad mu je predmet ostao aktivan. */
+    /**
+     * Izvor završene verifikacije s predmetom koji je ostao aktivan: verificirana verzija istog
+     * objekta je novija, pa je rang predmeta prikazuje umjesto migrirane.
+     */
     @Test
     void excludesSourceOfCompletedVerification() {
         migratedCase(900, 1);
         unit(10, 900, "uuid-10", "Migrirana", MIGRACIJA, "2023-01-19 13:00:00");
         verifiedCase(901, 1);
         unit(11, 901, "uuid-10", "Verificirana", SLUZBENIK, "2025-10-10 15:00:00");
-        verification(1, 900, 901L, VERIFIKACIJA_ZAVRSENA);
+        verification(1, 900L, 901L, VERIFIKACIJA_ZAVRSENA);
 
         assertThat(ids(list(OIB))).containsExactly(11L);
+    }
+
+    /**
+     * Simonovo pravilo za migrirane gleda samo cilj verifikacije, ne izvor: migrirani zapis čiji
+     * je predmet ostao aktivan prikazuje se i kad je njegova verifikacija završena, ako nova
+     * verzija nije isti objekt (drugi system_uuid).
+     */
+    @Test
+    void keepsMigratedSourceOfCompletedVerification_whenNewVersionIsAnotherObject() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-10", "Migrirana", MIGRACIJA, "2023-01-19 13:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-11", "Verificirana", SLUZBENIK, "2025-10-10 15:00:00");
+        verification(1, 900L, 901L, VERIFIKACIJA_ZAVRSENA);
+
+        List<FacilityListingRow> rows = list(OIB);
+
+        assertThat(ids(rows)).containsExactly(11L, 10L);
+        assertThat(rows.get(1).getVerified()).isFalse();
+    }
+
+    /**
+     * Novi objekt u verifikaciji koja traje (CDU: „Pero 1A”) nije neverificiran — neverificiran
+     * je samo migrirani (optimit), odluka eTurizma 7. 10. 2026. Ne prikazuje se i ne prolazi claim.
+     */
+    @Test
+    void excludesUnitsInOngoingVerification() {
+        businessCase(900, 1, STATUS_U_RJESAVANJU);
+        document(900, RJESENJE, "2026-05-19 00:00:00");
+        unit(10, 900, "uuid-10", "Pero 1A", SLUZBENIK, "2026-10-07 10:56:00");
+        verification(1, null, 900L, VERIFIKACIJA_U_IZRADI);
+
+        assertThat(list(OIB)).isEmpty();
+        assertThat(repository.findOwnership(10L).orElseThrow().getCurrent()).isFalse();
     }
 
     /** Kao u viewu ({@code HAVING count(system_uuid) = 1}): više redaka verifikacije izbaci zapis. */
@@ -601,8 +638,8 @@ class StrFacilityListingQueryTest {
     void excludesRowWithSeveralVerificationRows() {
         migratedCase(900, 1);
         unit(10, 900, "uuid-10", "Dvije verifikacije", MIGRACIJA, "2023-01-19 13:00:00");
-        verification(1, 900, null, VERIFIKACIJA_U_IZRADI);
-        verification(2, 900, null, VERIFIKACIJA_U_IZRADI);
+        verification(1, 900L, null, VERIFIKACIJA_U_IZRADI);
+        verification(2, 900L, null, VERIFIKACIJA_U_IZRADI);
 
         assertThat(list(OIB)).isEmpty();
     }
@@ -977,7 +1014,7 @@ class StrFacilityListingQueryTest {
                 """, caseId, caseId, subtypeCode, executionDate);
     }
 
-    private void verification(long id, long unverifiedCaseId, Long verifiedCaseId, long statusId) {
+    private void verification(long id, Long unverifiedCaseId, Long verifiedCaseId, long statusId) {
         jdbc.update("""
                 INSERT INTO str.business_case_verification
                   (id, unverified_business_case_id, verified_business_case_id, status_id)
