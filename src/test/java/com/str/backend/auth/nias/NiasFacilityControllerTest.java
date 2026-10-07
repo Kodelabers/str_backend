@@ -5,18 +5,22 @@ import com.str.backend.auth.SessionIdentityResolver;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.domain.RnStatus;
 import com.str.backend.egop.ChangeRequestFilingService;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.LessorRnActionService;
+import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.RnFacilityVerification;
+import com.str.backend.str.StrSubjectRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -31,6 +35,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -77,6 +82,8 @@ class NiasFacilityControllerTest {
     @MockBean SubjectProfileService subjectProfileService;
     @MockBean NavigationBarService navigationBarService;
     @MockBean ChangeRequestFilingService changeRequestFilingService;
+    @MockBean StrSubjectRepository strSubjectRepository;
+    @MockBean RnFacilityVerification rnFacilityVerification;
 
     // ── FINA navigacijska traka ─────────────────────────────────────────────
 
@@ -184,6 +191,22 @@ class NiasFacilityControllerTest {
         mvc.perform(get("/api/nias/facilities")).andExpect(status().isOk());
 
         verify(facilityService).list(eq(COMPANY_OIB), any(), any());
+    }
+
+    /** Stupac „Verificiran": popis nosi facilityVerified, a interni facilityId ne izlazi u odgovor. */
+    @Test
+    void registrations_carryFacilityVerified_withoutFacilityId() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        LessorRnSummaryDto row = new LessorRnSummaryDto("HR120001000000000123", RnStatus.ACTIVE,
+                LocalDate.of(2026, 10, 7), "Apartman", "Riva", "1", "Split", "Apartman", false, null, "153049");
+        when(rnRepository.findByLessorOib(OIB)).thenReturn(List.of(row));
+        when(rnFacilityVerification.withFacilityVerified(List.of(row))).thenReturn(List.of(row.withFacilityVerified(true)));
+
+        mvc.perform(get("/api/nias/registrations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].rn").value("HR120001000000000123"))
+                .andExpect(jsonPath("$[0].facilityVerified").value(true))
+                .andExpect(jsonPath("$[0].facilityId").doesNotExist());
     }
 
     /** Povlačenje je nepovratno: u ime tvrtke tek nakon ponovne potvrde zastupanja, i na tvrtku. */

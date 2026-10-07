@@ -514,6 +514,37 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
             """, nativeQuery = true)
     Optional<FacilityOwnershipRow> findOwnership(@Param("facilityId") long facilityId);
 
+    interface FacilityVerificationRow {
+        Long getFacilityId();
+        Boolean getVerified();
+    }
+
+    /**
+     * Je li <b>danas</b> verificiran objekt kojem pripada svaka od jedinica {@code :ids} — stupac
+     * „Verificiran" uz izdane registracijske brojeve.
+     *
+     * <p>Gleda se objekt ({@code system_uuid}) po pravilima popisa ({@link #RANGIRANE_JEDINICE_OD}):
+     * verificiran je ako ima verificiranu jedinicu u najnovijem aktualnom predmetu. Zapis spremljen
+     * uz RB nije dovoljan — kad eTurizam migrirani objekt verificira, nastaje nova verzija istog
+     * {@code system_uuid}, a stari zapis i dalje nosi {@code optimit}. Kad objekt aktualnih jedinica
+     * nema, vrijedi zapis jedinice ({@code created_by}), kao u {@link #findOwnership}.
+     */
+    @Query(value = """
+            SELECT f.id AS facilityId,
+                   coalesce(o.verificiran, f.created_by <> 'optimit') AS verified
+              FROM str.facility f
+              LEFT JOIN (SELECT r.su, bool_or(r.verificiran) AS verificiran
+                           FROM """ + RANGIRANE_JEDINICE_OD + """
+                                (SELECT DISTINCT fx.system_uuid FROM str.facility fx
+                                  WHERE fx.id IN (:ids) AND fx.system_uuid IS NOT NULL)""" + RANGIRANE_JEDINICE_DO + """
+                                r
+                          WHERE r.predmet_rang = 1
+                          GROUP BY r.su) o
+                     ON o.su = cast(f.system_uuid AS varchar(64))
+             WHERE f.id IN (:ids)
+            """, nativeQuery = true)
+    List<FacilityVerificationRow> findObjectVerification(@Param("ids") Collection<Long> ids);
+
 
     /**
      * Id elementa eTurizmova šifrarnika po šifri. Id se među okolinama može razlikovati, šifra ne —
