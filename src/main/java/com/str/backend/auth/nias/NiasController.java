@@ -19,6 +19,7 @@ import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.LessorWithdrawRequest;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.str.RnFacilityVerification;
 import com.str.backend.str.StrSubjectRepository;
 import com.str.backend.rn.RnRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -64,6 +65,7 @@ public class NiasController {
     private final NavigationBarService navigationBarService;
     private final ChangeRequestFilingService changeRequestFilingService;
     private final StrSubjectRepository strSubjectRepository;
+    private final RnFacilityVerification rnFacilityVerification;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -80,7 +82,8 @@ public class NiasController {
                           ActingSubjectGuard actingSubjectGuard,
                           NavigationBarService navigationBarService,
                           ChangeRequestFilingService changeRequestFilingService,
-                          StrSubjectRepository strSubjectRepository) {
+                          StrSubjectRepository strSubjectRepository,
+                          RnFacilityVerification rnFacilityVerification) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -97,6 +100,7 @@ public class NiasController {
         this.navigationBarService = navigationBarService;
         this.changeRequestFilingService = changeRequestFilingService;
         this.strSubjectRepository = strSubjectRepository;
+        this.rnFacilityVerification = rnFacilityVerification;
     }
 
     /**
@@ -221,12 +225,13 @@ public class NiasController {
      * principala. Na local/mock profilu se fallback-a na konfigurirani mock OIB
      * (vidi {@link NiasOibResolver}); seedani su 3 RB-a u changesetu 048. Na dev/cdu
      * bez prave NIAS sesije vraća 401, a kad je sesija aktivna vraća praznu listu
-     * dok stvarni podaci ne postanu dostupni.
+     * dok stvarni podaci ne postanu dostupni. Svaki redak nosi i je li objekt uz RB danas
+     * verificiran u eTurizmu ({@link RnFacilityVerification}).
      */
     @GetMapping("/registrations")
     public List<LessorRnSummaryDto> registrations(Authentication authentication) {
         String oib = resolveOib(authentication);
-        return rnRepository.findByLessorOib(oib);
+        return rnFacilityVerification.withFacilityVerified(rnRepository.findByLessorOib(oib));
     }
 
     /**

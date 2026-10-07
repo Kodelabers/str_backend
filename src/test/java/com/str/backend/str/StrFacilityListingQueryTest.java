@@ -2,6 +2,7 @@ package com.str.backend.str;
 
 import com.str.backend.str.StrFacilityRepository.FacilityListingRow;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
+import com.str.backend.str.StrFacilityRepository.FacilityVerificationRow;
 import com.str.backend.str.StrFacilityRepository.ListingTotals;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,7 +12,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -347,6 +350,51 @@ class StrFacilityListingQueryTest {
 
         assertThat(repository.findOwnership(10L).orElseThrow().getVerified()).isTrue();
         assertThat(repository.findOwnership(11L).orElseThrow().getVerified()).isFalse();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // „Verificiran" uz izdani RB (findObjectVerification)
+    // -------------------------------------------------------------------------------------------
+
+    @Test
+    void objectVerification_followsRecordOfCurrentUnit() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Verificirana soba", SLUZBENIK, "2024-01-01 10:00:00");
+        migratedCase(901, 1);
+        unit(11, 901, "uuid-11", "Migrirana soba", MIGRACIJA, "2023-01-19 13:00:00");
+
+        assertThat(verification(List.of(10L, 11L))).containsEntry(10L, true).containsEntry(11L, false);
+    }
+
+    /**
+     * RB je izdan uz migrirani zapis, a eTurizam je objekt poslije verificirao (nova verzija istog
+     * {@code system_uuid}). Stari zapis i dalje nosi {@code optimit}, ali objekt je danas verificiran.
+     */
+    @Test
+    void objectVerification_seesLaterVerificationOfSameObject() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-obj", "Migrirana", MIGRACIJA, "2023-01-11 20:00:00");
+        verifiedCase(901, 1);
+        unit(11, 901, "uuid-obj", "Verificirana", SLUZBENIK, "2025-10-10 15:00:00");
+
+        assertThat(verification(List.of(10L))).containsEntry(10L, true);
+    }
+
+    /** Objekt bez aktualne jedinice (npr. zapis više nije aktivan): vrijedi zapis spremljen uz RB. */
+    @Test
+    void objectVerification_fallsBackToRecord_whenObjectHasNoCurrentUnit() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Neaktivna", SLUZBENIK, "2024-01-01 10:00:00");
+        migratedCase(901, 1);
+        unit(11, 901, "uuid-11", "Neaktivna migrirana", MIGRACIJA, "2023-01-19 13:00:00");
+        jdbc.update("UPDATE str.facility SET active = false WHERE id IN (10, 11)");
+
+        assertThat(verification(List.of(10L, 11L))).containsEntry(10L, true).containsEntry(11L, false);
+    }
+
+    @Test
+    void objectVerification_omitsUnknownFacility() {
+        assertThat(verification(List.of(999L))).isEmpty();
     }
 
     /**
@@ -982,6 +1030,11 @@ class StrFacilityListingQueryTest {
     }
 
     // -------------------------------------------------------------------------------------------
+
+    private Map<Long, Boolean> verification(List<Long> ids) {
+        return repository.findObjectVerification(ids).stream()
+                .collect(Collectors.toMap(FacilityVerificationRow::getFacilityId, FacilityVerificationRow::getVerified));
+    }
 
     private List<FacilityListingRow> list(String oib) {
         return repository.findListingByOib(oib, CODES, 20, 0);

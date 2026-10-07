@@ -290,7 +290,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
                                  AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.REJECTED)
                         THEN com.str.backend.categorization.CategorizationDecisionStatus.REJECTED
                     ELSE NULL
-                END
+                END,
+                a.facilityId
             )
             FROM RnEntity r
             JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
