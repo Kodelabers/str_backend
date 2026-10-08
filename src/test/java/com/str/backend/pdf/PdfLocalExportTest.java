@@ -78,7 +78,7 @@ class PdfLocalExportTest {
         setField(lessor, "lessorOib", "12312312316");
         lessor.setContact("Pero Perić", "031-555-100", "091-555-100", null);
 
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessor);
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessor);
 
         CountyEntity county = buildCounty(7L, "Osječko-baranjska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));

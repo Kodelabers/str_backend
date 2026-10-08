@@ -28,6 +28,9 @@ class SubjectProfileServiceTest {
     private static final String LEGAL_OIB = "45645645646";
     private static final String NIAS_OIB = "70000000004";
     private static final String OTHER_REP = "11111111119";
+    /** Adresa (i MBS) koju je korisnik upisao jer je registar nema; županija je već razriješen naziv. */
+    private static final EnteredAddress ENTERED =
+            new EnteredAddress("Ilica", "1", "10000", "Zagreb", "Grad Zagreb", "Grad Zagreb", "080123456");
 
     private final SubjectRegistry registry = mock(SubjectRegistry.class);
     private final LegalEntityRegistry legalRegistry = mock(LegalEntityRegistry.class);
@@ -112,28 +115,65 @@ class SubjectProfileServiceTest {
         verify(countyResolver, never()).countyOf(any());
     }
 
+    /** Registar osobu ne zna: forma se ne blokira, adresu korisnik upisuje sam. */
     @Test
-    void unknownOib_isBusinessError_notOutage() {
+    void unknownOib_meansNoAddress_nameFromNias() {
         when(registry.findByOib(OIB)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.load(OIB, "Pero", "Perić"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("error.subject.notFound");
+        SubjectProfile p = service.load(OIB, "Pero", "Perić");
+
+        assertThat(p.firstName()).isEqualTo("Pero");
+        assertThat(p.nameSource()).isEqualTo(SubjectDataSource.NIAS);
+        assertThat(p.street()).isNull();
+        assertThat(p.addressSource()).isNull();
     }
 
+    /** Nedostupan OIB sustav nije 503 — isto kao kad osobu ne zna. */
     @Test
-    void registryOutage_propagates() {
+    void registryOutage_meansNoAddress() {
         when(registry.findByOib(OIB)).thenThrow(new ExternalRegistryException("OIB", "down"));
 
-        assertThatThrownBy(() -> service.load(OIB, "Pero", "Perić"))
-                .isInstanceOf(ExternalRegistryException.class);
+        SubjectProfile p = service.load(OIB, "Pero", "Perić");
+
+        assertThat(p.addressSource()).isNull();
+        assertThat(p.lastName()).isEqualTo("Perić");
+    }
+
+    /** Nepotpuna adresa iz registra (mjesto bez ulice) se ne uzima — korisnik je upisuje cijelu. */
+    @Test
+    void partialRegistryAddress_isNotAnAddress() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.of(new RegistrySubject(OIB, "Pero", "Perić", null,
+                null, "1", "Zagreb", "10000", "ZAGREB", null, SubjectDataSource.OIB_REGISTAR)));
+        when(countyResolver.countyOf("ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
+
+        assertThat(service.load(OIB, "Pero", "Perić").addressSource()).isNull();
+    }
+
+    /** Bez županije GO-1 ne može usporediti županije — adresa iz registra tada nije upotrebljiva. */
+    @Test
+    void registryAddressWithoutDerivableCounty_isNotAnAddress() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.of(oibRegistrySubject()));
+        when(countyResolver.countyOf("ZAGREB")).thenReturn(Optional.empty());
+
+        assertThat(service.load(OIB, "Pero", "Perić").addressSource()).isNull();
+        assertThatThrownBy(() -> service.resolveLessor(OIB, "Pero", "Perić", null))
+                .hasMessage("error.subject.addressRequired");
+    }
+
+    /** Registar vrati osobu bez adrese: nema izvora adrese, pa forma nudi slobodan unos. */
+    @Test
+    void registrySubjectWithoutAddress_hasNoAddressSource() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.of(new RegistrySubject(OIB, "Pero", "Perić", null,
+                null, null, null, null, null, null, SubjectDataSource.OIB_REGISTAR)));
+
+        assertThat(service.load(OIB, "Pero", "Perić").addressSource()).isNull();
     }
 
     @Test
     void toLessor_takesIdentityAndAddress() {
         when(registry.findByOib(OIB)).thenReturn(Optional.of(strSubject(null)));
 
-        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić");
+        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić", null);
 
         assertThat(lessor.getLessorOib()).isEqualTo(OIB);
         assertThat(lessor.getFirstName()).isEqualTo("Pero");
@@ -207,7 +247,7 @@ class SubjectProfileServiceTest {
                 .thenReturn(Optional.of(new LegalRepresentativeSource.Representative(OTHER_REP, "Iva", "Ivić")));
         when(legalRegistry.findPerson(OTHER_REP)).thenReturn(Optional.of(person(OTHER_REP)));
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat");
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
         SubjectProfile r = service.loadLegal(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat").representative();
 
         assertThat(r.street()).isNull();
@@ -229,7 +269,7 @@ class SubjectProfileServiceTest {
                 "I".repeat(200), "P".repeat(200), null, longStreet, "1", "Osijek", "31000", null, null,
                 SubjectDataSource.OIB_REGISTAR)));
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat");
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", null);
 
         assertThat(lessor.getStreet()).hasSize(500);
         assertThat(lessor.getStreetNumber()).hasSize(16);
@@ -246,7 +286,7 @@ class SubjectProfileServiceTest {
     void toLegalLessor_unknownRepresentativeName_isNull() {
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, null, null);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, null, null, ENTERED);
 
         assertThat(lessor.getLegalRepresentativeName()).isNull();
         assertThat(lessor.getFirstName()).isEqualTo("N/A");
@@ -294,7 +334,7 @@ class SubjectProfileServiceTest {
         when(legalRegistry.findPerson(NIAS_OIB)).thenReturn(Optional.of(person(NIAS_OIB)));
         when(countyResolver.countyOf("GRAD ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat");
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat", null);
 
         assertThat(lessor.getLessorOib()).isEqualTo(LEGAL_OIB);
         assertThat(lessor.isLegalEntityOwner()).isTrue();
@@ -311,18 +351,79 @@ class SubjectProfileServiceTest {
         verify(registry, never()).findByOib(any());
     }
 
+    /** Uredba 2024/1028, čl. 5(1)(c): bez sjedišta iz OIB sustava tvrtka ga mora upisati. */
     @Test
-    void toLegalLessor_withoutSeat_keepsAddressEmpty() {
+    void toLegalLessor_withoutSeat_requiresEnteredSeat() {
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat");
+        assertThatThrownBy(() -> service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB,
+                "Ana", "Horvat", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.subject.addressRequired");
+    }
 
-        assertThat(lessor.getStreet()).isEmpty();
-        assertThat(lessor.getCounty()).isEmpty();
-        assertThat(lessor.getLegalEntityRegistrationNumber()).isNull();
-        assertThat(lessor.getRepresentativeAddress()).isNull();
+    @Test
+    void toLegalLessor_withoutSeat_usesEnteredSeatAndMbs() {
+        when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
+
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB,
+                "Ana", "Horvat", ENTERED);
+
+        assertThat(lessor.getStreet()).isEqualTo("Ilica");
+        assertThat(lessor.getStreetNumber()).isEqualTo("1");
+        assertThat(lessor.getPlace()).isEqualTo("Zagreb");
+        assertThat(lessor.getCounty()).isEqualTo("Grad Zagreb");
+        assertThat(lessor.getLegalEntityRegistrationNumber()).isEqualTo("080123456");
         assertThat(lessor.getRepresentativeOib()).isEqualTo(NIAS_OIB);
         assertThat(lessor.getLegalRepresentativeName()).isEqualTo("Ana Horvat");
+    }
+
+    /** Sjedište je stiglo, MBS nije (testna tvrtka): MBS se mora upisati, upisano sjedište se ne koristi. */
+    @Test
+    void toLegalLessor_seatFromRegistry_mbsRequiredFromForm() {
+        when(legalRegistry.findLegalEntity(LEGAL_OIB)).thenReturn(Optional.of(company(null)));
+        when(countyResolver.countyOf("GRAD ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
+        when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat",
+                new EnteredAddress(null, null, null, null, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.subject.registrationNumberRequired");
+
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
+
+        assertThat(lessor.getStreet()).isEqualTo("ULICA CVIJETE ZUZORIĆ");
+        assertThat(lessor.getLegalEntityRegistrationNumber()).isEqualTo("080123456");
+    }
+
+    /** OIB sustav vrati naziv i MBS bez adrese sjedišta: sjedište se upisuje, MBS ostaje iz registra. */
+    @Test
+    void toLegalLessor_registryMbsWithoutSeat_usesEnteredSeat() {
+        when(legalRegistry.findLegalEntity(LEGAL_OIB)).thenReturn(Optional.of(new RegistryLegalEntity(LEGAL_OIB,
+                "T", "070000001", null, null, null, null, null, null, SubjectDataSource.OIB_REGISTAR)));
+        when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
+
+        LegalEntityProfile p = service.loadLegal(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat");
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
+
+        assertThat(p.seatSource()).isNull();
+        assertThat(p.registrationNumber()).isEqualTo("070000001");
+        assertThat(lessor.getStreet()).isEqualTo("Ilica");
+        assertThat(lessor.getCounty()).isEqualTo("Grad Zagreb");
+        assertThat(lessor.getLegalEntityRegistrationNumber()).isEqualTo("070000001");
+    }
+
+    /** Registar ima MBS i sjedište — upisano s obrasca se ne koristi. */
+    @Test
+    void toLegalLessor_registryWinsOverEnteredValues() {
+        when(legalRegistry.findLegalEntity(LEGAL_OIB)).thenReturn(Optional.of(company("070000001")));
+        when(countyResolver.countyOf("GRAD ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
+        when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
+
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
+
+        assertThat(lessor.getStreet()).isEqualTo("ULICA CVIJETE ZUZORIĆ");
+        assertThat(lessor.getLegalEntityRegistrationNumber()).isEqualTo("070000001");
     }
 
     /** Tok fizičke osobe ne smije dirati registar tvrtki. */
@@ -340,19 +441,46 @@ class SubjectProfileServiceTest {
     void toLessor_keepsLegalEntityName_fromStrSubject() {
         when(registry.findByOib(OIB)).thenReturn(Optional.of(strSubject("Adria d.o.o.")));
 
-        assertThat(service.resolveLessor(OIB, "Pero", "Perić").getLegalEntityName()).isEqualTo("Adria d.o.o.");
+        assertThat(service.resolveLessor(OIB, "Pero", "Perić", null).getLegalEntityName()).isEqualTo("Adria d.o.o.");
     }
 
-    /** lessor.street je NOT NULL — registar bez adrese ne smije srušiti izdavanje RB-a. */
+    /** Uredba 2024/1028, čl. 5(1)(b): adresa je obavezna — bez registra je korisnik mora upisati. */
     @Test
-    void toLessor_toleratesMissingAddress() {
-        when(registry.findByOib(OIB)).thenReturn(Optional.of(new RegistrySubject(OIB, null, null, null,
-                null, null, null, null, null, null, SubjectDataSource.OIB_REGISTAR)));
+    void toLessor_missingAddress_requiresEnteredAddress() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.empty());
 
-        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić");
+        assertThatThrownBy(() -> service.resolveLessor(OIB, "Pero", "Perić", null))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.subject.addressRequired");
+        assertThatThrownBy(() -> service.resolveLessor(OIB, "Pero", "Perić",
+                new EnteredAddress("Ilica", "1", "10000", "Zagreb", null, null, null)))
+                .hasMessage("error.subject.addressRequired");
+    }
 
-        assertThat(lessor.getStreet()).isEmpty();
-        assertThat(lessor.getCounty()).isEmpty();
+    @Test
+    void toLessor_missingAddress_usesEnteredAddress() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.empty());
+
+        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić", ENTERED);
+
+        assertThat(lessor.getStreet()).isEqualTo("Ilica");
+        assertThat(lessor.getStreetNumber()).isEqualTo("1");
+        assertThat(lessor.getPlace()).isEqualTo("Zagreb");
+        assertThat(lessor.getCounty()).isEqualTo("Grad Zagreb");
+        assertThat(lessor.getFirstName()).isEqualTo("Pero");
+    }
+
+    /** Registar ima adresu — upisana s obrasca se ne koristi (klijentu se ne vjeruje). */
+    @Test
+    void toLessor_registryAddressWinsOverEntered() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.of(oibRegistrySubject()));
+        when(countyResolver.countyOf("ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
+
+        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić",
+                new EnteredAddress("Tuđa", "9", "21000", "Split", null, "Splitsko-dalmatinska", null));
+
+        assertThat(lessor.getStreet()).isEqualTo("Ilica");
+        assertThat(lessor.getPlace()).isEqualTo("Zagreb");
     }
 
     // ── država prebivališta („Zemlja” na NIAS profilu) ─────────────────────
@@ -362,7 +490,7 @@ class SubjectProfileServiceTest {
         croatiaInCountryTable();
         when(registry.findByOib(OIB)).thenReturn(Optional.of(strSubject(null)));
 
-        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić");
+        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić", null);
 
         assertThat(lessor.getCountryOfResidenceId()).isEqualTo((int) CROATIA_ID);
     }
@@ -371,7 +499,8 @@ class SubjectProfileServiceTest {
     void toLegalLessor_company_livesInCroatia() {
         croatiaInCountryTable();
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat");
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat",
+                ENTERED);
 
         assertThat(lessor.getCountryOfResidenceId()).isEqualTo((int) CROATIA_ID);
     }
@@ -382,7 +511,7 @@ class SubjectProfileServiceTest {
         when(countryRepository.findFirstByIso2AlphaIgnoreCaseOrderByIdAsc("HR")).thenReturn(Optional.empty());
         when(registry.findByOib(OIB)).thenReturn(Optional.of(strSubject(null)));
 
-        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić");
+        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić", null);
 
         assertThat(lessor.getLessorOib()).isEqualTo(OIB);
         assertThat(lessor.getCountryOfResidenceId()).isNull();

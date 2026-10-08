@@ -9,7 +9,6 @@ import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.egop.ChangeRequestFilingService;
 import com.str.backend.exception.ConflictException;
-import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
@@ -520,14 +519,19 @@ class NiasFacilityControllerTest {
         verify(subjectProfileService, never()).load(any(), any(), any());
     }
 
+    /** Registar adresu nije vratio (ne zna osobu ili nije dostupan): 200 bez adrese, obrazac je traži upisom. */
     @Test
-    void subjectProfile_isServiceUnavailable_whenRegistryDown() throws Exception {
+    void subjectProfile_withoutRegistryAddress_hasNullAddressSource() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(subjectProfileService.load(any(), any(), any())).thenThrow(new ExternalRegistryException("OIB", "down"));
+        when(subjectProfileService.load(OIB, null, null)).thenReturn(new SubjectProfile(
+                OIB, "Test", "Korisnik", SubjectDataSource.NIAS, null,
+                null, null, null, null, null, null, null));
 
         mvc.perform(get("/api/nias/subject"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.details.registry").value("OIB"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ime").value("Test"))
+                .andExpect(jsonPath("$.ulica").doesNotExist())
+                .andExpect(jsonPath("$.adresaIzvor").doesNotExist());
     }
 
     @Test

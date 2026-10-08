@@ -12,11 +12,13 @@ import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.draft.SubmissionDraftService;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
-import com.str.backend.exception.ExternalRegistryException;
+import com.str.backend.exception.BusinessException;
+import com.str.backend.lessor.EnteredAddress;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.registration.dto.PodnositeljUnos;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
@@ -105,7 +107,7 @@ class RegistrationServiceContactTest {
      */
     @Test
     void niasFlow_contactFromRequest_isStoredOnLessor() {
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessorWithoutContact());
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
 
         service.generateRegistrationNumber(request("ana@example.com", "0991234567", "021555666", "Ana Anić"));
 
@@ -120,11 +122,34 @@ class RegistrationServiceContactTest {
     @Test
     void niasFlow_passesAssertionNamesToSubjectLookup() {
         NiasIdentity identity = new NiasIdentity(OIB, "Ana", "Anić");
-        when(subjectProfileService.resolveLessor(OIB, "Ana", "Anić")).thenReturn(lessorWithoutContact());
+        when(subjectProfileService.resolveLessor(OIB, "Ana", "Anić", null)).thenReturn(lessorWithoutContact());
 
         service.generateRegistrationNumber(request("ana@example.com", "0991234567", null, null), identity);
 
-        verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić");
+        verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić", null);
+    }
+
+    /**
+     * Adresa podnositelja s obrasca (registar je nema) ide servisu s nazivom županije iz šifrarnika
+     * — istim oblikom GO-1 uspoređuje županiju objekta.
+     */
+    @Test
+    void niasFlow_passesEnteredAddressWithCountyName() {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
+        RegistrationRequest base = request("ana@example.com", "0991234567", null, null);
+        RegistrationRequest withAddress = new RegistrationRequest(base.oib(), base.name(), base.typeId(),
+                base.countyId(), base.cityId(), base.settlementId(), base.street(), base.streetNumber(),
+                base.kucniBrojId(), base.postalCode(), base.maxBeds(), base.offerType(), base.offering(),
+                base.building(), base.floor(), base.apartments(), base.legalized(), base.lessorResidence(),
+                base.coOwnerConsent(), base.consentDate(), base.consentWithdrawalDate(), base.host(),
+                base.confirmDuplicateLocation(), base.facilityId(), base.kontaktEmail(), base.kontaktMobitel(),
+                base.kontaktTelefon(), base.kontaktOsoba(), base.kcBroj(),
+                new PodnositeljUnos(" Riva ", "1", "21000", "Split", "Split", 7L, null));
+
+        service.generateRegistrationNumber(withAddress, new NiasIdentity(OIB, "Ana", "Anić"));
+
+        verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić", new EnteredAddress(
+                "Riva", "1", "21000", "Split", "Split", "Splitsko-dalmatinska županija", null));
     }
 
     /** U ime tvrtke: iznajmljivač je tvrtka iz potvrđenog zastupanja, a ne osoba iz registra. */
@@ -134,7 +159,7 @@ class RegistrationServiceContactTest {
                 OIB, "Ana", "Anić", java.time.Instant.now());
         LessorEntity legal = LessorEntity.create("Ana", "Anić", "", "", "", "", null);
         legal.setLessorOib("33333333360");
-        when(subjectProfileService.resolveLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.", OIB, "Ana", "Anić"))
+        when(subjectProfileService.resolveLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.", OIB, "Ana", "Anić", null))
                 .thenReturn(legal);
 
         service.generateRegistrationNumber(
@@ -142,7 +167,7 @@ class RegistrationServiceContactTest {
                 new NiasIdentity(OIB, "Ana", "Anić"), company);
 
         assertThat(savedLessor().getLessorOib()).isEqualTo("33333333360");
-        verify(subjectProfileService, never()).resolveLessor(any(), any(), any());
+        verify(subjectProfileService, never()).resolveLessor(any(), any(), any(), any());
     }
 
     /** Zahtjev ne smije nositi drugi OIB od tvrtke u čije se ime djeluje. */
@@ -160,31 +185,55 @@ class RegistrationServiceContactTest {
     /** Identitet s drugim OIB-om nego zahtjev ne smije podmetnuti tuđe ime. */
     @Test
     void niasFlow_ignoresIdentityOfAnotherOib() {
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessorWithoutContact());
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
 
         service.generateRegistrationNumber(request("ana@example.com", "0991234567", null, null),
                 new NiasIdentity("19819819816", "Netko", "Drugi"));
 
-        verify(subjectProfileService).resolveLessor(OIB, null, null);
+        verify(subjectProfileService).resolveLessor(OIB, null, null, null);
     }
 
-    /** Nedostupan OIB sustav je 503 i ne ostavlja poluupisanog iznajmljivača. */
+    /**
+     * Registar nema adresu (ne zna osobu ili nije dostupan), a zahtjev je ne nosi: 400 prije GO
+     * pipelinea, bez poluupisanog iznajmljivača i bez izdanog broja.
+     */
     @Test
-    void niasFlow_registryDown_propagatesAndStoresNothing() {
-        when(subjectProfileService.resolveLessor(any(), any(), any()))
-                .thenThrow(new ExternalRegistryException("OIB", "down"));
+    void niasFlow_missingAddress_rejectsAndStoresNothing() {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any()))
+                .thenThrow(new BusinessException("error.subject.addressRequired"));
 
         assertThatThrownBy(() -> service.generateRegistrationNumber(
                 request("ana@example.com", "0991234567", null, null)))
-                .isInstanceOf(ExternalRegistryException.class);
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.subject.addressRequired");
         verify(lessorRepository, never()).save(any());
         verify(rnService, never()).issue(any(), any());
+    }
+
+    /** Zaostala ili nepostojeća županija s obrasca nije 404: servis odluči treba li mu adresa. */
+    @Test
+    void niasFlow_unknownEnteredCounty_isPassedAsMissingCounty() {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
+        RegistrationRequest base = request("ana@example.com", "0991234567", null, null);
+        RegistrationRequest withAddress = new RegistrationRequest(base.oib(), base.name(), base.typeId(),
+                base.countyId(), base.cityId(), base.settlementId(), base.street(), base.streetNumber(),
+                base.kucniBrojId(), base.postalCode(), base.maxBeds(), base.offerType(), base.offering(),
+                base.building(), base.floor(), base.apartments(), base.legalized(), base.lessorResidence(),
+                base.coOwnerConsent(), base.consentDate(), base.consentWithdrawalDate(), base.host(),
+                base.confirmDuplicateLocation(), base.facilityId(), base.kontaktEmail(), base.kontaktMobitel(),
+                base.kontaktTelefon(), base.kontaktOsoba(), base.kcBroj(),
+                new PodnositeljUnos("Riva", "1", "21000", "Split", "Split", 999L, null));
+
+        service.generateRegistrationNumber(withAddress, new NiasIdentity(OIB, "Ana", "Anić"));
+
+        verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić",
+                new EnteredAddress("Riva", "1", "21000", "Split", "Split", null, null));
     }
 
     /** Prazan string iz forme znači „nije upisano", ne prazna vrijednost. */
     @Test
     void niasFlow_blankOptionalContact_storedAsNull() {
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessorWithoutContact());
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
 
         service.generateRegistrationNumber(request("ana@example.com", "0991234567", "   ", ""));
 

@@ -20,7 +20,8 @@ import java.util.stream.Stream;
  * ne mogu doći iz različitih izvora.
  *
  * <p>Pri izdavanju RB-a podaci se ponovo dohvaćaju na serveru — klijentu se ne vjeruje; iz
- * zahtjeva dolazi samo kontakt, koji je korisnik smio ispraviti. Registar je iza
+ * zahtjeva dolazi kontakt, koji je korisnik smio ispraviti, i adresa (ili MBS tvrtke) koju je
+ * upisao — ali ona vrijedi samo kad je registar nema ({@link EnteredAddress}). Registar je iza
  * {@link SubjectRegistry}: OIB sustav kad je uključen, inače {@code str.subject*}.
  *
  * <p>Prima vrijednosti, a ne NIAS tip, da {@code lessor} ne ovisi o {@code auth.nias}.
@@ -69,25 +70,35 @@ public class SubjectProfileService {
     }
 
     /**
+     * Fizička osoba u svoje ime. Ne baca zbog registra: kad ga registar ne poznaje, nije dostupan
+     * ili ne vrati potpunu adresu ({@link #completeAddress}), adrese nema ({@code addressSource} je
+     * {@code null}) — obrazac je tada traži slobodnim unosom, a izdavanje RB-a bez nje ne prolazi
+     * ({@link #resolveLessor}).
+     *
      * @param oib           OIB iz sesije (NIAS assertion ili, na local/mock, konfigurirani mock OIB)
      * @param niasFirstName ime iz assertiona; {@code null} kad assertiona nema
      * @param niasLastName  prezime iz assertiona; {@code null} kad assertiona nema
-     * @throws BusinessException {@code error.subject.notFound} kad ga registar ne poznaje (400)
-     * @throws com.str.backend.exception.ExternalRegistryException kad registar nije dostupan (503)
      */
     public SubjectProfile load(String oib, String niasFirstName, String niasLastName) {
-        RegistrySubject subject = subjectRegistry.findByOib(oib)
-                .orElseThrow(() -> new BusinessException("error.subject.notFound"));
+        RegistrySubject subject = quietly("person", () -> subjectRegistry.findByOib(oib)).orElse(null);
 
         boolean niasHasName = known(niasFirstName) && known(niasLastName);
+        String firstName = niasHasName ? niasFirstName.trim() : orMissing(subject == null ? null : subject.firstName());
+        String lastName = niasHasName ? niasLastName.trim() : orMissing(subject == null ? null : subject.lastName());
+        SubjectDataSource nameSource = niasHasName ? SubjectDataSource.NIAS : subject == null ? null : subject.source();
         // Županija je potrebna za GO-1 (status domaćina). OIB sustav je ne vraća, pa se izvodi
         // iz općine; str.subject je daje izravno.
-        String county = countyOf(subject.county(), subject.municipality());
+        String county = subject == null ? null : countyOf(subject.county(), subject.municipality());
+        if (subject == null || !completeAddress(subject.street(), subject.place(), county)) {
+            return new SubjectProfile(oib, firstName, lastName, nameSource,
+                    subject == null ? null : subject.legalEntityName(),
+                    null, null, null, null, null, null, null);
+        }
         return new SubjectProfile(
                 oib,
-                niasHasName ? niasFirstName.trim() : orMissing(subject.firstName()),
-                niasHasName ? niasLastName.trim() : orMissing(subject.lastName()),
-                niasHasName ? SubjectDataSource.NIAS : subject.source(),
+                firstName,
+                lastName,
+                nameSource,
                 subject.legalEntityName(),
                 subject.street(),
                 subject.streetNumber(),
@@ -99,18 +110,34 @@ public class SubjectProfileService {
     }
 
     /**
+     * Iznajmljivač — fizička osoba. Adresa je iz registra; kad je registar nema, iz obrasca, i tada
+     * je obavezna.
+     *
+     * @throws BusinessException {@code error.subject.addressRequired} (400) kad adrese nema ni u
+     *                           registru ni na obrascu
+     */
+    public LessorEntity resolveLessor(String oib, String niasFirstName, String niasLastName,
+                                      EnteredAddress entered) {
+        SubjectProfile profile = load(oib, niasFirstName, niasLastName);
+        if (profile.addressSource() == null) {
+            profile = withAddress(profile, requireAddress(entered));
+        }
+        return toLessor(profile);
+    }
+
+    /**
      * Još nepohranjeni iznajmljivač. Kontakt se dopisuje iz zahtjeva
      * ({@link LessorEntity#applyContact}) prije prve pohrane, jer je {@code email}
      * {@code updatable = false}.
      */
     public LessorEntity toLessor(SubjectProfile profile) {
         LessorEntity lessor = LessorEntity.create(
-                profile.firstName(),
-                profile.lastName(),
-                orEmpty(profile.street()),
-                orEmpty(profile.streetNumber()),
-                orEmpty(profile.place()),
-                orEmpty(profile.county()),
+                clip(profile.firstName(), NAME_MAX),
+                clip(profile.lastName(), NAME_MAX),
+                clip(orEmpty(profile.street()), STREET_MAX),
+                clip(orEmpty(profile.streetNumber()), STREET_NUMBER_MAX),
+                clip(orEmpty(profile.place()), NAME_MAX),
+                clip(orEmpty(profile.county()), NAME_MAX),
                 null);
         lessor.setLessorOib(profile.oib());
         if (known(profile.legalEntityName())) {
@@ -124,8 +151,8 @@ public class SubjectProfileService {
      * Tvrtka u čije ime NIAS osoba djeluje (e-Zastupanja), s točno jednim zastupnikom.
      *
      * <p>Ništa ovdje ne baca zbog registra: nedostupan ili isključen OIB sustav znači samo da
-     * sjedište, MBS ili adresa zastupnika ostaju prazni — RB se izdaje i bez njih, a forma to kaže
-     * napomenom.
+     * sjedište, MBS ili adresa zastupnika ostaju prazni. Sjedište se uzima samo potpuno
+     * ({@link #completeAddress}); što nedostaje, korisnik upisuje ({@link #resolveLegalLessor}).
      *
      * @param legalOib      OIB tvrtke iz potvrđenog zastupanja
      * @param legalName     naziv tvrtke iz e-Ovlaštenja
@@ -137,17 +164,20 @@ public class SubjectProfileService {
                                         String niasOib, String niasFirstName, String niasLastName) {
         RegistryLegalEntity company =
                 quietly("company", () -> legalEntityRegistry.findLegalEntity(legalOib)).orElse(null);
+        String county = company == null ? null : countyOf(company.county(), company.municipality());
+        // MBS i sjedište su neovisni: OIB sustav može vratiti naziv i MBS bez adrese sjedišta.
+        boolean seat = company != null && completeAddress(company.street(), company.place(), county);
         return new LegalEntityProfile(
                 legalOib,
                 legalName,
                 company == null ? null : company.registrationNumber(),
-                company == null ? null : company.street(),
-                company == null ? null : company.streetNumber(),
-                company == null ? null : company.place(),
-                company == null ? null : company.postalCode(),
-                company == null ? null : company.municipality(),
-                company == null ? null : countyOf(company.county(), company.municipality()),
-                company == null ? null : company.source(),
+                seat ? company.street() : null,
+                seat ? company.streetNumber() : null,
+                seat ? company.place() : null,
+                seat ? company.postalCode() : null,
+                seat ? company.municipality() : null,
+                seat ? county : null,
+                seat ? company.source() : null,
                 loadRepresentative(legalOib, niasOib, niasFirstName, niasLastName));
     }
 
@@ -231,13 +261,64 @@ public class SubjectProfileService {
         return lessor;
     }
 
+    /**
+     * Iznajmljivač — tvrtka. Sjedište i MBS su iz OIB sustava; kad ih sustav nema, iz obrasca, i
+     * tada su obavezni (Uredba 2024/1028, čl. 5(1)(c)(ii) i (iv)).
+     *
+     * @throws BusinessException {@code error.subject.addressRequired} kad sjedišta nema ni u
+     *                           registru ni na obrascu, {@code error.subject.registrationNumberRequired}
+     *                           kad nema MBS-a (400)
+     */
     public LessorEntity resolveLegalLessor(String legalOib, String legalName,
-                                           String niasOib, String niasFirstName, String niasLastName) {
-        return toLegalLessor(loadLegal(legalOib, legalName, niasOib, niasFirstName, niasLastName));
+                                           String niasOib, String niasFirstName, String niasLastName,
+                                           EnteredAddress entered) {
+        LegalEntityProfile p = loadLegal(legalOib, legalName, niasOib, niasFirstName, niasLastName);
+        if (p.seatSource() == null) {
+            p = withSeat(p, requireAddress(entered));
+        }
+        if (!known(p.registrationNumber())) {
+            if (entered == null || !known(entered.registrationNumber())) {
+                throw new BusinessException("error.subject.registrationNumberRequired");
+            }
+            p = withRegistrationNumber(p, entered.registrationNumber().trim());
+        }
+        return toLegalLessor(p);
     }
 
-    public LessorEntity resolveLessor(String oib, String niasFirstName, String niasLastName) {
-        return toLessor(load(oib, niasFirstName, niasLastName));
+    /**
+     * Adresa iz registra vrijedi samo potpuna: ulica, mjesto i županija. Bez ulice ili mjesta
+     * {@code lessor} bi ostao bez adrese, a bez županije GO-1 (status domaćina) ne može
+     * usporediti županije — u oba slučaja korisnik adresu upisuje sam. Isto pravilo vidi i
+     * obrazac: adresa s izvorom se prikazuje, bez izvora se traži unosom.
+     */
+    private static boolean completeAddress(String street, String place, String county) {
+        return known(street) && known(place) && known(county);
+    }
+
+    private static SubjectProfile withAddress(SubjectProfile p, EnteredAddress a) {
+        return new SubjectProfile(p.oib(), p.firstName(), p.lastName(), p.nameSource(), p.legalEntityName(),
+                a.street().trim(), a.streetNumber().trim(), a.place().trim(), a.postalCode().trim(),
+                trimmedOrNull(a.municipality()), a.county(), null);
+    }
+
+    private static LegalEntityProfile withSeat(LegalEntityProfile p, EnteredAddress a) {
+        return new LegalEntityProfile(p.oib(), p.name(), p.registrationNumber(),
+                a.street().trim(), a.streetNumber().trim(), a.place().trim(), a.postalCode().trim(),
+                trimmedOrNull(a.municipality()), a.county(), null, p.representative());
+    }
+
+    private static LegalEntityProfile withRegistrationNumber(LegalEntityProfile p, String registrationNumber) {
+        return new LegalEntityProfile(p.oib(), p.name(), registrationNumber, p.street(), p.streetNumber(),
+                p.place(), p.postalCode(), p.municipality(), p.county(), p.seatSource(), p.representative());
+    }
+
+    /** Upisana adresa mora imati sve što {@code lessor} sprema i što GO-1 uspoređuje (županiju). */
+    private static EnteredAddress requireAddress(EnteredAddress entered) {
+        if (entered == null || !known(entered.street()) || !known(entered.streetNumber())
+                || !known(entered.postalCode()) || !known(entered.place()) || !known(entered.county())) {
+            throw new BusinessException("error.subject.addressRequired");
+        }
+        return entered;
     }
 
     /**
@@ -270,7 +351,7 @@ public class SubjectProfileService {
         try {
             return call.get();
         } catch (ExternalRegistryException e) {
-            log.warn("legal_entity_lookup_unavailable lookup={} error={}", lookup, e.getMessage());
+            log.warn("registry_lookup_unavailable lookup={} error={}", lookup, e.getMessage());
             return Optional.empty();
         }
     }
@@ -294,5 +375,9 @@ public class SubjectProfileService {
 
     private static String orEmpty(String value) {
         return value != null ? value : "";
+    }
+
+    private static String trimmedOrNull(String value) {
+        return known(value) ? value.trim() : null;
     }
 }
