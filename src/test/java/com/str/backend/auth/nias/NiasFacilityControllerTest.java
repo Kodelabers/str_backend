@@ -10,6 +10,7 @@ import com.str.backend.domain.RnStatus;
 import com.str.backend.egop.ChangeRequestFilingService;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ExternalRegistryException;
+import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
@@ -426,24 +427,63 @@ class NiasFacilityControllerTest {
     }
 
     /**
-     * U ime tvrtke prebivalište zastupnika se ne traži: zastupnik kojeg registar ne poznaje inače
-     * bi dobio 400 i ne bi mogao predati zahtjev za tvrtku.
+     * U ime tvrtke (T8): MBS i sjedište tvrtke te jedan zastupnik s adresom iz
+     * {@code loadLegal}, kontakt s dokumenata tvrtke. Registar fizičke osobe ({@code load}) se ne
+     * pita — zastupnik kojeg ne poznaje inače bi dobio 400 i ne bi mogao predati zahtjev za tvrtku.
      */
     @Test
-    void subjectProfile_actingForCompany_skipsRegistry() throws Exception {
+    void subjectProfile_actingForCompany_returnsCompanySeatRepresentativeAndContact() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+        SubjectProfile representative = new SubjectProfile(OIB, "TEST", "KORISNIK", SubjectDataSource.OIB_REGISTAR,
+                null, "SJENJAK", "19", "OSIJEK", "31000", "OSIJEK", "Osječko-baranjska", SubjectDataSource.OIB_REGISTAR);
+        when(subjectProfileService.loadLegal(COMPANY_OIB, "TESTNA TVRTKA d.o.o.", OIB, "Test", "Korisnik"))
+                .thenReturn(new LegalEntityProfile(COMPANY_OIB, "TESTNA TVRTKA d.o.o.", "080123456",
+                        "ULICA CVIJETE ZUZORIĆ", "3", "ZAGREB", "10000", "GRAD ZAGREB", "Grad Zagreb",
+                        SubjectDataSource.OIB_REGISTAR, representative));
+        when(strSubjectRepository.findDocumentContactByOib(COMPANY_OIB)).thenReturn(Optional.of(contact()));
 
         mvc.perform(get("/api/nias/subject"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.oib").value(OIB))
-                .andExpect(jsonPath("$.ime").value("Test"))
-                .andExpect(jsonPath("$.imeIzvor").value("NIAS"))
-                .andExpect(jsonPath("$.ulica").doesNotExist())
+                .andExpect(jsonPath("$.ime").value("TEST"))
+                .andExpect(jsonPath("$.imeIzvor").value("OIB_REGISTAR"))
+                .andExpect(jsonPath("$.ulica").value("SJENJAK"))
+                .andExpect(jsonPath("$.adresaIzvor").value("OIB_REGISTAR"))
                 .andExpect(jsonPath("$.pravnaOsoba.oib").value(COMPANY_OIB))
-                .andExpect(jsonPath("$.pravnaOsoba.naziv").value("TESTNA TVRTKA d.o.o."));
+                .andExpect(jsonPath("$.pravnaOsoba.naziv").value("TESTNA TVRTKA d.o.o."))
+                .andExpect(jsonPath("$.pravnaOsoba.mbs").value("080123456"))
+                .andExpect(jsonPath("$.pravnaOsoba.ulica").value("ULICA CVIJETE ZUZORIĆ"))
+                .andExpect(jsonPath("$.pravnaOsoba.adresaIzvor").value("OIB_REGISTAR"))
+                .andExpect(jsonPath("$.kontaktTelefon").value("012345678"))
+                .andExpect(jsonPath("$.kontaktEmail").value("info@firma.hr"));
 
         verify(subjectProfileService, never()).load(any(), any(), any());
+        verify(strSubjectRepository, never()).findDocumentContactByOib(OIB);
+    }
+
+    private static StrSubjectRepository.DocumentContactRow contact() {
+        return new StrSubjectRepository.DocumentContactRow() {
+            public String getName() { return "Recepcija"; }
+            public String getPhone() { return "012345678"; }
+            public String getMobile() { return "0911234567"; }
+            public String getEmail() { return "info@firma.hr"; }
+        };
+    }
+
+    /** E-mail iz document_contact predpopunjava se i fizičkoj osobi. */
+    @Test
+    void subjectProfile_naturalPerson_includesContactEmail() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(subjectProfileService.load(OIB, null, null)).thenReturn(new SubjectProfile(
+                OIB, "Test", "Korisnik", SubjectDataSource.STR_SUBJEKT, null,
+                "Ilica", "1", "Zagreb", "10000", "Zagreb", "Grad Zagreb", SubjectDataSource.STR_SUBJEKT));
+        when(strSubjectRepository.findDocumentContactByOib(OIB)).thenReturn(Optional.of(contact()));
+
+        mvc.perform(get("/api/nias/subject"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kontaktEmail").value("info@firma.hr"))
+                .andExpect(jsonPath("$.kontaktMobitel").value("0911234567"));
     }
 
     /** Stavka 2: sva polja podnositelja vidljiva, s izvorom po grupi. */
@@ -468,7 +508,7 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.opcina").value("Zagreb"))
                 .andExpect(jsonPath("$.zupanija").value("Grad Zagreb"))
                 .andExpect(jsonPath("$.adresaIzvor").value("STR_SUBJEKT"))
-                // kontakt ne vodi nijedan registar — korisnik ga upisuje, pa ga odgovor ni ne nudi
+                // bez zapisa u str.document_contact kontakt upisuje korisnik
                 .andExpect(jsonPath("$.kontaktEmail").doesNotExist());
     }
 

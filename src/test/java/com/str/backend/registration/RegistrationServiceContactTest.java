@@ -134,7 +134,7 @@ class RegistrationServiceContactTest {
                 OIB, "Ana", "Anić", java.time.Instant.now());
         LessorEntity legal = LessorEntity.create("Ana", "Anić", "", "", "", "", null);
         legal.setLessorOib("33333333360");
-        when(subjectProfileService.toLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.", OIB, "Ana", "Anić"))
+        when(subjectProfileService.resolveLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.", OIB, "Ana", "Anić"))
                 .thenReturn(legal);
 
         service.generateRegistrationNumber(

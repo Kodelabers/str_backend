@@ -12,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Optional;
 
 /**
- * Podaci o subjektu iz eTurizma ({@code str.subject*}) — <b>privremeni</b> izvor dok OIB sustav
- * ne omogući poziv servis-servis (anonimni poziv dobije 302 na NIAS prijavu). Isto ponašanje
+ * Podaci o subjektu iz eTurizma ({@code str.subject*}) — <b>privremeni</b> izvor dok se za
+ * fizičku osobu ne uključi OIB sustav. Isto ponašanje
  * kao raniji {@code StrLessorLookupService}, samo iza {@link SubjectRegistry} porta, pa se na OIB
  * sustav prelazi zastavicom {@code app.oib-registry.enabled=true}, bez izmjene poziva.
  *

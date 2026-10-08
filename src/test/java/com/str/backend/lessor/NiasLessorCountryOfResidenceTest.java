@@ -74,7 +74,7 @@ class NiasLessorCountryOfResidenceTest {
 
     @Test
     void newNiasLegalEntity_isStoredWithCroatia() {
-        LessorEntity lessor = profiles(mock(SubjectRegistry.class)).toLegalLessor(
+        LessorEntity lessor = profiles(mock(SubjectRegistry.class)).resolveLegalLessor(
                 "33333333360", "TESTNA TVRTKA d.o.o.", "70000000004", "Ana", "Horvat");
         lessorRepository.saveAndFlush(lessor);
 
@@ -115,7 +115,8 @@ class NiasLessorCountryOfResidenceTest {
     }
 
     private SubjectProfileService profiles(SubjectRegistry registry) {
-        return new SubjectProfileService(registry, mock(CountyByMunicipalityResolver.class), countryRepository);
+        return new SubjectProfileService(registry, mock(LegalEntityRegistry.class),
+                mock(LegalRepresentativeSource.class), mock(CountyByMunicipalityResolver.class), countryRepository);
     }
 
     /** Iz baze, ne iz konteksta perzistencije — stupac je {@code updatable = false}. */

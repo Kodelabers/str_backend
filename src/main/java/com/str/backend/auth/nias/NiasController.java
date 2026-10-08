@@ -17,6 +17,7 @@ import com.str.backend.lessor.LessorRnActionResponse;
 import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.LessorWithdrawRequest;
+import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.str.RnFacilityVerification;
@@ -191,24 +192,25 @@ public class NiasController {
      * <p>OIB je uvijek iz sesije, nikad iz parametra. 400 {@code error.subject.notFound} kad ga
      * registar ne poznaje, 503 kad registar nije dostupan.
      *
-     * <p>U ime tvrtke iznajmljivač je tvrtka, pa se prebivalište zastupnika ne traži u registru:
-     * zastupnik kojeg registar ne poznaje inače bi dobio 400 i ne bi mogao predati zahtjev za
-     * tvrtku, iako izdavanje RB-a te podatke ne koristi ({@code SubjectProfileService#toLegalLessor}).
+     * <p>U ime tvrtke: MBS i sjedište tvrtke te ime i adresa jednog zastupnika iz OIB sustava, a
+     * koji je to zastupnik i kontakt iz eTurizma — isto kao pri izdavanju RB-a
+     * ({@link SubjectProfileService#resolveLegalLessor}). Nedostupan OIB sustav ovdje nije 503:
+     * podaci tada izostaju, a RB se svejedno može izdati.
      */
     @GetMapping("/subject")
     public SubjectProfileResponse subject(Authentication authentication) {
         NiasIdentity identity = personIdentity(authentication);
         Optional<ActingSubject> acting = effectiveOibResolver.actingSubject(authentication);
         if (acting.isPresent()) {
-            return SubjectProfileResponse.ofRepresentative(acting.get());
+            ActingSubject s = acting.get();
+            LegalEntityProfile company = subjectProfileService.loadLegal(s.legalOib(), s.legalName(),
+                    s.representativeOib(), s.representativeFirstName(), s.representativeLastName());
+            return SubjectProfileResponse.ofLegalEntity(s, company,
+                    strSubjectRepository.findDocumentContactByOib(s.legalOib()).orElse(null));
         }
         SubjectProfile profile = subjectProfileService.load(identity.oib(), identity.firstName(), identity.lastName());
-        StrSubjectRepository.DocumentContactRow contact =
-                strSubjectRepository.findDocumentContactByOib(identity.oib()).orElse(null);
         return SubjectProfileResponse.of(profile,
-                contact != null ? contact.getMobile() : null,
-                contact != null ? contact.getPhone() : null,
-                contact != null ? contact.getName() : null);
+                strSubjectRepository.findDocumentContactByOib(identity.oib()).orElse(null));
     }
 
     /**

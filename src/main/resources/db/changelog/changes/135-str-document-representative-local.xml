@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Lokalni mock za zastupnika tvrtke (T8): str.document.subject_representative_id pokazuje na
+      subject_version zastupnika, kao u eTurizmu (CDU, 08.10.2026.). Na dev/CDU/preprod tablicu
+      posjeduje eTurizam i read-only je.
+    -->
+    <changeSet id="135-str-document-representative-local" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="document" columnName="subject_representative_id"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="document">
+            <column name="subject_representative_id" type="BIGINT"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      Mock tvrtka iz e-Ovlaštenja (app.eovlastenja.mock[0]: 33333333360, TESTNA TVRTKA d.o.o.) sa
+      zastupnikom = mock NIAS osoba (subject_version 99, changeset 123) i kontaktom na dokumentu.
+    -->
+    <changeSet id="135-str-legal-entity-seed-local" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <tableExists schemaName="str" tableName="document_contact"/>
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.subject WHERE jips = '33333333360' OR id = 98</sqlCheck>
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.subject_version WHERE id = 98</sqlCheck>
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.document WHERE id = 9800</sqlCheck>
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.document_contact WHERE id = 9800</sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.subject (id, active, subtype_id, jips) VALUES (98, true, 289, '33333333360');
+            INSERT INTO str.subject_version (id, active, subject_id, name, pin, historical)
+              VALUES (98, true, 98, 'TESTNA TVRTKA d.o.o.', '33333333360', false);
+            INSERT INTO str.document (id, active, subject_version_id, subtype_code, subject_representative_id)
+              VALUES (9800, true, 98, 'DST_Z_RIK_O', 99);
+            INSERT INTO str.document_contact (id, active, document_id, name, phone, mobile, email)
+              VALUES (9800, true, 9800, 'Recepcija', '012345678', '0911234567', 'info@testna-tvrtka.hr');
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

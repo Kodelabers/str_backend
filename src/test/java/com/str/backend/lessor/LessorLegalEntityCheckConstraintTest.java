@@ -53,8 +53,7 @@ class LessorLegalEntityCheckConstraintTest {
     @Test
     void legalEntityFromEZastupanja_withoutForeignSeatData_isStored() {
         // Točno ono što RegistrationService gradi kad NIAS osoba djeluje u ime tvrtke.
-        LessorEntity lessor = legalEntityProfiles().toLegalLessor(
-                "12345678903", "TESTNA TVRTKA d.o.o.", "98765432106", "OTAC", "PET");
+        LessorEntity lessor = legalLessor("TESTNA TVRTKA d.o.o.", null);
 
         lessorRepository.saveAndFlush(lessor);
 
@@ -88,11 +87,44 @@ class LessorLegalEntityCheckConstraintTest {
 
     @Test
     void legalEntityWithOib_withoutName_isRejected() {
-        LessorEntity lessor = legalEntityProfiles().toLegalLessor(
-                "12345678903", null, "98765432106", "OTAC", "PET");
+        LessorEntity lessor = legalLessor(null, null);
 
         assertThatThrownBy(() -> lessorRepository.saveAndFlush(lessor))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /** Preduge vrijednosti iz registara režu se na duljinu stupca, pa pohrana (i izdavanje RB-a) ne pada. */
+    @Test
+    void legalEntity_withOverlongRegistryValues_isStored() {
+        SubjectProfile representative = new SubjectProfile("98765432106", "OTAC", "PET",
+                SubjectDataSource.OIB_REGISTAR, null, "V".repeat(300), "2", "Split", "21000", "Split",
+                "Splitsko-dalmatinska", SubjectDataSource.OIB_REGISTAR);
+        LegalEntityProfile profile = new LegalEntityProfile("12345678903", "TESTNA TVRTKA d.o.o.", "M".repeat(60),
+                "I".repeat(600), "12345678901234567890", "Z".repeat(200), "10000", "GRAD ZAGREB", "Grad Zagreb",
+                SubjectDataSource.OIB_REGISTAR, representative);
+        LessorEntity lessor = new SubjectProfileService(mock(SubjectRegistry.class), mock(LegalEntityRegistry.class),
+                mock(LegalRepresentativeSource.class), mock(CountyByMunicipalityResolver.class),
+                mock(CountryRepository.class)).toLegalLessor(profile);
+
+        lessorRepository.saveAndFlush(lessor);
+
+        assertThat(lessorRepository.findById(lessor.getLessorId())).isPresent();
+    }
+
+    /** T8: tvrtka iz e-Zastupanja sa sjedištem i MBS-om iz OIB sustava (bez države i grada). */
+    @Test
+    void legalEntityFromEZastupanja_withSeatAndMbs_isStored() {
+        LessorEntity lessor = legalLessor("TESTNA TVRTKA d.o.o.", "080123456");
+
+        lessorRepository.saveAndFlush(lessor);
+
+        assertThat(lessorRepository.findById(lessor.getLessorId()))
+                .get()
+                .satisfies(saved -> {
+                    assertThat(saved.getLegalEntityRegistrationNumber()).isEqualTo("080123456");
+                    assertThat(saved.getStreet()).isEqualTo("Ilica");
+                    assertThat(saved.getRepresentativeAddress()).isEqualTo("Vukovarska 2, 21000 Split");
+                });
     }
 
     @Test
@@ -106,12 +138,23 @@ class LessorLegalEntityCheckConstraintTest {
     }
 
     /**
-     * {@code toLegalLessor} ne čita registar ni resolver županije — ovisnosti su tu samo za konstruktor.
-     * Država ne ulazi u ograničenje, pa mock šifrarnika (bez Hrvatske) ne mijenja ishod.
+     * Točno ono što RegistrationService gradi kad NIAS osoba djeluje u ime tvrtke.
+     * {@code toLegalLessor} ne čita registre — ovisnosti su tu samo za konstruktor. Država ne ulazi
+     * u ograničenje, pa mock šifrarnika (bez Hrvatske) ne mijenja ishod.
      */
-    private static SubjectProfileService legalEntityProfiles() {
-        return new SubjectProfileService(mock(SubjectRegistry.class), mock(CountyByMunicipalityResolver.class),
-                mock(CountryRepository.class));
+    private static LessorEntity legalLessor(String name, String mbs) {
+        SubjectProfile representative = new SubjectProfile("98765432106", "OTAC", "PET",
+                SubjectDataSource.OIB_REGISTAR, null, "Vukovarska", "2", "Split", "21000", "Split",
+                "Splitsko-dalmatinska", SubjectDataSource.OIB_REGISTAR);
+        LegalEntityProfile profile = new LegalEntityProfile("12345678903", name, mbs,
+                mbs == null ? null : "Ilica", mbs == null ? null : "1", mbs == null ? null : "Zagreb",
+                mbs == null ? null : "10000", mbs == null ? null : "GRAD ZAGREB",
+                mbs == null ? null : "Grad Zagreb", mbs == null ? null : SubjectDataSource.OIB_REGISTAR,
+                representative);
+        return new SubjectProfileService(mock(SubjectRegistry.class), mock(LegalEntityRegistry.class),
+                mock(LegalRepresentativeSource.class), mock(CountyByMunicipalityResolver.class),
+                mock(CountryRepository.class))
+                .toLegalLessor(profile);
     }
 
     private static LessorEntity nonEu() {

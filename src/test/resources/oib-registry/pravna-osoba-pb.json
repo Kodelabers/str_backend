@@ -1,0 +1,59 @@
+{
+  "zaglavlje": {
+    "vrstaZahtjeva": "05",
+    "sifraRegTijela": "022",
+    "sifraNadleznogTijela": "999",
+    "idPoruke": "089a8adc-5a99-4fa0-b457-c98b4e858e67",
+    "korId": "e40c7fba-6cda-4912-b1c7-92978c5f791b",
+    "user": "00000000001",
+    "sifraServisa": "s031",
+    "sifraMetode": "m010",
+    "oibversion": null
+  },
+  "pravnaOsoba": {
+    "dohvatiPA": null,
+    "dohvatiPB": {
+      "oib": "45645645646",
+      "datumIVrijemeDodjeleOIBa": "2022-01-19T09:07:01",
+      "promjenaVrijediOd": "2022-01-19",
+      "mb": null,
+      "mbs": null,
+      "nazivTvrtke": "PERINA TESTNA FIRMA D.O.O",
+      "skraceniNaziv": "PERINA TESTNA FIRMA D.O.O",
+      "datumOsnivanja": "2008-03-23",
+      "mjestoOsnivanja": "ZAGREB",
+      "sifraDrzaveOsnivanja": "191",
+      "drzavaOsnivanja": "Hrvatska",
+      "pravniOblik": "020",
+      "sifraGlavneDjelatnosti": null,
+      "adresaSjedista": {
+        "ulica": "ULICA CVIJETE ZUZORIĆ",
+        "kucniBroj": "3",
+        "kucniBrojDodatak": null,
+        "brojPoste": "10000",
+        "sifraNaselja": "072150",
+        "naselje": "ZAGREB",
+        "sifraOpcine": "01333",
+        "opcina": "GRAD ZAGREB",
+        "drzava": "Hrvatska",
+        "sifraDrzave": "191",
+        "statusAdrese": null,
+        "datumPromjeneStatusaAdrese": null,
+        "sifraUlice": "0721500458"
+      },
+      "datumDeaktivacije": null,
+      "razlogDeaktivacije": null,
+      "datumIVrijemePonistenja": null,
+      "vazeciOIB": null,
+      "upravitelj": null,
+      "oibstatus": "01"
+    },
+    "dohvatiPC": null,
+    "dohvatiPD": null,
+    "dohvatiPE": null
+  },
+  "greske": {
+    "imaGresaka": false,
+    "greska": []
+  }
+}
