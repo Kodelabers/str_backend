@@ -94,16 +94,23 @@ Ponašanje u rubnim slučajevima:
 | Situacija | Ishod |
 | :--- | :--- |
 | Registracija bez `facilityId` (nije iz tuStarta) | Preskače se, ništa se ne piše |
-| Objekt već ima RB u `str.facility` | Ne prepisuje se (`WHERE registration_number IS NULL`), logira se `facility_writeback_no_row` |
+| Objekt već ima RB u `str.facility` koji STR nije povukao (stojeći, ručno upisan, nepoznat) | Ne prepisuje se, logira se `facility_writeback_no_row` |
+| Objekt u `str.facility` ima RB koji je STR **povukao** | Prepisuje se novim (objekt nakon povlačenja dobiva novi broj) |
+| RB se povuče (opoziv iznajmljivača ili po službenoj dužnosti) | `RnWithdrawnListener` vraća polje na `NULL`, ali samo ako je u njemu upravo taj broj; logira se `facility_clear_ok` / `facility_clear_no_row` |
+| Brisanje pri povlačenju padne | Logira se `facility_clear_failed`, povlačenje ostaje valjano; popis objekata i sljedeći upis povučeni broj prepoznaju sami |
 | `id` ne postoji u `str.facility` | Isto kao gore — logira se, RB ostaje valjan |
 | Upis padne (npr. nema `UPDATE` prava) | Logira se `facility_writeback_failed`, **RB ostaje valjan i izdan** |
 
 Retryja nema — eTurizam nema idempotentni endpoint za ovo, pa neuspjeli upis ide na ručnu
 intervenciju preko logova.
 
-> **Preduvjet za okoline:** ovo je jedini put pisanja u shemu `str`, koja je inače read-only za STR.
-> DB korisnik treba `UPDATE` pravo na `str.facility.registration_number`. Bez toga registracija i
-> dalje prolazi, ali se RB ne vraća u eTurizam.
+> **Preduvjet za okoline:** upis i brisanje broja jedini su putevi pisanja u shemu `str`, koja je
+> inače read-only za STR — oba samo nad stupcem `str.facility.registration_number`. DB korisnik
+> treba `UPDATE` pravo na taj stupac. Bez toga registracija i povlačenje i dalje prolaze, ali se
+> RB ne vraća u eTurizam (niti se iz njega briše).
+>
+> **Popis objekata** (`NiasFacilityService`) broj iz `str.facility` koji je STR povukao ne smatra
+> brojem objekta, pa objekt može tražiti novi broj i kad brisanje u eTurizmu nije prošlo.
 
 ## 6a. Zaključani podaci postojećeg objekta
 

@@ -4,6 +4,7 @@ import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
+import com.str.backend.rn.RnRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -26,6 +28,7 @@ class FacilityRegistrationNumberWriteBackTest {
 
     @Mock private AccommodationRepository accommodationRepository;
     @Mock private StrFacilityRepository facilityRepository;
+    @Mock private RnRepository rnRepository;
 
     private FacilityRegistrationNumberWriteBack writeBack;
 
@@ -34,7 +37,7 @@ class FacilityRegistrationNumberWriteBackTest {
 
     @BeforeEach
     void setUp() {
-        writeBack = new FacilityRegistrationNumberWriteBack(accommodationRepository, facilityRepository);
+        writeBack = new FacilityRegistrationNumberWriteBack(accommodationRepository, facilityRepository, rnRepository);
     }
 
     @Test
@@ -91,6 +94,66 @@ class FacilityRegistrationNumberWriteBackTest {
                 .thenThrow(new IllegalStateException("permission denied for table facility"));
 
         assertThatCode(() -> writeBack.writeBack(SUBMISSION, RN)).doesNotThrowAnyException();
+    }
+
+    // --- brisanje pri povlačenju ---
+
+    /** Povučeni RB briše se iz eTurizma, da objekt može dobiti novi broj. */
+    @Test
+    void clear_removes_withdrawn_rn_from_facility() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenReturn(Optional.of("1448035"));
+        when(facilityRepository.clearRegistrationNumber(1448035L, RN)).thenReturn(1);
+
+        writeBack.clear(RN);
+
+        verify(facilityRepository).clearRegistrationNumber(1448035L, RN);
+    }
+
+    /** RB izdan bez tuStart objekta nema što brisati u eTurizmu. */
+    @Test
+    void clear_skips_rn_without_facility() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenReturn(Optional.empty());
+
+        writeBack.clear(RN);
+
+        verifyNoInteractions(facilityRepository);
+    }
+
+    /** Pad brisanja ne smije poništiti povlačenje — ono je već commitano. */
+    @Test
+    void clear_swallows_database_failure() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenReturn(Optional.of("1448035"));
+        when(facilityRepository.clearRegistrationNumber(1448035L, RN))
+                .thenThrow(new IllegalStateException("permission denied for table facility"));
+
+        assertThatCode(() -> writeBack.clear(RN)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void clear_skips_non_numeric_facility_id() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenReturn(Optional.of("FU-42"));
+
+        writeBack.clear(RN);
+
+        verifyNoInteractions(facilityRepository);
+    }
+
+    /** U polju je drugi (noviji ili tuđi) broj — ništa se ne briše, a tok ne pada. */
+    @Test
+    void clear_does_not_throw_when_another_rn_is_stored() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenReturn(Optional.of("1448035"));
+        when(facilityRepository.clearRegistrationNumber(1448035L, RN)).thenReturn(0);
+
+        assertThatCode(() -> writeBack.clear(RN)).doesNotThrowAnyException();
+    }
+
+    /** Ni pad dohvata objekta ne smije poništiti povlačenje ni preskočiti ostale slušatelje. */
+    @Test
+    void clear_swallows_lookup_failure() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenThrow(new IllegalStateException("db down"));
+
+        assertThatCode(() -> writeBack.clear(RN)).doesNotThrowAnyException();
+        verifyNoInteractions(facilityRepository);
     }
 
     // --- fixtures ---

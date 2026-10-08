@@ -26,6 +26,10 @@ import java.util.List;
  * brisanju u KP (BX1). Opseg brisanja je otvoreno pitanje i namjerno NIJE implementiran ovdje.
  * Napomena: detekcija preskače opozvane RB-ove s {@code valid_to = NULL} (moguće u legacy/mock
  * podacima) — prije faze 2 napraviti backfill {@code valid_to} iz revizijskog loga povlačenja.
+ * Faza 2 ne smije obrisati RB koji je još upisan u {@code str.facility.registration_number}: popis
+ * objekata i write-back povučeni broj prepoznaju po retku ovdje, pa bi takav broj opet blokirao
+ * novi zahtjev za objekt. Prije brisanja ga ukloniti iz eTurizma
+ * ({@code FacilityRegistrationNumberWriteBack#clear}).
  */
 @Component
 public class WithdrawnRnRetentionJob {

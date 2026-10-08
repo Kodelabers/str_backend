@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -61,6 +62,30 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             ORDER BY r.issueDate
             """)
     List<FacilityRnRow> findRnsByFacilityIds(@Param("facilityIds") List<String> facilityIds);
+
+    /**
+     * Koji su od zadanih RB-ova povučeni. eTurizam ({@code str.facility.registration_number}) može
+     * još držati broj koji je STR u međuvremenu povukao — takav nije broj objekta i ne smije
+     * spriječiti novi zahtjev. Broj kojeg STR ne zna (ručno upisan u eTurizmu) ovdje ne izlazi.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT r.rn FROM RnEntity r
+            WHERE r.rn IN :rns AND r.status = com.str.backend.domain.RnStatus.WITHDRAWN
+            """)
+    List<String> findWithdrawnRns(@Param("rns") Collection<String> rns);
+
+    /**
+     * eTurizam objekt uz koji je RB izdan; prazno kad RB nije došao kroz tuStart handoff.
+     * Najviše jedan red: {@code rn} je ključ RB-a, a {@code accommodation_id} ključ smještaja.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT a.facilityId
+            FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE r.rn = :rn AND a.facilityId IS NOT NULL
+            """)
+    Optional<String> findFacilityIdByRn(@Param("rn") String rn);
 
     /** STR statistics: counts of RNs grouped by accommodation county + RN status. */
     @Transactional(readOnly = true)

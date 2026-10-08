@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Popis objekata prijavljenog iznajmljivača, spojen iz dva izvora: eTurizam registra i naših
@@ -203,12 +205,13 @@ public class NiasFacilityService {
         if (rows.isEmpty()) {
             return List.of();
         }
-        Map<String, String> ownRns = ownRegistrationNumbers(rows);
+        Set<String> withdrawn = withdrawnEturizamRns(rows);
+        Map<String, String> ownRns = ownRegistrationNumbers(rows, withdrawn);
 
         List<FacilityResponse> items = new ArrayList<>(rows.size());
         for (FacilityListingRow row : rows) {
             String facilityId = String.valueOf(row.getFacilityId());
-            String rn = blankToNull(row.getRegistrationNumber());
+            String rn = eturizamRn(row, withdrawn);
             // Kapacitet migriranog objekta s više jedinica je kapacitet objekta, ne jedinice (B-3)
             boolean objectLevel = Boolean.TRUE.equals(row.getObjectLevelCapacity());
             items.add(new FacilityResponse(
@@ -239,10 +242,29 @@ public class NiasFacilityService {
         return items;
     }
 
+    /**
+     * Brojevi iz {@code str.facility} koje je STR povukao. Takav broj eTurizam drži dok ga brisanje
+     * pri povlačenju ne ukloni (ili ako ono nije prošlo) — on nije broj objekta, pa objekt mora
+     * moći tražiti novi.
+     */
+    private Set<String> withdrawnEturizamRns(List<FacilityListingRow> rows) {
+        List<String> rns = rows.stream()
+                .map(r -> blankToNull(r.getRegistrationNumber()))
+                .filter(Objects::nonNull)
+                .toList();
+        return rns.isEmpty() ? Set.of() : Set.copyOf(rnRepository.findWithdrawnRns(rns));
+    }
+
+    /** Broj objekta iz eTurizma; {@code null} kad ga nema ili je to broj koji je STR povukao. */
+    private static String eturizamRn(FacilityListingRow row, Set<String> withdrawn) {
+        String rn = blankToNull(row.getRegistrationNumber());
+        return rn == null || withdrawn.contains(rn) ? null : rn;
+    }
+
     /** RB-ovi koje je STR izdao, za slučaj da write-back u {@code str.facility} nije prošao. */
-    private Map<String, String> ownRegistrationNumbers(List<FacilityListingRow> rows) {
+    private Map<String, String> ownRegistrationNumbers(List<FacilityListingRow> rows, Set<String> withdrawn) {
         List<String> ids = rows.stream()
-                .filter(r -> blankToNull(r.getRegistrationNumber()) == null)
+                .filter(r -> eturizamRn(r, withdrawn) == null)
                 .map(r -> String.valueOf(r.getFacilityId()))
                 .toList();
         if (ids.isEmpty()) {
