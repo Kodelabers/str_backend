@@ -145,6 +145,52 @@ class NiasFacilityServiceTest {
     }
 
     /**
+     * Povučeni broj koji je ostao u str.facility nije broj objekta: objekt mora moći tražiti novi
+     * (obrazac nudi „Zatraži RB” samo kad broja nema).
+     */
+    @Test
+    void withdrawnEturizamRegistrationNumber_isNotTheFacilityNumber() {
+        stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", "HR100000000000000009", 2));
+        when(rnRepository.findWithdrawnRns(List.of("HR100000000000000009")))
+                .thenReturn(List.of("HR100000000000000009"));
+
+        FacilityPageResponse page = service.list(OIB, 0, 20);
+
+        assertThat(page.items().getFirst().registracijskiBroj()).isNull();
+    }
+
+    /** Mješovita stranica: provjera povučenih dobiva samo neprazne brojeve, svaki red ostaje svoj. */
+    @Test
+    void mixedPage_onlyNonBlankEturizamNumbersAreChecked() {
+        stubFacilities(
+                row(1L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", "HR100000000000000009", 2),
+                row(2L, "uuid-b", true, "Soba 2", "FS_SOBA", "Soba", "HR100000000000000008", 2),
+                row(3L, "uuid-c", true, "Soba 3", "FS_SOBA", "Soba", null, 2));
+        when(rnRepository.findWithdrawnRns(List.of("HR100000000000000009", "HR100000000000000008")))
+                .thenReturn(List.of("HR100000000000000009"));
+
+        FacilityPageResponse page = service.list(OIB, 0, 20);
+
+        assertThat(page.items()).extracting(i -> i.registracijskiBroj())
+                .containsExactly(null, "HR100000000000000008", null);
+        verify(rnRepository).findRnsByFacilityIds(List.of("1", "3"));
+    }
+
+    /** Nakon ponovnog izdavanja novi broj stoji kod nas i kad write-back preko povučenog nije prošao. */
+    @Test
+    void withdrawnEturizamRegistrationNumber_fallsBackToNewOwnNumber() {
+        stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", "HR100000000000000009", 2));
+        when(rnRepository.findWithdrawnRns(List.of("HR100000000000000009")))
+                .thenReturn(List.of("HR100000000000000009"));
+        FacilityRnRow ourRn = rnRow("153049", "HR100000000000000010");
+        when(rnRepository.findRnsByFacilityIds(List.of("153049"))).thenReturn(List.of(ourRn));
+
+        FacilityPageResponse page = service.list(OIB, 0, 20);
+
+        assertThat(page.items().getFirst().registracijskiBroj()).isEqualTo("HR100000000000000010");
+    }
+
+    /**
      * FacilityResponse je record s pozicijskim komponentama, pa pin na mapiranje privremenog
      * zapisa: umetanje novog polja koje pomakne redoslijed mora oboriti test, ne tiho zamijeniti
      * adresu i naziv u odgovoru.

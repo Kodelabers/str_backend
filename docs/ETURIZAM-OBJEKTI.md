@@ -32,8 +32,9 @@ razlikuju među okolinama — vezati se isključivo na `code`.
 - **`system_uuid` je objekt.** Više jedinica istog objekta stoji u istom predmetu: na CDU ~5.900
   migriranih objekata ima 2–217 jedinica (ukupno ~43.700 zapisa). Novi eTurizam radi isto — dvije
   jedinice u istom predmetu s različitim nazivima i kapacitetima.
-- **Registracijski broj ide po jedinici**: `accommodation.facility_id` i write-back
-  (`writeBackRegistrationNumber`) su po `facility.id`.
+- **Registracijski broj ide po jedinici**: `accommodation.facility_id`, write-back
+  (`writeBackRegistrationNumber`) i brisanje pri povlačenju (`clearRegistrationNumber`) su po
+  `facility.id`.
 - Migrirane jedinice nemaju vlastitu oznaku — svi stupci osim `id`, `address_id` i datuma su im isti
   (provjereno na 500 objekata). **Kapacitet migrirane jedinice je kapacitet cijelog objekta** —
   migracija ga je kopirala na svaku jedinicu (B-3), pa se prikazuje samo na objektu. Frontend
@@ -141,7 +142,8 @@ izvučen iz kompiliranih `@Query` anotacija).
 - **Broj gostiju za domaćinstva.** `CAT_BROJ_GOSTIJU` postoji samo u `facility_unit_capacity`, a sobe
   i apartmani u domaćinstvu nemaju `facility_unit` redaka. Iz eTurizma se dobije samo broj kreveta.
 - **Legacy registracijski brojevi.** `facility.registration_number` je na CDU popunjen u 4 zapisa —
-  kolona je odredište write-backa iz STR-a (v. `docs/TUSTART-INTEGRACIJA.md` §6).
+  kolona je odredište write-backa iz STR-a, a povlačenjem se iz nje briše (v.
+  `docs/TUSTART-INTEGRACIJA.md` §6).
 - **Strukturirana adresa migriranih objekata.** Migrirani zapisi nemaju ulicu ni kućni broj, nego
   samo `full_address` u obliku „Ulica 12" (bez naselja). Verificirani imaju ulicu i kućni broj preko
   ID-eva hijerarhije, a `full_address` im je često prazna (B-3). Imena se razrješavaju joinovima, a

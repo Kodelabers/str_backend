@@ -265,7 +265,8 @@ Ako je taj tok u opsegu testiranja, od `tustart_owner`-a treba i:
 GRANT UPDATE (registration_number) ON str.facility TO str_owner;
 ```
 
-Grant je namjerno sužen na jedan stupac — write-back ne dira ništa drugo. Ako tok nije u
+Grant je namjerno sužen na jedan stupac — write-back (upis broja) i brisanje povučenog broja ne
+diraju ništa drugo. Ako tok nije u
 opsegu, ovo se preskače i u logu se ignorira `facility_writeback_failed`.
 
 #### ⚠️ Blokada: nema pristupa adresnim registrima

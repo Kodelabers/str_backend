@@ -563,14 +563,15 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     /**
      * Upisuje dodijeljeni RB natrag u eTurizam registar, po dogovoru s tuStartom.
      *
-     * <p>Ovo je <strong>jedini</strong> put pisanja u shemu {@code str}, koja je inače
-     * read-only za ovaj servis. Namjerno je izveden kao uski native UPDATE nad jednom
-     * kolonom umjesto kroz entitet: {@link StrFacilityEntity} ostaje {@code @Immutable},
+     * <p>Uz {@link #clearRegistrationNumber} ovo je jedini put pisanja u shemu {@code str},
+     * koja je inače read-only za ovaj servis — oba nad istom kolonom. Namjerno je izveden kao
+     * uski native UPDATE umjesto kroz entitet: {@link StrFacilityEntity} ostaje {@code @Immutable},
      * pa nijedan drugi tok ne može slučajno perzistirati promjenu u tuđu tablicu.
      *
-     * <p>{@code WHERE registration_number IS NULL} sprječava prepisivanje RB-a koji je
-     * objekt već dobio (ponovni pokušaj, ručni upis u eTurizmu) — write-back je time
-     * idempotentan i ne može tiho pregaziti tuđi podatak.
+     * <p>Upisuje se u prazno polje ili preko RB-a koji je STR <b>povukao</b> (objekt nakon
+     * povlačenja dobiva novi broj, a stari je mogao ostati ako brisanje pri povlačenju nije
+     * prošlo). Svaki drugi zatečeni broj — stojeći, ručno upisan u eTurizmu, nepoznat STR-u —
+     * ostaje: write-back je idempotentan i ne može tiho pregaziti tuđi podatak.
      *
      * <p>{@code REQUIRES_NEW}: poziva se iz {@code RnIssuedListener} u fazi {@code AFTER_COMMIT},
      * kad registracijska transakcija više ne može ništa upisati. S običnim {@code REQUIRED} upis
@@ -580,7 +581,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * {@code UnexpectedRollbackException} koja bi preskočila i eGOP dostavu.
      *
      * @return broj ažuriranih redaka: 1 kad je upis prošao, 0 kad objekt ne postoji ili
-     * već ima RB
+     * već ima RB koji nije povučen
      */
     @Modifying
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -588,7 +589,26 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
             UPDATE str.facility
                SET registration_number = :rn
              WHERE id = :facilityId
-               AND registration_number IS NULL
+               AND (registration_number IS NULL
+                    OR registration_number IN (SELECT r.rn FROM str_rn.registration_number r
+                                                WHERE r.status = 'WITHDRAWN'))
             """, nativeQuery = true)
     int writeBackRegistrationNumber(@Param("facilityId") long facilityId, @Param("rn") String rn);
+
+    /**
+     * Briše povučeni RB iz eTurizam registra, da objekt ni ondje ne izgleda kao da broj ima i da
+     * može dobiti novi. Briše samo ako je u polju upravo taj broj — ništa drugo ne dira.
+     * {@code REQUIRES_NEW} iz istog razloga kao {@link #writeBackRegistrationNumber}.
+     *
+     * @return 1 kad je obrisan, 0 kad objekt ne postoji ili u polju stoji drugi broj
+     */
+    @Modifying
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Query(value = """
+            UPDATE str.facility
+               SET registration_number = NULL
+             WHERE id = :facilityId
+               AND registration_number = :rn
+            """, nativeQuery = true)
+    int clearRegistrationNumber(@Param("facilityId") long facilityId, @Param("rn") String rn);
 }

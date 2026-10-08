@@ -166,13 +166,17 @@ public class StartupDiagnostics {
 
         PROBES.forEach(this::probeOne);
 
-        // Odrediste FacilityRegistrationNumberWriteBack-a. Bez UPDATE prava RB se svejedno izda,
-        // ali se ne upise natrag u eTurizam.
-        Boolean canWrite = queryBoolean("select has_table_privilege('str.facility','UPDATE')");
+        // Odrediste FacilityRegistrationNumberWriteBack-a (upis broja i brisanje povucenog). Bez
+        // UPDATE prava RB se svejedno izda i povuce, ali se ne upise natrag u eTurizam. Provjerava
+        // se stupac, ne tablica: preporuceni grant je sam stupac (DEPLOY-PREPROD.md), a
+        // has_table_privilege tada vraca false iako upis radi.
+        Boolean canWrite = queryBoolean(
+                "select has_column_privilege('str.facility','registration_number','UPDATE')");
         if (Boolean.FALSE.equals(canWrite)) {
             log.warn("startup_schema_writeback str.facility UPDATE=false — RB se NE upisuje natrag u "
-                    + "eTurizam (facility_writeback_failed u logu); RB ostaje valjan, ali tuStart "
-                    + "handoff se ne moze testirati end-to-end");
+                    + "eTurizam niti se iz njega brise pri povlacenju (facility_writeback_failed / "
+                    + "facility_clear_failed u logu); RB ostaje valjan, popis objekata povuceni broj "
+                    + "prepoznaje sam, ali tuStart handoff se ne moze testirati end-to-end");
         } else if (Boolean.TRUE.equals(canWrite)) {
             log.info("startup_schema_writeback str.facility UPDATE=true");
         }
