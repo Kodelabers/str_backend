@@ -66,7 +66,7 @@ class NiasLessorCountryOfResidenceTest {
         when(registry.findByOib(OIB)).thenReturn(Optional.of(new RegistrySubject(OIB, "Pero", "Perić", null,
                 "Ilica", "1", "Zagreb", null, null, "Grad Zagreb", SubjectDataSource.STR_SUBJEKT)));
 
-        LessorEntity lessor = profiles(registry).resolveLessor(OIB, "Pero", "Perić");
+        LessorEntity lessor = profiles(registry).resolveLessor(OIB, "Pero", "Perić", null);
         lessorRepository.saveAndFlush(lessor);
 
         assertThat(storedCountry(lessor.getLessorId())).isEqualTo(CROATIA_ID);
@@ -75,7 +75,8 @@ class NiasLessorCountryOfResidenceTest {
     @Test
     void newNiasLegalEntity_isStoredWithCroatia() {
         LessorEntity lessor = profiles(mock(SubjectRegistry.class)).resolveLegalLessor(
-                "33333333360", "TESTNA TVRTKA d.o.o.", "70000000004", "Ana", "Horvat");
+                "33333333360", "TESTNA TVRTKA d.o.o.", "70000000004", "Ana", "Horvat",
+                new EnteredAddress("Ilica", "1", "10000", "Zagreb", null, "Grad Zagreb", "080123456"));
         lessorRepository.saveAndFlush(lessor);
 
         assertThat(storedCountry(lessor.getLessorId())).isEqualTo(CROATIA_ID);

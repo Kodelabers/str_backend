@@ -17,12 +17,14 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.exception.ValidationRejectedException;
+import com.str.backend.lessor.EnteredAddress;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.AccommodationRequest;
+import com.str.backend.registration.dto.PodnositeljUnos;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
@@ -133,19 +135,21 @@ public class RegistrationService {
         requireMaxBeds(accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
-        // Identitet i adresa iz NIAS-a / registra, na serveru — ne iz zahtjeva. Nedostupan
-        // registar je 503 i dolazi prije GO pipelinea i pohrane, pa ne ostaje poluupisan zahtjev.
-        // U ime tvrtke nedostupan OIB sustav nije 503: tvrtka se sprema bez sjedišta.
+        // Identitet i adresa iz NIAS-a / registra, na serveru. Iz zahtjeva adresa (i MBS tvrtke)
+        // vrijedi samo kad je registar nema — tada je obavezna (400 prije GO pipelinea i pohrane).
+        // Nedostupan registar ne blokira: korisnik je tada adresu upisao sam.
+        EnteredAddress entered = enteredAddress(req.podnositelj());
         LessorEntity lessor;
         if (legalEntity != null) {
             lessor = subjectProfileService.resolveLegalLessor(legalEntity.legalOib(), legalEntity.legalName(),
                     legalEntity.representativeOib(), legalEntity.representativeFirstName(),
-                    legalEntity.representativeLastName());
+                    legalEntity.representativeLastName(), entered);
         } else {
             boolean sameOib = niasIdentity != null && req.oib().equals(niasIdentity.oib());
             lessor = subjectProfileService.resolveLessor(req.oib(),
                     sameOib ? niasIdentity.firstName() : null,
-                    sameOib ? niasIdentity.lastName() : null);
+                    sameOib ? niasIdentity.lastName() : null,
+                    entered);
         }
         // Kontakt mora biti upisan PRIJE prve pohrane — lessor.email je updatable=false.
         // resolveLessor vraća još nepohranjen entitet (sprema ga tek commitRegistration).
@@ -205,6 +209,22 @@ public class RegistrationService {
         return countyRepository.findById(countyId)
                 .map(CountyEntity::getName)
                 .orElseThrow(() -> new ResourceNotFoundException("county not found: " + countyId));
+    }
+
+    /**
+     * Adresa / MBS podnositelja s obrasca; županija se razrješava u naziv kao za objekt. Nepoznata
+     * županija nije greška ovdje: upisana adresa vrijedi samo kad je registar nema, a tada je bez
+     * županije nepotpuna i servis vraća {@code error.subject.addressRequired} (400). Zaostala
+     * vrijednost iz nacrta tako ne može srušiti zahtjev kojem je adresa iz registra.
+     */
+    private EnteredAddress enteredAddress(PodnositeljUnos p) {
+        if (p == null) {
+            return null;
+        }
+        String county = p.zupanijaId() == null ? null
+                : countyRepository.findById(p.zupanijaId()).map(CountyEntity::getName).orElse(null);
+        return new EnteredAddress(trimmed(p.ulica()), trimmed(p.kucniBroj()), trimmed(p.postanskiBroj()),
+                trimmed(p.mjesto()), trimmed(p.opcina()), county, trimmed(p.mbs()));
     }
 
     /** Prazan string iz forme je „nije upisano", ne vrijednost — ne spremamo ga kao takvog. */

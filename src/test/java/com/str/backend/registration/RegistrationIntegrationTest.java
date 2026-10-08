@@ -60,7 +60,7 @@ class RegistrationIntegrationTest {
 
     @BeforeEach
     void setupMocks() {
-        when(subjectProfileService.resolveLessor(any(), any(), any()))
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any()))
                 .thenAnswer(inv -> {
                     LessorEntity l = LessorEntity.create("PERO", "PERIĆ",
                             "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr");

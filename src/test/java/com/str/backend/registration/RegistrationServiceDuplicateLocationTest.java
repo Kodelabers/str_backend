@@ -100,7 +100,7 @@ class RegistrationServiceDuplicateLocationTest {
         LessorEntity lessor = LessorEntity.create("PERO", "PERIĆ",
                 "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr");
         lessor.setLessorOib(OIB);
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessor);
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessor);
 
         when(orchestrator.execute(any(ValidationContext.class)))
                 .thenReturn(PipelineResult.passed());

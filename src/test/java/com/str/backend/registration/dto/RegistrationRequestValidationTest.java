@@ -63,6 +63,19 @@ class RegistrationRequestValidationTest {
                 .containsExactly("maxBeds");
     }
 
+    /** Upisana adresa podnositelja provjerava se kao dio zahtjeva ({@code @Valid}). */
+    @Test
+    void podnositelj_invalidPostalCode_isRejected() {
+        RegistrationRequest base = request("153049", null, null, null, null, null, null);
+        RegistrationRequest req = new RegistrationRequest(base.oib(), null, null, null, null, null, null, null,
+                null, null, null, base.offerType(), base.offering(), base.building(), base.floor(),
+                base.apartments(), base.legalized(), null, null, null, null, null, null, base.facilityId(),
+                base.kontaktEmail(), base.kontaktMobitel(), null, null, null,
+                new PodnositeljUnos("Ilica", "1", "100", "Zagreb", null, 1L, null));
+
+        assertThat(violations(req)).containsExactly("podnositelj.postanskiBroj");
+    }
+
     private static Set<String> violations(RegistrationRequest req) {
         return validator.validate(req).stream()
                 .map(v -> v.getPropertyPath().toString())

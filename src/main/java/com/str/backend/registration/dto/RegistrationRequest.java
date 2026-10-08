@@ -3,6 +3,7 @@ package com.str.backend.registration.dto;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
@@ -54,8 +55,26 @@ public record RegistrationRequest(
         @NotBlank @Size(max = 32) String kontaktMobitel,
         @Size(max = 32) String kontaktTelefon,
         @Size(max = 128) String kontaktOsoba,
-        @Size(max = 64) String kcBroj
+        @Size(max = 64) String kcBroj,
+        /** Adresa / MBS podnositelja s obrasca — samo kad ih registar nema; {@code null} inače. */
+        @Valid PodnositeljUnos podnositelj
 ) implements AccommodationRequest {
+
+    /** Zahtjev bez podataka o podnositelju s obrasca — registar ih je vratio. */
+    public RegistrationRequest(String oib, String name, String typeId, Long countyId, String cityId,
+                               String settlementId, String street, String streetNumber, Long kucniBrojId,
+                               String postalCode, Integer maxBeds, OfferType offerType, Offering offering,
+                               Boolean building, String floor, Boolean apartments, Boolean legalized,
+                               Boolean lessorResidence, Boolean coOwnerConsent, LocalDate consentDate,
+                               LocalDate consentWithdrawalDate, Boolean host, Boolean confirmDuplicateLocation,
+                               String facilityId, String kontaktEmail, String kontaktMobitel,
+                               String kontaktTelefon, String kontaktOsoba, String kcBroj) {
+        this(oib, name, typeId, countyId, cityId, settlementId, street, streetNumber, kucniBrojId,
+                postalCode, maxBeds, offerType, offering, building, floor, apartments, legalized,
+                lessorResidence, coOwnerConsent, consentDate, consentWithdrawalDate, host,
+                confirmDuplicateLocation, facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon,
+                kontaktOsoba, kcBroj, null);
+    }
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {
         return new RegistrationRequest(oib, orig.name(), orig.typeId(), orig.countyId(),
@@ -66,7 +85,7 @@ public record RegistrationRequest(
                 orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),
                 orig.confirmDuplicateLocation(), orig.facilityId(),
                 orig.kontaktEmail(), orig.kontaktMobitel(), orig.kontaktTelefon(),
-                orig.kontaktOsoba(), orig.kcBroj());
+                orig.kontaktOsoba(), orig.kcBroj(), orig.podnositelj());
     }
 
     /**

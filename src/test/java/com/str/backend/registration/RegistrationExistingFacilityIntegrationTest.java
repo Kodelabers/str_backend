@@ -63,7 +63,7 @@ class RegistrationExistingFacilityIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenAnswer(inv -> {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenAnswer(inv -> {
             LessorEntity l = LessorEntity.create("PERO", "PERIĆ",
                     "Ilica", "1", "Zagreb", "Grad Zagreb", "pero.peric@example.hr");
             l.setLessorOib((String) inv.getArgument(0));

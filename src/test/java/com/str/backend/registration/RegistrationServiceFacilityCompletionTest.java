@@ -89,7 +89,7 @@ class RegistrationServiceFacilityCompletionTest {
         LessorEntity lessor = LessorEntity.create("ANA", "ANIĆ", "Marulićeva", "5",
                 "Split", "Splitsko-dalmatinska županija", null);
         lessor.setLessorOib(OIB);
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessor);
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessor);
 
         when(countyRepository.findAll()).thenReturn(List.of(
                 county(18L, "Splitsko-dalmatinska županija"), county(22L, "Grad Zagreb")));

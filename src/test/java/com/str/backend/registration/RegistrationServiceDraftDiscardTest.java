@@ -83,7 +83,7 @@ class RegistrationServiceDraftDiscardTest {
         LessorEntity lessor = LessorEntity.create("ANA", "ANIĆ", "Marulićeva", "5",
                 "Split", "Splitsko-dalmatinska županija", null);
         lessor.setLessorOib(OIB);
-        when(subjectProfileService.resolveLessor(any(), any(), any())).thenReturn(lessor);
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessor);
 
         RnEntity issued = mock(RnEntity.class);
         lenient().when(issued.getRn()).thenReturn("HR120001000000000123");

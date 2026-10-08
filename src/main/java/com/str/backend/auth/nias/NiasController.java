@@ -189,8 +189,8 @@ public class NiasController {
      * koristi izdavanje RB-a ({@link SubjectProfileService}), pa se prikazano i spremljeno ne
      * mogu razići.
      *
-     * <p>OIB je uvijek iz sesije, nikad iz parametra. 400 {@code error.subject.notFound} kad ga
-     * registar ne poznaje, 503 kad registar nije dostupan.
+     * <p>OIB je uvijek iz sesije, nikad iz parametra. Kad ga registar ne poznaje ili nije dostupan,
+     * adresa je {@code null} (i {@code adresaIzvor}) — obrazac je tada traži slobodnim unosom.
      *
      * <p>U ime tvrtke: MBS i sjedište tvrtke te ime i adresa jednog zastupnika iz OIB sustava, a
      * koji je to zastupnik i kontakt iz eTurizma — isto kao pri izdavanju RB-a

@@ -62,6 +62,10 @@ class RegistrationRequestWithOibTest {
             Object[] constants = type.getEnumConstants();
             return constants[index % constants.length];
         }
+        if (type == PodnositeljUnos.class) {
+            return new PodnositeljUnos("u" + index, "k" + index, "10000", "m" + index, "o" + index,
+                    1000L + index, "mbs" + index);
+        }
         throw new IllegalStateException("Nepodržan tip komponente " + type + " — dopuni sample()");
     }
 }
