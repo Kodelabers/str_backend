@@ -1,5 +1,6 @@
 package com.str.backend.lessor;
 
+import com.str.backend.address.CountryRepository;
 import com.str.backend.address.CountyByMunicipalityResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -104,9 +105,13 @@ class LessorLegalEntityCheckConstraintTest {
         assertThat(lessorRepository.findById(lessor.getLessorId())).isPresent();
     }
 
-    /** {@code toLegalLessor} ne čita registar ni resolver županije — ovisnosti su tu samo za konstruktor. */
+    /**
+     * {@code toLegalLessor} ne čita registar ni resolver županije — ovisnosti su tu samo za konstruktor.
+     * Država ne ulazi u ograničenje, pa mock šifrarnika (bez Hrvatske) ne mijenja ishod.
+     */
     private static SubjectProfileService legalEntityProfiles() {
-        return new SubjectProfileService(mock(SubjectRegistry.class), mock(CountyByMunicipalityResolver.class));
+        return new SubjectProfileService(mock(SubjectRegistry.class), mock(CountyByMunicipalityResolver.class),
+                mock(CountryRepository.class));
     }
 
     private static LessorEntity nonEu() {
