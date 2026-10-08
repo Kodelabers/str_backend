@@ -223,6 +223,21 @@ public class LessorEntity {
         this.legalRepresentativeName = representativeName;
     }
 
+    /**
+     * Država prebivališta iznajmljivača ({@code str.country.id}). Non-EU samoregistracija je
+     * predaje u {@link #createNonEuRegistration}; NIAS put je postavlja ovdje
+     * ({@code SubjectProfileService}), jer bez nje profil nema „Zemlju”.
+     *
+     * <p>Pozvati <b>prije prve pohrane</b> — {@code country_of_residence_id} je {@code updatable = false}.
+     * Isti obrazac kao {@link #applyContact}: dovršetak konstrukcije, ne izmjena.
+     */
+    public void applyCountryOfResidence(Integer countryOfResidenceId) {
+        if (managed) {
+            throw new IllegalStateException("applyCountryOfResidence na već spremljenom iznajmljivaču " + lessorId);
+        }
+        this.countryOfResidenceId = countryOfResidenceId;
+    }
+
     public void setLegalEntity(String representativeOib, String legalEntityName, String legalRepresentativeName,
                                String representativeEmail, String representativePhone) {
         this.representativeOib = representativeOib;

@@ -1,5 +1,7 @@
 package com.str.backend.lessor;
 
+import com.str.backend.address.CountryEntity;
+import com.str.backend.address.CountryRepository;
 import com.str.backend.address.CountyByMunicipalityResolver;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ExternalRegistryException;
@@ -22,7 +24,18 @@ class SubjectProfileServiceTest {
 
     private final SubjectRegistry registry = mock(SubjectRegistry.class);
     private final CountyByMunicipalityResolver countyResolver = mock(CountyByMunicipalityResolver.class);
-    private final SubjectProfileService service = new SubjectProfileService(registry, countyResolver);
+    private final CountryRepository countryRepository = mock(CountryRepository.class);
+    private final SubjectProfileService service =
+            new SubjectProfileService(registry, countyResolver, countryRepository);
+
+    /** ID Hrvatske namjerno nije onaj iz lokalnog seeda (7) — servis ga mora pročitati iz str.country. */
+    private static final long CROATIA_ID = 191L;
+
+    private void croatiaInCountryTable() {
+        CountryEntity croatia = mock(CountryEntity.class);
+        when(croatia.getId()).thenReturn(CROATIA_ID);
+        when(countryRepository.findFirstByIso2AlphaIgnoreCaseOrderByIdAsc("HR")).thenReturn(Optional.of(croatia));
+    }
 
     private static RegistrySubject oibRegistrySubject() {
         return new RegistrySubject(OIB, "PERO", "PERIĆ", null, "Ilica", "1", "Zagreb", "10000",
@@ -160,5 +173,39 @@ class SubjectProfileServiceTest {
 
         assertThat(lessor.getStreet()).isEmpty();
         assertThat(lessor.getCounty()).isEmpty();
+    }
+
+    // ── država prebivališta („Zemlja” na NIAS profilu) ─────────────────────
+
+    @Test
+    void toLessor_naturalPerson_livesInCroatia() {
+        croatiaInCountryTable();
+        when(registry.findByOib(OIB)).thenReturn(Optional.of(strSubject(null)));
+
+        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić");
+
+        assertThat(lessor.getCountryOfResidenceId()).isEqualTo((int) CROATIA_ID);
+    }
+
+    @Test
+    void toLegalLessor_company_livesInCroatia() {
+        croatiaInCountryTable();
+
+        LessorEntity lessor = service.toLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.",
+                "70000000004", "Ana", "Horvat");
+
+        assertThat(lessor.getCountryOfResidenceId()).isEqualTo((int) CROATIA_ID);
+    }
+
+    /** Šifrarnik bez Hrvatske ne smije srušiti izdavanje RB-a — iznajmljivač ostaje bez države. */
+    @Test
+    void croatiaMissingFromCountryTable_lessorIsStillBuilt() {
+        when(countryRepository.findFirstByIso2AlphaIgnoreCaseOrderByIdAsc("HR")).thenReturn(Optional.empty());
+        when(registry.findByOib(OIB)).thenReturn(Optional.of(strSubject(null)));
+
+        LessorEntity lessor = service.resolveLessor(OIB, "Pero", "Perić");
+
+        assertThat(lessor.getLessorOib()).isEqualTo(OIB);
+        assertThat(lessor.getCountryOfResidenceId()).isNull();
     }
 }

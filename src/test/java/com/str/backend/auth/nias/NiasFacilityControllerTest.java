@@ -1,5 +1,6 @@
 package com.str.backend.auth.nias;
 
+import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.auth.SessionIdentityResolver;
 import com.str.backend.categorization.CategorizationDecisionResponse;
@@ -10,6 +11,7 @@ import com.str.backend.egop.ChangeRequestFilingService;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LessorDocumentRepository;
+import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.LessorRnSummaryDto;
@@ -42,6 +44,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -339,6 +342,26 @@ class NiasFacilityControllerTest {
                 .andExpect(header().string("Retry-After", "42"))
                 .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_RATE_LIMIT"))
                 .andExpect(jsonPath("$.details.retryAfterSeconds").value(42));
+    }
+
+    // ── profil (GET /api/nias/profile) ──────────────────────────────────────
+
+    /** NIAS iznajmljivač dobiva Hrvatsku pri kreiranju — profil je prikazuje kao „Zemlju”. */
+    @Test
+    void profile_niasLessor_returnsCountryName() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        LessorEntity lessor = LessorEntity.create("Pero", "Perić", "Ilica", "1", "Zagreb", "Grad Zagreb", null);
+        lessor.setLessorOib(OIB);
+        lessor.applyCountryOfResidence(191);
+        when(lessorRepository.findFirstByLessorOibOrderByCreatedAtDesc(OIB)).thenReturn(Optional.of(lessor));
+        CountryEntity croatia = mock(CountryEntity.class);
+        when(croatia.getName()).thenReturn("Hrvatska");
+        when(countryRepository.findById(191L)).thenReturn(Optional.of(croatia));
+
+        mvc.perform(get("/api/nias/profile"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("Pero"))
+                .andExpect(jsonPath("$.countryName").value("Hrvatska"));
     }
 
     // ── pismeno „Zahtjev za promjenu podataka" ──────────────────────────────

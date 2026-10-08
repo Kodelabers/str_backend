@@ -1,7 +1,10 @@
 package com.str.backend.lessor;
 
+import com.str.backend.address.CountryRepository;
 import com.str.backend.address.CountyByMunicipalityResolver;
 import com.str.backend.exception.BusinessException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -21,16 +24,27 @@ import org.springframework.stereotype.Service;
 @Service
 public class SubjectProfileService {
 
+    private static final Logger log = LoggerFactory.getLogger(SubjectProfileService.class);
+
     /** Isti popunjivač kao u ranijem lookupu — {@code lessor.first_name/last_name} su NOT NULL. */
     private static final String MISSING = "N/A";
 
+    /**
+     * Država NIAS iznajmljivača. Fizička osoba dolazi iz hrvatskog registra (OIB sustav ili
+     * {@code str.subject*}), tvrtka iz e-Ovlaštenja — obje su hrvatske. Isti kod koristi changeset 134.
+     */
+    private static final String CROATIA_ISO2 = "HR";
+
     private final SubjectRegistry subjectRegistry;
     private final CountyByMunicipalityResolver countyResolver;
+    private final CountryRepository countryRepository;
 
     public SubjectProfileService(SubjectRegistry subjectRegistry,
-                                 CountyByMunicipalityResolver countyResolver) {
+                                 CountyByMunicipalityResolver countyResolver,
+                                 CountryRepository countryRepository) {
         this.subjectRegistry = subjectRegistry;
         this.countyResolver = countyResolver;
+        this.countryRepository = countryRepository;
     }
 
     /**
@@ -83,6 +97,7 @@ public class SubjectProfileService {
         if (known(profile.legalEntityName())) {
             lessor.setLegalEntityName(profile.legalEntityName());
         }
+        applyCroatia(lessor);
         return lessor;
     }
 
@@ -102,11 +117,25 @@ public class SubjectProfileService {
         lessor.setLessorOib(legalOib);
         lessor.applyNiasLegalEntity(legalName, representativeOib,
                 (orEmpty(representativeFirstName) + " " + orEmpty(representativeLastName)).trim());
+        applyCroatia(lessor);
         return lessor;
     }
 
     public LessorEntity resolveLessor(String oib, String niasFirstName, String niasLastName) {
         return toLessor(load(oib, niasFirstName, niasLastName));
+    }
+
+    /**
+     * Država se traži po ISO kodu, ne po ID-u: {@code str.country} je vanjska tablica i ID ne mora biti
+     * isti na svim okolinama. Kad Hrvatske u tablici nema, iznajmljivač se ipak sprema — bez
+     * države profil ostaje bez „Zemlje”, ali izdavanje RB-a ne smije pasti zbog šifrarnika.
+     */
+    private void applyCroatia(LessorEntity lessor) {
+        countryRepository.findFirstByIso2AlphaIgnoreCaseOrderByIdAsc(CROATIA_ISO2)
+                .map(country -> Math.toIntExact(country.getId()))
+                .ifPresentOrElse(lessor::applyCountryOfResidence,
+                        () -> log.warn("str.country nema državu {} — iznajmljivač {} ostaje bez države prebivališta",
+                                CROATIA_ISO2, lessor.getLessorId()));
     }
 
     private static boolean known(String value) {

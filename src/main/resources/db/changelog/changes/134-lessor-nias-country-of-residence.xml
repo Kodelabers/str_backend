@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Država prebivališta za postojeće NIAS iznajmljivače.
+
+        country_of_residence_id dosad je postavljala samo non-EU samoregistracija, pa je profil
+        NIAS korisnika (GET /api/nias/profile) imao praznu „Zemlju”. Novi NIAS iznajmljivači dobivaju
+        Hrvatsku pri kreiranju (SubjectProfileService); ovaj changeset popunjava one već spremljene.
+
+        NIAS iznajmljivač je redak s lessor_oib: postavlja ga samo NIAS tok (fizička osoba i tvrtka iz
+        e-Zastupanja), non-EU iznajmljivač ga nema. Isti kriterij koriste changeset 130 i statistika
+        (PlatformActivityQuery, foreignOnly = lessor_oib IS NULL).
+
+        Hrvatska se traži po ISO kodu, ne po ID-u: str.country je vanjska tablica i ID ne mora biti isti
+        na svim okolinama. Uz više redaka s kodom HR uzima se najmanji id, kao i
+        CountryRepository#findFirstByIso2AlphaIgnoreCaseOrderByIdAsc.
+
+        onFail="CONTINUE": dok Hrvatske u str.country nema, changeset se preskače i pokušava ponovo pri
+        idućem pokretanju, umjesto da se označi izvršenim bez učinka. Redovi koji već imaju državu se
+        ne diraju, pa je ponovno izvršavanje bezopasno.
+    -->
+    <changeSet id="134-lessor-nias-country-of-residence" author="str-backend">
+        <preConditions onFail="CONTINUE">
+            <tableExists schemaName="str" tableName="country"/>
+            <sqlCheck expectedResult="1">
+                SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM str.country WHERE UPPER(iso2_alpha) = 'HR'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            UPDATE str_rn.lessor
+               SET country_of_residence_id = (SELECT MIN(id) FROM str.country WHERE UPPER(iso2_alpha) = 'HR')
+             WHERE lessor_oib IS NOT NULL
+               AND country_of_residence_id IS NULL
+        </sql>
+
+        <!-- Podatkovni popravak: nakon njega se ne razlikuje država upisana ovdje od one upisane pri
+             kreiranju, pa se ništa ne vraća. -->
+        <rollback/>
+    </changeSet>
+
+</databaseChangeLog>
