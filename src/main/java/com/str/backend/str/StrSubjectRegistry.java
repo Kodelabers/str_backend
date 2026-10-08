@@ -2,6 +2,7 @@ package com.str.backend.str;
 
 import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.address.HouseNumberRepository.LessorAddressProjection;
+import com.str.backend.address.PostalCodes;
 import com.str.backend.lessor.RegistrySubject;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectRegistry;
@@ -23,6 +24,11 @@ import java.util.Optional;
  * <p>Adresa nije obvezna: na CDU {@code str.subject_address.address_id} ne pogađa uvijek
  * {@code eturizam_test.ar_address}. Bez nje subjekt se vraća s praznom adresom — utječe na PDF i
  * GO-1 (status domaćina), ali ne blokira dodjelu RB-a.
+ *
+ * <p>Uz razriješenu adresu idu i općina ({@code gradovi_i_opcine.jls_ime}) i poštanski broj.
+ * Broj se ne veže na kućni broj (shema ga nema), nego na naselje i županiju; kad naselje ima
+ * više brojeva ili ga ima samo istoimeno naselje druge županije, šalje se {@code null} — v.
+ * {@link PostalCodes#single}.
  */
 @Component
 @ConditionalOnProperty(name = "app.oib-registry.enabled", havingValue = "false", matchIfMissing = true)
@@ -50,9 +56,15 @@ public class StrSubjectRegistry implements SubjectRegistry {
                 .flatMap(subject -> subjectVersionRepository
                         .findFirstBySubjectIdAndActiveTrueAndHistoricalFalseOrderByIdDesc(subject.getId()))
                 .map(version -> {
-                    Optional<LessorAddressProjection> address = subjectAddressRepository
+                    Optional<Long> addressId = subjectAddressRepository
                             .findFirstBySubjectVersionIdAndActiveTrueOrderByIdDesc(version.getId())
-                            .flatMap(sa -> houseNumberRepository.resolveFullAddress(sa.getAddressId()));
+                            .map(StrSubjectAddressEntity::getAddressId);
+                    Optional<LessorAddressProjection> address =
+                            addressId.flatMap(houseNumberRepository::resolveFullAddress);
+                    // Broj samo uz razriješenu adresu; više brojeva u naselju → null (v. PostalCodes)
+                    String postalCode = address.isPresent()
+                            ? PostalCodes.single(houseNumberRepository.findPostalCandidates(addressId.get()))
+                            : null;
                     return new RegistrySubject(
                             version.getPin() != null ? version.getPin() : oib,
                             version.getFirstName(),
@@ -61,8 +73,8 @@ public class StrSubjectRegistry implements SubjectRegistry {
                             address.map(LessorAddressProjection::getStreet).orElse(null),
                             address.map(LessorAddressProjection::getStreetNumber).orElse(null),
                             address.map(LessorAddressProjection::getSettlement).orElse(null),
-                            null,
-                            null,
+                            postalCode,
+                            address.map(LessorAddressProjection::getMunicipality).orElse(null),
                             address.map(LessorAddressProjection::getCounty).orElse(null),
                             SubjectDataSource.STR_SUBJEKT);
                 });
