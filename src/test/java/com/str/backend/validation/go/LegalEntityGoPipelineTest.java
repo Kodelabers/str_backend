@@ -25,10 +25,10 @@ import static org.mockito.Mockito.when;
 class LegalEntityGoPipelineTest {
 
     private static LessorEntity company() {
-        // Isto kao SubjectProfileService#toLegalLessor: prazna adresa, zastupnik iz sesije.
+        // Isto kao SubjectProfileService#toLegalLessor kad sjedište nije dohvaćeno: prazna adresa.
         LessorEntity lessor = LessorEntity.create("Pero", "Perić", "", "", "", "", null);
         lessor.setLessorOib("39986540678");
-        lessor.applyNiasLegalEntity("ADRIATIQUE GROUP D.O.O.", "12312312316", "Pero Perić");
+        lessor.applyNiasLegalEntity("ADRIATIQUE GROUP D.O.O.", null, "12312312316", "Pero Perić", null);
         return lessor;
     }
 
@@ -48,6 +48,20 @@ class LegalEntityGoPipelineTest {
     void go1_legalEntityWithCounty_keepsCountyComparison() {
         LessorEntity lessor = GoTestFixtures.lessor("Grad Zagreb", "Zagreb");
         lessor.applyLegalEntityOwner("Foreign Ltd", 1, "Wien", "FN123");
+        AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
+
+        ValidationResult r = new Go1HostStatus().check(new ValidationContext(acc, lessor));
+
+        assertThat(((ValidationResult.Passed) r).getDetail()).contains("county=true");
+        assertThat(acc.getHost()).isTrue();
+    }
+
+    /** T8: sjedište iz OIB sustava daje županiju, pa GO-1 za tvrtku iz e-Zastupanja uspoređuje županije. */
+    @Test
+    void go1_companyWithSeatFromOibRegistry_comparesCounty() {
+        LessorEntity lessor = LessorEntity.create("Pero", "Perić", "Ilica", "1", "Zagreb", "Grad Zagreb", null);
+        lessor.setLessorOib("39986540678");
+        lessor.applyNiasLegalEntity("ADRIATIQUE GROUP D.O.O.", "080123456", "12312312316", "Pero Perić", null);
         AccommodationEntity acc = GoTestFixtures.accommodation("Grad Zagreb", "Zagreb", 2, 4, false, false, true);
 
         ValidationResult r = new Go1HostStatus().check(new ValidationContext(acc, lessor));

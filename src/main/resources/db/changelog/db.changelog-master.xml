@@ -228,7 +228,13 @@
     <!-- B-3, lokalni mock: smještajni sadržaji (kreveti apartmana i kuća), W-8, kapacitet migriranog objekta. -->
     <include file="db/changelog/changes/132-str-facility-capacity-b3-local.xml"/>
 
+    <!-- Lokalni mock: kontakt na dokumentu subjekta (predpopuna kontakta na formi za RB). -->
+    <include file="db/changelog/changes/133-str-document-contact-local.xml"/>
+
     <!-- Država prebivališta (Hrvatska) za postojeće NIAS iznajmljivače; profil je dosad imao praznu „Zemlju”. -->
     <include file="db/changelog/changes/134-lessor-nias-country-of-residence.xml"/>
+
+    <!-- T8, lokalni mock: zastupnik tvrtke na dokumentu i mock tvrtka iz e-Ovlaštenja. -->
+    <include file="db/changelog/changes/135-str-document-representative-local.xml"/>
 
 </databaseChangeLog>

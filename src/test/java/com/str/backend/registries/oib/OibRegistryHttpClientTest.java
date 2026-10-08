@@ -1,6 +1,7 @@
 package com.str.backend.registries.oib;
 
 import com.str.backend.exception.ExternalRegistryException;
+import com.str.backend.lessor.RegistryLegalEntity;
 import com.str.backend.lessor.RegistrySubject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,8 +29,10 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class OibRegistryHttpClientTest {
 
     private static final String OIB = "12312312316";
-    private static final String URL =
-            "http://oib.test/str-internal-api/pretraga-registra/oib?oib=" + OIB;
+    private static final String LEGAL_OIB = "45645645646";
+    private static final String BASE = "http://oib.test/str-internal-api/pretraga-registra/oib";
+    private static final String URL = BASE + "/FO/" + OIB;
+    private static final String LEGAL_URL = BASE + "/PO/" + LEGAL_OIB;
 
     private MockRestServiceServer server;
     private OibRegistryHttpClient client;
@@ -46,7 +49,7 @@ class OibRegistryHttpClientTest {
         server.expect(requestTo(URL)).andExpect(method(HttpMethod.GET))
                 .andRespond(withStatus(HttpStatus.NOT_FOUND));
 
-        assertThat(client.findByOib(OIB)).isEmpty();
+        assertThat(client.findPerson(OIB)).isEmpty();
         server.verify();
     }
 
@@ -54,14 +57,14 @@ class OibRegistryHttpClientTest {
     void emptyBody_meansUnknownSubject() {
         server.expect(requestTo(URL)).andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
 
-        assertThat(client.findByOib(OIB)).isEmpty();
+        assertThat(client.findPerson(OIB)).isEmpty();
     }
 
     @Test
     void serverError_isRegistryUnavailable() {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
 
-        assertThatThrownBy(() -> client.findByOib(OIB))
+        assertThatThrownBy(() -> client.findPerson(OIB))
                 .isInstanceOf(ExternalRegistryException.class)
                 .extracting(e -> ((ExternalRegistryException) e).getRegistry())
                 .isEqualTo("OIB");
@@ -73,7 +76,7 @@ class OibRegistryHttpClientTest {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.FOUND)
                 .location(java.net.URI.create("http://et2-test-internal-eturizam.gov.hr/saml2/authenticate/nias")));
 
-        assertThatThrownBy(() -> client.findByOib(OIB))
+        assertThatThrownBy(() -> client.findPerson(OIB))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("bez prijave")
                 .hasMessageContaining("302");
@@ -83,7 +86,7 @@ class OibRegistryHttpClientTest {
     void timeout_isRegistryUnavailable() {
         server.expect(requestTo(URL)).andRespond(withException(new SocketTimeoutException("read timed out")));
 
-        assertThatThrownBy(() -> client.findByOib(OIB)).isInstanceOf(ExternalRegistryException.class);
+        assertThatThrownBy(() -> client.findPerson(OIB)).isInstanceOf(ExternalRegistryException.class);
     }
 
     @Test
@@ -91,16 +94,56 @@ class OibRegistryHttpClientTest {
         server.expect(requestTo(URL)).andRespond(withSuccess(new ClassPathResource(
                 "oib-registry/fizicka-osoba-fg.json"), MediaType.APPLICATION_JSON));
 
-        RegistrySubject s = client.findByOib(OIB).orElseThrow();
+        RegistrySubject s = client.findPerson(OIB).orElseThrow();
 
         assertThat(s.firstName()).isEqualTo("PERO");
         assertThat(s.streetNumber()).isEqualTo("14A");
     }
 
+    /** Stari {@code ?oib=} oblik danas vraća HTML web aplikacije — takav odgovor je kvar, ne „nema osobe". */
     @Test
     void malformedBody_isRegistryUnavailable() {
         server.expect(requestTo(URL)).andRespond(withSuccess("<html>proxy error</html>", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> client.findByOib(OIB)).isInstanceOf(ExternalRegistryException.class);
+        assertThatThrownBy(() -> client.findPerson(OIB)).isInstanceOf(ExternalRegistryException.class);
+    }
+
+    @Test
+    void legalEntity_usesPoPath_andMapsSeat() {
+        server.expect(requestTo(LEGAL_URL)).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(new ClassPathResource(
+                        "oib-registry/pravna-osoba-pb.json"), MediaType.APPLICATION_JSON));
+
+        RegistryLegalEntity e = client.findLegalEntity(LEGAL_OIB).orElseThrow();
+
+        assertThat(e.name()).isEqualTo("PERINA TESTNA FIRMA D.O.O");
+        assertThat(e.street()).isEqualTo("ULICA CVIJETE ZUZORIĆ");
+        server.verify();
+    }
+
+    /** Izmjereno 08.10.2026.: nepoznat OIB je 404 s JSON opisom greške. */
+    @Test
+    void legalEntity_notFound_meansUnknown() {
+        server.expect(requestTo(LEGAL_URL)).andRespond(withStatus(HttpStatus.NOT_FOUND)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"status\":404,\"message\":\"Osoba s navedenim OIB-om nije pronađena\"}"));
+
+        assertThat(client.findLegalEntity(LEGAL_OIB)).isEmpty();
+    }
+
+    /** Ono što nije OIB (npr. strani identifikator iz eTurizma) ne ide u putanju — nema ni poziva. */
+    @Test
+    void notAnOib_isNotSent() {
+        assertThat(client.findPerson("../x")).isEmpty();
+        assertThat(client.findPerson("X1234567")).isEmpty();
+        assertThat(client.findLegalEntity(null)).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void legalEntity_serverError_isRegistryUnavailable() {
+        server.expect(requestTo(LEGAL_URL)).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+
+        assertThatThrownBy(() -> client.findLegalEntity(LEGAL_OIB)).isInstanceOf(ExternalRegistryException.class);
     }
 }

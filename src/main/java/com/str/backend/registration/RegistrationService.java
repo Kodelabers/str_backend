@@ -135,9 +135,10 @@ public class RegistrationService {
 
         // Identitet i adresa iz NIAS-a / registra, na serveru — ne iz zahtjeva. Nedostupan
         // registar je 503 i dolazi prije GO pipelinea i pohrane, pa ne ostaje poluupisan zahtjev.
+        // U ime tvrtke nedostupan OIB sustav nije 503: tvrtka se sprema bez sjedišta.
         LessorEntity lessor;
         if (legalEntity != null) {
-            lessor = subjectProfileService.toLegalLessor(legalEntity.legalOib(), legalEntity.legalName(),
+            lessor = subjectProfileService.resolveLegalLessor(legalEntity.legalOib(), legalEntity.legalName(),
                     legalEntity.representativeOib(), legalEntity.representativeFirstName(),
                     legalEntity.representativeLastName());
         } else {

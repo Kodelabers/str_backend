@@ -2,6 +2,7 @@ package com.str.backend.registries.oib;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.str.backend.exception.ExternalRegistryException;
+import com.str.backend.lessor.RegistryLegalEntity;
 import com.str.backend.lessor.RegistrySubject;
 import com.str.backend.lessor.SubjectDataSource;
 
@@ -11,8 +12,8 @@ import java.util.Optional;
 import java.util.function.Predicate;
 
 /**
- * Jedino mjesto koje poznaje shemu odgovora {@code GET /pretraga-registra/oib} (OIB sustav
- * Porezne uprave, preko {@code str-internal-api}).
+ * Jedino mjesto koje poznaje shemu odgovora {@code GET /pretraga-registra/oib/FO|PO/{oib}} (OIB
+ * sustav Porezne uprave, preko {@code str-internal-api}).
  *
  * <p><b>Oblik odgovora.</b> Podaci o osobi su pod {@code fizickaOsoba.dohvatiFA} …
  * {@code dohvatiFI} — svaka varijanta je druga metoda OIB sustava s drukčijim podskupom polja
@@ -38,6 +39,10 @@ final class OibRegistryResponseMapper {
     /** Varijante s adresom prebivališta, od najpotpunije. */
     private static final List<String> ADDRESS_VARIANTS =
             List.of("dohvatiFA", "dohvatiFB", "dohvatiFF", "dohvatiFG", "dohvatiFH", "dohvatiFI");
+
+    /** Varijante pravne osobe — sve imaju naziv, MBS i sjedište, pa redoslijed nije bitan. */
+    private static final List<String> LEGAL_VARIANTS =
+            List.of("dohvatiPA", "dohvatiPB", "dohvatiPC", "dohvatiPD", "dohvatiPE");
 
     private OibRegistryResponseMapper() {}
 
@@ -66,6 +71,44 @@ final class OibRegistryResponseMapper {
                 named.map(v -> text(v, "ime")).orElse(null),
                 named.map(v -> text(v, "prezime")).orElse(null),
                 null,
+                a == null ? null : text(a, "ulica"),
+                a == null ? null : streetNumber(a),
+                a == null ? null : text(a, "naselje"),
+                a == null ? null : text(a, "brojPoste"),
+                a == null ? null : text(a, "opcina"),
+                null,
+                SubjectDataSource.OIB_REGISTAR));
+    }
+
+    /**
+     * Pravna osoba ({@code /PO/{oib}}): naziv, MBS i adresa sjedišta. Kao kod fizičke osobe, svaki
+     * se podatak uzima iz prve varijante {@code pravnaOsoba.dohvatiP*} koja ga ima (test okolina puni
+     * PB). Zastupnici ({@code ovlasteniFO}, samo u PE) se ne čitaju — zastupnik je iz eTurizma.
+     *
+     * @return tvrtka; {@link Optional#empty()} kad odgovor nema podataka o tvrtki ni grešaka
+     * @throws ExternalRegistryException kad odgovor javlja greške, a podataka o tvrtki nema
+     */
+    static Optional<RegistryLegalEntity> toLegalEntity(String oib, JsonNode body) {
+        JsonNode company = body.path("pravnaOsoba");
+        Optional<JsonNode> named = firstWith(company, LEGAL_VARIANTS, v -> hasText(v, "nazivTvrtke"));
+        Optional<JsonNode> registered = firstWith(company, LEGAL_VARIANTS, v -> hasText(v, "mbs"));
+        Optional<JsonNode> seat = firstWith(company, LEGAL_VARIANTS, v -> v.path("adresaSjedista").isObject())
+                .map(v -> v.path("adresaSjedista"));
+
+        if (named.isEmpty() && seat.isEmpty()) {
+            List<String> errorCodes = errorCodes(body);
+            if (!errorCodes.isEmpty()) {
+                throw new ExternalRegistryException(OibRegistryHttpClient.REGISTRY,
+                        "OIB sustav vratio greške bez podataka o tvrtki: " + errorCodes);
+            }
+            return Optional.empty();
+        }
+
+        JsonNode a = seat.orElse(null);
+        return Optional.of(new RegistryLegalEntity(
+                oib,
+                named.map(v -> text(v, "nazivTvrtke")).orElse(null),
+                registered.map(v -> text(v, "mbs")).orElse(null),
                 a == null ? null : text(a, "ulica"),
                 a == null ? null : streetNumber(a),
                 a == null ? null : text(a, "naselje"),
@@ -113,10 +156,13 @@ final class OibRegistryResponseMapper {
         return text(node, field) != null;
     }
 
-    /** Prazno i čisti razmaci se broje kao „nema podatka". */
+    /**
+     * Prazno i čisti razmaci se broje kao „nema podatka". Broj se čita kao tekst — shema kaže
+     * {@code string}, ali npr. MBS ili kućni broj kao JSON broj ne smiju tiho nestati.
+     */
     private static String text(JsonNode node, String field) {
         JsonNode v = node.path(field);
-        if (!v.isTextual()) {
+        if (!v.isTextual() && !v.isNumber()) {
             return null;
         }
         String t = v.asText().trim();

@@ -29,7 +29,7 @@ class SubmissionPdfLegalEntityTest {
     void legalEntity_printsCompanyOib_andRepresentativeSeparately() throws Exception {
         LessorEntity lessor = LessorEntity.create("Ana", "Horvat", "", "", "", "", "ana@example.com");
         lessor.setLessorOib("33333333360");
-        lessor.applyNiasLegalEntity("TESTNA TVRTKA d.o.o.", "70000000004", "Ana Horvat");
+        lessor.applyNiasLegalEntity("TESTNA TVRTKA d.o.o.", null, "70000000004", "Ana Horvat", null);
         AccommodationEntity accommodation = AccommodationEntity.create(null, "Grad Zagreb", "Zagreb",
                 "Ilica", "1", 4, 4, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, false, true);
 
