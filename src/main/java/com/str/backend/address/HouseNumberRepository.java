@@ -83,6 +83,7 @@ public interface HouseNumberRepository extends JpaRepository<HouseNumberEntity, 
         String getStreet();
         String getStreetNumber();
         String getSettlement();
+        String getMunicipality();
         String getCounty();
     }
 
@@ -90,6 +91,7 @@ public interface HouseNumberRepository extends JpaRepository<HouseNumberEntity, 
             SELECT u.naziv_ulice          AS street,
                    a.broj                 AS streetNumber,
                    n.na_ime               AS settlement,
+                   g.jls_ime              AS municipality,
                    z.zu_ime               AS county
             FROM eturizam_test.ar_address a
             JOIN eturizam_test.ar_ulice         u ON u.id      = a.ulica_id
@@ -99,6 +101,30 @@ public interface HouseNumberRepository extends JpaRepository<HouseNumberEntity, 
             WHERE a.id = :id
             """, nativeQuery = true)
     Optional<LessorAddressProjection> resolveFullAddress(@Param("id") Long id);
+
+    interface PostalCandidateRow extends PostalCodes.Candidate {
+    }
+
+    /**
+     * Poštanski brojevi naselja kućnog broja, za {@link PostalCodes#single}. {@code ar_address}
+     * nema stupac poštanskog broja (lokalna shema, changeset 107), pa se broj ne može vezati na
+     * kućni broj: uzima se iz {@code postanski_brojevi} po imenu naselja, a županija se
+     * uspoređuje u Javi, kao kod {@link SettlementRepository#findByMunicipalityIdOrderByName}.
+     */
+    @Query(value = """
+            SELECT p.broj_pu              AS "postalCode",
+                   p.zupanija             AS "postalCounty",
+                   z.zu_ime               AS county
+            FROM eturizam_test.ar_address a
+            JOIN eturizam_test.ar_ulice         u ON u.id      = a.ulica_id
+            JOIN rpj_dgu.naselja                n ON n.na_mb   = u.naselje_id
+            JOIN rpj_dgu.gradovi_i_opcine       g ON g.jls_mb  = LPAD(n.jls_mb::text, 5, '0')
+            JOIN rpj_dgu.zupanije               z ON z.zu_rb   = g.zu_rb
+            JOIN rpj_dgu.postanski_brojevi      p ON LOWER(p.naselje) = LOWER(n.na_ime)
+            WHERE a.id = :id
+            ORDER BY p.broj_pu
+            """, nativeQuery = true)
+    List<PostalCandidateRow> findPostalCandidates(@Param("id") Long id);
 
     interface FullAddressProjection {
         String getCounty();

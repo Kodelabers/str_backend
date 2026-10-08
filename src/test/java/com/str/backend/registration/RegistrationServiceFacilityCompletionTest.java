@@ -6,7 +6,9 @@ import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.address.HouseNumberRepository;
+import com.str.backend.address.MunicipalityEntity;
 import com.str.backend.address.MunicipalityRepository;
+import com.str.backend.address.SettlementEntity;
 import com.str.backend.address.SettlementRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -61,6 +63,8 @@ class RegistrationServiceFacilityCompletionTest {
     private final AccommodationRepository accommodationRepository = mock(AccommodationRepository.class);
     private final CountyRepository countyRepository = mock(CountyRepository.class);
     private final AccommodationTypeRepository typeRepository = mock(AccommodationTypeRepository.class);
+    private final MunicipalityRepository municipalityRepository = mock(MunicipalityRepository.class);
+    private final SettlementRepository settlementRepository = mock(SettlementRepository.class);
     private final FacilityClaimVerifier verifier = mock(FacilityClaimVerifier.class);
     private final FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
     private RegistrationService service;
@@ -73,7 +77,7 @@ class RegistrationServiceFacilityCompletionTest {
         service = new RegistrationService(
                 mock(LessorRepository.class), accommodationRepository, mock(SubmissionRepository.class),
                 orchestrator, rnService, mock(RnRepository.class), subjectProfileService,
-                countyRepository, mock(MunicipalityRepository.class), mock(SettlementRepository.class),
+                countyRepository, municipalityRepository, settlementRepository,
                 typeRepository, verifier,
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(ApplicationEventPublisher.class),
                 mock(SubmissionDraftService.class));
@@ -189,6 +193,41 @@ class RegistrationServiceFacilityCompletionTest {
         assertThat(saved.getStreetNumber()).isEqualTo("12");
     }
 
+    /**
+     * T5: migrirani (neverificirani) objekt bez strukturirane adrese. eTurizam ne zna ni općinu,
+     * ni naselje, ni ulicu, ni kućni broj, ni poštanski broj, pa ih obrazac otključa i korisnik ih
+     * odabere iz adresnog registra. RB nosi poslanu adresu; dopuna iz eTurizma je ne gazi.
+     */
+    @Test
+    void keepsAddressEnteredForFieldsEturizamDoesNotKnow() {
+        when(facility.getMunicipalityName()).thenReturn(null);
+        when(facility.getSettlementName()).thenReturn("-");
+        when(facility.getStreetName()).thenReturn(null);
+        when(facility.getHouseNumber()).thenReturn(" ");
+        when(facility.getPostalCode()).thenReturn(null);
+        when(municipalityRepository.findById(2195201017L))
+                .thenReturn(Optional.of(entity(MunicipalityEntity.class, 2195201017L, "Makarska")));
+        when(settlementRepository.findById(2195300017L))
+                .thenReturn(Optional.of(entity(SettlementEntity.class, 2195300017L, "Makarska")));
+
+        service.generateRegistrationNumber(new RegistrationRequest(
+                OIB, null, null, 18L, "2195201017", "2195300017", "Obala kralja Tomislava", "7",
+                null, "21300", null,
+                OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, "1", false, false,
+                null, null, null, null, null, null, FACILITY_ID,
+                "ana@example.com", "0991234567", null, null, null));
+
+        AccommodationEntity saved = savedAccommodation();
+        assertThat(saved.getCounty()).isEqualTo("Splitsko-dalmatinska županija");
+        assertThat(saved.getCity()).isEqualTo("Makarska");
+        assertThat(saved.getSettlement()).isEqualTo("Makarska");
+        assertThat(saved.getStreet()).isEqualTo("Obala kralja Tomislava");
+        assertThat(saved.getStreetNumber()).isEqualTo("7");
+        assertThat(saved.getPostalCode()).isEqualTo("21300");
+        // Što zahtjev nije donio, i dalje se dopunjuje iz eTurizma
+        assertThat(saved.getName()).isEqualTo("Apartman Marija");
+    }
+
     private AccommodationEntity savedAccommodation() {
         ArgumentCaptor<AccommodationEntity> captor = ArgumentCaptor.forClass(AccommodationEntity.class);
         verify(accommodationRepository).save(captor.capture());
@@ -222,6 +261,19 @@ class RegistrationServiceFacilityCompletionTest {
             setField(CountyEntity.class, c, "id", id);
             setField(CountyEntity.class, c, "name", name);
             return c;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static <T> T entity(Class<T> type, Long id, String name) {
+        try {
+            var ctor = type.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            T e = ctor.newInstance();
+            setField(type, e, "id", id);
+            setField(type, e, "name", name);
+            return e;
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
