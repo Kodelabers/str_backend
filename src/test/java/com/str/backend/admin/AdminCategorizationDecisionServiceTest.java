@@ -43,7 +43,7 @@ class AdminCategorizationDecisionServiceTest {
     void list_byStatus_mapsToDto() {
         Pageable pageable = PageRequest.of(0, 20);
         CategorizationDecisionEntity e = submitted();
-        when(repository.findByStatus(CategorizationDecisionStatus.SUBMITTED, pageable))
+        when(repository.findForReviewByStatus(CategorizationDecisionStatus.SUBMITTED, pageable))
                 .thenReturn(new PageImpl<>(List.of(e), pageable, 1));
 
         Page<CategorizationDecisionAdminDto> page = service.list(CategorizationDecisionStatus.SUBMITTED, pageable);
@@ -57,12 +57,13 @@ class AdminCategorizationDecisionServiceTest {
     }
 
     @Test
-    void list_withoutStatus_usesFindAll() {
+    void list_withoutStatus_usesReviewQueryWithoutStatus() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(repository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
+        when(repository.findForReview(pageable)).thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
 
         assertThat(service.list(null, pageable).getContent()).hasSize(1);
-        verify(repository, never()).findByStatus(any(), any());
+        verify(repository, never()).findForReviewByStatus(any(), any());
+        verify(repository, never()).findAll(any(Pageable.class));
     }
 
     @Test

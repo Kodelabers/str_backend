@@ -56,7 +56,7 @@ class RegistrationServicePdfAccessTest {
                 mock(AccommodationTypeRepository.class), mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class));
 
         owner = LessorEntity.create("Pero", "Perić", "Ilica", "1", "Zagreb", "Grad Zagreb", "pero@example.hr");
         owner.setLessorOib(OIB);

@@ -76,7 +76,7 @@ class RegistrationServiceDraftDiscardTest {
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                draftService);
+                draftService, mock(ReissueService.class));
 
         when(countyRepository.findById(7L)).thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));
         lenient().when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(

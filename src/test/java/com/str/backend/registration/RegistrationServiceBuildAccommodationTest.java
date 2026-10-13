@@ -77,7 +77,7 @@ class RegistrationServiceBuildAccommodationTest {
                 new CadastreResolver(houseNumberRepository),
                 addressValidator,
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class));
     }
 
     private static HouseNumberRepository.CadastreRow registryRow(String broj, String ulica,

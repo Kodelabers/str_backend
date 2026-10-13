@@ -22,6 +22,37 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     boolean existsByRn(String rn);
 
+    /** Ulaz za izračun roka ponovnog zahtjeva na popisu RB-ova — v. {@link #findReissueCandidates}. */
+    interface ReissueCandidateRow {
+        String getRn();
+        LocalDate getValidTo();
+        String getFacilityId();
+        /** Aktivno (predano/potvrđeno) rješenje uz RB ima {@code facility_id} — objekt je u eTurizmu. */
+        Boolean getDecisionInETurizam();
+        Boolean getUsed();
+    }
+
+    /**
+     * Povučeni RB-ovi iz zadanog popisa s onim što pravilo ponovnog zahtjeva (T15) traži: dan
+     * povlačenja, eTurizam objekt smještaja ili rješenja i je li RB već iskorišten. Jedan
+     * upit za cijeli popis „Mojih registracijskih brojeva"; pravilo samo primjenjuje
+     * {@code ReissueService}.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT r.rn AS rn, r.validTo AS validTo, a.facilityId AS facilityId,
+                   CASE WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
+                                     AND d.status IN (com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED,
+                                                      com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED)
+                                     AND d.facilityId IS NOT NULL AND TRIM(d.facilityId) <> '')
+                        THEN true ELSE false END AS decisionInETurizam,
+                   CASE WHEN EXISTS (SELECT 1 FROM AccommodationEntity n WHERE n.previousRn = r.rn)
+                        THEN true ELSE false END AS used
+            FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE r.rn IN :rns AND r.status = com.str.backend.domain.RnStatus.WITHDRAWN
+            """)
+    List<ReissueCandidateRow> findReissueCandidates(@Param("rns") Collection<String> rns);
+
     List<RnEntity> findByAccommodationId(UUID accommodationId);
 
     List<RnEntity> findBySubmissionId(UUID submissionId);

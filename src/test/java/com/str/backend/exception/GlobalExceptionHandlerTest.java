@@ -50,6 +50,33 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().getDetails()).isEqualTo(Map.of("code", "DATA_CONFLICT"));
     }
 
+    /** T15: drugi upis istog povučenog RB-a (utrka) — isti kod kao rana provjera, ne DATA_CONFLICT. */
+    @Test
+    void previousRnIndexViolation_mapsTo409_reissueAlreadyUsed() {
+        ResponseEntity<GlobalExceptionHandler.ErrorResponse> response =
+                handler.handleDataIntegrity(duplicate("uq_accommodation_previous_rn"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody().getDetails()).isEqualTo(Map.of("code", "REISSUE_ALREADY_USED"));
+    }
+
+    @Test
+    void notFound_withCode_carriesDetailsCode_withoutCode_hasNoDetails() {
+        assertThat(handler.handleNotFound(new ResourceNotFoundException("error.rn.notFound", "REISSUE_NOT_FOUND"))
+                .getBody().getDetails()).isEqualTo(Map.of("code", "REISSUE_NOT_FOUND"));
+        assertThat(handler.handleNotFound(new ResourceNotFoundException("error.rn.notFound"))
+                .getBody().getDetails()).isNull();
+    }
+
+    @Test
+    void gone_mapsTo410_withCode() {
+        ResponseEntity<GlobalExceptionHandler.ErrorResponse> response =
+                handler.handleGone(new GoneException("error.reissue.expired", "REISSUE_EXPIRED"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+        assertThat(response.getBody().getDetails()).isEqualTo(Map.of("code", "REISSUE_EXPIRED"));
+    }
+
     @Test
     void notNullViolation_mapsTo500_notAUserConflict() {
         DataIntegrityViolationException notNull = new DataIntegrityViolationException("wrapper",

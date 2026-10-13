@@ -94,7 +94,7 @@ class RegistrationServiceDuplicateLocationTest {
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 eventPublisher,
-                mock(SubmissionDraftService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class));
 
         CountyEntity county = buildCountyEntity(7L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));

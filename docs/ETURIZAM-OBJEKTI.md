@@ -35,6 +35,16 @@ razlikuju među okolinama — vezati se isključivo na `code`.
 - **Registracijski broj ide po jedinici**: `accommodation.facility_id`, write-back
   (`writeBackRegistrationNumber`) i brisanje pri povlačenju (`clearRegistrationNumber`) su po
   `facility.id`.
+- **Novi RB nakon povlačenja.** Za eTurizam objekt broj se pri povlačenju briše iz
+  `str.facility.registration_number`, a popis objekata povučeni broj ne smatra brojem objekta i nudi
+  „Zatraži RB” s predpopunom iz eTurizma (#120). Za **novi objekt** (smještaj bez `facility_id`, koji u
+  eTurizmu ne postoji) put ide s „Mojih registracijskih brojeva”: unutar `app.rn.retention-months`
+  (18) mjeseci od povlačenja obrazac se predpopuni podacima povučenog RB-a, zahtjev nosi `prethodniRb`,
+  a predano ili potvrđeno rješenje o kategorizaciji prenosi se na novi RB ako je objekt isti — ista
+  adresa i vrsta, ne više kreveta (T15, `ReissueService`;
+  pravila u `CLAUDE.md`, „Registration flow”). Povučeni RB eTurizam objekta taj put odbija
+  (409 `REISSUE_NOT_NEW_FACILITY`), kao i novi objekt koji je u međuvremenu upisan u eTurizam
+  (rješenje s `facility_id`).
 - Migrirane jedinice nemaju vlastitu oznaku — svi stupci osim `id`, `address_id` i datuma su im isti
   (provjereno na 500 objekata). **Kapacitet migrirane jedinice je kapacitet cijelog objekta** —
   migracija ga je kopirala na svaku jedinicu (B-3), pa se prikazuje samo na objektu. Frontend

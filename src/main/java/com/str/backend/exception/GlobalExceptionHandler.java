@@ -4,6 +4,7 @@ import com.str.backend.captcha.CaptchaException;
 import com.str.backend.auth.nias.ActingSubjectChangedException;
 import com.str.backend.auth.nias.ActingSubjectOptionsUnavailableException;
 import com.str.backend.auth.nias.ActingSubjectRateLimitException;
+import com.str.backend.registration.ReissueService;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -28,6 +29,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -63,7 +65,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
-        return build(HttpStatus.NOT_FOUND, resolve(ex.getMessage()), null);
+        return build(HttpStatus.NOT_FOUND, resolve(ex.getMessage()),
+                ex.getCode() == null ? null : Map.of("code", ex.getCode()));
     }
 
     /**
@@ -178,6 +181,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, resolve(ex.getMessage()), Map.of("code", ex.getCode()));
     }
 
+    @ExceptionHandler(GoneException.class)
+    public ResponseEntity<ErrorResponse> handleGone(GoneException ex) {
+        return build(HttpStatus.GONE, resolve(ex.getMessage()), Map.of("code", ex.getCode()));
+    }
+
     @ExceptionHandler(ExternalRegistryException.class)
     public ResponseEntity<ErrorResponse> handleRegistry(ExternalRegistryException ex) {
         log.error("external_registry_error registry={} message={}", ex.getRegistry(), ex.getMessage(), ex);
@@ -252,6 +260,12 @@ public class GlobalExceptionHandler {
         }
 
         log.warn("data_integrity_duplicate constraint={}", constraint);
+        // Isti povučeni RB iskorišten dvaput (utrka dviju predaja, T15): frontend treba isti kod kao
+        // kad to provjera prije GO pipelinea uhvati, ne generički sukob.
+        if (constraint != null && constraint.toLowerCase(Locale.ROOT).contains(ReissueService.PREVIOUS_RN_INDEX)) {
+            return build(HttpStatus.CONFLICT, resolve("error.reissue.alreadyUsed"),
+                    Map.of("code", ReissueService.ALREADY_USED));
+        }
         // `code` prati dogovor s frontendom: na 409 se prvo čita details.code (v. DUPLICATE_LOCATION),
         // pa bez njega fronta ne može razlikovati ovaj sukob od ostalih.
         return build(HttpStatus.CONFLICT, resolve("error.data.conflict"),

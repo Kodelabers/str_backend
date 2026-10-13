@@ -82,7 +82,7 @@ class RegistrationServiceFacilityCompletionTest {
                 typeRepository, verifier,
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class));
 
         when(orchestrator.execute(any(ValidationContext.class))).thenReturn(PipelineResult.passed());
         RnEntity issued = mock(RnEntity.class);

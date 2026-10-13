@@ -18,6 +18,13 @@ import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.registration.ReissueService;
+import com.str.backend.registration.RnOwner;
+import com.str.backend.registration.dto.ReissuePrefillResponse;
+import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
+import com.str.backend.exception.GoneException;
+import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.rn.RnRepository;
@@ -87,6 +94,7 @@ class NiasFacilityControllerTest {
     @MockBean ChangeRequestFilingService changeRequestFilingService;
     @MockBean StrSubjectRepository strSubjectRepository;
     @MockBean RnFacilityVerification rnFacilityVerification;
+    @MockBean ReissueService reissueService;
 
     // ── FINA navigacijska traka ─────────────────────────────────────────────
 
@@ -204,12 +212,113 @@ class NiasFacilityControllerTest {
                 LocalDate.of(2026, 10, 7), "Apartman", "Riva", "1", "Split", "Apartman", false, null, "153049");
         when(rnRepository.findByLessorOib(OIB)).thenReturn(List.of(row));
         when(rnFacilityVerification.withFacilityVerified(List.of(row))).thenReturn(List.of(row.withFacilityVerified(true)));
+        when(reissueService.withReissueDeadlines(any())).thenAnswer(inv -> inv.getArgument(0));
 
         mvc.perform(get("/api/nias/registrations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].rn").value("HR120001000000000123"))
                 .andExpect(jsonPath("$[0].facilityVerified").value(true))
                 .andExpect(jsonPath("$[0].facilityId").doesNotExist());
+    }
+
+    // ── T15: ponovni zahtjev nakon povlačenja ───────────────────────────────
+
+    /** Rok ponovnog zahtjeva dolazi iz ReissueService i izlazi kao datum; prazan je null. */
+    @Test
+    void registrations_carryPonovniZahtjevDo() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        LessorRnSummaryDto row = new LessorRnSummaryDto("HR120001000000000123", RnStatus.WITHDRAWN,
+                LocalDate.of(2026, 1, 7), "Apartman", "Riva", "1", "Split", "Apartman", false, null, null);
+        when(rnRepository.findByLessorOib(OIB)).thenReturn(List.of(row));
+        when(rnFacilityVerification.withFacilityVerified(List.of(row))).thenReturn(List.of(row));
+        when(reissueService.withReissueDeadlines(List.of(row)))
+                .thenReturn(List.of(row.withPonovniZahtjevDo(LocalDate.of(2027, 7, 7))));
+
+        mvc.perform(get("/api/nias/registrations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].ponovniZahtjevDo").value("2027-07-07"));
+    }
+
+    @Test
+    void reissuePrefill_returnsFormShape_forEffectiveOib() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        UUID decisionId = UUID.fromString("7a0c7d3e-3f7a-4b55-9a49-1b9e2f0a1c11");
+        when(reissueService.prefill(eq("HR120001000000000123"), eq(RnOwner.byOib(OIB))))
+                .thenReturn(new ReissuePrefillResponse("HR120001000000000123", LocalDate.of(2026, 1, 7),
+                        LocalDate.of(2027, 7, 7),
+                        new ReissuePrefillResponse.Objekt("Apartman Riva", 3L, "FS_APARTMAN", "Apartman", 4, 2,
+                                7L, "Splitsko-dalmatinska županija", 70L, "Split", 700L, "Split",
+                                7000L, "Riva", 70000L, "1", "21000", "Split", "1234/5",
+                                OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
+                                true, false, true, true, true, LocalDate.of(2025, 3, 1), null, false,
+                                "ana@example.com", "0991234567", null, null),
+                        new ReissuePrefillResponse.Rjesenje(decisionId, "rjesenje.pdf",
+                                CategorizationDecisionStatus.VERIFIED)));
+
+        mvc.perform(get("/api/nias/registrations/HR120001000000000123/ponovni-zahtjev"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.povucenRb").value("HR120001000000000123"))
+                .andExpect(jsonPath("$.povucenDana").value("2026-01-07"))
+                .andExpect(jsonPath("$.ponovniZahtjevDo").value("2027-07-07"))
+                .andExpect(jsonPath("$.objekt.naziv").value("Apartman Riva"))
+                .andExpect(jsonPath("$.objekt.vrstaSifra").value("FS_APARTMAN"))
+                .andExpect(jsonPath("$.objekt.kucniBrojId").value(70000))
+                .andExpect(jsonPath("$.objekt.offerType").value("PRIMARY_RESIDENCE"))
+                .andExpect(jsonPath("$.objekt.ponuda").value("WHOLE"))
+                .andExpect(jsonPath("$.objekt.building").value(true))
+                .andExpect(jsonPath("$.objekt.apartments").value(false))
+                .andExpect(jsonPath("$.objekt.legalized").value(true))
+                .andExpect(jsonPath("$.objekt.lessorResidence").value(true))
+                .andExpect(jsonPath("$.objekt.coOwnerConsent").value(true))
+                .andExpect(jsonPath("$.objekt.consentDate").value("2025-03-01"))
+                .andExpect(jsonPath("$.objekt.host").value(false))
+                .andExpect(jsonPath("$.rjesenje.decisionId").value(decisionId.toString()))
+                .andExpect(jsonPath("$.rjesenje.nazivDatoteke").value("rjesenje.pdf"))
+                .andExpect(jsonPath("$.rjesenje.status").value("VERIFIED"));
+    }
+
+    /** U ime tvrtke vlasnik je tvrtka — efektivni OIB, nikad OIB osobe. */
+    @Test
+    void reissuePrefill_actingForCompany_usesCompanyOib() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
+        when(reissueService.prefill(any(), any())).thenThrow(new ResourceNotFoundException("error.rn.notFound"));
+
+        mvc.perform(get("/api/nias/registrations/HR120001000000000123/ponovni-zahtjev"))
+                .andExpect(status().isNotFound());
+
+        verify(reissueService).prefill("HR120001000000000123", RnOwner.byOib(COMPANY_OIB));
+    }
+
+    @Test
+    void reissuePrefill_foreignRn_is404WithCode() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(reissueService.prefill(any(), any()))
+                .thenThrow(new ResourceNotFoundException("error.rn.notFound", "REISSUE_NOT_FOUND"));
+
+        mvc.perform(get("/api/nias/registrations/HR999/ponovni-zahtjev"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.details.code").value("REISSUE_NOT_FOUND"));
+    }
+
+    @Test
+    void reissuePrefill_expired_is410WithCode() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(reissueService.prefill(any(), any()))
+                .thenThrow(new GoneException("error.reissue.expired", "REISSUE_EXPIRED"));
+
+        mvc.perform(get("/api/nias/registrations/HR120001000000000123/ponovni-zahtjev"))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.details.code").value("REISSUE_EXPIRED"));
+    }
+
+    @Test
+    void reissuePrefill_withoutLogin_is401() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/nias/registrations/HR120001000000000123/ponovni-zahtjev"))
+                .andExpect(status().isUnauthorized());
+        verify(reissueService, never()).prefill(any(), any());
     }
 
     /** Povlačenje je nepovratno: u ime tvrtke tek nakon ponovne potvrde zastupanja, i na tvrtku. */

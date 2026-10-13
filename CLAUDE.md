@@ -79,6 +79,17 @@ A request carrying `facilityId` (tuStart handoff, existing object) is checked by
 
 **Unverified eTurizam objects (T7)** (`created_by='optimit'`, `verified=false` from `findOwnership`) are never redirected to TuStart „Zahtjev za promjenu podataka": the claim returns `zahtjevPromjenaUrl=null` for them (unknown `verified` counts as verified), and `ChangeRequestFilingService` refuses the act with 400 `error.changeRequest.notVerified`. The notice to the competent authority is deliberately not implemented yet.
 
+**Re-request after withdrawal, new objects only (T15)** (`ReissueService`). A withdrawal does not delete the object's data. For `app.rn.retention-months` months after the withdrawal date (default 18, the same threshold as `WithdrawnRnRetentionJob`), the owner may request a new RN for the same new object, meaning an accommodation with no `facility_id`. The form is prefilled from `GET /api/nias/registrations/{rn}/ponovni-zahtjev` (owner = `EffectiveOibResolver`) or `GET /api/lessor/registrations/{rn}/ponovni-zahtjev` (owner = `lessorId`). The prefill carries the object data, the GO declarations (`building` … `host`, named as in the request body) and the active decision summary (read without the BLOB). For a legal-entity owner the snapshot contact is omitted, because it belongs to the former representative. The submission carries `prethodniRb` (format `^HR\d{18}$`, otherwise 400). One pure rule, `ReissueService.eligibility`, drives the prefill, the submission (checked before the GO pipeline) and `ponovniZahtjevDo` on both RN lists:
+
+- the RN must be owned by the caller; otherwise 404 `REISSUE_NOT_FOUND`, the same response as for an unknown RN;
+- it must be `WITHDRAWN`; otherwise 409 `REISSUE_NOT_WITHDRAWN`;
+- neither its accommodation nor its active decision may have a `facility_id`; otherwise 409 `REISSUE_NOT_NEW_FACILITY`;
+- `validTo` must be known; otherwise 409 `REISSUE_UNKNOWN_WITHDRAWAL_DATE`;
+- `validTo + n months >= today`; otherwise 410 `REISSUE_EXPIRED`;
+- no accommodation may already have it as `previous_rn`; otherwise 409 `REISSUE_ALREADY_USED`. Only the newest RN in a chain can be reused.
+
+Sending `prethodniRb` together with `facilityId` is 400. The race between two concurrent submissions is closed by the partial UNIQUE index `uq_accommodation_previous_rn` (changeset 136). The accommodation is flushed on save and a violation is mapped to 409 `REISSUE_ALREADY_USED` (`GlobalExceptionHandler` does the same as a backstop). A SUBMITTED or VERIFIED categorization decision is copied to the new RN in the issuing transaction **only for the same object** (`ReissueService.isSameObject`: same county by `CountyNames.key`, municipality, settlement, street and house number, same type, and no more beds than before). The copy keeps the status, gets `uploadedAt` = now and `source_decision_id` = old id. `RegistrationResponse.rjesenjePreneseno` tells the FE whether to ask for an upload. A carried-over source decision is hidden from the internal review queue (`findForReview*`). TODO: confirm with the client whether re-request is also allowed after an official withdrawal (`RnService.withdraw`). Today both kinds of withdrawal are treated the same. eTurizam objects are not covered here: after a withdrawal their facility list offers "Zatraži RB" with an eTurizam prefill (#120).
+
 ### State machines
 There are two separate state machines:
 

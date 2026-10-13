@@ -89,7 +89,7 @@ class RegistrationServiceContactTest {
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 eventPublisher,
-                mock(SubmissionDraftService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class));
 
         when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));
