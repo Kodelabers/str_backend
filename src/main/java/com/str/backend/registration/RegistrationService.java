@@ -195,8 +195,9 @@ public class RegistrationService {
 
     /**
      * Ponovni zahtjev nakon opoziva (T15): kad zahtjev nosi {@code prethodniRb}, svi uvjeti iz
-     * {@link ReissueService} provjeravaju se ovdje, prije GO pipelinea i bilo kakve pohrane, a redak
-     * povučenog RB-a ostaje zaključan do kraja transakcije. Neispravan RB je 404/409/410, nikad tihi
+     * {@link ReissueService} provjeravaju se ovdje, prije GO pipelinea i bilo kakve pohrane. Utrku dviju
+     * predaja s istim povučenim RB-om zatvara parcijalni UNIQUE indeks na {@code previous_rn}
+     * (changeset 136, u {@code commitRegistration} → 409). Neispravan RB je 404/409/410, nikad tihi
      * prolaz kao običan novi zahtjev. Uz {@code facilityId} je 400 — eTurizam objekt nakon
      * povlačenja ima svoj put (popis objekata), a ovaj je samo za nove objekte.
      *
