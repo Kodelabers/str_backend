@@ -4,6 +4,7 @@ import com.str.backend.captcha.CaptchaException;
 import com.str.backend.auth.nias.ActingSubjectChangedException;
 import com.str.backend.auth.nias.ActingSubjectOptionsUnavailableException;
 import com.str.backend.auth.nias.ActingSubjectRateLimitException;
+import com.str.backend.registration.ReissueService;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -28,6 +29,7 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -63,7 +65,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
-        return build(HttpStatus.NOT_FOUND, resolve(ex.getMessage()), null);
+        return build(HttpStatus.NOT_FOUND, resolve(ex.getMessage()),
+                ex.getCode() == null ? null : Map.of("code", ex.getCode()));
     }
 
     /**
@@ -127,6 +130,19 @@ public class GlobalExceptionHandler {
                         resolve("error.eovlastenja.rateLimit", ex.retryAfterSeconds()), details, Instant.now()));
     }
 
+    /**
+     * Adresa nije povezan lanac registra ({@code AddressHierarchyValidator}). {@code details.code}
+     * je {@code ADDRESS_INCONSISTENT} ili {@code ADDRESS_INCOMPLETE}, {@code details.field} polje
+     * zahtjeva na kojem se lanac prekida.
+     */
+    @ExceptionHandler(AddressHierarchyException.class)
+    public ResponseEntity<ErrorResponse> handleAddressHierarchy(AddressHierarchyException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("code", ex.getCode().name());
+        details.put("field", ex.getField());
+        return build(HttpStatus.BAD_REQUEST, resolve(ex.getMessage()), details);
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusiness(BusinessException ex) {
         return build(HttpStatus.BAD_REQUEST, resolve(ex.getMessage()), null);
@@ -163,6 +179,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex) {
         return build(HttpStatus.CONFLICT, resolve(ex.getMessage()), Map.of("code", ex.getCode()));
+    }
+
+    @ExceptionHandler(GoneException.class)
+    public ResponseEntity<ErrorResponse> handleGone(GoneException ex) {
+        return build(HttpStatus.GONE, resolve(ex.getMessage()), Map.of("code", ex.getCode()));
     }
 
     @ExceptionHandler(ExternalRegistryException.class)
@@ -239,6 +260,12 @@ public class GlobalExceptionHandler {
         }
 
         log.warn("data_integrity_duplicate constraint={}", constraint);
+        // Isti povučeni RB iskorišten dvaput (utrka dviju predaja, T15): frontend treba isti kod kao
+        // kad to provjera prije GO pipelinea uhvati, ne generički sukob.
+        if (constraint != null && constraint.toLowerCase(Locale.ROOT).contains(ReissueService.PREVIOUS_RN_INDEX)) {
+            return build(HttpStatus.CONFLICT, resolve("error.reissue.alreadyUsed"),
+                    Map.of("code", ReissueService.ALREADY_USED));
+        }
         // `code` prati dogovor s frontendom: na 409 se prvo čita details.code (v. DUPLICATE_LOCATION),
         // pa bez njega fronta ne može razlikovati ovaj sukob od ostalih.
         return build(HttpStatus.CONFLICT, resolve("error.data.conflict"),

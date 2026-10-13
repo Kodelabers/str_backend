@@ -422,6 +422,35 @@ class NiasFacilityServiceTest {
         assertThat(bezEturizma.claim(OIB, "153049").zahtjevPromjenaUrl()).isNull();
     }
 
+    /**
+     * T7: neverificirani objekt se ne preusmjerava na TuStart „Zahtjev za promjenu podataka" —
+     * claim mu ne vraća adresu ni kad bi se dala složiti, pa ni neusklađen frontend ne nudi
+     * tekst verificiranog objekta.
+     */
+    @Test
+    void claim_omitsChangeRequestUrl_forUnverifiedFacility() {
+        FacilityOwnershipRow row = activeOwnRow();
+        when(row.getVerified()).thenReturn(false);
+        when(row.getDocumentId()).thenReturn(892408L);
+        when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
+
+        FacilityClaimResponse claim = service.claim(OIB, "153049");
+
+        assertThat(claim.zahtjevPromjenaUrl()).isNull();
+        assertThat(claim.verificiran()).isFalse();
+    }
+
+    /** Nepoznato stanje verifikacije (zapis bez autora) tretira se kao verificiran objekt. */
+    @Test
+    void claim_returnsChangeRequestUrl_whenVerifiedIsUnknown() {
+        FacilityOwnershipRow row = activeOwnRow();
+        when(row.getVerified()).thenReturn(null);
+        when(row.getDocumentId()).thenReturn(892408L);
+        when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
+
+        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isNotNull();
+    }
+
     /** Šifrarnik se ne mijenja: id se čita jednom, ne pri svakom claimu. */
     @Test
     void claim_readsChangeRequestTypeIdOnce() {
@@ -458,6 +487,8 @@ class NiasFacilityServiceTest {
         when(row.getActive()).thenReturn(true);
         when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
         when(row.getCurrent()).thenReturn(true);
+        // Mockito bi za Boolean vratio false, tj. neverificiran objekt — tipičan objekt je verificiran
+        when(row.getVerified()).thenReturn(true);
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
         return row;
     }

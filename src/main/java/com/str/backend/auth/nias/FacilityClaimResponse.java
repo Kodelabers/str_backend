@@ -49,8 +49,9 @@ public record FacilityClaimResponse(
         /**
          * Adresa eTurizmova obrasca „Zahtjev za promjenu podataka" za ovaj objekt
          * ({@code facility.document_id} + id šifre {@code DST_Z_PROMJ_POD}), na okolini iz
-         * {@code app.eturizam.external-base-url}. {@code null} kad se ne može složiti — frontend
-         * tada ne nudi kvačicu „podaci iz registra nisu točni".
+         * {@code app.eturizam.external-base-url}. {@code null} kad se ne može složiti i uvijek za
+         * neverificirani objekt ({@code verificiran == false}, T7: ne preusmjerava se na TuStart) —
+         * frontend tada ne nudi preusmjeravanje na zahtjev za promjenu podataka.
          */
         String zahtjevPromjenaUrl,
         /**

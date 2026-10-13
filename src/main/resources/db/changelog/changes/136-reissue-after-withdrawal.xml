@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        T15: ponovni zahtjev za RB novog objekta nakon povlačenja (opoziva).
+
+        accommodation.previous_rn — povučeni RB istog objekta iz kojeg je zahtjev predpopunjen i
+        čiji se podaci preuzimaju. Upisuje se samo kad je ponovni zahtjev prošao provjeru
+        (ReissueService). Parcijalni UNIQUE indeks je jamstvo da se jedan povučeni RB iskoristi
+        najviše jednom: servis to provjerava prije GO pipelinea (lijepa greška), a indeks zatvara
+        utrku dviju istodobnih predaja — prekršaj se mapira na 409 REISSUE_ALREADY_USED
+        (RegistrationService, GlobalExceptionHandler), ne na generički DATA_CONFLICT.
+
+        categorization_decision.source_decision_id — rješenje iz kojeg je ovo preneseno na novi RB
+        pri ponovnom izdavanju. Kopija ima vlastitu datoteku, pa se izvor smije obrisati po isteku
+        retencije (čl. 5. st. 5, WithdrawnRnRetentionJob faza 2); veza tada namjerno ostaje viseća.
+
+        Oba stupca su namjerno bez FK-a: povučeni RB i njegovo rješenje su kandidati za brisanje
+        po isteku retencije, a veza je samo povijesni trag.
+    -->
+    <changeSet id="136-reissue-after-withdrawal" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="accommodation">
+            <column name="previous_rn" type="VARCHAR(20)"
+                    remarks="Povučeni RB istog objekta čiji su podaci preuzeti u ovaj zahtjev (T15); NULL inače">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <sql>
+            CREATE UNIQUE INDEX uq_accommodation_previous_rn
+                ON str_rn.accommodation (previous_rn)
+                WHERE previous_rn IS NOT NULL;
+        </sql>
+
+        <addColumn schemaName="str_rn" tableName="categorization_decision">
+            <column name="source_decision_id" type="UUID"
+                    remarks="Rješenje iz kojeg je ovo preneseno na novi RB pri ponovnom izdavanju (T15); NULL inače">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <createIndex schemaName="str_rn" tableName="categorization_decision"
+                     indexName="idx_categorization_decision_source">
+            <column name="source_decision_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex schemaName="str_rn" tableName="categorization_decision"
+                       indexName="idx_categorization_decision_source"/>
+            <dropColumn schemaName="str_rn" tableName="categorization_decision" columnName="source_decision_id"/>
+            <sql>DROP INDEX IF EXISTS str_rn.uq_accommodation_previous_rn;</sql>
+            <dropColumn schemaName="str_rn" tableName="accommodation" columnName="previous_rn"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

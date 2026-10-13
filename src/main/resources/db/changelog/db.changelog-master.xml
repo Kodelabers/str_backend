@@ -237,4 +237,7 @@
     <!-- T8, lokalni mock: zastupnik tvrtke na dokumentu i mock tvrtka iz e-Ovlaštenja. -->
     <include file="db/changelog/changes/135-str-document-representative-local.xml"/>
 
+    <!-- T15: ponovni zahtjev za RB novog objekta nakon povlačenja — veza na povučeni RB i preneseno rješenje. -->
+    <include file="db/changelog/changes/136-reissue-after-withdrawal.xml"/>
+
 </databaseChangeLog>

@@ -14,6 +14,13 @@ public interface AccommodationRepository extends JpaRepository<AccommodationEnti
 
     Optional<AccommodationEntity> findByCoreObjectId(UUID coreObjectId);
 
+    /**
+     * Je li povučeni RB već iskorišten za ponovni zahtjev (T15) — postoji li smještaj koji ga nosi
+     * kao {@code previous_rn}, bez obzira na stanje RB-a tog smještaja.
+     */
+    @Transactional(readOnly = true)
+    boolean existsByPreviousRn(String previousRn);
+
     /** STR statistics: accommodation counts grouped by county name. */
     @Transactional(readOnly = true)
     @Query("SELECT a.county AS county, COUNT(a) AS count FROM AccommodationEntity a GROUP BY a.county")

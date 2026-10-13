@@ -20,6 +20,9 @@ import com.str.backend.lessor.LessorWithdrawRequest;
 import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.registration.ReissueService;
+import com.str.backend.registration.RnOwner;
+import com.str.backend.registration.dto.ReissuePrefillResponse;
 import com.str.backend.str.RnFacilityVerification;
 import com.str.backend.str.StrSubjectRepository;
 import com.str.backend.rn.RnRepository;
@@ -67,6 +70,7 @@ public class NiasController {
     private final ChangeRequestFilingService changeRequestFilingService;
     private final StrSubjectRepository strSubjectRepository;
     private final RnFacilityVerification rnFacilityVerification;
+    private final ReissueService reissueService;
 
     public NiasController(NiasOibResolver oibResolver,
                           RnRepository rnRepository,
@@ -84,7 +88,8 @@ public class NiasController {
                           NavigationBarService navigationBarService,
                           ChangeRequestFilingService changeRequestFilingService,
                           StrSubjectRepository strSubjectRepository,
-                          RnFacilityVerification rnFacilityVerification) {
+                          RnFacilityVerification rnFacilityVerification,
+                          ReissueService reissueService) {
         this.oibResolver = oibResolver;
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
@@ -102,6 +107,7 @@ public class NiasController {
         this.changeRequestFilingService = changeRequestFilingService;
         this.strSubjectRepository = strSubjectRepository;
         this.rnFacilityVerification = rnFacilityVerification;
+        this.reissueService = reissueService;
     }
 
     /**
@@ -228,12 +234,28 @@ public class NiasController {
      * (vidi {@link NiasOibResolver}); seedani su 3 RB-a u changesetu 048. Na dev/cdu
      * bez prave NIAS sesije vraća 401, a kad je sesija aktivna vraća praznu listu
      * dok stvarni podaci ne postanu dostupni. Svaki redak nosi i je li objekt uz RB danas
-     * verificiran u eTurizmu ({@link RnFacilityVerification}).
+     * verificiran u eTurizmu ({@link RnFacilityVerification}) i, za povučeni RB novog objekta, do
+     * kada se smije podnijeti ponovni zahtjev s preuzetim podacima ({@code ponovniZahtjevDo},
+     * {@link ReissueService}).
      */
     @GetMapping("/registrations")
     public List<LessorRnSummaryDto> registrations(Authentication authentication) {
         String oib = resolveOib(authentication);
-        return rnFacilityVerification.withFacilityVerified(rnRepository.findByLessorOib(oib));
+        return reissueService.withReissueDeadlines(
+                rnFacilityVerification.withFacilityVerified(rnRepository.findByLessorOib(oib)));
+    }
+
+    /**
+     * Predpopuna obrasca za ponovni zahtjev za RB novog objekta nakon povlačenja (T15): podaci
+     * povučenog RB-a i rješenje o kategorizaciji koje se prenosi. Vlasnik je efektivni OIB (tvrtka
+     * u čije ime se djeluje, inače osoba). Samo čitanje — zahtjev se predaje na
+     * {@code POST /api/generateRegistrationNumber} s {@code prethodniRb}. 404 nepostojeći ili tuđi
+     * RB, 409 {@code REISSUE_NOT_WITHDRAWN} / {@code REISSUE_NOT_NEW_FACILITY} /
+     * {@code REISSUE_ALREADY_USED}, 410 {@code REISSUE_EXPIRED}.
+     */
+    @GetMapping("/registrations/{rn}/ponovni-zahtjev")
+    public ReissuePrefillResponse reissuePrefill(@PathVariable String rn, Authentication authentication) {
+        return reissueService.prefill(rn, RnOwner.byOib(resolveOib(authentication)));
     }
 
     /**

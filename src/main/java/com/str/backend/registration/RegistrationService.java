@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyNames;
 import com.str.backend.address.CountyEntity;
@@ -42,6 +43,7 @@ import com.str.backend.validation.ValidationContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,8 +70,10 @@ public class RegistrationService {
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final FacilityClaimVerifier facilityClaimVerifier;
     private final CadastreResolver cadastreResolver;
+    private final AddressHierarchyValidator addressHierarchyValidator;
     private final ApplicationEventPublisher eventPublisher;
     private final SubmissionDraftService submissionDraftService;
+    private final ReissueService reissueService;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -84,8 +88,10 @@ public class RegistrationService {
                                AccommodationTypeRepository accommodationTypeRepository,
                                FacilityClaimVerifier facilityClaimVerifier,
                                CadastreResolver cadastreResolver,
+                               AddressHierarchyValidator addressHierarchyValidator,
                                ApplicationEventPublisher eventPublisher,
-                               SubmissionDraftService submissionDraftService) {
+                               SubmissionDraftService submissionDraftService,
+                               ReissueService reissueService) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -99,8 +105,10 @@ public class RegistrationService {
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.facilityClaimVerifier = facilityClaimVerifier;
         this.cadastreResolver = cadastreResolver;
+        this.addressHierarchyValidator = addressHierarchyValidator;
         this.eventPublisher = eventPublisher;
         this.submissionDraftService = submissionDraftService;
+        this.reissueService = reissueService;
     }
 
     /** Bez NIAS assertiona (local/mock, testovi): identitet je samo OIB iz zahtjeva. */
@@ -130,7 +138,10 @@ public class RegistrationService {
         if (legalEntity != null && !legalEntity.legalOib().equals(req.oib())) {
             throw new IllegalArgumentException("OIB zahtjeva nije OIB pravne osobe u čije ime se djeluje");
         }
+        // Vlasnik je req.oib(): kontroler ga je usporedio sa sesijom (efektivni OIB — tvrtka ili osoba).
+        String previousRn = requireReissue(req, RnOwner.byOib(req.oib()));
         AccommodationEntity accommodation = buildAccommodation(req, countyName(req.countyId()));
+        markReissue(accommodation, previousRn);
         verifyAndCompleteFacility(req.oib(), accommodation);
         requireMaxBeds(accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
@@ -167,7 +178,9 @@ public class RegistrationService {
         LessorEntity lessor = lessorRepository.findById(lessorId)
                 .orElseThrow(() -> new ResourceNotFoundException("lessor not found: " + lessorId));
 
+        String previousRn = requireReissue(req, RnOwner.byLessor(lessorId));
         AccommodationEntity accommodation = buildAccommodation(req, countyName);
+        markReissue(accommodation, previousRn);
         verifyAndCompleteFacility(lessor.getLessorOib(), accommodation);
         requireMaxBeds(accommodation);
         checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
@@ -178,6 +191,34 @@ public class RegistrationService {
         runValidation(accommodation, lessor);
 
         return commitRegistration(lessor, accommodation);
+    }
+
+    /**
+     * Ponovni zahtjev nakon opoziva (T15): kad zahtjev nosi {@code prethodniRb}, svi uvjeti iz
+     * {@link ReissueService} provjeravaju se ovdje, prije GO pipelinea i bilo kakve pohrane. Utrku dviju
+     * predaja s istim povučenim RB-om zatvara parcijalni UNIQUE indeks na {@code previous_rn}
+     * (changeset 136, u {@code commitRegistration} → 409). Neispravan RB je 404/409/410, nikad tihi
+     * prolaz kao običan novi zahtjev. Uz {@code facilityId} je 400 — eTurizam objekt nakon
+     * povlačenja ima svoj put (popis objekata), a ovaj je samo za nove objekte.
+     *
+     * @return povučeni RB ili {@code null} kad zahtjev nije ponovni
+     */
+    private String requireReissue(AccommodationRequest req, RnOwner owner) {
+        String previousRn = trimmed(req.prethodniRb());
+        if (previousRn == null) {
+            return null;
+        }
+        if (!isBlank(req.facilityId())) {
+            throw new BusinessException("error.reissue.withFacility");
+        }
+        reissueService.requireReusableForSubmission(previousRn, owner);
+        return previousRn;
+    }
+
+    private static void markReissue(AccommodationEntity accommodation, String previousRn) {
+        if (previousRn != null) {
+            accommodation.markReissueOf(previousRn);
+        }
     }
 
     /**
@@ -223,8 +264,11 @@ public class RegistrationService {
         }
         String county = p.zupanijaId() == null ? null
                 : countyRepository.findById(p.zupanijaId()).map(CountyEntity::getName).orElse(null);
+        // Id-evi razina idu dalje: kad je adresa potrebna, SubjectProfileService je provjerava kao
+        // lanac adresnog registra i nazive uzima iz njega (AddressHierarchyValidator).
         return new EnteredAddress(trimmed(p.ulica()), trimmed(p.kucniBroj()), trimmed(p.postanskiBroj()),
-                trimmed(p.mjesto()), trimmed(p.opcina()), county, trimmed(p.mbs()));
+                trimmed(p.mjesto()), trimmed(p.opcina()), county, trimmed(p.mbs()),
+                p.zupanijaId(), p.opcinaId(), p.naseljeId(), p.ulicaId(), p.kucniBrojId());
     }
 
     /** Prazan string iz forme je „nije upisano", ne vrijednost — ne spremamo ga kao takvog. */
@@ -364,6 +408,10 @@ public class RegistrationService {
     }
 
     AccommodationEntity buildAccommodation(AccommodationRequest req, String countyName) {
+        // T4: poslane razine adrese moraju biti povezan lanac registra (400 ADDRESS_INCONSISTENT).
+        // Objekt iz eTurizma (facilityId) adresu nosi iz str.* i id-eve ne mora imati.
+        addressHierarchyValidator.verifyFacilityAddress(req.countyId(), req.cityId(), req.settlementId(),
+                req.kucniBrojId(), !isBlank(req.facilityId()));
         String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName);
         String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName);
         // Obrazac ima jedno polje, maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2),
@@ -451,9 +499,18 @@ public class RegistrationService {
         submissionRepository.save(submission);
 
         accommodation.linkToSubmission(submission.getSubmissionId());
-        accommodationRepository.save(accommodation);
+        saveAccommodation(accommodation);
 
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
+
+        // Ponovni zahtjev nakon opoziva: predano ili potvrđeno rješenje prelazi na novi RB u istoj
+        // transakciji, ali samo za isti objekt — ako izdavanje padne, ne ostaje ni kopija.
+        boolean decisionCarried = false;
+        if (accommodation.getPreviousRn() != null) {
+            decisionCarried = reissueService.carryOverDecision(accommodation.getPreviousRn(), rn.getRn(), accommodation);
+            log.info("registration_reissue previousRn={} rn={} rjesenjePreneseno={}",
+                    accommodation.getPreviousRn(), rn.getRn(), decisionCarried);
+        }
 
         // Objekt je dobio RB, pa njegovi nacrti više nemaju svrhu — svi, i slučajni duplikati.
         // Ista transakcija: odbijen ili poništen zahtjev nacrte ostavlja.
@@ -468,7 +525,28 @@ public class RegistrationService {
 
         log.info("registration_success lessor={} submission={} rn={}",
                 lessor.getLessorId(), submission.getSubmissionId(), rn.getRn());
-        return new RegistrationResponse(rn.getRn(), submission.getSubmissionId());
+        return new RegistrationResponse(rn.getRn(), submission.getSubmissionId(), decisionCarried);
+    }
+
+    /**
+     * Ponovni zahtjev (T15) se odmah flusha: parcijalni UNIQUE indeks na {@code previous_rn} zatvara
+     * utrku dviju predaja s istim povučenim RB-om, a bez flusha bi prekršaj stigao tek pri commitu,
+     * izvan ove metode. Ovako ga se ovdje prevodi u 409 {@code REISSUE_ALREADY_USED};
+     * {@code GlobalExceptionHandler} isto radi kao rezerva.
+     */
+    private void saveAccommodation(AccommodationEntity accommodation) {
+        if (accommodation.getPreviousRn() == null) {
+            accommodationRepository.save(accommodation);
+            return;
+        }
+        try {
+            accommodationRepository.saveAndFlush(accommodation);
+        } catch (DataIntegrityViolationException e) {
+            if (ReissueService.isPreviousRnConflict(e)) {
+                throw ReissueService.alreadyUsed();
+            }
+            throw e;
+        }
     }
 
     /** {@code null} kad id nije poslan — postojeći eTurizam objekt kojem eTurizam to ne zna. */

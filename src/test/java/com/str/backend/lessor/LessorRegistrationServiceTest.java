@@ -2,6 +2,7 @@ package com.str.backend.lessor;
 
 import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
+import com.str.backend.address.NonEuCountryPolicy;
 import com.str.backend.email.event.RegistrationSubmittedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,8 +48,12 @@ class LessorRegistrationServiceTest {
         when(activeCountry.isActive()).thenReturn(true);
         when(countryRepository.findById(anyLong())).thenReturn(Optional.of(activeCountry));
         eventPublisher = mock(ApplicationEventPublisher.class);
-        service = new LessorRegistrationService(
-                lessorRepository, documentRepository, passwordEncoder, countryRepository, eventPublisher);
+        service = serviceWith(new NonEuCountryPolicy());
+    }
+
+    private LessorRegistrationService serviceWith(NonEuCountryPolicy policy) {
+        return new LessorRegistrationService(
+                lessorRepository, documentRepository, passwordEncoder, countryRepository, policy, eventPublisher);
     }
 
     /** Pristupni podaci idu mailom odmah po registraciji, s lozinkom koju je korisnik upisao. */
@@ -360,6 +366,63 @@ class LessorRegistrationServiceTest {
         assertThat(saved.getLegalEntityCountryId()).isNull();
         assertThat(saved.getLegalEntityCity()).isNull();
         assertThat(saved.getLegalEntityRegistrationNumber()).isNull();
+    }
+
+    // --- EU članice bez eIDAS-a: iznimka vrijedi samo za prebivalište ("RO" je testni podatak) ---
+
+    @Test
+    void register_residenceInEuStateWithoutEidas_isAccepted() throws IOException {
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
+        stubCountry(40L, "RO");
+        LessorRegistrationRequest req = validRequest();
+        req.setZemljaPrebivalistaId(40);
+
+        serviceWith(NonEuCountryPolicy.withEuWithoutEidas(Set.of("RO"))).register(req);
+
+        verify(lessorRepository).save(any(LessorEntity.class));
+    }
+
+    @Test
+    void register_residenceInOtherEuState_stillRejectedWithException() {
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
+        stubCountry(11L, "DE");
+        LessorRegistrationRequest req = validRequest();
+        req.setZemljaPrebivalistaId(11);
+
+        assertThatThrownBy(() -> serviceWith(NonEuCountryPolicy.withEuWithoutEidas(Set.of("RO"))).register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("lessor.country.invalid");
+
+        verify(lessorRepository, never()).save(any());
+    }
+
+    /** Sjedište pravne osobe ne koristi eIDAS iznimku — i dalje sve EU/EFTA države ispadaju. */
+    @Test
+    void register_legalEntitySeatInEuStateWithoutEidas_throws422_beforeAnyWrite() {
+        when(lessorRepository.findByUsername("john@example.com")).thenReturn(Optional.empty());
+        stubCountry(40L, "RO");
+        LessorRegistrationRequest req = validRequest();   // residence country (1) stays valid via default stub
+        req.setVlasnikJePravnaOsoba(true);
+        req.setNazivPravneOsobe("Acme SRL");
+        req.setDrzavaSjedistaId(40);
+        req.setGradSjedista("Bucuresti");
+        req.setMaticniBrojPravneOsobe("J40/1234/2020");
+
+        assertThatThrownBy(() -> serviceWith(NonEuCountryPolicy.withEuWithoutEidas(Set.of("RO"))).register(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("lessor.legalEntity.country.invalid")
+                .extracting(e -> ((ResponseStatusException) e).getStatusCode().value())
+                .isEqualTo(422);
+
+        verify(lessorRepository, never()).save(any());
+        verify(documentRepository, never()).save(any());
+    }
+
+    private void stubCountry(long id, String iso2) {
+        CountryEntity country = mock(CountryEntity.class);
+        when(country.isActive()).thenReturn(true);
+        when(country.getIso2Alpha()).thenReturn(iso2);
+        when(countryRepository.findById(id)).thenReturn(Optional.of(country));
     }
 
     private LessorRegistrationRequest validRequest() {

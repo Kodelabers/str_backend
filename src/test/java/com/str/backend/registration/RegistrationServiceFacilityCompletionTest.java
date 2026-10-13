@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
@@ -79,8 +80,9 @@ class RegistrationServiceFacilityCompletionTest {
                 orchestrator, rnService, mock(RnRepository.class), subjectProfileService,
                 countyRepository, municipalityRepository, settlementRepository,
                 typeRepository, verifier,
-                new CadastreResolver(mock(HouseNumberRepository.class)), mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class));
+                new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
+                mock(ApplicationEventPublisher.class),
+                mock(SubmissionDraftService.class), mock(ReissueService.class));
 
         when(orchestrator.execute(any(ValidationContext.class))).thenReturn(PipelineResult.passed());
         RnEntity issued = mock(RnEntity.class);

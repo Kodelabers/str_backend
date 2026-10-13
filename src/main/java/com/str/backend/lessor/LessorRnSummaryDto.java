@@ -21,6 +21,11 @@ import java.time.LocalDate;
  * {@code null} kad eTurizam nije dostupan. Računa ga samo NIAS popis — non-EU iznajmljivač nema
  * eTurizam objekata, pa je ondje {@code null}.
  * {@code facilityId} služi samo tom izračunu i ne ide u odgovor.
+ *
+ * <p>{@code ponovniZahtjevDo} je zadnji dan do kojeg se za povučeni RB novog objekta smije podnijeti
+ * ponovni zahtjev s preuzetim podacima (T15, {@code ReissueService}); {@code null} kad to nije
+ * moguće — RB nije povučen, objekt je iz eTurizma, rok je istekao ili je RB već iskorišten.
+ * Računa se na oba popisa (NIAS i non-EU) nakon upita ({@link #withPonovniZahtjevDo}).
  */
 public record LessorRnSummaryDto(
         String rn,
@@ -34,7 +39,8 @@ public record LessorRnSummaryDto(
         boolean categorizationRequired,
         CategorizationDecisionStatus categorizationStatus,
         @JsonIgnore String facilityId,
-        Boolean facilityVerified
+        Boolean facilityVerified,
+        LocalDate ponovniZahtjevDo
 ) {
 
     /** NIAS popis — {@code facilityVerified} se dopunjava nakon upita ({@link #withFacilityVerified}). */
@@ -45,7 +51,7 @@ public record LessorRnSummaryDto(
                               CategorizationDecisionStatus categorizationStatus,
                               String facilityId) {
         this(rn, status, issueDate, accommodationName, street, streetNumber, city,
-                accommodationTypeName, categorizationRequired, categorizationStatus, facilityId, null);
+                accommodationTypeName, categorizationRequired, categorizationStatus, facilityId, null, null);
     }
 
     /** Za upite koji stanje rješenja ne računaju (non-EU popis). */
@@ -53,12 +59,18 @@ public record LessorRnSummaryDto(
                               String accommodationName, String street, String streetNumber,
                               String city, String accommodationTypeName) {
         this(rn, status, issueDate, accommodationName, street, streetNumber, city,
-                accommodationTypeName, false, null, null, null);
+                accommodationTypeName, false, null, null, null, null);
     }
 
     public LessorRnSummaryDto withFacilityVerified(boolean verified) {
         return new LessorRnSummaryDto(rn, status, issueDate, accommodationName, street, streetNumber,
                 city, accommodationTypeName, categorizationRequired, categorizationStatus, facilityId,
-                verified);
+                verified, ponovniZahtjevDo);
+    }
+
+    public LessorRnSummaryDto withPonovniZahtjevDo(LocalDate until) {
+        return new LessorRnSummaryDto(rn, status, issueDate, accommodationName, street, streetNumber,
+                city, accommodationTypeName, categorizationRequired, categorizationStatus, facilityId,
+                facilityVerified, until);
     }
 }

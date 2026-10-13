@@ -4,6 +4,9 @@ import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.captcha.AltchaService;
+import com.str.backend.registration.ReissueService;
+import com.str.backend.registration.RnOwner;
+import com.str.backend.registration.dto.ReissuePrefillResponse;
 import com.str.backend.rn.RnRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -39,6 +42,7 @@ public class LessorController {
     private final RnRepository rnRepository;
     private final LessorRnActionService rnActionService;
     private final AltchaService altchaService;
+    private final ReissueService reissueService;
 
     public LessorController(LessorRegistrationService registrationService,
                             LessorRepository lessorRepository,
@@ -46,7 +50,8 @@ public class LessorController {
                             CountryRepository countryRepository,
                             RnRepository rnRepository,
                             LessorRnActionService rnActionService,
-                            AltchaService altchaService) {
+                            AltchaService altchaService,
+                            ReissueService reissueService) {
         this.registrationService = registrationService;
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
@@ -54,6 +59,7 @@ public class LessorController {
         this.rnRepository = rnRepository;
         this.rnActionService = rnActionService;
         this.altchaService = altchaService;
+        this.reissueService = reissueService;
     }
 
     @PostMapping(value = "/registerLessor", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -105,10 +111,22 @@ public class LessorController {
         );
     }
 
+    /** Popis RB-ova non-EU iznajmljivača, s rokom ponovnog zahtjeva ({@code ponovniZahtjevDo}). */
     @GetMapping("/lessor/registrations")
     public List<LessorRnSummaryDto> getRegistrations(Authentication authentication) {
         UUID lessorId = extractLessorId(authentication);
-        return rnRepository.findByLessorId(lessorId);
+        return reissueService.withReissueDeadlines(rnRepository.findByLessorId(lessorId));
+    }
+
+    /**
+     * Predpopuna obrasca za ponovni zahtjev za RB novog objekta nakon povlačenja (T15) — isto kao
+     * NIAS {@code GET /api/nias/registrations/{rn}/ponovni-zahtjev}, a vlasnik je iznajmljivač iz
+     * prijave ({@code lessorId}). Zahtjev se predaje na
+     * {@code POST /api/generateRegistrationNumberExternal} s {@code prethodniRb}.
+     */
+    @GetMapping("/lessor/registrations/{rn}/ponovni-zahtjev")
+    public ReissuePrefillResponse reissuePrefill(@PathVariable String rn, Authentication authentication) {
+        return reissueService.prefill(rn, RnOwner.byLessor(extractLessorId(authentication)));
     }
 
     /** STR-1.3-001: lessor revokes (opoziv) their own RN → WITHDRAWN. Owner-only. */

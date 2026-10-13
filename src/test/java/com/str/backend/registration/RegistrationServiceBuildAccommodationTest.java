@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.address.HouseNumberRepository;
@@ -10,6 +11,7 @@ import com.str.backend.address.SettlementRepository;
 import com.str.backend.draft.SubmissionDraftService;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
+import com.str.backend.exception.AddressHierarchyException;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lookup.AccommodationTypeEntity;
@@ -31,8 +33,14 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RegistrationServiceBuildAccommodationTest {
@@ -40,6 +48,7 @@ class RegistrationServiceBuildAccommodationTest {
     private final AccommodationTypeRepository accommodationTypeRepository =
             mock(AccommodationTypeRepository.class);
     private final HouseNumberRepository houseNumberRepository = mock(HouseNumberRepository.class);
+    private final AddressHierarchyValidator addressValidator = mock(AddressHierarchyValidator.class);
 
     /** Kućni broj iz registra na koji zahtjev pokazuje — Marulićeva 5, Split. */
     private static final long HOUSE_NUMBER_ID = 10051L;
@@ -66,8 +75,9 @@ class RegistrationServiceBuildAccommodationTest {
                 accommodationTypeRepository,
                 mock(FacilityClaimVerifier.class),
                 new CadastreResolver(houseNumberRepository),
+                addressValidator,
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class));
     }
 
     private static HouseNumberRepository.CadastreRow registryRow(String broj, String ulica,
@@ -237,6 +247,44 @@ class RegistrationServiceBuildAccommodationTest {
         assertThat(e.getMaxGuests()).isNull();
         assertThat(e.getHouseNumberCode()).isNull();
         assertThat(e.getFacilityId()).isEqualTo("1448035");
+    }
+
+    /** T4: lanac adrese se provjerava za svaki zahtjev; objekt iz eTurizma je označen kao postojeći. */
+    @Test
+    void verifies_address_chain_for_existing_facility() {
+        newService().buildAccommodation(fullRequest(Boolean.TRUE), "Splitsko-dalmatinska");
+
+        verify(addressValidator).verifyFacilityAddress(7L, "Split", "Meje", HOUSE_NUMBER_ID, true);
+    }
+
+    @Test
+    void verifies_address_chain_for_new_facility() {
+        RegistrationRequest req = new RegistrationRequest(
+                "12312312316", "AP1", "1",
+                7L, "70", "700",
+                "Marulićeva", "5", HOUSE_NUMBER_ID, "21000",
+                4,
+                OfferType.PRIMARY_RESIDENCE, Offering.PART,
+                true, "3", false, true,
+                null, null, null, null,
+                null, null, null,
+                "iznajmljivac@example.com", "0991234567", null, null,
+                null);
+
+        newService().buildAccommodation(req, "Splitsko-dalmatinska");
+
+        verify(addressValidator).verifyFacilityAddress(7L, "70", "700", HOUSE_NUMBER_ID, false);
+    }
+
+    /** Nepovezana adresa se odbija prije katastra i svega ostalog. */
+    @Test
+    void inconsistent_address_chain_is_rejected() {
+        doThrow(AddressHierarchyException.inconsistent("cityId")).when(addressValidator)
+                .verifyFacilityAddress(any(), any(), any(), any(), anyBoolean());
+
+        assertThatThrownBy(() -> newService().buildAccommodation(fullRequest(Boolean.TRUE), "Splitsko-dalmatinska"))
+                .isInstanceOf(AddressHierarchyException.class);
+        verify(houseNumberRepository, never()).findCadastreById(anyLong());
     }
 
     // --- fixtures ---

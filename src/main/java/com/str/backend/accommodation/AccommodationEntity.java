@@ -45,6 +45,14 @@ public class AccommodationEntity {
     @Column(name = "facility_id", length = 64)
     @Setter private String facilityId;
 
+    /**
+     * Povučeni RB istog (novog) objekta čiji su podaci preuzeti u ovaj zahtjev — ponovni zahtjev
+     * nakon opoziva (T15, changeset 136). Postavlja ga samo {@link #markReissueOf} nakon provjere
+     * u {@code ReissueService}; po njemu se zna da je povučeni RB već iskorišten.
+     */
+    @Column(name = "previous_rn", length = 20, updatable = false)
+    private String previousRn;
+
     // Adresa i kapacitet smiju biti null samo za postojeći eTurizam objekt kojem eTurizam taj
     // podatak ne zna (changeset 127). Za novi objekt ih traži RegistrationRequest.
     @Column(name = "county", length = 128, updatable = false)
@@ -254,6 +262,17 @@ public class AccommodationEntity {
         this.consentDate = consentDate;
         this.consentWithdrawalDate = consentWithdrawalDate;
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Veže smještaj uz povučeni RB istog objekta (ponovni zahtjev nakon opoziva). Samo prije
+     * prve pohrane i samo jednom — stupac je {@code updatable = false}.
+     */
+    public void markReissueOf(String previousRn) {
+        if (this.previousRn != null) {
+            throw new IllegalStateException("Smještaj je već vezan uz povučeni RB " + this.previousRn);
+        }
+        this.previousRn = previousRn;
     }
 
     /** Called once, before first save, to bind a newly-built accommodation to its submission. */

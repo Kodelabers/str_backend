@@ -55,4 +55,10 @@ public interface AccommodationRequest {
      * vrijednost daje 400 — v. {@code CadastreResolver}.
      */
     String kcBroj();
+
+    /**
+     * Povučeni RB istog novog objekta kad je ovo ponovni zahtjev nakon opoziva (T15) — v.
+     * {@code ReissueService}. {@code null} za običan zahtjev; uz {@code facilityId} nije dopušten.
+     */
+    String prethodniRb();
 }

@@ -9,6 +9,8 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.StrFacilityRepository;
+import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -39,6 +41,8 @@ class ChangeRequestFilingServiceTest {
     private ChangeRequestFilingService service;
     private RnEntity rn;
     private AccommodationEntity accommodation;
+    private StrFacilityRepository facilityRepository;
+    private FacilityOwnershipRow facility;
 
     @BeforeEach
     void setUp() {
@@ -46,7 +50,9 @@ class ChangeRequestFilingServiceTest {
         AccommodationRepository accommodationRepository = mock(AccommodationRepository.class);
         documentService = mock(StrDocumentService.class);
         store = mock(EgopFilingStore.class);
-        service = new ChangeRequestFilingService(rnRepository, accommodationRepository, documentService, store);
+        facilityRepository = mock(StrFacilityRepository.class);
+        service = new ChangeRequestFilingService(rnRepository, accommodationRepository, documentService, store,
+                facilityRepository);
 
         rn = mock(RnEntity.class);
         when(rn.getSubmissionId()).thenReturn(submissionId);
@@ -58,6 +64,10 @@ class ChangeRequestFilingServiceTest {
         accommodation = mock(AccommodationEntity.class);
         when(accommodation.getFacilityId()).thenReturn("1448000");
         when(accommodationRepository.findById(accommodationId)).thenReturn(Optional.of(accommodation));
+
+        facility = mock(FacilityOwnershipRow.class);
+        when(facility.getVerified()).thenReturn(true);
+        when(facilityRepository.findOwnership(1448000L)).thenReturn(Optional.of(facility));
 
         when(documentService.render(any(), any(), any())).thenReturn("pdf".getBytes());
         when(store.saveAkt(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -117,6 +127,33 @@ class ChangeRequestFilingServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.changeRequest.notEturizamFacility");
         verify(store, never()).saveAkt(any());
+    }
+
+    /**
+     * T7: neverificirani objekt se ne preusmjerava na TuStart, pa ni pismeno o zahtjevu za promjenu
+     * ne nastaje — brana za izravan poziv API-ja mimo forme.
+     */
+    @Test
+    void unverifiedFacility_isRejected() {
+        when(facility.getVerified()).thenReturn(false);
+
+        assertThatThrownBy(() -> service.file(RN, OIB))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.changeRequest.notVerified");
+        verify(documentService, never()).render(any(), any(), any());
+        verify(store, never()).saveAkt(any());
+    }
+
+    /** Nepoznato stanje verifikacije (zapis bez autora ili ga eTurizam ne nađe) ne blokira. */
+    @Test
+    void unknownVerification_isTreatedAsVerified() {
+        when(facility.getVerified()).thenReturn(null);
+        service.file(RN, OIB);
+
+        when(facilityRepository.findOwnership(1448000L)).thenReturn(Optional.empty());
+        service.file(RN, OIB);
+
+        verify(store, org.mockito.Mockito.times(2)).saveAkt(any());
     }
 
     /** Vrsta nema eGOP šifru, pa ne smije u eGOP ni kad okolina isprazni blokadnu listu. */

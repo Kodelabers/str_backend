@@ -7,6 +7,9 @@ import java.util.UUID;
 /**
  * Red na internom pregledu skeniranih rješenja za nadležno tijelo. Nosi metapodatke i status,
  * ali <b>ne</b> sadržaj datoteke — sken se dohvaća zasebno preko {@code /{id}/file}.
+ *
+ * <p>{@code sourceDecisionId} je zadan kad je rješenje preneseno s povučenog RB-a na novi RB istog
+ * objekta (ponovni zahtjev nakon opoziva, T15); izvorni zapis ostaje uz povučeni RB.
  */
 public record CategorizationDecisionAdminDto(
         UUID decisionId,
@@ -26,7 +29,8 @@ public record CategorizationDecisionAdminDto(
         String facilityId,
         Instant uploadedAt,
         String verifiedBy,
-        Instant verifiedAt
+        Instant verifiedAt,
+        UUID sourceDecisionId
 ) {
 
     public static CategorizationDecisionAdminDto of(CategorizationDecisionEntity e) {
@@ -48,6 +52,7 @@ public record CategorizationDecisionAdminDto(
                 e.getFacilityId(),
                 e.getUploadedAt(),
                 e.getVerifiedBy(),
-                e.getVerifiedAt());
+                e.getVerifiedAt(),
+                e.getSourceDecisionId());
     }
 }

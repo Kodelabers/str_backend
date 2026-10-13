@@ -2,6 +2,7 @@ package com.str.backend.registration.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.Offering;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -24,6 +25,11 @@ import java.time.LocalDate;
  * naziv je često popunjivač, a ponekad nema ni kreveta. Obrazac ih tada prikazuje onemogućene,
  * a što eTurizam ne zna stiže kao {@code null}; RB se izdaje i bez toga. Što stigne, i dalje
  * provjerava {@code FacilityClaimVerifier}.
+ *
+ * <p>{@code prethodniRb}: ponovni zahtjev za novi objekt nakon povlačenja (T15) — povučeni RB istog
+ * objekta iz kojeg je obrazac predpopunjen ({@code GET /api/nias/registrations/{rn}/ponovni-zahtjev}).
+ * Backend ga provjerava prije GO pipelinea ({@code ReissueService}) i prenosi rješenje o
+ * kategorizaciji; ne smije doći zajedno s {@code facilityId} (400).
  */
 public record RegistrationRequest(
         @NotBlank @Pattern(regexp = "\\d{11}", message = "OIB mora sadržavati točno 11 znamenki") String oib,
@@ -57,8 +63,27 @@ public record RegistrationRequest(
         @Size(max = 128) String kontaktOsoba,
         @Size(max = 64) String kcBroj,
         /** Adresa / MBS podnositelja s obrasca — samo kad ih registar nema; {@code null} inače. */
-        @Valid PodnositeljUnos podnositelj
+        @Valid PodnositeljUnos podnositelj,
+        /** Povučeni RB istog novog objekta (ponovni zahtjev nakon opoziva); {@code null} inače. */
+        @Pattern(regexp = RegistrationNumber.REGEXP, message = "error.reissue.previousRn.format") String prethodniRb
 ) implements AccommodationRequest {
+
+    /** Zahtjev bez ponovnog zahtjeva nakon opoziva. */
+    public RegistrationRequest(String oib, String name, String typeId, Long countyId, String cityId,
+                               String settlementId, String street, String streetNumber, Long kucniBrojId,
+                               String postalCode, Integer maxBeds, OfferType offerType, Offering offering,
+                               Boolean building, String floor, Boolean apartments, Boolean legalized,
+                               Boolean lessorResidence, Boolean coOwnerConsent, LocalDate consentDate,
+                               LocalDate consentWithdrawalDate, Boolean host, Boolean confirmDuplicateLocation,
+                               String facilityId, String kontaktEmail, String kontaktMobitel,
+                               String kontaktTelefon, String kontaktOsoba, String kcBroj,
+                               PodnositeljUnos podnositelj) {
+        this(oib, name, typeId, countyId, cityId, settlementId, street, streetNumber, kucniBrojId,
+                postalCode, maxBeds, offerType, offering, building, floor, apartments, legalized,
+                lessorResidence, coOwnerConsent, consentDate, consentWithdrawalDate, host,
+                confirmDuplicateLocation, facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon,
+                kontaktOsoba, kcBroj, podnositelj, null);
+    }
 
     /** Zahtjev bez podataka o podnositelju s obrasca — registar ih je vratio. */
     public RegistrationRequest(String oib, String name, String typeId, Long countyId, String cityId,
@@ -73,7 +98,7 @@ public record RegistrationRequest(
                 postalCode, maxBeds, offerType, offering, building, floor, apartments, legalized,
                 lessorResidence, coOwnerConsent, consentDate, consentWithdrawalDate, host,
                 confirmDuplicateLocation, facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon,
-                kontaktOsoba, kcBroj, null);
+                kontaktOsoba, kcBroj, null, null);
     }
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {
@@ -85,7 +110,7 @@ public record RegistrationRequest(
                 orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),
                 orig.confirmDuplicateLocation(), orig.facilityId(),
                 orig.kontaktEmail(), orig.kontaktMobitel(), orig.kontaktTelefon(),
-                orig.kontaktOsoba(), orig.kcBroj(), orig.podnositelj());
+                orig.kontaktOsoba(), orig.kcBroj(), orig.podnositelj(), orig.prethodniRb());
     }
 
     /**

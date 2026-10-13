@@ -23,9 +23,19 @@ public class AddressLookupController {
         this.service = service;
     }
 
+    /**
+     * Country list for the non-EU registration form.
+     *
+     * @param namjena what the country is chosen for: {@code PREBIVALISTE} (default — country
+     *                of residence; EU states without eIDAS are offered) or {@code SJEDISTE}
+     *                (legal entity's country of seat; every EU/EFTA state is left out). An
+     *                unknown value is 400.
+     */
     @GetMapping("/countries")
-    public List<CountryResponse> getCountries(@RequestParam(required = false) String q) {
-        return service.findCountries(q);
+    public List<CountryResponse> getCountries(
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "PREBIVALISTE") CountryPurpose namjena) {
+        return service.findCountries(q, namjena);
     }
 
     @GetMapping("/counties")

@@ -34,11 +34,15 @@ public class AdminCategorizationDecisionService {
         this.auditService = auditService;
     }
 
+    /**
+     * Interni red. Zapis koji je pri ponovnom izdavanju RB-a prenesen na novi RB (T15) ovdje se ne
+     * prikazuje — obrađuje se kopija uz novi RB, inače bi isti sken bio u redu dvaput.
+     */
     @Transactional(readOnly = true)
     public Page<CategorizationDecisionAdminDto> list(CategorizationDecisionStatus status, Pageable pageable) {
         Page<CategorizationDecisionEntity> page = status != null
-                ? repository.findByStatus(status, pageable)
-                : repository.findAll(pageable);
+                ? repository.findForReviewByStatus(status, pageable)
+                : repository.findForReview(pageable);
         return page.map(CategorizationDecisionAdminDto::of);
     }
 

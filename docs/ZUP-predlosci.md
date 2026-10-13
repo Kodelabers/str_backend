@@ -74,8 +74,9 @@ nije bilo). Predlošci i okidači postoje; urudžbiranje je iza `str.egop.akti-b
 ali se akt **svejedno zapisuje i vidi u popisu dokumenata RB-a**, a obavijest e-poštom ide
 neovisno o tome. `ZupTemplateLoaderTest` drži taj popis u šahu.
 
-`zahtjev-promjene-podataka` nastaje kad iznajmljivač pri izdavanju RB-a za objekt iz eTurizma označi
-da podaci iz registra nisu točni: frontend nakon izdavanja zove endpoint pa ga preusmjerava na
+`zahtjev-promjene-podataka` nastaje kad iznajmljivač pri izdavanju RB-a za **verificirani** objekt iz
+eTurizma označi da podaci iz registra nisu točni ili nisu potpuni (neverificirani objekt claim vraća
+bez adrese obrasca, a zapis pismena odbija se s `error.changeRequest.notVerified`): frontend nakon izdavanja zove endpoint pa ga preusmjerava na
 eTurizmov „Zahtjev za promjenu podataka" (adresu vraća claim objekta). Pismeno je jedno po RB-u i
 **nikad se ne urudžbira** — `EgopAktiBezSifre.UVIJEK_BEZ_SIFRE` ga drži izvan eGOP-a neovisno o
 `str.egop.akti-bez-sifre`, jer nije među dogovorenim vrstama pismena.

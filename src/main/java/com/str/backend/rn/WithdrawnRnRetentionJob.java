@@ -30,6 +30,14 @@ import java.util.List;
  * objekata i write-back povučeni broj prepoznaju po retku ovdje, pa bi takav broj opet blokirao
  * novi zahtjev za objekt. Prije brisanja ga ukloniti iz eTurizma
  * ({@code FacilityRegistrationNumberWriteBack#clear}).
+ *
+ * <p><b>Faza 2 i ponovni zahtjev nakon opoziva (T15, {@code ReissueService}):</b> rješenje o
+ * kategorizaciji povučenog RB-a može biti preneseno na novi RB istog objekta. Kopija ima
+ * <b>vlastitu</b> datoteku i metapodatke, pa se izvorni zapis (i njegova datoteka) <b>smije</b>
+ * obrisati po isteku retencije kao i ostala dokumentacija povučenog RB-a (čl. 5. st. 5).
+ * {@code categorization_decision.source_decision_id} kopije tada ostaje viseći — namjerno, bez FK-a;
+ * isto vrijedi za {@code accommodation.previous_rn} novog smještaja. Ponovni zahtjev i retencija
+ * dijele {@code app.rn.retention-months}, pa u trenutku brisanja ponovni zahtjev ionako više nije moguć.
  */
 @Component
 public class WithdrawnRnRetentionJob {

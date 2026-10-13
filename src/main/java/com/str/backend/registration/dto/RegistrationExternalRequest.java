@@ -1,6 +1,7 @@
 package com.str.backend.registration.dto;
 
 import com.str.backend.domain.OfferType;
+import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.Offering;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
@@ -29,6 +30,9 @@ import java.time.LocalDate;
  * </ul>
  *
  * <p>Ostala kontakt polja su neobavezna i, kad nisu poslana, zatečene se vrijednosti ne brišu.
+ *
+ * <p>{@code prethodniRb}: ponovni zahtjev za novi objekt nakon povlačenja (T15), kao u
+ * {@link RegistrationRequest}; predpopuna je {@code GET /api/lessor/registrations/{rn}/ponovni-zahtjev}.
  */
 public record RegistrationExternalRequest(
         @NotBlank String name,
@@ -59,5 +63,25 @@ public record RegistrationExternalRequest(
         @NotBlank @Size(max = 32) String kontaktMobitel,
         @Size(max = 32) String kontaktTelefon,
         @Size(max = 128) String kontaktOsoba,
-        @Size(max = 64) String kcBroj
-) implements AccommodationRequest {}
+        @Size(max = 64) String kcBroj,
+        /** Povučeni RB istog novog objekta (ponovni zahtjev nakon opoziva); {@code null} inače. */
+        @Pattern(regexp = RegistrationNumber.REGEXP, message = "error.reissue.previousRn.format") String prethodniRb
+) implements AccommodationRequest {
+
+    /** Zahtjev bez ponovnog zahtjeva nakon opoziva. */
+    public RegistrationExternalRequest(String name, String typeId, Long countyId, String cityId,
+                                       String settlementId, String street, String streetNumber,
+                                       Long kucniBrojId, String postalCode, Integer maxBeds,
+                                       OfferType offerType, Offering offering, Boolean building, String floor,
+                                       Boolean apartments, Boolean legalized, Boolean lessorResidence,
+                                       Boolean coOwnerConsent, LocalDate consentDate,
+                                       LocalDate consentWithdrawalDate, Boolean host,
+                                       Boolean confirmDuplicateLocation, String facilityId,
+                                       String kontaktEmail, String kontaktMobitel, String kontaktTelefon,
+                                       String kontaktOsoba, String kcBroj) {
+        this(name, typeId, countyId, cityId, settlementId, street, streetNumber, kucniBrojId, postalCode,
+                maxBeds, offerType, offering, building, floor, apartments, legalized, lessorResidence,
+                coOwnerConsent, consentDate, consentWithdrawalDate, host, confirmDuplicateLocation,
+                facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon, kontaktOsoba, kcBroj, null);
+    }
+}

@@ -3,6 +3,7 @@ package com.str.backend.registration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.str.backend.address.CountyEntity;
+import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -57,6 +58,8 @@ class RegistrationIntegrationTest {
 
     @MockBean private SubjectProfileService subjectProfileService;
     @MockBean private CountyRepository countyRepository;
+    /** Zahtjev nosi nazive umjesto id-eva općine (stari oblik fixturea); lanac adrese pokriva AddressHierarchyValidatorTest. */
+    @MockBean private AddressHierarchyValidator addressHierarchyValidator;
 
     @BeforeEach
     void setupMocks() {

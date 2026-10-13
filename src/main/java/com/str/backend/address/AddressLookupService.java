@@ -24,6 +24,7 @@ public class AddressLookupService {
     private final SettlementRepository settlementRepository;
     private final StreetRepository streetRepository;
     private final HouseNumberRepository houseNumberRepository;
+    private final NonEuCountryPolicy nonEuCountryPolicy;
     private final boolean cadastralEnabled;
 
     public AddressLookupService(CountryRepository countryRepository,
@@ -32,6 +33,7 @@ public class AddressLookupService {
                                 SettlementRepository settlementRepository,
                                 StreetRepository streetRepository,
                                 HouseNumberRepository houseNumberRepository,
+                                NonEuCountryPolicy nonEuCountryPolicy,
                                 @Value("${app.cadastral.enabled:false}") boolean cadastralEnabled) {
         this.countryRepository = countryRepository;
         this.countyRepository = countyRepository;
@@ -39,15 +41,23 @@ public class AddressLookupService {
         this.settlementRepository = settlementRepository;
         this.streetRepository = streetRepository;
         this.houseNumberRepository = houseNumberRepository;
+        this.nonEuCountryPolicy = nonEuCountryPolicy;
         this.cadastralEnabled = cadastralEnabled;
     }
 
-    public List<CountryResponse> findCountries(String q) {
+    /**
+     * Active countries offered by the non-EU registration form for the given purpose.
+     * {@link CountryPurpose#PREBIVALISTE}: EU/EFTA states are left out, except EU states
+     * without eIDAS; {@link CountryPurpose#SJEDISTE}: every EU/EFTA state is left out. The
+     * rule comes from {@link NonEuCountryPolicy}, the same bean
+     * {@code LessorRegistrationService.requireActiveCountry} validates the submission with.
+     */
+    public List<CountryResponse> findCountries(String q, CountryPurpose purpose) {
         List<CountryEntity> entities = (q == null || q.isBlank())
                 ? countryRepository.findByActiveTrueOrderByName()
                 : countryRepository.findByActiveTrueAndNameContainingIgnoreCaseOrderByName(q);
         return entities.stream()
-                .filter(e -> !EuEftaMembership.isEuOrEfta(e.getIso2Alpha()))
+                .filter(e -> !nonEuCountryPolicy.isExcluded(e.getIso2Alpha(), purpose))
                 .map(e -> new CountryResponse(e.getId(), e.getName(), e.getIso2Alpha()))
                 .toList();
     }

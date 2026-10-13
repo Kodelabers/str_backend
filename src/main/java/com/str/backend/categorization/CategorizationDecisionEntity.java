@@ -93,6 +93,13 @@ public class CategorizationDecisionEntity {
     @Column(name = "verified_at")
     private Instant verifiedAt;
 
+    /**
+     * Rješenje iz kojeg je ovo preneseno na novi RB pri ponovnom zahtjevu nakon opoziva (T15,
+     * changeset 136); {@code null} za rješenje koje je korisnik predao.
+     */
+    @Column(name = "source_decision_id", updatable = false)
+    private UUID sourceDecisionId;
+
     public static CategorizationDecisionEntity create(String lessorOib,
                                                       String rn,
                                                       String fileName,
@@ -116,6 +123,50 @@ public class CategorizationDecisionEntity {
         e.decisionDate = metadata.decisionDate();
         e.maxBeds = metadata.maxBeds();
         e.note = metadata.note();
+        return e;
+    }
+
+    /**
+     * Prijenos rješenja s povučenog RB-a na novi RB istog objekta (ponovni zahtjev nakon opoziva).
+     * Kopija datoteke i svih metapodataka, isti status; za {@code VERIFIED} ostaju i tko je i kad
+     * potvrdio — rješenje je već pregledano i ne traži se ponovo. Kopija ima vlastitu datoteku, pa
+     * izvor smije biti obrisan po isteku retencije.
+     *
+     * <p>{@code uploadedAt} je trenutak prijenosa, ne izvorne predaje — u internom redu kopija ne
+     * smije izgledati kao stara predaja; izvor se nalazi preko {@code sourceDecisionId}.
+     *
+     * <p>Prenosi se samo aktivno rješenje (SUBMITTED ili VERIFIED); odbijeno ne. Je li objekt isti
+     * (pa smije li se rješenje uopće prenijeti) odlučuje pozivatelj ({@code ReissueService}).
+     */
+    public static CategorizationDecisionEntity copyForReissue(CategorizationDecisionEntity source, String newRn,
+                                                              Instant carriedAt) {
+        if (source.status != CategorizationDecisionStatus.SUBMITTED
+                && source.status != CategorizationDecisionStatus.VERIFIED) {
+            throw new IllegalArgumentException("Prenosi se samo predano ili potvrđeno rješenje, ne " + source.status);
+        }
+        CategorizationDecisionEntity e = new CategorizationDecisionEntity();
+        e.decisionId = UUID.randomUUID();
+        e.lessorOib = source.lessorOib;
+        e.rn = newRn;
+        e.fileName = source.fileName;
+        e.contentType = source.contentType;
+        e.fileContent = source.fileContent.clone();
+        e.fileSize = source.fileSize;
+        e.status = source.status;
+        e.uploadedAt = carriedAt;
+        e.objectName = source.objectName;
+        e.accommodationTypeCode = source.accommodationTypeCode;
+        e.addressText = source.addressText;
+        e.decisionNumber = source.decisionNumber;
+        e.decisionDate = source.decisionDate;
+        e.maxBeds = source.maxBeds;
+        e.note = source.note;
+        e.facilityId = source.facilityId;
+        if (source.status == CategorizationDecisionStatus.VERIFIED) {
+            e.verifiedBy = source.verifiedBy;
+            e.verifiedAt = source.verifiedAt;
+        }
+        e.sourceDecisionId = source.decisionId;
         return e;
     }
 

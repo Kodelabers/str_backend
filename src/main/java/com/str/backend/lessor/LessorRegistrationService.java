@@ -2,7 +2,8 @@ package com.str.backend.lessor;
 
 import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
-import com.str.backend.address.EuEftaMembership;
+import com.str.backend.address.CountryPurpose;
+import com.str.backend.address.NonEuCountryPolicy;
 import com.str.backend.email.event.RegistrationSubmittedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -21,17 +22,20 @@ public class LessorRegistrationService {
     private final LessorDocumentRepository lessorDocumentRepository;
     private final PasswordEncoder passwordEncoder;
     private final CountryRepository countryRepository;
+    private final NonEuCountryPolicy nonEuCountryPolicy;
     private final ApplicationEventPublisher eventPublisher;
 
     public LessorRegistrationService(LessorRepository lessorRepository,
                                      LessorDocumentRepository lessorDocumentRepository,
                                      PasswordEncoder passwordEncoder,
                                      CountryRepository countryRepository,
+                                     NonEuCountryPolicy nonEuCountryPolicy,
                                      ApplicationEventPublisher eventPublisher) {
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
         this.passwordEncoder = passwordEncoder;
         this.countryRepository = countryRepository;
+        this.nonEuCountryPolicy = nonEuCountryPolicy;
         this.eventPublisher = eventPublisher;
     }
 
@@ -60,7 +64,7 @@ public class LessorRegistrationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "lessor.registration.invalid");
         }
 
-        requireActiveCountry(req.getZemljaPrebivalistaId(), "lessor.country.invalid");
+        requireActiveCountry(req.getZemljaPrebivalistaId(), CountryPurpose.PREBIVALISTE, "lessor.country.invalid");
 
         String hash = passwordEncoder.encode(req.getPassword());
 
@@ -76,7 +80,8 @@ public class LessorRegistrationService {
                     || isBlank(req.getGradSjedista()) || isBlank(req.getMaticniBrojPravneOsobe())) {
                 throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "lessor.legalEntity.incomplete");
             }
-            requireActiveCountry(req.getDrzavaSjedistaId(), "lessor.legalEntity.country.invalid");
+            requireActiveCountry(req.getDrzavaSjedistaId(), CountryPurpose.SJEDISTE,
+                    "lessor.legalEntity.country.invalid");
             lessor.applyLegalEntityOwner(
                     req.getNazivPravneOsobe().trim(), req.getDrzavaSjedistaId(),
                     req.getGradSjedista().trim(), req.getMaticniBrojPravneOsobe().trim());
@@ -101,15 +106,18 @@ public class LessorRegistrationService {
         return new LessorRegistrationResponse(lessor.getLessorId(), username);
     }
 
-    // Mirrors the GET /api/address/countries filter: this flow is for non-EU/EFTA
-    // registration, so the chosen country must be active AND outside the EU/EFTA area
-    // (the dropdown only offers such countries, but a client could still POST an
-    // EU/EFTA id directly).
-    private void requireActiveCountry(Integer countryId, String errorKey) {
+    // Mirrors the GET /api/address/countries filter (same NonEuCountryPolicy, same purpose):
+    // this flow is for non-EU/EFTA registration, so the chosen country must be active AND
+    // not excluded for its purpose. Country of residence (PREBIVALISTE): EU/EFTA excluded,
+    // except EU states whose nationals cannot use eIDAS (EuEftaMembership.EU_WITHOUT_EIDAS).
+    // Legal entity's seat (SJEDISTE): every EU/EFTA state excluded, no exception. The
+    // dropdown only offers allowed countries, but a client could still POST an excluded id
+    // directly.
+    private void requireActiveCountry(Integer countryId, CountryPurpose purpose, String errorKey) {
         boolean valid = countryId != null
                 && countryRepository.findById(countryId.longValue())
                         .filter(CountryEntity::isActive)
-                        .filter(c -> !EuEftaMembership.isEuOrEfta(c.getIso2Alpha()))
+                        .filter(c -> !nonEuCountryPolicy.isExcluded(c.getIso2Alpha(), purpose))
                         .isPresent();
         if (!valid) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, errorKey);

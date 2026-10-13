@@ -56,17 +56,20 @@ public class SubjectProfileService {
     private final LegalRepresentativeSource representativeSource;
     private final CountyByMunicipalityResolver countyResolver;
     private final CountryRepository countryRepository;
+    private final EnteredAddressVerifier enteredAddressVerifier;
 
     public SubjectProfileService(SubjectRegistry subjectRegistry,
                                  LegalEntityRegistry legalEntityRegistry,
                                  LegalRepresentativeSource representativeSource,
                                  CountyByMunicipalityResolver countyResolver,
-                                 CountryRepository countryRepository) {
+                                 CountryRepository countryRepository,
+                                 EnteredAddressVerifier enteredAddressVerifier) {
         this.subjectRegistry = subjectRegistry;
         this.legalEntityRegistry = legalEntityRegistry;
         this.representativeSource = representativeSource;
         this.countyResolver = countyResolver;
         this.countryRepository = countryRepository;
+        this.enteredAddressVerifier = enteredAddressVerifier;
     }
 
     /**
@@ -312,13 +315,23 @@ public class SubjectProfileService {
                 p.place(), p.postalCode(), p.municipality(), p.county(), p.seatSource(), p.representative());
     }
 
-    /** Upisana adresa mora imati sve što {@code lessor} sprema i što GO-1 uspoređuje (županiju). */
-    private static EnteredAddress requireAddress(EnteredAddress entered) {
-        if (entered == null || !known(entered.street()) || !known(entered.streetNumber())
-                || !known(entered.postalCode()) || !known(entered.place()) || !known(entered.county())) {
+    /**
+     * Upisana adresa mora biti povezan lanac adresnog registra ({@link EnteredAddressVerifier} —
+     * 400 {@code ADDRESS_INCOMPLETE} / {@code ADDRESS_INCONSISTENT}; nazivi županije, općine i
+     * naselja tada su iz registra) i imati sve što {@code lessor} sprema i što GO-1 uspoređuje
+     * (županiju). Provjera ide samo ovdje, kad je adresa stvarno potrebna: zaostala adresa iz
+     * nacrta ne smije srušiti zahtjev kojem je adresa iz registra.
+     */
+    private EnteredAddress requireAddress(EnteredAddress entered) {
+        if (entered == null) {
             throw new BusinessException("error.subject.addressRequired");
         }
-        return entered;
+        EnteredAddress verified = enteredAddressVerifier.verify(entered);
+        if (!known(verified.street()) || !known(verified.streetNumber())
+                || !known(verified.postalCode()) || !known(verified.place()) || !known(verified.county())) {
+            throw new BusinessException("error.subject.addressRequired");
+        }
+        return verified;
     }
 
     /**
