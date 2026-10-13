@@ -104,7 +104,7 @@ class LessorLegalEntityCheckConstraintTest {
                 SubjectDataSource.OIB_REGISTAR, representative);
         LessorEntity lessor = new SubjectProfileService(mock(SubjectRegistry.class), mock(LegalEntityRegistry.class),
                 mock(LegalRepresentativeSource.class), mock(CountyByMunicipalityResolver.class),
-                mock(CountryRepository.class)).toLegalLessor(profile);
+                mock(CountryRepository.class), entered -> entered).toLegalLessor(profile);
 
         lessorRepository.saveAndFlush(lessor);
 
@@ -153,7 +153,7 @@ class LessorLegalEntityCheckConstraintTest {
                 representative);
         return new SubjectProfileService(mock(SubjectRegistry.class), mock(LegalEntityRegistry.class),
                 mock(LegalRepresentativeSource.class), mock(CountyByMunicipalityResolver.class),
-                mock(CountryRepository.class))
+                mock(CountryRepository.class), entered -> entered)
                 .toLegalLessor(profile);
     }
 

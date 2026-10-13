@@ -166,7 +166,10 @@ public class NiasFacilityService {
                 row.getContactPhone(),
                 FacilityClaimVerifier.lockedFields(row),
                 FacilityClaimVerifier.isRegistrableType(row, accommodationTypeRepository),
-                changeRequestUrl(row.getDocumentId()),
+                // T7: neverificirani objekt se ne preusmjerava na TuStart — njegov netočan podatak
+                // verificira nadležno tijelo. Bez adrese frontend nudi tekst neverificiranog
+                // objekta i za stariji/neusklađeni klijent. Nepoznato (null) = verificiran.
+                Boolean.FALSE.equals(row.getVerified()) ? null : changeRequestUrl(row.getDocumentId()),
                 row.getVerified());
     }
 
@@ -175,7 +178,7 @@ public class NiasFacilityService {
      * preusmjerava nakon izdavanja RB-a kad kaže da podaci iz registra nisu točni.
      *
      * <p>{@code null} kad je ne možemo složiti (okolina bez eTurizma, zapis bez dokumenta, šifra
-     * nije u šifrarniku). Frontend tada ne nudi ni kvačicu, pa korisnik ne može tražiti
+     * nije u šifrarniku) i za neverificirani objekt (T7 — v. {@link #claim}). Frontend tada ne nudi ni kvačicu, pa korisnik ne može tražiti
      * preusmjeravanje koje se ne bi dogodilo.
      */
     private String changeRequestUrl(Long documentId) {

@@ -1,6 +1,7 @@
 package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.HouseNumberRepository;
 import com.str.backend.address.CountyEntity;
@@ -86,7 +87,8 @@ class RegistrationServiceContactTest {
                 orchestrator, rnService, rnRepository, subjectProfileService,
                 countyRepository, municipalityRepository, settlementRepository,
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
-                new CadastreResolver(mock(HouseNumberRepository.class)), eventPublisher,
+                new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
+                eventPublisher,
                 mock(SubmissionDraftService.class));
 
         when(countyRepository.findById(7L))
@@ -144,12 +146,14 @@ class RegistrationServiceContactTest {
                 base.coOwnerConsent(), base.consentDate(), base.consentWithdrawalDate(), base.host(),
                 base.confirmDuplicateLocation(), base.facilityId(), base.kontaktEmail(), base.kontaktMobitel(),
                 base.kontaktTelefon(), base.kontaktOsoba(), base.kcBroj(),
-                new PodnositeljUnos(" Riva ", "1", "21000", "Split", "Split", 7L, null));
+                new PodnositeljUnos(" Riva ", "1", "21000", "Split", "Split", 7L, null, 70L, 700L, 7000L, 70000L));
 
         service.generateRegistrationNumber(withAddress, new NiasIdentity(OIB, "Ana", "Anić"));
 
+        // Id-evi razina idu servisu: on ih provjerava kao lanac registra kad mu adresa treba.
         verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić", new EnteredAddress(
-                "Riva", "1", "21000", "Split", "Split", "Splitsko-dalmatinska županija", null));
+                "Riva", "1", "21000", "Split", "Split", "Splitsko-dalmatinska županija", null,
+                7L, 70L, 700L, 7000L, 70000L));
     }
 
     /** U ime tvrtke: iznajmljivač je tvrtka iz potvrđenog zastupanja, a ne osoba iz registra. */
@@ -227,7 +231,7 @@ class RegistrationServiceContactTest {
         service.generateRegistrationNumber(withAddress, new NiasIdentity(OIB, "Ana", "Anić"));
 
         verify(subjectProfileService).resolveLessor(OIB, "Ana", "Anić",
-                new EnteredAddress("Riva", "1", "21000", "Split", "Split", null, null));
+                new EnteredAddress("Riva", "1", "21000", "Split", "Split", null, null, 999L, null, null, null, null));
     }
 
     /** Prazan string iz forme znači „nije upisano", ne prazna vrijednost. */

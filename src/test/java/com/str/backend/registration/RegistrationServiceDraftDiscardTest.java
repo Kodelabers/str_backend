@@ -1,6 +1,7 @@
 package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
@@ -73,7 +74,8 @@ class RegistrationServiceDraftDiscardTest {
                 orchestrator, rnService, rnRepository, subjectProfileService,
                 countyRepository, mock(MunicipalityRepository.class), mock(SettlementRepository.class),
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
-                new CadastreResolver(mock(HouseNumberRepository.class)), mock(ApplicationEventPublisher.class),
+                new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
+                mock(ApplicationEventPublisher.class),
                 draftService);
 
         when(countyRepository.findById(7L)).thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));

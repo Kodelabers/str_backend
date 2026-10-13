@@ -18,6 +18,12 @@ public interface SettlementRepository extends JpaRepository<SettlementEntity, Lo
         String getPostalCode();
     }
 
+    /**
+     * Naselja po matičnom broju ({@code na_mb}) — ključ kojim ulica ({@code ar_ulice.naselje_id})
+     * pokazuje na naselje. Lista, jer {@code na_mb} nije primarni ključ.
+     */
+    List<SettlementEntity> findByNaMb(String naMb);
+
     /** Redak sirovog spoja: naselje × poštanski broj istog imena, sa županijama za sužavanje. */
     interface SettlementPostalRow extends SettlementProjection, PostalCodes.Candidate {
     }

@@ -117,7 +117,8 @@ class NiasLessorCountryOfResidenceTest {
 
     private SubjectProfileService profiles(SubjectRegistry registry) {
         return new SubjectProfileService(registry, mock(LegalEntityRegistry.class),
-                mock(LegalRepresentativeSource.class), mock(CountyByMunicipalityResolver.class), countryRepository);
+                mock(LegalRepresentativeSource.class), mock(CountyByMunicipalityResolver.class), countryRepository,
+                entered -> entered);
     }
 
     /** Iz baze, ne iz konteksta perzistencije — stupac je {@code updatable = false}. */

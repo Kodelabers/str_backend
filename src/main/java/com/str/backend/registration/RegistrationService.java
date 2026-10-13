@@ -2,6 +2,7 @@ package com.str.backend.registration;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
 import com.str.backend.address.CountyNames;
 import com.str.backend.address.CountyEntity;
@@ -68,6 +69,7 @@ public class RegistrationService {
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final FacilityClaimVerifier facilityClaimVerifier;
     private final CadastreResolver cadastreResolver;
+    private final AddressHierarchyValidator addressHierarchyValidator;
     private final ApplicationEventPublisher eventPublisher;
     private final SubmissionDraftService submissionDraftService;
 
@@ -84,6 +86,7 @@ public class RegistrationService {
                                AccommodationTypeRepository accommodationTypeRepository,
                                FacilityClaimVerifier facilityClaimVerifier,
                                CadastreResolver cadastreResolver,
+                               AddressHierarchyValidator addressHierarchyValidator,
                                ApplicationEventPublisher eventPublisher,
                                SubmissionDraftService submissionDraftService) {
         this.lessorRepository = lessorRepository;
@@ -99,6 +102,7 @@ public class RegistrationService {
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.facilityClaimVerifier = facilityClaimVerifier;
         this.cadastreResolver = cadastreResolver;
+        this.addressHierarchyValidator = addressHierarchyValidator;
         this.eventPublisher = eventPublisher;
         this.submissionDraftService = submissionDraftService;
     }
@@ -223,8 +227,11 @@ public class RegistrationService {
         }
         String county = p.zupanijaId() == null ? null
                 : countyRepository.findById(p.zupanijaId()).map(CountyEntity::getName).orElse(null);
+        // Id-evi razina idu dalje: kad je adresa potrebna, SubjectProfileService je provjerava kao
+        // lanac adresnog registra i nazive uzima iz njega (AddressHierarchyValidator).
         return new EnteredAddress(trimmed(p.ulica()), trimmed(p.kucniBroj()), trimmed(p.postanskiBroj()),
-                trimmed(p.mjesto()), trimmed(p.opcina()), county, trimmed(p.mbs()));
+                trimmed(p.mjesto()), trimmed(p.opcina()), county, trimmed(p.mbs()),
+                p.zupanijaId(), p.opcinaId(), p.naseljeId(), p.ulicaId(), p.kucniBrojId());
     }
 
     /** Prazan string iz forme je „nije upisano", ne vrijednost — ne spremamo ga kao takvog. */
@@ -364,6 +371,10 @@ public class RegistrationService {
     }
 
     AccommodationEntity buildAccommodation(AccommodationRequest req, String countyName) {
+        // T4: poslane razine adrese moraju biti povezan lanac registra (400 ADDRESS_INCONSISTENT).
+        // Objekt iz eTurizma (facilityId) adresu nosi iz str.* i id-eve ne mora imati.
+        addressHierarchyValidator.verifyFacilityAddress(req.countyId(), req.cityId(), req.settlementId(),
+                req.kucniBrojId(), !isBlank(req.facilityId()));
         String cityName = resolveEntityName(req.cityId(), municipalityRepository, MunicipalityEntity::getName);
         String settlementName = resolveEntityName(req.settlementId(), settlementRepository, SettlementEntity::getName);
         // Obrazac ima jedno polje, maksimalan broj gostiju (kreveti + pomoćni kreveti, stavka 2),

@@ -38,7 +38,8 @@ class SubjectProfileServiceTest {
     private final CountyByMunicipalityResolver countyResolver = mock(CountyByMunicipalityResolver.class);
     private final CountryRepository countryRepository = mock(CountryRepository.class);
     private final SubjectProfileService service =
-            new SubjectProfileService(registry, legalRegistry, representativeSource, countyResolver, countryRepository);
+            new SubjectProfileService(registry, legalRegistry, representativeSource, countyResolver, countryRepository,
+                    entered -> entered);
 
     /** ID Hrvatske namjerno nije onaj iz lokalnog seeda (7) — servis ga mora pročitati iz str.country. */
     private static final long CROATIA_ID = 191L;
@@ -481,6 +482,54 @@ class SubjectProfileServiceTest {
 
         assertThat(lessor.getStreet()).isEqualTo("Ilica");
         assertThat(lessor.getPlace()).isEqualTo("Zagreb");
+    }
+
+    // ── T4: lanac adrese s obrasca ─────────────────────────────────────────
+
+    /** Upisana adresa prolazi provjeru lanca; spremaju se nazivi iz registra, ne poslani tekst. */
+    @Test
+    void toLessor_enteredAddress_isVerifiedAndRegistryNamesAreStored() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.empty());
+        EnteredAddressVerifier verifier = mock(EnteredAddressVerifier.class);
+        EnteredAddress entered = new EnteredAddress("Riva", "1", "21000", "Podmetnuto", "Podmetnuto", null, null,
+                17L, 170L, 1700L, null, null);
+        when(verifier.verify(entered)).thenReturn(new EnteredAddress("Riva", "1", "21000", "Split", "Split",
+                "Splitsko-dalmatinska županija", null, 17L, 170L, 1700L, null, null));
+
+        LessorEntity lessor = withVerifier(verifier).resolveLessor(OIB, "Pero", "Perić", entered);
+
+        assertThat(lessor.getPlace()).isEqualTo("Split");
+        assertThat(lessor.getCounty()).isEqualTo("Splitsko-dalmatinska županija");
+    }
+
+    /** Prekinut lanac se ne guta: 400 ADDRESS_INCONSISTENT stiže do klijenta. */
+    @Test
+    void toLegalLessor_inconsistentEnteredSeat_isRejected() {
+        when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
+        EnteredAddressVerifier verifier = a -> {
+            throw com.str.backend.exception.AddressHierarchyException.inconsistent("podnositelj.naseljeId");
+        };
+
+        assertThatThrownBy(() -> withVerifier(verifier).resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB,
+                "Ana", "Horvat", ENTERED))
+                .isInstanceOf(com.str.backend.exception.AddressHierarchyException.class);
+    }
+
+    /** Adresa iz registra: upisana se ne provjerava — zaostala iz nacrta ne smije srušiti zahtjev. */
+    @Test
+    void toLessor_registryAddress_enteredAddressIsNotVerified() {
+        when(registry.findByOib(OIB)).thenReturn(Optional.of(oibRegistrySubject()));
+        when(countyResolver.countyOf("ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
+        EnteredAddressVerifier verifier = mock(EnteredAddressVerifier.class);
+
+        withVerifier(verifier).resolveLessor(OIB, "Pero", "Perić", ENTERED);
+
+        verifyNoInteractions(verifier);
+    }
+
+    private SubjectProfileService withVerifier(EnteredAddressVerifier verifier) {
+        return new SubjectProfileService(registry, legalRegistry, representativeSource, countyResolver,
+                countryRepository, verifier);
     }
 
     // ── država prebivališta („Zemlja” na NIAS profilu) ─────────────────────

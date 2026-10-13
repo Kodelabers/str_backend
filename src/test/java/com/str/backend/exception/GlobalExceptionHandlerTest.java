@@ -85,4 +85,19 @@ class GlobalExceptionHandlerTest {
 
         assertThat(handler.handleDataIntegrity(opaque).getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    /** T4: prekinut lanac adrese je 400 s kodom i poljem za frontend. */
+    @Test
+    void addressHierarchy_mapsTo400_withCodeAndField() {
+        ResponseEntity<GlobalExceptionHandler.ErrorResponse> inconsistent =
+                handler.handleAddressHierarchy(AddressHierarchyException.inconsistent("podnositelj.naseljeId"));
+
+        assertThat(inconsistent.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(inconsistent.getBody()).isNotNull();
+        assertThat(inconsistent.getBody().getDetails()).isEqualTo(
+                Map.of("code", "ADDRESS_INCONSISTENT", "field", "podnositelj.naseljeId"));
+
+        assertThat(handler.handleAddressHierarchy(AddressHierarchyException.incomplete("cityId")).getBody()
+                .getDetails()).isEqualTo(Map.of("code", "ADDRESS_INCOMPLETE", "field", "cityId"));
+    }
 }

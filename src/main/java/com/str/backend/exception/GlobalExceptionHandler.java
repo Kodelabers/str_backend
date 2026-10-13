@@ -127,6 +127,19 @@ public class GlobalExceptionHandler {
                         resolve("error.eovlastenja.rateLimit", ex.retryAfterSeconds()), details, Instant.now()));
     }
 
+    /**
+     * Adresa nije povezan lanac registra ({@code AddressHierarchyValidator}). {@code details.code}
+     * je {@code ADDRESS_INCONSISTENT} ili {@code ADDRESS_INCOMPLETE}, {@code details.field} polje
+     * zahtjeva na kojem se lanac prekida.
+     */
+    @ExceptionHandler(AddressHierarchyException.class)
+    public ResponseEntity<ErrorResponse> handleAddressHierarchy(AddressHierarchyException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("code", ex.getCode().name());
+        details.put("field", ex.getField());
+        return build(HttpStatus.BAD_REQUEST, resolve(ex.getMessage()), details);
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusiness(BusinessException ex) {
         return build(HttpStatus.BAD_REQUEST, resolve(ex.getMessage()), null);

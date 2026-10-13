@@ -9,9 +9,12 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.StrFacilityRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import java.util.Optional;
 
 /**
  * Zapisuje pismeno „Zahtjev za promjenu podataka" uz upravo izdani RB: iznajmljivač je označio
@@ -41,21 +44,25 @@ public class ChangeRequestFilingService {
     private final AccommodationRepository accommodationRepository;
     private final StrDocumentService documentService;
     private final EgopFilingStore store;
+    private final StrFacilityRepository facilityRepository;
 
     public ChangeRequestFilingService(RnRepository rnRepository,
                                       AccommodationRepository accommodationRepository,
                                       StrDocumentService documentService,
-                                      EgopFilingStore store) {
+                                      EgopFilingStore store,
+                                      StrFacilityRepository facilityRepository) {
         this.rnRepository = rnRepository;
         this.accommodationRepository = accommodationRepository;
         this.documentService = documentService;
         this.store = store;
+        this.facilityRepository = facilityRepository;
     }
 
     /**
      * @param ownerOib vlasnik za kojeg se radi (OIB tvrtke u ime tvrtke), već provjeren u kontroleru
      * @throws ResourceNotFoundException RB ne postoji ili nije vlasnikov — isti 404, da se ne otkriva tuđi
-     * @throws BusinessException         RB nije aktivan ili nije izdan za objekt iz eTurizma
+     * @throws BusinessException         RB nije aktivan, nije izdan za objekt iz eTurizma ili je
+     *                                   objekt neverificiran ({@code error.changeRequest.notVerified})
      */
     public void file(String rn, String ownerOib) {
         RnEntity entity = rnRepository.findById(rn)
@@ -66,13 +73,17 @@ public class ChangeRequestFilingService {
             throw new BusinessException("error.changeRequest.rnNotActive");
         }
         // Samo objekt preuzet iz eTurizma ima „podatke iz registra" — za novi objekt nema što mijenjati.
-        boolean fromEturizam = entity.getAccommodationId() != null
-                && accommodationRepository.findById(entity.getAccommodationId())
+        Optional<String> facilityId = entity.getAccommodationId() == null ? Optional.empty()
+                : accommodationRepository.findById(entity.getAccommodationId())
                         .map(AccommodationEntity::getFacilityId)
-                        .filter(id -> !id.isBlank())
-                        .isPresent();
-        if (!fromEturizam) {
+                        .filter(id -> !id.isBlank());
+        if (facilityId.isEmpty()) {
             throw new BusinessException("error.changeRequest.notEturizamFacility");
+        }
+        // T7: neverificirani objekt se ne preusmjerava na TuStart — njegove podatke verificira
+        // nadležno tijelo. Claim mu zato ne vraća adresu obrasca; ovo brani izravan poziv API-ja.
+        if (isUnverifiedFacility(facilityId.get())) {
+            throw new BusinessException("error.changeRequest.notVerified");
         }
 
         // Razlog nije dio ovog pismena; prazan string, da render ne čita revizijski trag RB-a.
@@ -81,5 +92,23 @@ public class ChangeRequestFilingService {
                 entity.getSubmissionId(), rn, ACT_REF, TYPE.vrstaPismenaNaziv(),
                 EgopPismenoEntity.Smjer.ULAZNO, pdf));
         log.info("zahtjev_promjene_podataka_zapisan rn={} akt={}", rn, akt.getId());
+    }
+
+    /**
+     * Isto pravilo kao claim objekta ({@code NiasFacilityService#claim}, polje {@code verificiran})
+     * i predaja rješenja o kategorizaciji: zapis jedinice spremljen uz RB, {@code created_by =
+     * 'optimit'} je neverificiran. Nepoznato (nema zapisa, nema autora, id nije broj) ne računa se
+     * kao neverificirano — kao i na frontendu.
+     */
+    private boolean isUnverifiedFacility(String facilityId) {
+        long id;
+        try {
+            id = Long.parseLong(facilityId.trim());
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        return facilityRepository.findOwnership(id)
+                .map(row -> Boolean.FALSE.equals(row.getVerified()))
+                .orElse(false);
     }
 }
