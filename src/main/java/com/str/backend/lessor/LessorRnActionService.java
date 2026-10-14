@@ -43,8 +43,10 @@ public class LessorRnActionService {
     }
 
     /**
-     * Lessor-initiated revocation (opoziv) of their own RN → WITHDRAWN ("Brisan").
-     * Permanent, allowed from ACTIVE or SUSPENDED (čl. 5. st. 5. STR Uredbe). STR-1.3-001.
+     * Lessor-initiated revocation (opoziv) of their own RN → REVOKED ("Opozvan").
+     * Final, allowed from ACTIVE, SUSPENSION_PROPOSED or SUSPENDED (čl. 5. st. 5. STR Uredbe).
+     * STR-1.3-001. The officer's withdrawal (povlačenje) is a separate final status,
+     * {@code WITHDRAWN} — see {@code RnService#withdraw}.
      *
      * <p>TODO (zasebni epic, "Zajedničke backend teme"): potvrda u KP + obavijest Internetskim
      * platformama. 18-mj. retencijski/brisaći brojač računa se iz {@code valid_to} koji
@@ -53,7 +55,7 @@ public class LessorRnActionService {
     @Transactional
     public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason) {
         RnEntity entity = loadOwnedByLessorId(rn, lessorId);
-        transitionService.transition(entity, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
+        transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
                 "LESSOR:" + lessorId, Strings.blankToNull(reason));
         log.info("rn_withdraw_by_lessor rn={} lessor={}", rn, lessorId);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
@@ -67,15 +69,18 @@ public class LessorRnActionService {
     @Transactional
     public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason) {
         RnEntity entity = loadOwnedByOib(rn, oib);
-        transitionService.transition(entity, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
+        transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
                 "NIAS:" + oib, Strings.blankToNull(reason));
         log.info("rn_withdraw_by_nias rn={} oib={}", rn, oib);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
     }
 
-    /** Loads the RN and verifies it belongs to the lessor; 404 otherwise (no existence leak). */
+    /**
+     * Loads the RN locked for the status change ({@link RnRepository#findForUpdate}) and verifies
+     * it belongs to the lessor; 404 otherwise (no existence leak).
+     */
     private RnEntity loadOwnedByLessorId(String rn, UUID lessorId) {
-        RnEntity entity = rnRepository.findById(rn)
+        RnEntity entity = rnRepository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
         UUID submissionId = entity.getSubmissionId();
         boolean owned = submissionId != null
@@ -88,9 +93,9 @@ public class LessorRnActionService {
         return entity;
     }
 
-    /** OIB-based ownership: RN → submission → LessorEntity.lessorOib must match. */
+    /** OIB-based ownership: RN → submission → LessorEntity.lessorOib must match. Locked as above. */
     private RnEntity loadOwnedByOib(String rn, String oib) {
-        RnEntity entity = rnRepository.findById(rn)
+        RnEntity entity = rnRepository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
         UUID submissionId = entity.getSubmissionId();
         boolean owned = submissionId != null

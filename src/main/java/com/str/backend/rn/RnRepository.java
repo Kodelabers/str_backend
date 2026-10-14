@@ -7,7 +7,9 @@ import com.str.backend.rn.dto.RnPublicView;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     /** Ulaz za izračun roka ponovnog zahtjeva na popisu RB-ova — v. {@link #findReissueCandidates}. */
     interface ReissueCandidateRow {
         String getRn();
+        RnStatus getStatus();
         LocalDate getValidTo();
         String getFacilityId();
         /** Aktivno (predano/potvrđeno) rješenje uz RB ima {@code facility_id} — objekt je u eTurizmu. */
@@ -33,14 +36,14 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     }
 
     /**
-     * Povučeni RB-ovi iz zadanog popisa s onim što pravilo ponovnog zahtjeva (T15) traži: dan
-     * povlačenja, eTurizam objekt smještaja ili rješenja i je li RB već iskorišten. Jedan
-     * upit za cijeli popis „Mojih registracijskih brojeva"; pravilo samo primjenjuje
-     * {@code ReissueService}.
+     * Opozvani i povučeni RB-ovi iz zadanog popisa s onim što pravilo ponovnog zahtjeva (T15)
+     * traži: status, dan opoziva odnosno povlačenja, eTurizam objekt smještaja ili rješenja i je
+     * li RB već iskorišten. Jedan upit za cijeli popis „Mojih registracijskih brojeva"; pravilo
+     * samo primjenjuje {@code ReissueService}.
      */
     @Transactional(readOnly = true)
     @Query("""
-            SELECT r.rn AS rn, r.validTo AS validTo, a.facilityId AS facilityId,
+            SELECT r.rn AS rn, r.status AS status, r.validTo AS validTo, a.facilityId AS facilityId,
                    CASE WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
                                      AND d.status IN (com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED,
                                                       com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED)
@@ -49,7 +52,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
                    CASE WHEN EXISTS (SELECT 1 FROM AccommodationEntity n WHERE n.previousRn = r.rn)
                         THEN true ELSE false END AS used
             FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
-            WHERE r.rn IN :rns AND r.status = com.str.backend.domain.RnStatus.WITHDRAWN
+            WHERE r.rn IN :rns AND r.status IN (com.str.backend.domain.RnStatus.REVOKED,
+                                                com.str.backend.domain.RnStatus.WITHDRAWN)
             """)
     List<ReissueCandidateRow> findReissueCandidates(@Param("rns") Collection<String> rns);
 
@@ -61,10 +65,27 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     List<RnEntity> findByStatusInOrderByUpdatedAtDesc(List<RnStatus> statuses);
 
-    List<RnEntity> findByStatusAndSuspensionDeadlineBefore(RnStatus status, java.time.LocalDate date);
+    /**
+     * RB za promjenu statusa, zaključan do kraja transakcije ({@code SELECT … FOR UPDATE}).
+     * Svaki prijelaz statusa kreće odavde: bez zaključavanja bi istodobni opoziv iznajmljivača i
+     * povlačenje službenika oba prošla {@code canTransitionTo} nad istim {@code ACTIVE}, oba
+     * upisala zapis i akt, a status bi ostao onaj koji je zadnji commitao. Ovako drugi čeka prvog,
+     * čita njegov novi status i dobiva 409.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM RnEntity r WHERE r.rn = :rn")
+    Optional<RnEntity> findForUpdate(@Param("rn") String rn);
 
-    /** STR-1.3 retencija: opozvani RB-ovi kojima je valid_to (dan povlačenja) stariji od praga. */
-    List<RnEntity> findByStatusAndValidToBefore(RnStatus status, java.time.LocalDate cutoff);
+    /** RB-ovi u prijedlogu suspenzije kojima je rok za očitovanje istekao — {@code SuspensionDeadlineJob}. */
+    @Query("""
+            SELECT r.rn FROM RnEntity r
+            WHERE r.status = com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED
+              AND r.suspensionDeadline < :date
+            """)
+    List<String> findRnsWithSuspensionDeadlineBefore(@Param("date") LocalDate date);
+
+    /** STR-1.3 retencija: konačni RB-ovi kojima je valid_to (dan opoziva/povlačenja) stariji od praga. */
+    List<RnEntity> findByStatusInAndValidToBefore(Collection<RnStatus> statuses, java.time.LocalDate cutoff);
 
     interface FacilityRnRow {
         String getFacilityId();
@@ -79,8 +100,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
      * ne retryja i ne obara izdavanje). Bez ovog upita objekt s izdanim RB-om izgledao bi kao da
      * ga nema svaki put kad je upis u tuđu shemu pao.
      *
-     * <p>Uzimaju se samo još stojeći RB-ovi; {@code WITHDRAWN} je terminalan. Statusi se nabrajaju
-     * eksplicitno da novi status ne bi tiho ušao u popis.
+     * <p>Uzimaju se samo još stojeći RB-ovi; {@code REVOKED} i {@code WITHDRAWN} su konačni.
+     * Statusi se nabrajaju eksplicitno da novi status ne bi tiho ušao u popis.
      */
     @Transactional(readOnly = true)
     @Query("""
@@ -95,14 +116,15 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     List<FacilityRnRow> findRnsByFacilityIds(@Param("facilityIds") List<String> facilityIds);
 
     /**
-     * Koji su od zadanih RB-ova povučeni. eTurizam ({@code str.facility.registration_number}) može
-     * još držati broj koji je STR u međuvremenu povukao — takav nije broj objekta i ne smije
-     * spriječiti novi zahtjev. Broj kojeg STR ne zna (ručno upisan u eTurizmu) ovdje ne izlazi.
+     * Koji su od zadanih RB-ova konačni (opozvani ili povučeni). eTurizam
+     * ({@code str.facility.registration_number}) može još držati broj koji je u međuvremenu
+     * opozvan ili povučen — takav nije broj objekta i ne smije spriječiti novi zahtjev. Broj kojeg STR ne zna (ručno upisan u eTurizmu) ovdje ne izlazi.
      */
     @Transactional(readOnly = true)
     @Query("""
             SELECT r.rn FROM RnEntity r
-            WHERE r.rn IN :rns AND r.status = com.str.backend.domain.RnStatus.WITHDRAWN
+            WHERE r.rn IN :rns AND r.status IN (com.str.backend.domain.RnStatus.REVOKED,
+                                                com.str.backend.domain.RnStatus.WITHDRAWN)
             """)
     List<String> findWithdrawnRns(@Param("rns") Collection<String> rns);
 
@@ -333,7 +355,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
                 a.name, a.street, a.streetNumber, a.city,
                 t.name,
                 CASE WHEN (a.facilityId IS NULL OR TRIM(a.facilityId) = '')
-                          AND r.status <> com.str.backend.domain.RnStatus.WITHDRAWN
+                          AND r.status NOT IN (com.str.backend.domain.RnStatus.REVOKED,
+                                               com.str.backend.domain.RnStatus.WITHDRAWN)
                     THEN true ELSE false END,
                 CASE
                     WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn

@@ -29,8 +29,9 @@ import java.util.Optional;
  *   <li><b>Dvostruki RB.</b> Objekt koji već ima stojeći RB ne smije dobiti drugi. Postojeći
  *       {@code checkDuplicateLocation} to ne pokriva: gleda adresu (županija + grad + ulica + kbr),
  *       a eTurizam adrese su rijetko strukturirane — ulica i kućni broj su najčešće prazni, pa se
- *       dva zahtjeva za isti objekt ne prepoznaju kao ista lokacija. Opozvani RB ne blokira novi
- *       zahtjev, jer je {@code WITHDRAWN} trajan i objekt smije proći novi postupak.</li>
+ *       dva zahtjeva za isti objekt ne prepoznaju kao ista lokacija. Opozvani ili povučeni RB ne
+ *       blokira novi zahtjev, jer su {@code REVOKED} i {@code WITHDRAWN} konačni i objekt smije
+ *       proći novi postupak.</li>
  *   <li><b>Vrsta objekta.</b> Popis objekata prikazuje samo privatni smještaj, ali tuStart URL
  *       može nositi bilo koji vlastiti objekt (hotel, restoran, agenciju) — v.
  *       {@link #isRegistrableType}.</li>

@@ -58,7 +58,8 @@ import java.util.Optional;
  * <ol>
  *   <li>X postoji i pripada V (NIAS po efektivnom OIB-u, non-EU po {@code lessorId}) — inače
  *       404 {@code REISSUE_NOT_FOUND}, isto za nepostojeći i tuđi, da se ne otkriva postojanje;</li>
- *   <li>X je {@code WITHDRAWN} — inače 409 {@code REISSUE_NOT_WITHDRAWN};</li>
+ *   <li>X je konačan — {@code REVOKED} (opoziv) ili {@code WITHDRAWN} (povlačenje) — inače 409
+ *       {@code REISSUE_NOT_WITHDRAWN};</li>
  *   <li>ni smještaj X-a ni njegovo aktivno rješenje nemaju {@code facility_id} (objekt nije u
  *       eTurizmu, ni naknadno upisan) — inače 409 {@code REISSUE_NOT_NEW_FACILITY};</li>
  *   <li>dan povlačenja ({@code validTo}) je poznat — inače 409 {@code REISSUE_UNKNOWN_WITHDRAWAL_DATE}
@@ -73,10 +74,11 @@ import java.util.Optional;
  * <p><b>Rješenje o kategorizaciji</b> prenosi se na novi RB samo kad je objekt isti
  * ({@link #isSameObject}); inače novi RB ostaje bez rješenja i korisnik ga predaje kao za novi objekt.
  *
- * <p>TODO (potvrditi s klijentom): pravila ne razlikuju opoziv iznajmljivača od povlačenja po
- * službenoj dužnosti ({@code RnService.withdraw}, bez aktera). Treba potvrditi smije li se ponovni
- * zahtjev s preuzetim podacima (i prenesenim rješenjem) podnijeti i nakon službenog povlačenja —
- * ako ne, razlikovati po {@code registration_number_log} (akter/okidač povlačenja).
+ * <p>TODO (potvrditi s klijentom): pravila ne razlikuju opoziv iznajmljivača ({@code REVOKED}) od
+ * povlačenja po službenoj dužnosti ({@code WITHDRAWN}, {@code RnService.withdraw}) — do uvođenja
+ * {@code REVOKED} oba su bila {@code WITHDRAWN}, pa se ponašanje zadržava. Treba potvrditi smije li
+ * se ponovni zahtjev s preuzetim podacima (i prenesenim rješenjem) podnijeti i nakon službenog
+ * povlačenja — ako ne, u {@link #eligibility} prihvatiti samo {@code REVOKED}.
  */
 @Service
 public class ReissueService {
@@ -142,7 +144,7 @@ public class ReissueService {
                                           LocalDate today, int retentionMonths) {
         LocalDate until = validTo == null ? null : validTo.plusMonths(retentionMonths);
         Outcome outcome;
-        if (status != RnStatus.WITHDRAWN) {
+        if (status == null || !status.isTerminal()) {
             outcome = Outcome.NOT_WITHDRAWN;
         } else if (inETurizam) {
             outcome = Outcome.NOT_NEW_FACILITY;
@@ -259,7 +261,7 @@ public class ReissueService {
     @Transactional(readOnly = true)
     public List<LessorRnSummaryDto> withReissueDeadlines(List<LessorRnSummaryDto> rows) {
         List<String> withdrawn = rows.stream()
-                .filter(r -> r.status() == RnStatus.WITHDRAWN)
+                .filter(r -> r.status() != null && r.status().isTerminal())
                 .map(LessorRnSummaryDto::rn)
                 .distinct()
                 .toList();
@@ -270,7 +272,7 @@ public class ReissueService {
         Map<String, LocalDate> deadlines = new HashMap<>();
         for (ReissueCandidateRow row : rnRepository.findReissueCandidates(withdrawn)) {
             boolean inETurizam = !isBlank(row.getFacilityId()) || Boolean.TRUE.equals(row.getDecisionInETurizam());
-            Eligibility e = eligibility(RnStatus.WITHDRAWN, row.getValidTo(), inETurizam,
+            Eligibility e = eligibility(row.getStatus(), row.getValidTo(), inETurizam,
                     Boolean.TRUE.equals(row.getUsed()), today, retentionMonths);
             if (e.allowed()) {
                 deadlines.put(row.getRn(), e.until());

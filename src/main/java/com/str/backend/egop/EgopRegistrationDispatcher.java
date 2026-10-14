@@ -5,7 +5,6 @@ import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
-import com.str.backend.domain.RnStatus;
 import com.str.backend.email.EmailService;
 import com.str.backend.email.MailRetryEntity;
 import com.str.backend.email.MailRetryStore;
@@ -131,7 +130,7 @@ public class EgopRegistrationDispatcher {
      * palo. Urudžbiranje ovdje ne smije ponovo krenuti: predmet je možda već urudžbiran
      * ({@code SYNCED}), a njegov ponovni pokušaj vodi {@link EgopRetryJob}.
      *
-     * <p>Za povučeni RB obavijest o izdavanju više nema smisla, pa se odustaje.
+     * <p>Za opozvani ili povučeni RB obavijest o izdavanju više nema smisla, pa se odustaje.
      */
     public void retryEmail(UUID submissionId) {
         Predmet predmet = load(submissionId).orElse(null);
@@ -139,7 +138,7 @@ public class EgopRegistrationDispatcher {
             mailRetryStore.abandon(MailRetryEntity.Kind.RN_ISSUED, submissionId, "missing_entity");
             return;
         }
-        if (predmet.rn().getStatus() == RnStatus.WITHDRAWN) {
+        if (predmet.rn().getStatus() != null && predmet.rn().getStatus().isTerminal()) {
             mailRetryStore.abandon(MailRetryEntity.Kind.RN_ISSUED, submissionId, "superseded");
             return;
         }

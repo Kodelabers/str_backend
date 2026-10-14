@@ -14,7 +14,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-/** Povučeni RB briše se iz eTurizma; ostali prijelazi (suspenzija, reaktivacija) ga ne diraju. */
+/** Opozvani i povučeni RB briše se iz eTurizma; ostali prijelazi (suspenzija, reaktivacija) ga ne diraju. */
 class RnWithdrawnListenerTest {
 
     private static final String RN = "HR120001000000000123";
@@ -30,6 +30,15 @@ class RnWithdrawnListenerTest {
     @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
     void withdrawal_fromAnyStandingStatus_clearsRnInEturizam(RnStatus from) {
         listener.onLifecycleChange(event(from, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL));
+
+        verify(writeBack).clear(RN);
+    }
+
+    /** Opoziv iznajmljivača oslobađa objekt jednako kao povlačenje. */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    void revocation_fromAnyStandingStatus_clearsRnInEturizam(RnStatus from) {
+        listener.onLifecycleChange(event(from, RnStatus.REVOKED, RnTrigger.REVOCATION));
 
         verify(writeBack).clear(RN);
     }

@@ -33,14 +33,24 @@ public class SuspensionDeadlineJob {
     @Transactional
     public void run() {
         LocalDate today = LocalDate.now();
-        List<RnEntity> expired = rnRepository.findByStatusAndSuspensionDeadlineBefore(
-                RnStatus.SUSPENSION_PROPOSED, today);
+        List<String> expired = rnRepository.findRnsWithSuspensionDeadlineBefore(today);
         if (expired.isEmpty()) return;
         log.info("suspension_deadline_job processing={}", expired.size());
-        for (RnEntity rn : expired) {
+        for (String id : expired) {
+            // Svaki RB se ponovo čita zaključan: iznajmljivač ga je u međuvremenu mogao opozvati,
+            // a službenik povući ili obustaviti postupak. Bez toga bi job prepisao REVOKED/WITHDRAWN
+            // suspenzijom iz zastarjelog stanja.
+            RnEntity rn = rnRepository.findForUpdate(id).orElse(null);
+            if (rn == null || rn.getStatus() != RnStatus.SUSPENSION_PROPOSED
+                    || rn.getSuspensionDeadline() == null || !rn.getSuspensionDeadline().isBefore(today)) {
+                log.info("suspension_deadline_skipped rn={} status={}", id,
+                        rn == null ? null : rn.getStatus());
+                continue;
+            }
+            LocalDate deadline = rn.getSuspensionDeadline();
             transitionService.transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
                     "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
-            log.info("suspension_deadline_exceeded rn={} deadline={}", rn.getRn(), rn.getSuspensionDeadline());
+            log.info("suspension_deadline_exceeded rn={} deadline={}", id, deadline);
         }
     }
 }

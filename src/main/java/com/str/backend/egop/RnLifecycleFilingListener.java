@@ -69,8 +69,7 @@ public class RnLifecycleFilingListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLifecycleChange(RnLifecycleEvent event) {
-        Optional<StrDocumentType> type = StrDocumentType.forTransition(
-                event.to(), event.trigger(), event.initiatedByLessor());
+        Optional<StrDocumentType> type = StrDocumentType.forTransition(event.to(), event.trigger());
         if (type.isEmpty()) {
             return;
         }

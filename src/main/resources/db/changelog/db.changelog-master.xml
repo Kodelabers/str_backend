@@ -240,4 +240,7 @@
     <!-- T15: ponovni zahtjev za RB novog objekta nakon povlačenja — veza na povučeni RB i preneseno rješenje. -->
     <include file="db/changelog/changes/136-reissue-after-withdrawal.xml"/>
 
+    <!-- Opozvan (REVOKED) kao zaseban konačni status za opoziv iznajmljivača; postojeći opozivi prelaze iz WITHDRAWN. -->
+    <include file="db/changelog/changes/137-rn-status-revoked.xml"/>
+
 </databaseChangeLog>

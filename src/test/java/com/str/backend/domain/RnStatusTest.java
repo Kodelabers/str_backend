@@ -47,6 +47,40 @@ class RnStatusTest {
         }
     }
 
+    /** The lessor's revocation is final too (čl. 5. st. 5) — and it never turns into a withdrawal. */
+    @ParameterizedTest
+    @EnumSource(RnTrigger.class)
+    void revokedIsTerminal(RnTrigger trigger) {
+        for (RnStatus target : RnStatus.values()) {
+            assertThat(RnStatus.REVOKED.canTransitionTo(target, trigger)).isFalse();
+        }
+    }
+
+    /** The lessor may revoke from every standing status. */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    void revocationLeadsToRevokedFromEveryStandingStatus(RnStatus from) {
+        assertThat(from.canTransitionTo(RnStatus.REVOKED, RnTrigger.REVOCATION)).isTrue();
+        assertThat(from.canTransitionTo(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL)).isTrue();
+    }
+
+    /** Each final status has its own trigger: the official cannot "revoke", the lessor cannot "withdraw". */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    void finalStatusesDoNotShareTriggers(RnStatus from) {
+        assertThat(from.canTransitionTo(RnStatus.WITHDRAWN, RnTrigger.REVOCATION)).isFalse();
+        assertThat(from.canTransitionTo(RnStatus.REVOKED, RnTrigger.WITHDRAWAL)).isFalse();
+    }
+
+    @Test
+    void onlyRevokedAndWithdrawnAreTerminal() {
+        assertThat(RnStatus.REVOKED.isTerminal()).isTrue();
+        assertThat(RnStatus.WITHDRAWN.isTerminal()).isTrue();
+        assertThat(RnStatus.ACTIVE.isTerminal()).isFalse();
+        assertThat(RnStatus.SUSPENSION_PROPOSED.isTerminal()).isFalse();
+        assertThat(RnStatus.SUSPENDED.isTerminal()).isFalse();
+    }
+
     /**
      * A proposal is an intermediate step, not a suspension: the registration number keeps
      * standing while the response deadline runs, so everything outside the suspension procedure
@@ -59,6 +93,7 @@ class RnStatusTest {
         assertThat(RnStatus.ACTIVE.isActiveForPublicUse()).isTrue();
 
         assertThat(RnStatus.SUSPENDED.isActiveForPublicUse()).isFalse();
+        assertThat(RnStatus.REVOKED.isActiveForPublicUse()).isFalse();
         assertThat(RnStatus.WITHDRAWN.isActiveForPublicUse()).isFalse();
     }
 }

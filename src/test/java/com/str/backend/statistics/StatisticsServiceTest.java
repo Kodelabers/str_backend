@@ -72,6 +72,7 @@ class StatisticsServiceTest {
                 rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 3L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.SUSPENSION_PROPOSED, 1L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.SUSPENDED, 1L),
+                rnCount("Splitsko-dalmatinska županija", RnStatus.REVOKED, 2L),
                 rnCount("Splitsko-dalmatinska županija", RnStatus.WITHDRAWN, 1L)
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(10L);
@@ -81,10 +82,13 @@ class StatisticsServiceTest {
         CountyStrDto row = res.counties().get(0);
         assertThat(row.accommodations()).isEqualTo(10L);
         // A proposed suspension is still a standing RN, so it lands in the active column.
-        // Dropping it would lose the RN from every column and from totalRn, which sums the three.
+        // Dropping it would lose the RN from every column and from totalRn, which sums the four.
         assertThat(row.activeRn()).isEqualTo(4L);
         assertThat(row.suspendedRn()).isEqualTo(1L);
+        // Opozvani (iznajmljivač) i povučeni (službenik) su zasebni stupci.
+        assertThat(row.revokedRn()).isEqualTo(2L);
         assertThat(row.withdrawnRn()).isEqualTo(1L);
+        assertThat(res.totals().totalRn()).isEqualTo(8L);
         assertThat(row.registrationRate()).isEqualTo(40.0);
     }
 

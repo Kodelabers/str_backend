@@ -46,9 +46,11 @@ paths:
       summary: Check registration number validity
       description: |
         Public endpoint used by SDEP and OTA platforms to check whether a registration
-        number is valid. A registration number is valid if and only if it exists and its
-        status is ACTIVE. Returns valid=false for non-existent numbers and for numbers in
-        status SUSPENDED or WITHDRAWN. Always returns HTTP 200 for a
+        number is valid. ACTIVE and SUSPENSION_PROPOSED return valid=true with the status
+        and advertise-safe object data; SUSPENDED returns valid=true with status SUSPENDED
+        and no object data (not valid for advertising). Non-existent numbers and numbers in
+        a final status (REVOKED or WITHDRAWN) return only valid=false, so the two cannot be
+        told apart and a final status is never disclosed. Always returns HTTP 200 for a
         well-formed registration number.
       operationId: verifyRn
       parameters:
@@ -81,7 +83,7 @@ paths:
       tags: [rn]
       summary: List inactive registration numbers (STR-1.5)
       description: |
-        Returns all RNs in status SUSPENDED or WITHDRAWN, sorted by last-updated descending.
+        Returns all RNs in status SUSPENDED, REVOKED or WITHDRAWN, sorted by last-updated descending.
         Intended for the competent authority.
       operationId: listInactive
       responses:
@@ -160,10 +162,23 @@ paths:
   /api/rn/{rn}/withdraw:
     post:
       tags: [rn]
-      summary: Withdraw a registration number (terminal status)
+      summary: Withdraw a registration number ex officio (final status WITHDRAWN)
+      description: |
+        Official's withdrawal (povlačenje) → `WITHDRAWN` („Povučen"), allowed from ACTIVE,
+        SUSPENSION_PROPOSED and SUSPENDED. The lessor's own revocation (opoziv) is a
+        different action with its own final status `REVOKED` („Opozvan"), on
+        `POST /api/lessor/registrations/{rn}/withdraw` and
+        `POST /api/nias/registrations/{rn}/withdraw`. A registration number that is already
+        REVOKED or WITHDRAWN cannot change status (409).
       operationId: withdrawRn
       parameters:
         - $ref: '#/components/parameters/rn'
+        - name: reason
+          in: query
+          required: false
+          description: Free-text rationale, stored on the audit log and printed in the act
+          schema:
+            type: string
       responses:
         "200":
           description: Registration number withdrawn
@@ -175,6 +190,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "404":
           $ref: '#/components/responses/NotFound'
+        "409":
+          description: Illegal status transition (e.g. the number is already REVOKED or WITHDRAWN)
 
   # ─────────────────────────────────────────────────────────────
   # Accommodation registration
@@ -1077,16 +1094,25 @@ components:
 
     RnStatus:
       type: string
-      enum: [ACTIVE, SUSPENDED, WITHDRAWN]
+      enum: [ACTIVE, SUSPENSION_PROPOSED, SUSPENDED, REVOKED, WITHDRAWN]
+      description: |
+        - `REVOKED` – Opozvan: revoked by the lessor themselves (final)
+        - `WITHDRAWN` – Povučen: withdrawn ex officio by the competent authority (final)
 
     RnTrigger:
       type: string
-      enum: [CONSENT_EXPIRY, INSPECTION, WITHDRAWAL, REACTIVATE]
+      enum: [CONSENT_EXPIRY, INSPECTION, INCOMPLETE_DOCUMENTATION, OTHER, WITHDRAWAL, REVOCATION,
+             REACTIVATE, REVOKE_PROPOSAL, DEADLINE_EXCEEDED]
       description: |
         - `CONSENT_EXPIRY` – co-owner consent expired (allowed for suspend)
         - `INSPECTION` – inspection finding (allowed for suspend)
-        - `WITHDRAWAL` – voluntary withdrawal (allowed for withdraw)
+        - `INCOMPLETE_DOCUMENTATION` – incomplete documentation (allowed for suspend)
+        - `OTHER` – other reason, requires a note (allowed for suspend)
+        - `WITHDRAWAL` – ex officio withdrawal by the competent authority → WITHDRAWN
+        - `REVOCATION` – the lessor's own revocation → REVOKED (lessor endpoints only)
         - `REACTIVATE` – reactivation (allowed for reactivate)
+        - `REVOKE_PROPOSAL` – suspension proposal cleared (system, `/revoke-proposal`)
+        - `DEADLINE_EXCEEDED` – response deadline expired (system, nightly job)
 
     # ── Verify ─────────────────────────────────────────────────
 
@@ -1097,8 +1123,8 @@ components:
         valid:
           type: boolean
           description: |
-            True if the registration number exists and has status ACTIVE;
-            false in all other cases (not found, SUSPENDED, WITHDRAWN).
+            True if the registration number exists and is ACTIVE, SUSPENSION_PROPOSED or
+            SUSPENDED; false when it does not exist or is REVOKED or WITHDRAWN.
           example: true
 
     # ── Registration number ─────────────────────────────────────

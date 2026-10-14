@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -173,7 +174,7 @@ class RnServiceTest {
     @Test
     void suspend_acceptsIncompleteDocumentation() {
         RnEntity rn = activeRn();
-        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
         service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, null, null);
 
@@ -188,7 +189,7 @@ class RnServiceTest {
     @Test
     void suspend_defaultsDeadline_whenNoneGiven() {
         RnEntity rn = activeRn();
-        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
         service.suspend(rn.getRn(), RnTrigger.INSPECTION, null, null);
 
@@ -199,7 +200,7 @@ class RnServiceTest {
     @Test
     void suspend_keepsExplicitDeadline() {
         RnEntity rn = activeRn();
-        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         LocalDate chosen = LocalDate.of(2026, 6, 1);
 
         service.suspend(rn.getRn(), RnTrigger.INSPECTION, chosen, null);
@@ -222,7 +223,7 @@ class RnServiceTest {
     @Test
     void suspend_acceptsDeadlineToday() {
         RnEntity rn = activeRn();
-        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         LocalDate today = LocalDate.now(clock);
 
         service.suspend(rn.getRn(), RnTrigger.INSPECTION, today, null);
@@ -251,7 +252,7 @@ class RnServiceTest {
     @Test
     void withdraw_passesReasonToTransition() {
         RnEntity rn = activeRn();
-        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
         service.withdraw(rn.getRn(), "  nedostaje suglasnost  ");
 
@@ -262,11 +263,20 @@ class RnServiceTest {
     @Test
     void withdraw_nullReasonStaysNull() {
         RnEntity rn = activeRn();
-        when(repository.findById(rn.getRn())).thenReturn(Optional.of(rn));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
         service.withdraw(rn.getRn(), null);
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, null);
+    }
+
+    /** STR-1.5: nevažeći za oglašavanje su i opozvani i povučeni, ne samo suspendirani. */
+    @Test
+    void inactive_listsSuspendedRevokedAndWithdrawn() {
+        service.inactive();
+
+        verify(repository).findByStatusInOrderByUpdatedAtDesc(
+                List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN));
     }
 
     private RnEntity activeRn() {

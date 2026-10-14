@@ -62,22 +62,44 @@ class RnLifecycleEmailListenerTest {
     }
 
     /**
-     * Opoziv i povlačenje dijele okidač {@link RnTrigger#WITHDRAWAL} — razlikuje ih jedino
-     * tko ih je pokrenuo, a poruke su bitno različite („na Vaš zahtjev" vs po službenoj dužnosti).
+     * Opoziv (REVOKED) i povlačenje (WITHDRAWN) imaju svaki svoj status, a poruke su bitno
+     * različite („na Vaš zahtjev" vs po službenoj dužnosti).
      */
     @Test
-    void withdrawal_byLessor_usesRevocationTemplate() {
-        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
-                RnTrigger.WITHDRAWAL, "LESSOR:" + UUID.randomUUID(), null));
+    void revocation_byLessor_usesRevocationTemplate() {
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), null));
 
         assertThat(captured().template()).isEqualTo(MailTemplate.OPOZIV);
     }
 
     /** NIAS je produkcijski put prijave — i taj opoziv je na zahtjev stranke, ne po dužnosti. */
     @Test
-    void withdrawal_byNiasLessor_usesRevocationTemplate() {
+    void revocation_byNiasLessor_usesRevocationTemplate() {
+        listener.onLifecycleChange(event(RnStatus.SUSPENSION_PROPOSED, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "NIAS:12345678903", null));
+
+        assertThat(captured().template()).isEqualTo(MailTemplate.OPOZIV);
+    }
+
+    /** Poruka se bira po statusu: akter iznajmljivača ne pretvara povlačenje u opoziv. */
+    @Test
+    void templateIsChosenByStatus_notByActor() {
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
                 RnTrigger.WITHDRAWAL, "NIAS:12345678903", null));
+
+        assertThat(captured().template()).isEqualTo(MailTemplate.POVLACENJE);
+    }
+
+    /** Zaostala obavijest o opozivu rekonstruira se iz revizijskog zapisa s REVOKED (changeset 137). */
+    @Test
+    void retry_revocation_resendsRevocationMail() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                "NIAS:12345678903", null);
+        when(lookup.findEvent(event.logId())).thenReturn(Optional.of(event));
+        when(lookup.isLatestTransition(RN, event.logId())).thenReturn(true);
+
+        listener.retry(event.logId());
 
         assertThat(captured().template()).isEqualTo(MailTemplate.OPOZIV);
     }

@@ -141,7 +141,7 @@ public class RnService {
         if (suspensionDeadline != null && suspensionDeadline.isBefore(LocalDate.now(clock))) {
             throw new BusinessException("error.rn.suspend.deadline.past");
         }
-        RnEntity e = load(rn);
+        RnEntity e = loadForUpdate(rn);
         transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, null, Strings.blankToNull(note));
         e.setSuspensionDeadline(suspensionDeadline != null
                 ? suspensionDeadline
@@ -151,21 +151,23 @@ public class RnService {
 
     @Transactional
     public RnEntity revokeProposal(String rn) {
-        RnEntity e = load(rn);
+        RnEntity e = loadForUpdate(rn);
         transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL);
         return e;
     }
 
     @Transactional
     public RnEntity reactivate(String rn) {
-        RnEntity e = load(rn);
+        RnEntity e = loadForUpdate(rn);
         transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REACTIVATE);
         return e;
     }
 
     /**
      * Officer-initiated withdrawal (povlačenje) of a registration number → WITHDRAWN.
-     * Permanent: allowed from ACTIVE and SUSPENDED, never reactivated (čl. 6 STR Uredbe).
+     * Permanent: allowed from ACTIVE, SUSPENSION_PROPOSED and SUSPENDED, never reactivated
+     * (čl. 6 STR Uredbe). The lessor's own revocation (opoziv) is a separate final status,
+     * {@code REVOKED} — see {@code LessorRnActionService}.
      * The optional reason is persisted on the audit log. STR-2.1-002.
      *
      * <p>TODO (zasebni epic, "Zajedničke backend teme"): obavijest Internetskim platformama
@@ -174,7 +176,7 @@ public class RnService {
      */
     @Transactional
     public RnEntity withdraw(String rn, String reason) {
-        RnEntity e = load(rn);
+        RnEntity e = loadForUpdate(rn);
         transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, Strings.blankToNull(reason));
         return e;
     }
@@ -190,7 +192,7 @@ public class RnService {
     }
 
     /**
-     * STR-1.5: list of inactive RNs (SUSPENDED + WITHDRAWN), for display to competent authority.
+     * STR-1.5: list of inactive RNs (SUSPENDED + REVOKED + WITHDRAWN), for display to competent authority.
      * SUSPENSION_PROPOSED is deliberately absent — the proposal only opens the response deadline
      * and the RN keeps holding until it expires. That work list is {@code view=SUSPENSION_PROPOSED}
      * on the registry endpoint.
@@ -198,7 +200,7 @@ public class RnService {
     @Transactional(readOnly = true)
     public List<RnEntity> inactive() {
         return repository.findByStatusInOrderByUpdatedAtDesc(
-                List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWN));
+                List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN));
     }
 
     /** STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging. */
@@ -279,6 +281,12 @@ public class RnService {
 
     private RnEntity load(String rn) {
         return repository.findById(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
+    }
+
+    /** Za promjenu statusa — redak ostaje zaključan do commita, v. {@link RnRepository#findForUpdate}. */
+    private RnEntity loadForUpdate(String rn) {
+        return repository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
     }
 }

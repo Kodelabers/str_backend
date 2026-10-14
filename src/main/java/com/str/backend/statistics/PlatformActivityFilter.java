@@ -21,7 +21,8 @@ import java.time.LocalDate;
  * downstream: binding a null into the SQL comparison would make the predicate evaluate to NULL
  * and silently drop every row instead of disabling the filter.
  *
- * @param status         frontend status token ({@code aktivan}/{@code suspendiran}/{@code povucen}),
+ * @param status         frontend status token ({@code aktivan}/{@code suspendiran}/{@code opozvan}/
+ *                       {@code povucen}/{@code nevažeći}),
  *                       translated to the DB enum name by {@link PlatformActivityQuery}
  * @param anomaliesOnly  spec §2.10: restricts the result to registration numbers flagged as
  *                       anomalous, using the same predicate that produces the header count

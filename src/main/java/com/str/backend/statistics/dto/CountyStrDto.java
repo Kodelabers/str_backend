@@ -6,6 +6,9 @@ public record CountyStrDto(
         long accommodations,
         long activeRn,
         long suspendedRn,
+        /** Opozvani — iznajmljivač je sam opozvao RB. */
+        long revokedRn,
+        /** Povučeni — nadležno tijelo je RB povuklo po službenoj dužnosti. */
         long withdrawnRn,
         double registrationRate
 ) {

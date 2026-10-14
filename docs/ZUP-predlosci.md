@@ -292,19 +292,22 @@ odjednom poslati sve obavijesti iz razdoblja kad je bio ugašen.
 | `suspenzija` | prijelaz → `SUSPENDED` uz `DEADLINE_EXCEEDED` |
 | `obustava-suspenzije` | prijelaz → `ACTIVE` uz `REVOKE_PROPOSAL` |
 | `reaktivacija` | prijelaz → `ACTIVE` uz `REACTIVATE` |
-| `povlacenje` | prijelaz → `WITHDRAWN` po službenoj dužnosti |
-| `opoziv` | prijelaz → `WITHDRAWN` na zahtjev iznajmljivača |
+| `povlacenje` | prijelaz → `WITHDRAWN` uz `WITHDRAWAL` (po službenoj dužnosti) |
+| `opoziv` | prijelaz → `REVOKED` uz `REVOCATION` (na zahtjev iznajmljivača) |
 
 Događaj `RnLifecycleEvent` objavljuje se iz **`RnStatusTransitionService.transition()`** — jedine
 točke kroz koju status smije proći (pravilo iz `CLAUDE.md`). Time obavijest ne može promaknuti
 nijednom budućem pozivatelju. `RnLifecycleEmailListener` radi `AFTER_COMMIT`, pa vidi i
 `suspensionDeadline` koji `RnService.suspend` upisuje *nakon* prijelaza.
 
-Opoziv i povlačenje dijele okidač `WITHDRAWAL`; razlikuje ih jedino `actor` — prefiks `LESSOR:`
-(prijava lozinkom) ili `NIAS:` (prijava preko NIAS-a) znači opoziv na zahtjev stranke, sve
-ostalo povlačenje po službenoj dužnosti. Oba prefiksa moraju biti u
-`RnLifecycleEvent.initiatedByLessor()`; NIAS je produkcijski put prijave, pa bi izostavljen
-prefiks krivo klasificirao većinu samo-opoziva.
+Opoziv i povlačenje su dva zasebna konačna statusa, pa se akt bira po ciljnom statusu, ne po
+akteru: `REVOKED` („Opozvan", okidač `REVOCATION`, `LessorRnActionService`) daje `opoziv`,
+`WITHDRAWN` („Povučen", okidač `WITHDRAWAL`, `RnService.withdraw`) daje `povlacenje`. Akter
+(`LESSOR:<uuid>`, `NIAS:<oib>` ili prazno za službenika) ostaje samo kao revizijski trag. Do
+changeseta 137 oba su završavala u `WITHDRAWN`/`WITHDRAWAL` i razlikovao ih je jedino prefiks
+aktera (`RnLifecycleEvent.initiatedByLessor()`, uklonjen); changeset 137 je po tom kriteriju
+postojeće opozive i njihove zapise u `registration_number_log` preveo u `REVOKED`/`REVOCATION`,
+pa i ponovno slanje zaostale obavijesti (`MailRetryJob`) bira isti akt kao i prije.
 
 Akt se prilaže kao **preslika**. Pad rendera akta ne sprječava mail — status je već promijenjen.
 Mail ide i za vrste bez šifre u eGOP šifrarniku (`reaktivacija`, `obustava-suspenzije`), jer

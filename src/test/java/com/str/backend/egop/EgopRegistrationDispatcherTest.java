@@ -21,6 +21,8 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 
 import java.time.Duration;
@@ -278,10 +280,11 @@ class EgopRegistrationDispatcherTest {
         verify(mailRetryStore, never()).recordFailure(any(), any(), any());
     }
 
-    /** Za povučeni RB obavijest o izdavanju više ne vrijedi. */
-    @Test
-    void retryEmail_withdrawnRn_isAbandoned() {
-        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+    /** Za opozvani ili povučeni RB obavijest o izdavanju više ne vrijedi. */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"REVOKED", "WITHDRAWN"})
+    void retryEmail_terminatedRn_isAbandoned(RnStatus terminal) {
+        when(rn.getStatus()).thenReturn(terminal);
 
         dispatcher.retryEmail(submission.getSubmissionId());
 

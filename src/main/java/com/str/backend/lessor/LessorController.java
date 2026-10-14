@@ -129,7 +129,7 @@ public class LessorController {
         return reissueService.prefill(rn, RnOwner.byLessor(extractLessorId(authentication)));
     }
 
-    /** STR-1.3-001: lessor revokes (opoziv) their own RN → WITHDRAWN. Owner-only. */
+    /** STR-1.3-001: lessor revokes (opoziv) their own RN → REVOKED. Owner-only. */
     @PostMapping("/lessor/registrations/{rn}/withdraw")
     public LessorRnActionResponse withdrawOwnRegistration(
             @PathVariable String rn,

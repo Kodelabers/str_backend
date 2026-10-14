@@ -45,6 +45,22 @@ class RnTriggerLookupControllerTest {
                 .containsExactlyInAnyOrderElementsOf(accepted);
     }
 
+    /**
+     * Opoziv pokreće samo iznajmljivač, sam i bez razloga — službenik ga ne smije moći odabrati
+     * ni u jednom obrascu (ni u povlačenju ni u suspenziji).
+     */
+    @Test
+    void revocation_isNotOfferedInAnyContext() {
+        for (TriggerContext context : TriggerContext.values()) {
+            assertThat(body(context))
+                    .extracting(RnTriggerResponse::sifra)
+                    .doesNotContain(RnTrigger.REVOCATION.name());
+        }
+        assertThat(body(TriggerContext.POVLACENJE))
+                .extracting(RnTriggerResponse::sifra)
+                .containsExactly(RnTrigger.WITHDRAWAL.name());
+    }
+
     /** Natpis se traži po ključu i baca ako ga nema — bolje pasti u testu nego pri renderu akta. */
     @Test
     void everyOfferedReason_hasCroatianLabel() {

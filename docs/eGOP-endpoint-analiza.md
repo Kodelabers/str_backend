@@ -1867,9 +1867,9 @@ idu u **isti** neupravni predmet.
 | :--- | :--- | :--- | :--- |
 | Registracija | Zahtjev za registracijski broj | ulazno | `EgopRegistrationDispatcher` |
 | Registracija | Obavijest o dodjeli registracijskog broja | izlazno | isto |
-| Opoziv | Obavijest o opozivu registracijskog broja | izlazno | prijelaz → `WITHDRAWN`, actor `LESSOR:` |
+| Opoziv | Obavijest o opozivu registracijskog broja | izlazno | prijelaz → `REVOKED` (okidač `REVOCATION`; do changeseta 137 `WITHDRAWN` uz actor `LESSOR:`/`NIAS:`) |
 | Suspenzija | Obavijest o suspenziji registracijskog broja | izlazno | prijelaz → `SUSPENDED` |
-| Povlačenje | Obavijest o povlačenju registracijskog broja | izlazno | prijelaz → `WITHDRAWN` po sl. dužnosti |
+| Povlačenje | Obavijest o povlačenju registracijskog broja | izlazno | prijelaz → `WITHDRAWN` (okidač `WITHDRAWAL`) po sl. dužnosti |
 | Reaktivacija | Obavijest o reaktivaciji registracijskog broja | izlazno | prijelaz → `ACTIVE`, **iza zastavice** |
 | Prijedlog suspenzije | Obavijest o prijedlogu suspenzije | izlazno | ❌ nema dvofazne suspenzije |
 | Prigovor | Prigovor na prijedlog suspenzije | ulazno | ❌ tok ne postoji |
