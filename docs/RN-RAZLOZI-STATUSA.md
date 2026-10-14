@@ -3,7 +3,7 @@
 Popis za pregled i dopunu naručitelja (primjedba s UAT-a: *„Jesu li razlozi za suspenziju i
 povlačenje u nekoj tablici? Možemo li ih izbaciti u neki format da ih pregledaju i dopune?"*).
 
-**Stanje:** razlozi **nisu** u tablici. Žive kao Java enum `RnTrigger` (9 vrijednosti), a hrvatski
+**Stanje:** razlozi **nisu** u tablici. Žive kao Java enum `RnTrigger` (10 vrijednosti), a hrvatski
 natpisi u `src/main/resources/documents/hr/labels.properties`. U bazi se u
 `str_rn.registration_number_log.trigger_name` upisuju kao slobodan string, bez ograničenja.
 
@@ -33,16 +33,15 @@ u izreku akta. Ostala tri ispisuju svoj naziv iz tablice.
 
 ### 1b. Povlačenje — `POST /api/rn/{rb}/withdraw?reason=<slobodan tekst>`
 
-Vodi u `WITHDRAWN`, **trajno** — reaktivacije nema (čl. 6. STR Uredbe).
+Vodi u `WITHDRAWN` („Povučen"), **trajno** — reaktivacije nema (čl. 6. STR Uredbe). Mjera
+nadležnog tijela; generira akt „Obavijest o povlačenju registracijskog broja" (s uputom o pravnom
+lijeku).
 
 | Šifra | Hrvatski naziv | Napomena | Dopuna naručitelja |
 | :--- | :--- | :--- | :--- |
 | `WITHDRAWAL` | povlačenje registracijskog broja | jedini razlog; obrazloženje ide kao slobodan tekst | |
 
-Isti okidač pokriva dva slučaja, koja se razlikuju samo po tome tko ga je pokrenuo:
-- **nadležno tijelo** → akt „Obavijest o povlačenju registracijskog broja" (s uputom o pravnom lijeku);
-- **sam iznajmljivač** (`POST /api/nias/registrations/{rb}/withdraw`) → akt „Obavijest o opozivu
-  registracijskog broja".
+Opoziv iznajmljivača **nije** povlačenje i nema ga na ovom popisu — v. §2a.
 
 > **Pitanje za naručitelja:** treba li povlačenje kodirane razloge kao i suspenzija (npr. „na
 > zahtjev stranke", „pravomoćna odluka inspekcije", „prestanak obavljanja djelatnosti")? Sada je
@@ -50,10 +49,29 @@ Isti okidač pokriva dva slučaja, koja se razlikuju samo po tome tko ga je pokr
 
 ---
 
-## 2. Ostali okidači (sustav ih postavlja sam)
+## 2. Ostali okidači
 
-Nisu na izbor korisniku — navedeni radi potpunosti, jer se pojavljuju u revizijskom zapisu i u
+Nisu na izbor službeniku — navedeni radi potpunosti, jer se pojavljuju u revizijskom zapisu i u
 aktima.
+
+### 2a. Opoziv iznajmljivača — `POST /api/nias/registrations/{rb}/withdraw` / `POST /api/lessor/registrations/{rb}/withdraw`
+
+Iznajmljivač sam opoziva svoj RB u TuRegBroju („Moji registracijski brojevi" → Opoziv), bez
+razloga. Vodi u **`REVOKED` („Opozvan")**, konačni status (čl. 5. st. 5 STR Uredbe); podaci se
+čuvaju najviše 18 mjeseci, a zatim ih sustav briše (`WithdrawnRnRetentionJob`). Generira akt
+„Obavijest o opozivu registracijskog broja" (bez upute o pravnom lijeku).
+
+| Šifra | Hrvatski naziv | Prijelaz | Tko okida | Akt |
+| :--- | :--- | :--- | :--- | :--- |
+| `REVOCATION` | opoziv registracijskog broja na zahtjev iznajmljivača | `ACTIVE` / `SUSPENSION_PROPOSED` / `SUSPENDED → REVOKED` | iznajmljivač | Obavijest o opozivu |
+
+`GET /api/lookups/rn-triggers` ga ne nudi ni u kontekstu `POVLACENJE` ni u `SUSPENZIJA`.
+
+Do changeseta 137 opoziv je završavao u `WITHDRAWN` uz okidač `WITHDRAWAL`, a od povlačenja ga je
+razlikovao samo akter u `registration_number_log` (`LESSOR:` / `NIAS:`). Changeset 137 je
+postojeće opozive po tom kriteriju preveo u `REVOKED` / `REVOCATION`.
+
+### 2b. Okidači koje sustav ili službenik postavlja izvan obrazaca
 
 | Šifra | Hrvatski naziv | Prijelaz | Tko okida | Akt |
 | :--- | :--- | :--- | :--- | :--- |

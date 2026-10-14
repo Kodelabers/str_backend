@@ -69,7 +69,8 @@ public class RnEntity {
     void applyStatus(RnStatus next) {
         this.status = next;
         this.updatedAt = Instant.now();
-        if (next == RnStatus.WITHDRAWN && this.validTo == null) {
+        // Dan opoziva/povlačenja — od njega teku rok ponovnog zahtjeva i retencija (čl. 5. st. 5).
+        if (next.isTerminal() && this.validTo == null) {
             this.validTo = LocalDate.now();
         }
         if (next == RnStatus.ACTIVE && this.validTo != null) {

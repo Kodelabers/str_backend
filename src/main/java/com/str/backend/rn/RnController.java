@@ -63,7 +63,7 @@ public class RnController {
         this.effectiveOibResolver = effectiveOibResolver;
     }
 
-    /** STR-1.5: display of inactive RNs (SUSPENDED + WITHDRAWN). */
+    /** STR-1.5: display of inactive RNs (SUSPENDED + REVOKED + WITHDRAWN). */
     @GetMapping("/inactive")
     public List<RnResponse> inactive() {
         return mapper.toResponseList(service.inactive());

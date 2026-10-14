@@ -22,17 +22,21 @@ class WithdrawnRnRetentionJobTest {
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-06-29T00:00:00Z"), ZoneId.of("UTC"));
 
+    /**
+     * Opozvani (čl. 5. st. 5) i povučeni: do uvođenja REVOKED oba su bila WITHDRAWN, pa posao
+     * zadržava oba dok klijent ne potvrdi opseg za povučene.
+     */
     @Test
-    void detect_usesCutoff18MonthsBack_andAuditsWhenDue() {
+    void detect_coversRevokedAndWithdrawn_usesCutoff18MonthsBack_andAuditsWhenDue() {
         RnRepository repo = mock(RnRepository.class);
         AdminAuditService audit = mock(AdminAuditService.class);
         LocalDate expectedCutoff = LocalDate.of(2026, 6, 29).minusMonths(18); // 2024-12-29
-        when(repo.findByStatusAndValidToBefore(RnStatus.WITHDRAWN, expectedCutoff))
+        when(repo.findByStatusInAndValidToBefore(List.of(RnStatus.REVOKED, RnStatus.WITHDRAWN), expectedCutoff))
                 .thenReturn(List.of(withdrawn(), withdrawn()));
 
         new WithdrawnRnRetentionJob(repo, audit, clock, 18).detectDueForRetention();
 
-        verify(repo).findByStatusAndValidToBefore(RnStatus.WITHDRAWN, expectedCutoff);
+        verify(repo).findByStatusInAndValidToBefore(List.of(RnStatus.REVOKED, RnStatus.WITHDRAWN), expectedCutoff);
         verify(audit).record(eq(AdminAuditService.SYSTEM), eq("RETENTION_DUE"), eq("RN"), any(), any());
     }
 
@@ -40,7 +44,7 @@ class WithdrawnRnRetentionJobTest {
     void detect_noAudit_whenNothingDue() {
         RnRepository repo = mock(RnRepository.class);
         AdminAuditService audit = mock(AdminAuditService.class);
-        when(repo.findByStatusAndValidToBefore(any(), any())).thenReturn(List.of());
+        when(repo.findByStatusInAndValidToBefore(any(), any())).thenReturn(List.of());
 
         new WithdrawnRnRetentionJob(repo, audit, clock, 18).detectDueForRetention();
 

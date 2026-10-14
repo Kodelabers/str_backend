@@ -85,7 +85,7 @@ public class RnLifecycleEmailListener {
             return;
         }
         // deliver() prijelaz bez akta tiho preskače; ovdje bi to zapis ostavilo zauvijek otvorenim.
-        if (StrDocumentType.forTransition(event.to(), event.trigger(), event.initiatedByLessor()).isEmpty()) {
+        if (StrDocumentType.forTransition(event.to(), event.trigger()).isEmpty()) {
             retryStore.abandon(MailRetryEntity.Kind.RN_LIFECYCLE, logId, "no_act");
             return;
         }
@@ -93,8 +93,7 @@ public class RnLifecycleEmailListener {
     }
 
     private void deliver(RnLifecycleEvent event) {
-        Optional<StrDocumentType> akt = StrDocumentType.forTransition(
-                event.to(), event.trigger(), event.initiatedByLessor());
+        Optional<StrDocumentType> akt = StrDocumentType.forTransition(event.to(), event.trigger());
         if (akt.isEmpty()) {
             return;
         }

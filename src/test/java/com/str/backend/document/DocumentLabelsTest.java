@@ -56,5 +56,6 @@ class DocumentLabelsTest {
     @Test
     void labelsAreReadAsUtf8() {
         assertThat(labels.status(RnStatus.WITHDRAWN)).isEqualTo("povučen");
+        assertThat(labels.status(RnStatus.REVOKED)).isEqualTo("opozvan");
     }
 }

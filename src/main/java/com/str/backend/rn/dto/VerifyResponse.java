@@ -13,8 +13,9 @@ import com.str.backend.domain.RnStatus;
  *       active one; the status is reported truthfully rather than folded into ACTIVE.</li>
  *   <li>SUSPENDED → {@code valid=true}, {@code status=SUSPENDED}, no object data
  *       (invalid for advertising).</li>
- *   <li>WITHDRAWN (opozvan) or non-existent → {@code valid=false} only — privacy: a withdrawn RN
- *       must not reveal it ever existed, so the response is identical to not-found.</li>
+ *   <li>REVOKED (opozvan), WITHDRAWN (povučen) or non-existent → {@code valid=false} only —
+ *       privacy: a terminated RN must not reveal it ever existed, so the response is identical
+ *       to not-found. Neither final status is ever put into {@code status}.</li>
  * </ul>
  *
  * Null fields are omitted from the JSON so the legacy {@code {valid}}-only shape is preserved
@@ -32,7 +33,7 @@ public record VerifyResponse(
         String type
 ) {
 
-    /** Withdrawn or non-existent — intentionally indistinguishable. */
+    /** Revoked, withdrawn or non-existent — intentionally indistinguishable. */
     public static VerifyResponse invalid() {
         return new VerifyResponse(false, null, null, null, null, null, null, null);
     }

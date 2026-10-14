@@ -581,7 +581,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * {@code UnexpectedRollbackException} koja bi preskočila i eGOP dostavu.
      *
      * @return broj ažuriranih redaka: 1 kad je upis prošao, 0 kad objekt ne postoji ili
-     * već ima RB koji nije povučen
+     * već ima RB koji nije konačan (opozvan ili povučen)
      */
     @Modifying
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -591,12 +591,12 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
              WHERE id = :facilityId
                AND (registration_number IS NULL
                     OR registration_number IN (SELECT r.rn FROM str_rn.registration_number r
-                                                WHERE r.status = 'WITHDRAWN'))
+                                                WHERE r.status IN ('REVOKED', 'WITHDRAWN')))
             """, nativeQuery = true)
     int writeBackRegistrationNumber(@Param("facilityId") long facilityId, @Param("rn") String rn);
 
     /**
-     * Briše povučeni RB iz eTurizam registra, da objekt ni ondje ne izgleda kao da broj ima i da
+     * Briše opozvani ili povučeni RB iz eTurizam registra, da objekt ni ondje ne izgleda kao da broj ima i da
      * može dobiti novi. Briše samo ako je u polju upravo taj broj — ništa drugo ne dira.
      * {@code REQUIRES_NEW} iz istog razloga kao {@link #writeBackRegistrationNumber}.
      *

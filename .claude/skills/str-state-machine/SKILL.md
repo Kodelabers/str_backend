@@ -28,34 +28,37 @@ Defines legal transitions for `submission.status` (SubmissionStatus) and `regist
 | From | Trigger | To |
 | :--- | :--- | :--- |
 | — | RN issued (`RnEntity.issue()`, no log row) | `ACTIVE` |
-| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` / `INCOMPLETE_DOCUMENTATION` | `SUSPENSION_PROPOSED` |
+| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` / `INCOMPLETE_DOCUMENTATION` / `OTHER` | `SUSPENSION_PROPOSED` |
 | `SUSPENSION_PROPOSED` | `REVOKE_PROPOSAL` | `ACTIVE` |
 | `SUSPENSION_PROPOSED` | `DEADLINE_EXCEEDED` | `SUSPENDED` |
 | `SUSPENDED` | `REACTIVATE` | `ACTIVE` |
-| `ACTIVE` / `SUSPENSION_PROPOSED` / `SUSPENDED` | `WITHDRAWAL` | `WITHDRAWN` |
-| `WITHDRAWN` | — (terminal) | — |
+| `ACTIVE` / `SUSPENSION_PROPOSED` / `SUSPENDED` | `REVOCATION` (lessor, `LessorRnActionService`) | `REVOKED` („Opozvan") |
+| `ACTIVE` / `SUSPENSION_PROPOSED` / `SUSPENDED` | `WITHDRAWAL` (official, `RnService.withdraw`) | `WITHDRAWN` („Povučen") |
+| `REVOKED` / `WITHDRAWN` | — (final) | — |
+
+`REVOKED` and `WITHDRAWN` are both final (`RnStatus.isTerminal()`): no reactivation, and one never becomes the other. Treat them together wherever "the RN no longer holds" matters (`valid_to`, eTurizam clearing, reissue, retention, `INVALID` view, public verify) and separately wherever the client's status table distinguishes them (labels, statistics, registry views, acts).
 
 Suspension is **two-phase**: `suspend()` only *proposes* it. The party is invited to respond within `suspension_deadline` (čl. 30. st. 2 ZUP); `SuspensionDeadlineJob` (daily) performs `DEADLINE_EXCEEDED` when the deadline passes unanswered. Never transition `ACTIVE → SUSPENDED` directly.
 
 ## Documents
 
-Each transition maps to a ZUP act through `StrDocumentType.forTransition(to, trigger, byLessor)` — one function shared by the eGOP filing listener and the e-mail listener, so document and message can never diverge. Adding a status or trigger means:
+Each transition maps to a ZUP act through `StrDocumentType.forTransition(to, trigger)` — one function shared by the eGOP filing listener and the e-mail listener, so document and message can never diverge. Adding a status or trigger means:
 
 1. a branch in `forTransition` (or a deliberate decision that it produces no act — issuance is the one such case, handled by the registration flow);
 2. Croatian labels in `documents/hr/labels.properties` for the new `RnStatus` / `RnTrigger`. `ZupContextFactory` resolves the status label on **every** render and a missing key throws — after the status has already changed. `DocumentLabelsTest` guards this.
 
-`WITHDRAWAL` produces two different acts: `OPOZIV` when the lessor initiated it (actor prefix `LESSOR:` or `NIAS:`), `POVLACENJE` ex officio.
+The act follows the target status, not the actor: `REVOKED` → `OPOZIV` (no legal remedy), `WITHDRAWN` → `POVLACENJE` (with legal remedy). Until changeset 137 both were `WITHDRAWN`/`WITHDRAWAL`, told apart only by the actor prefix (`LESSOR:` / `NIAS:`); 137 migrated those rows and their log entries to `REVOKED`/`REVOCATION`.
 
 ## Rules
 
-- `RnStatus.ACTIVE` is the **only** publicly visible state (see `RnStatus.isPubliclyVisible()`). All others must be filtered out of public-facing reads.
+- `ACTIVE` and `SUSPENSION_PROPOSED` are the publicly valid states (`RnStatus.isActiveForPublicUse()`). `/api/verify` returns object data only for them, the status only for `SUSPENDED`, and `{valid:false}` for `REVOKED`, `WITHDRAWN` and unknown RNs alike.
 - `SubmissionStatus.ACCEPTED` / `REJECTED` are terminal — `isTerminal()` returns true. Do not transition further.
 - `SubmissionStatus.IN_PROCESSING` is transient. A stuck `IN_PROCESSING` submission indicates an interrupted pipeline run, not a valid steady state.
 - `IN_VERIFICATION` requires a pending referent action (foreign upload review). It is the only non-NIAS entry into processing.
 
 ## Guard Pattern
 
-All transitions go through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. These validate the `(current, target, trigger)` triple via `canTransitionTo()` and immediately write a `submission_log` / `registration_number_log` row. These two operations are inseparable — never mutate the status field directly from service code.
+All transitions go through `SubmissionStatusTransitionService.transition()` and `RnStatusTransitionService.transition()`. Load the RN with `RnRepository.findForUpdate` (row lock) before an RN transition. These validate the `(current, target, trigger)` triple via `canTransitionTo()` and immediately write a `submission_log` / `registration_number_log` row. These two operations are inseparable — never mutate the status field directly from service code.
 
 ```java
 void transition(UUID submissionId, SubmissionStatus target, SubmissionTrigger trigger) {

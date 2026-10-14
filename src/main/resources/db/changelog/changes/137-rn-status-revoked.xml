@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Novi konačni status RB-a REVOKED („Opozvan"): opoziv koji iznajmljivač pokreće sam
+      (LessorRnActionService, okidač REVOCATION). WITHDRAWN („Povučen") ostaje samo za
+      povlačenje po službenoj dužnosti (RnService.withdraw, okidač WITHDRAWAL).
+
+      Do sada su oba završavala u WITHDRAWN/WITHDRAWAL i razlikovao ih je samo akter u
+      registration_number_log: prefiks 'LESSOR:' (prijava lozinkom) ili 'NIAS:' (prijava preko
+      NIAS-a) značio je opoziv i birao akt OPOZIV. Isti kriterij ovdje prevodi postojeće podatke.
+
+      1. chk_rn_status (jedini CHECK na statusu RB-a; registration_number_log ga nema) dopušta REVOKED.
+      2. RB u statusu WITHDRAWN čiji je ZADNJI ulaz u WITHDRAWN zapisao akter iznajmljivača → REVOKED.
+         updated_at se namjerno ne dira: migracija nije poslovni događaj, a valid_to (dan opoziva,
+         od kojeg teku retencija i rok ponovnog zahtjeva) ostaje kakav jest.
+      3. Taj isti zapis revizijskog traga dobiva to_status = REVOKED i trigger_name = REVOCATION,
+         da se povijest slaže sa statusom i da MailRetryJob, koji događaj rekonstruira iz zapisa,
+         za zaostalu obavijest izabere isti akt (OPOZIV) kao i dosad.
+
+      Rubni slučajevi:
+      - WITHDRAWN je terminalan i zapis nastaje samo uz uspješan prijelaz, pa RB ima najviše jedan
+        ulaz u WITHDRAWN. Ako ih ipak ima više (ručni zahvat u bazi), odlučuje zadnji po
+        occurred_at; raniji zapisi ostaju netaknuti.
+      - Akter NULL (službenik), 'SYSTEM' ili bilo što drugo → ostaje WITHDRAWN (povlačenje).
+      - WITHDRAWN bez ijednog zapisa u tragu → ostaje WITHDRAWN: bez traga se opoziv ne može
+        dokazati, a povlačenje je stroža i sigurnija pretpostavka.
+      - LIKE je osjetljiv na velika/mala slova, i namjerno: kod je prefikse uvijek pisao velikim
+        slovima ('LESSOR:' + uuid, 'NIAS:' + oib).
+      - Prefiksi nisu ni u jednom drugom stupcu ni tablici: egop_pismeno i mail_retry vežu se na
+        log_id, a vrstu akta pri ponovnom pokušaju izvode iz to_status zapisa.
+
+      Svaki korak je idempotentan: ponovljeno izvršavanje ne nalazi više nijedan redak.
+
+      Rollback vraća SVE REVOKED u WITHDRAWN/WITHDRAWAL, i one nastale nakon migracije. To je
+      namjerno i bez gubitka: stari kod opoziv prepoznaje upravo po WITHDRAWN + akteru
+      'LESSOR:'/'NIAS:', a akter se ni ovdje ni u rollbacku ne mijenja, pa stara verzija za
+      vraćene retke bira isti akt (OPOZIV) kao i nova.
+    -->
+    <changeSet id="137-rn-status-revoked" author="str-backend">
+        <sql>
+            ALTER TABLE str_rn.registration_number
+                DROP CONSTRAINT IF EXISTS chk_rn_status;
+            ALTER TABLE str_rn.registration_number
+                ADD CONSTRAINT chk_rn_status
+                    CHECK (status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'REVOKED', 'WITHDRAWN'));
+
+            UPDATE str_rn.registration_number r
+               SET status = 'REVOKED'
+             WHERE r.status = 'WITHDRAWN'
+               AND EXISTS (SELECT 1
+                             FROM str_rn.registration_number_log l
+                            WHERE l.rn = r.rn
+                              AND l.to_status = 'WITHDRAWN'
+                              AND (l.actor LIKE 'LESSOR:%' OR l.actor LIKE 'NIAS:%')
+                              AND NOT EXISTS (SELECT 1
+                                                FROM str_rn.registration_number_log n
+                                               WHERE n.rn = l.rn
+                                                 AND n.to_status = 'WITHDRAWN'
+                                                 AND n.occurred_at > l.occurred_at));
+
+            UPDATE str_rn.registration_number_log l
+               SET to_status = 'REVOKED',
+                   trigger_name = 'REVOCATION'
+             WHERE l.to_status = 'WITHDRAWN'
+               AND (l.actor LIKE 'LESSOR:%' OR l.actor LIKE 'NIAS:%')
+               AND NOT EXISTS (SELECT 1
+                                 FROM str_rn.registration_number_log n
+                                WHERE n.rn = l.rn
+                                  AND n.to_status = 'WITHDRAWN'
+                                  AND n.occurred_at > l.occurred_at)
+               AND EXISTS (SELECT 1
+                             FROM str_rn.registration_number r
+                            WHERE r.rn = l.rn
+                              AND r.status = 'REVOKED');
+        </sql>
+        <rollback>
+            <sql>
+                UPDATE str_rn.registration_number_log
+                   SET to_status = 'WITHDRAWN',
+                       trigger_name = 'WITHDRAWAL'
+                 WHERE to_status = 'REVOKED';
+
+                UPDATE str_rn.registration_number
+                   SET status = 'WITHDRAWN'
+                 WHERE status = 'REVOKED';
+
+                ALTER TABLE str_rn.registration_number
+                    DROP CONSTRAINT IF EXISTS chk_rn_status;
+                ALTER TABLE str_rn.registration_number
+                    ADD CONSTRAINT chk_rn_status
+                        CHECK (status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'WITHDRAWN'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

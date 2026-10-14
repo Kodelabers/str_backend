@@ -129,6 +129,21 @@ class ReissueServiceTest {
         assertThat(outcome(RnStatus.WITHDRAWN, w, false, true)).isEqualTo(Outcome.ALREADY_USED);
     }
 
+    /**
+     * Opoziv iznajmljivača (REVOKED) je glavni slučaj ponovnog zahtjeva; povlačenje (WITHDRAWN)
+     * ostaje dopušteno kao i prije uvođenja REVOKED, dok klijent ne odluči drukčije.
+     */
+    @Test
+    void eligibility_revokedAndWithdrawnAreBothFinal_otherStatusesAreNot() {
+        LocalDate w = TODAY.minusMonths(2);
+        assertThat(ReissueService.eligibility(RnStatus.REVOKED, w, false, false, TODAY, 18))
+                .isEqualTo(new ReissueService.Eligibility(Outcome.ALLOWED, w.plusMonths(18)));
+        assertThat(outcome(RnStatus.REVOKED, TODAY.minusMonths(18).minusDays(1), false, false))
+                .isEqualTo(Outcome.EXPIRED);
+        assertThat(outcome(RnStatus.REVOKED, w, false, true)).isEqualTo(Outcome.ALREADY_USED);
+        assertThat(outcome(RnStatus.SUSPENSION_PROPOSED, w, false, false)).isEqualTo(Outcome.NOT_WITHDRAWN);
+    }
+
     private static Outcome outcome(RnStatus status, LocalDate validTo, boolean inETurizam, boolean used) {
         return ReissueService.eligibility(status, validTo, inETurizam, used, TODAY, 18).outcome();
     }
@@ -177,6 +192,16 @@ class ReissueServiceTest {
     }
 
     // ── prefill: rok ────────────────────────────────────────────────────────
+
+    @Test
+    void prefill_revokedRn_isAllowed() {
+        rn(RnStatus.REVOKED, TODAY.minusMonths(6));
+
+        ReissuePrefillResponse r = service.prefill(RN, RnOwner.byOib(OIB));
+
+        assertThat(r.povucenRb()).isEqualTo(RN);
+        assertThat(r.ponovniZahtjevDo()).isEqualTo(TODAY.minusMonths(6).plusMonths(18));
+    }
 
     @Test
     void prefill_withinRetention_returnsDataGoFieldsAndDeadline() {
@@ -479,16 +504,17 @@ class ReissueServiceTest {
     void withReissueDeadlines_setsDeadlineOnlyWhereAllowed() {
         List<String> rns = List.of("HR2", "HR3", "HR4", "HR5", "HR6", "HR7", "HR8");
         when(rnRepository.findReissueCandidates(rns)).thenReturn(List.of(
-                candidate("HR2", TODAY.minusMonths(2), null, false, false),
-                candidate("HR3", TODAY.minusMonths(18), "", false, false),
-                candidate("HR4", TODAY.minusMonths(18).minusDays(1), null, false, false),
-                candidate("HR5", TODAY.minusMonths(2), "153049", false, false),
-                candidate("HR6", TODAY.minusMonths(2), null, false, true),
-                candidate("HR7", null, null, false, false),
-                candidate("HR8", TODAY.minusMonths(2), null, true, false)));
+                candidate("HR2", RnStatus.REVOKED, TODAY.minusMonths(2), null, false, false),
+                candidate("HR3", RnStatus.WITHDRAWN, TODAY.minusMonths(18), "", false, false),
+                candidate("HR4", RnStatus.WITHDRAWN, TODAY.minusMonths(18).minusDays(1), null, false, false),
+                candidate("HR5", RnStatus.WITHDRAWN, TODAY.minusMonths(2), "153049", false, false),
+                candidate("HR6", RnStatus.WITHDRAWN, TODAY.minusMonths(2), null, false, true),
+                candidate("HR7", RnStatus.WITHDRAWN, null, null, false, false),
+                candidate("HR8", RnStatus.WITHDRAWN, TODAY.minusMonths(2), null, true, false)));
 
         List<LessorRnSummaryDto> rows = new ArrayList<>(List.of(summaryRow("HR1", RnStatus.ACTIVE)));
-        rns.forEach(rn -> rows.add(summaryRow(rn, RnStatus.WITHDRAWN)));
+        // HR2 je opozvan (iznajmljivač), ostali povučeni — rok dobivaju oba konačna statusa.
+        rns.forEach(rn -> rows.add(summaryRow(rn, "HR2".equals(rn) ? RnStatus.REVOKED : RnStatus.WITHDRAWN)));
         List<LessorRnSummaryDto> result = service.withReissueDeadlines(rows);
 
         assertThat(result).extracting(LessorRnSummaryDto::ponovniZahtjevDo).containsExactly(
@@ -572,10 +598,12 @@ class ReissueServiceTest {
         return new LessorRnSummaryDto(rn, status, LocalDate.of(2026, 1, 1), "Objekt", "Riva", "1", "Split", "Apartman");
     }
 
-    private static ReissueCandidateRow candidate(String rn, LocalDate validTo, String facilityId,
-                                                 boolean decisionInETurizam, boolean used) {
+    private static ReissueCandidateRow candidate(String rn, RnStatus status, LocalDate validTo,
+                                                 String facilityId, boolean decisionInETurizam,
+                                                 boolean used) {
         return new ReissueCandidateRow() {
             @Override public String getRn() { return rn; }
+            @Override public RnStatus getStatus() { return status; }
             @Override public LocalDate getValidTo() { return validTo; }
             @Override public String getFacilityId() { return facilityId; }
             @Override public Boolean getDecisionInETurizam() { return decisionInETurizam; }

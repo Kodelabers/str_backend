@@ -56,7 +56,7 @@ public class StatisticsExportService {
 
     private static final List<String> EXPORT_STATUSES =
             List.of(RnStatus.ACTIVE.name(), RnStatus.SUSPENSION_PROPOSED.name(),
-                    RnStatus.SUSPENDED.name(), RnStatus.WITHDRAWN.name());
+                    RnStatus.SUSPENDED.name(), RnStatus.REVOKED.name(), RnStatus.WITHDRAWN.name());
 
     /**
      * Upper bound for a single activity export. Measured on this code path: 50k rows takes ~20s
@@ -134,9 +134,10 @@ public class StatisticsExportService {
 
             // County breakdown table
             String[] countyHeaders = {
-                    "Županija", "Objekti", "Aktivni RB", "Suspendirani", "Povučeni", "% registriranih"
+                    "Županija", "Objekti", "Aktivni RB", "Suspendirani", "Opozvani", "Povučeni",
+                    "% registriranih"
             };
-            float[] colWidths = {4f, 1.5f, 1.5f, 1.5f, 1.5f, 2f};
+            float[] colWidths = {4f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 2f};
             PdfPTable countyTable = new PdfPTable(colWidths);
             countyTable.setWidthPercentage(100);
             for (String h : countyHeaders) countyTable.addCell(thCell(h));
@@ -145,6 +146,7 @@ public class StatisticsExportService {
                 countyTable.addCell(tdCell(String.valueOf(row.accommodations())));
                 countyTable.addCell(tdCell(String.valueOf(row.activeRn())));
                 countyTable.addCell(tdCell(String.valueOf(row.suspendedRn())));
+                countyTable.addCell(tdCell(String.valueOf(row.revokedRn())));
                 countyTable.addCell(tdCell(String.valueOf(row.withdrawnRn())));
                 countyTable.addCell(tdCell(formatRate(row.registrationRate())));
             }
@@ -537,6 +539,7 @@ public class StatisticsExportService {
             case "aktivan"          -> "Aktivan";
             case "pred_suspenzijom" -> "Pred suspenzijom";
             case "suspendiran"      -> "Suspendiran";
+            case "opozvan"          -> "Opozvan";
             case "povucen"          -> "Povučen";
             case "bez_rb"           -> "Bez RB";
             default                 -> status;
@@ -557,6 +560,7 @@ public class StatisticsExportService {
             case "ACTIVE"              -> "Aktivan";
             case "SUSPENSION_PROPOSED" -> "Pred suspenzijom";
             case "SUSPENDED"           -> "Suspendiran";
+            case "REVOKED"             -> "Opozvan";
             case "WITHDRAWN"           -> "Povučen";
             default                    -> status;
         };

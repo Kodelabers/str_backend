@@ -39,7 +39,11 @@ class RnTriggerLookupController {
             RnTrigger.INCOMPLETE_DOCUMENTATION,
             RnTrigger.OTHER);
 
-    /** Povlačenje ima jedan razlog; slobodan tekst se šalje kao {@code reason}. */
+    /**
+     * Povlačenje ima jedan razlog; slobodan tekst se šalje kao {@code reason}. Namjerno bez
+     * {@link RnTrigger#REVOCATION}: opoziv pokreće iznajmljivač sam, bez razloga i bez ovog
+     * obrasca, pa ga službenik ne smije moći odabrati.
+     */
     static final List<RnTrigger> WITHDRAWAL_REASONS = List.of(RnTrigger.WITHDRAWAL);
 
     private final DocumentLabels labels;

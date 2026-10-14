@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.common.Strings;
 import com.str.backend.exception.BusinessException;
+import com.str.backend.rn.RnRegistryView;
 import com.str.backend.statistics.dto.CountryBreakdownDto;
 import com.str.backend.statistics.dto.PlatformActivitiesPageDto;
 import com.str.backend.statistics.dto.PlatformActivityRowDto;
@@ -49,6 +50,16 @@ class PlatformActivityQuery {
     private static final String ANOMALY_PREDICATE =
             "rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED')";
 
+    /** Filtar „nevažeći" — v. {@link #WHERE_FILTERS}. */
+    private static final String INVALID_STATUS = "INVALID";
+
+    /**
+     * Statusi filtra „nevažeći", isti kao u registru ({@link RnRegistryView#INVALID}). Vežu se kao
+     * parametar, ne lijepe u SQL.
+     */
+    static final List<String> INVALID_STATUSES =
+            RnRegistryView.INVALID.statuses().stream().map(Enum::name).toList();
+
     private static final String FROM_JOINS = """
             FROM str_rn.accommodation_activity aa
             JOIN str_rn.online_platform p ON p.platform_id = aa.platform_id
@@ -69,7 +80,10 @@ class PlatformActivityQuery {
           + "  AND (:toDate IS NULL OR aa.period_from <= :toDate)\n"
           + "  AND (:county IS NULL OR a.county = :county)\n"
           + "  AND (:municipality IS NULL OR a.city = :municipality)\n"
-          + "  AND (:rnStatus IS NULL OR rn.status = :rnStatus)\n"
+          // 'nevažeći' (INVALID) nije status nego skupina — RnRegistryView.INVALID: suspendirani,
+          // opozvani i povučeni. Uspoređivao se s nepostojećim statusom INVALID i vraćao prazno.
+          + "  AND (:rnStatus IS NULL OR rn.status = :rnStatus\n"
+          + "       OR (:rnStatus = '" + INVALID_STATUS + "' AND rn.status IN (:invalidStatuses)))\n"
           // Partial match, matching the public registry's `rb` filter — the same field behaving
           // differently on two screens was an accident, not a design decision.
           + "  AND (:rn IS NULL OR aa.rn ILIKE :rnLike)\n"
@@ -210,6 +224,7 @@ class PlatformActivityQuery {
         p.addValue("county", Strings.blankToNull(f.county()), Types.VARCHAR);
         p.addValue("municipality", Strings.blankToNull(f.municipality()), Types.VARCHAR);
         p.addValue("rnStatus", mapToDbStatus(f.status()), Types.VARCHAR);
+        p.addValue("invalidStatuses", INVALID_STATUSES);
         String rn = Strings.blankToNull(f.rn());
         p.addValue("rn", rn, Types.VARCHAR);
         p.addValue("rnLike", rn != null ? "%" + rn + "%" : null, Types.VARCHAR);
@@ -236,13 +251,14 @@ class PlatformActivityQuery {
             case "ACTIVE" -> "aktivan";
             case "SUSPENSION_PROPOSED" -> "pred_suspenzijom";
             case "SUSPENDED" -> "suspendiran";
+            case "REVOKED" -> "opozvan";
             case "WITHDRAWN" -> "povucen";
             case "INVALID" -> "nevažeći";
             default -> "bez_rb";
         };
     }
 
-    /** Frontend sends 'aktivan'/'suspendiran'/'povucen'/'nevažeći'; map to DB enum names. */
+    /** Frontend sends 'aktivan'/'suspendiran'/'opozvan'/'povucen'/'nevažeći'; map to DB enum names. */
     private static String mapToDbStatus(String frontendStatus) {
         String token = Strings.blankToNull(frontendStatus);
         if (token == null) return null;
@@ -250,8 +266,9 @@ class PlatformActivityQuery {
             case "aktivan" -> "ACTIVE";
             case "pred_suspenzijom" -> "SUSPENSION_PROPOSED";
             case "suspendiran" -> "SUSPENDED";
+            case "opozvan" -> "REVOKED";
             case "povucen" -> "WITHDRAWN";
-            case "nevažeći" -> "INVALID";
+            case "nevažeći" -> INVALID_STATUS;
             // Rejecting the unknown token matters: it used to disable the filter silently, so a
             // typo — or the DB enum name ("ACTIVE") instead of the UI token — returned every row,
             // withdrawn ones included, on a screen whose whole purpose is to be filtered.

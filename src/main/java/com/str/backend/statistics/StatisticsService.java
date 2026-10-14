@@ -107,17 +107,18 @@ public class StatisticsService {
                 .comparingLong(CountyStrDto::accommodations).reversed()
                 .thenComparing(CountyStrDto::countyName));
 
-        long totalActive = 0, totalSuspended = 0, totalWithdrawn = 0;
+        long totalActive = 0, totalSuspended = 0, totalRevoked = 0, totalWithdrawn = 0;
         for (CountyStrDto r : rows) {
             totalActive += r.activeRn();
             totalSuspended += r.suspendedRn();
+            totalRevoked += r.revokedRn();
             totalWithdrawn += r.withdrawnRn();
         }
 
         long totalObjects = filtered
                 ? rows.stream().mapToLong(CountyStrDto::accommodations).sum()
                 : facilityRepository.countByActiveTrue();
-        long totalRn = totalActive + totalSuspended + totalWithdrawn;
+        long totalRn = totalActive + totalSuspended + totalRevoked + totalWithdrawn;
         StrTotalsDto totals = new StrTotalsDto(totalObjects, totalRn, rate(totalRn, totalObjects));
         return new StrResponse(totals, rows);
     }
@@ -126,12 +127,13 @@ public class StatisticsService {
                                           Map<RnStatus, Long> byStatus) {
         // Prijedlog suspenzije je međukorak s otvorenim rokom, ne suspenzija — RB u tom statusu
         // vrijedi, pa se broji kao aktivan. Bez toga bi ispao iz svih stupaca, a i iz ukupnog
-        // broja RB-ova, koji je zbroj ova tri.
+        // broja RB-ova, koji je zbroj ova četiri.
         long active = byStatus.getOrDefault(RnStatus.ACTIVE, 0L)
                 + byStatus.getOrDefault(RnStatus.SUSPENSION_PROPOSED, 0L);
         long suspended = byStatus.getOrDefault(RnStatus.SUSPENDED, 0L);
+        long revoked = byStatus.getOrDefault(RnStatus.REVOKED, 0L);
         long withdrawn = byStatus.getOrDefault(RnStatus.WITHDRAWN, 0L);
-        return new CountyStrDto(id, name, accommodations, active, suspended, withdrawn,
+        return new CountyStrDto(id, name, accommodations, active, suspended, revoked, withdrawn,
                 rate(active, accommodations));
     }
 

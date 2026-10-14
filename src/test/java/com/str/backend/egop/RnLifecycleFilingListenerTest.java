@@ -92,27 +92,37 @@ class RnLifecycleFilingListenerTest {
                 .isEqualTo("Obavijest o obustavi postupka suspenzije registracijskog broja");
     }
 
-    /** Opoziv i povlačenje dijele okidač; razlikuje ih tko je promjenu pokrenuo. */
+    /** Opoziv iznajmljivača ima vlastiti status (REVOKED) i vlastiti akt. */
     @Test
-    void withdrawal_byLessor_filesRevocationAct() {
-        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
-                RnTrigger.WITHDRAWAL, "LESSOR:" + UUID.randomUUID(), null));
+    void revocation_byLessor_filesRevocationAct() {
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), null));
+
+        assertThat(capturedAkt().getVrstaPismenaNaziv())
+                .isEqualTo("Obavijest o opozivu registracijskog broja");
+    }
+
+    /** NIAS je produkcijski put prijave, pa je ovo u praksi najčešći opoziv. */
+    @Test
+    void revocation_byNiasLessor_filesRevocationAct() {
+        listener().onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "NIAS:12345678903", null));
 
         assertThat(capturedAkt().getVrstaPismenaNaziv())
                 .isEqualTo("Obavijest o opozivu registracijskog broja");
     }
 
     /**
-     * NIAS je produkcijski put prijave, pa je ovo u praksi najčešći opoziv. Dok se gledao samo
-     * prefiks {@code LESSOR:}, dobivao je „Obavijest o povlačenju" — akt po službenoj dužnosti.
+     * Akt se bira po ciljnom statusu, ne po akteru: prije uvođenja REVOKED prefiks aktera bio je
+     * jedini trag opoziva, pa je izostavljen prefiks (NIAS) davao krivi akt.
      */
     @Test
-    void withdrawal_byNiasLessor_filesRevocationAct() {
+    void actIsChosenByStatus_notByActor() {
         listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
                 RnTrigger.WITHDRAWAL, "NIAS:12345678903", null));
 
         assertThat(capturedAkt().getVrstaPismenaNaziv())
-                .isEqualTo("Obavijest o opozivu registracijskog broja");
+                .isEqualTo("Obavijest o povlačenju registracijskog broja");
     }
 
     @Test
@@ -229,16 +239,16 @@ class RnLifecycleFilingListenerTest {
     @Test
     void actTypes_matchCodebookNames() {
         assertThat(StrDocumentType.forTransition(RnStatus.SUSPENSION_PROPOSED,
-                RnTrigger.INSPECTION, false)).contains(StrDocumentType.PRIJEDLOG_SUSPENZIJE);
-        assertThat(StrDocumentType.forTransition(RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
-                false)).contains(StrDocumentType.SUSPENZIJA);
-        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL,
-                false)).contains(StrDocumentType.OBUSTAVA_SUSPENZIJE);
-        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REACTIVATE, false))
+                RnTrigger.INSPECTION)).contains(StrDocumentType.PRIJEDLOG_SUSPENZIJE);
+        assertThat(StrDocumentType.forTransition(RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED))
+                .contains(StrDocumentType.SUSPENZIJA);
+        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL))
+                .contains(StrDocumentType.OBUSTAVA_SUSPENZIJE);
+        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REACTIVATE))
                 .contains(StrDocumentType.REAKTIVACIJA);
-        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, true))
+        assertThat(StrDocumentType.forTransition(RnStatus.REVOKED, RnTrigger.REVOCATION))
                 .contains(StrDocumentType.OPOZIV);
-        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, false))
+        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL))
                 .contains(StrDocumentType.POVLACENJE);
     }
 }

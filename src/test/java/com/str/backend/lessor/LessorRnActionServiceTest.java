@@ -44,26 +44,44 @@ class LessorRnActionServiceTest {
         service = new LessorRnActionService(rnRepository, submissionRepository, lessorRepository, transitionService);
     }
 
+    /** Opoziv iznajmljivača je zaseban konačni status — Opozvan, ne Povučen (mjera službenika). */
     @Test
-    void withdrawOwn_transitionsToWithdrawn_whenOwner() {
+    void withdrawOwn_transitionsToRevoked_whenOwner() {
         UUID lessorId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
         RnEntity rn = rn(submissionId, RnStatus.ACTIVE);
-        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
 
         LessorRnActionResponse response = service.withdrawOwn(RN, lessorId, "  vise ne iznajmljujem  ");
 
         assertThat(response.rn()).isEqualTo(RN);
-        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
+        verify(transitionService).transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION,
                 "LESSOR:" + lessorId, "vise ne iznajmljujem");
+    }
+
+    @Test
+    void withdrawOwnByOib_transitionsToRevoked_whenOwner() {
+        UUID lessorId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        RnEntity rn = rn(submissionId, RnStatus.SUSPENDED);
+        LessorEntity lessor = mock(LessorEntity.class);
+        when(lessor.getLessorOib()).thenReturn("12312312316");
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
+        when(lessorRepository.findById(lessorId)).thenReturn(Optional.of(lessor));
+
+        service.withdrawOwnByOib(RN, "12312312316", null);
+
+        verify(transitionService).transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                "NIAS:12312312316", null);
     }
 
     @Test
     void withdrawOwn_throwsNotFound_whenNotOwner() {
         UUID lessorId = UUID.randomUUID();
         UUID submissionId = UUID.randomUUID();
-        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn(submissionId, RnStatus.ACTIVE)));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn(submissionId, RnStatus.ACTIVE)));
         when(submissionRepository.findById(submissionId))
                 .thenReturn(Optional.of(submission(submissionId, UUID.randomUUID()))); // different lessor
 
@@ -74,7 +92,7 @@ class LessorRnActionServiceTest {
 
     @Test
     void withdrawOwn_throwsNotFound_whenRnMissing() {
-        when(rnRepository.findById(RN)).thenReturn(Optional.empty());
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.withdrawOwn(RN, UUID.randomUUID(), null))
                 .isInstanceOf(ResourceNotFoundException.class);

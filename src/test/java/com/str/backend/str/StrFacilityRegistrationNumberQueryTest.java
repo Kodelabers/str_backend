@@ -29,6 +29,8 @@ class StrFacilityRegistrationNumberQueryTest {
     private static final String WITHDRAWN = "HR120001000000000801";
     private static final String ACTIVE = "HR120001000000000802";
     private static final String NEW = "HR120001000000000803";
+    /** Opozvan od iznajmljivača — konačan kao i povučeni. */
+    private static final String REVOKED = "HR120001000000000804";
     private static final String FOREIGN = "HR999999000000000001";
 
     @Autowired private StrFacilityRepository facilityRepository;
@@ -50,13 +52,14 @@ class StrFacilityRegistrationNumberQueryTest {
         withdrawnAccommodation = accommodationRepository.save(accommodation).getAccommodationId();
         rn(WITHDRAWN, "WITHDRAWN", withdrawnAccommodation);
         rn(ACTIVE, "ACTIVE", UUID.randomUUID());
+        rn(REVOKED, "REVOKED", UUID.randomUUID());
     }
 
     /** Dijeljena H2 baza: REQUIRES_NEW upisi se ne poništavaju, pa se čiste ručno. */
     @AfterEach
     void cleanUp() {
         jdbc.update("DELETE FROM str.facility WHERE id BETWEEN 8000 AND 8999");
-        jdbc.update("DELETE FROM str_rn.registration_number WHERE rn IN (?, ?, ?)", WITHDRAWN, ACTIVE, NEW);
+        jdbc.update("DELETE FROM str_rn.registration_number WHERE rn IN (?, ?, ?, ?)", WITHDRAWN, ACTIVE, NEW, REVOKED);
         if (withdrawnAccommodation != null) {
             accommodationRepository.deleteById(withdrawnAccommodation);
             withdrawnAccommodation = null;
@@ -97,6 +100,15 @@ class StrFacilityRegistrationNumberQueryTest {
         assertThat(stored(8002)).isEqualTo(NEW);
     }
 
+    /** Ponovno izdavanje nakon opoziva: opozvani broj ne blokira novi, kao ni povučeni. */
+    @Test
+    void writeBack_replacesRevokedRn() {
+        facility(8008, REVOKED);
+
+        assertThat(facilityRepository.writeBackRegistrationNumber(8008, NEW)).isEqualTo(1);
+        assertThat(stored(8008)).isEqualTo(NEW);
+    }
+
     @Test
     void writeBack_keepsStandingOrUnknownRn() {
         facility(8003, ACTIVE);
@@ -129,8 +141,8 @@ class StrFacilityRegistrationNumberQueryTest {
     }
 
     @Test
-    void findWithdrawnRns_returnsOnlyOwnWithdrawn() {
-        assertThat(rnRepository.findWithdrawnRns(List.of(WITHDRAWN, ACTIVE, FOREIGN)))
-                .containsExactly(WITHDRAWN);
+    void findWithdrawnRns_returnsOnlyOwnRevokedOrWithdrawn() {
+        assertThat(rnRepository.findWithdrawnRns(List.of(WITHDRAWN, REVOKED, ACTIVE, FOREIGN)))
+                .containsExactlyInAnyOrder(WITHDRAWN, REVOKED);
     }
 }

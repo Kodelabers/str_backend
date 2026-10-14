@@ -150,15 +150,20 @@ Provjere se izvode u **valovima** (waves) baziranim na `dependsOn()` skupu, kori
 ### 7.2 RB status (`RbStatusTransitionService`)
 Sve promjene `rb.status` idu **isključivo** kroz `RbStatusTransitionService.transition(...)`. Servis validira tranziciju protiv `RbStatus.canTransitionTo(...)` enum logike i istovremeno upisuje audit row — operacije su nedjeljive.
 
+> Zastarjelo nazivlje (`Rb*`, `U_OBRADI`) — važeći stroj stanja (`RnStatus`) opisan je u `CLAUDE.md`
+> („State machines").
+
 ```
-U_OBRADI ──ISSUE────────► AKTIVAN
-AKTIVAN  ──CONSENT_EXPIRY/INSPECTION──► SUSPENDIRAN
+AKTIVAN ──CONSENT_EXPIRY/INSPECTION/INCOMPLETE_DOCUMENTATION/OTHER──► PRED SUSPENZIJOM
+PRED SUSPENZIJOM ──REVOKE_PROPOSAL──► AKTIVAN
+PRED SUSPENZIJOM ──DEADLINE_EXCEEDED──► SUSPENDIRAN
 SUSPENDIRAN ──REACTIVATE──► AKTIVAN
-AKTIVAN/SUSPENDIRAN ──WITHDRAWAL──► POVUCEN
-POVUCEN  ──REACTIVATE──► AKTIVAN  (rijedak edge-case)
+AKTIVAN/PRED SUSPENZIJOM/SUSPENDIRAN ──REVOCATION──► OPOZVAN  (iznajmljivač, konačan)
+AKTIVAN/PRED SUSPENZIJOM/SUSPENDIRAN ──WITHDRAWAL──► POVUCEN  (službenik, konačan)
 ```
 
-`AKTIVAN` je jedini status s javnom vidljivošću (SDEP / verify endpoint).
+`AKTIVAN` i `PRED SUSPENZIJOM` vrijede za oglašavanje; opozvan i povučen se javno ne razlikuju od
+nepostojećeg broja (verify endpoint).
 
 ---
 

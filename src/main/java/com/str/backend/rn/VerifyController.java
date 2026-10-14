@@ -34,7 +34,7 @@ public class VerifyController {
      * STR-1.4-001: public verification of a registration number. ACTIVE and SUSPENSION_PROPOSED
      * return advertise-safe object data — a proposal only starts the response deadline, the
      * registration number itself still holds — with the real status in the payload; SUSPENDED
-     * returns the status only; WITHDRAWN and unknown RNs are reported identically as
+     * returns the status only; REVOKED, WITHDRAWN and unknown RNs are reported identically as
      * {@code {valid:false}} (privacy — čl. 4. st. 5. STR Uredbe).
      */
     @GetMapping("/{rn}")
@@ -52,7 +52,7 @@ public class VerifyController {
         if (status == RnStatus.SUSPENDED) {
             return VerifyResponse.suspended();
         }
-        // WITHDRAWN or not found — all indistinguishable to the public.
+        // REVOKED, WITHDRAWN or not found — all indistinguishable to the public.
         return VerifyResponse.invalid();
     }
 

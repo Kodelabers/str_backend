@@ -20,10 +20,17 @@ class RnRegistryViewTest {
     }
 
     @Test
-    void invalidViewIsOnlySuspendedAndWithdrawn() {
+    void invalidViewIsSuspendedRevokedAndWithdrawn() {
         assertThat(RnRegistryView.INVALID.statuses())
-                .containsExactlyInAnyOrder(RnStatus.SUSPENDED, RnStatus.WITHDRAWN)
+                .containsExactlyInAnyOrder(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN)
                 .doesNotContain(RnStatus.SUSPENSION_PROPOSED);
+    }
+
+    /** Opozvani (iznajmljivač) i povučeni (službenik) imaju svaki svoj pogled. */
+    @Test
+    void revokedAndWithdrawnAreSeparateViews() {
+        assertThat(RnRegistryView.REVOKED.statuses()).containsExactly(RnStatus.REVOKED);
+        assertThat(RnRegistryView.WITHDRAWN.statuses()).containsExactly(RnStatus.WITHDRAWN);
     }
 
     /** The proposal work list stays reachable on its own — it just isn't "invalid". */
@@ -37,7 +44,6 @@ class RnRegistryViewTest {
     @Test
     void allViewCoversEveryIssuedStatus() {
         assertThat(RnRegistryView.ALL.statuses())
-                .containsExactlyInAnyOrder(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED,
-                        RnStatus.SUSPENDED, RnStatus.WITHDRAWN);
+                .containsExactlyInAnyOrder(RnStatus.values());
     }
 }

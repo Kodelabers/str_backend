@@ -128,6 +128,57 @@ class PlatformActivityQuerySqlTest {
         assertThat(params.getValue("guestCountry")).isEqualTo("Njemačka");
     }
 
+    /** Opozvan (iznajmljivač) i povučen (službenik) filtriraju se zasebno. */
+    @Test
+    void revokedAndWithdrawnTokensMapToTheirOwnStatus() {
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, null, null, "opozvan", null, null, false, null, false), ANY_LIMIT);
+        assertThat(captureParams().getValue("rnStatus")).isEqualTo("REVOKED");
+    }
+
+    /**
+     * „Nevažeći" je skupina (suspendirani, opozvani, povučeni), ne status u bazi. Uspoređivao se
+     * s nepostojećim {@code INVALID} i vraćao prazan popis; sad traži iste statuse kao registar
+     * ({@code RnRegistryView.INVALID}), vezane kao parametar.
+     */
+    @Test
+    void invalidTokenMatchesEveryStatusInvalidForAdvertising() {
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, null, null, "nevažeći", null, null, false, null, false), ANY_LIMIT);
+
+        MapSqlParameterSource params = captureParams();
+        assertThat(params.getValue("rnStatus")).isEqualTo("INVALID");
+        assertThat(params.getValue("invalidStatuses")).isEqualTo(List.of("SUSPENDED", "REVOKED", "WITHDRAWN"));
+        assertThat(captureRowSql()).contains("OR (:rnStatus = 'INVALID' AND rn.status IN (:invalidStatuses)))");
+    }
+
+    /** Stranica, broj redaka i zaglavlje (anomalije) dijele isti filtar, pa i istu granu „nevažeći". */
+    @Test
+    void invalidTokenAppliesToCountAndSummaryToo() {
+        when(jdbc.queryForObject(any(String.class), any(SqlParameterSource.class), eq(Long.class))).thenReturn(0L);
+        query.query(new PlatformActivityFilter(
+                null, null, null, null, null, "nevažeći", null, null, false, null, false), 0, 20);
+
+        ArgumentCaptor<String> count = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).queryForObject(count.capture(), any(SqlParameterSource.class), eq(Long.class));
+        assertThat(count.getValue()).contains("rn.status IN (:invalidStatuses)");
+        assertThat(captureSummarySql()).contains("rn.status IN (:invalidStatuses)");
+    }
+
+    /** Jedan izvor istine s registrom — novi nevažeći status ne smije ispasti samo ovdje. */
+    @Test
+    void invalidStatusesFollowRegistryView() {
+        assertThat(PlatformActivityQuery.INVALID_STATUSES).containsExactlyElementsOf(
+                com.str.backend.rn.RnRegistryView.INVALID.statuses().stream().map(Enum::name).toList());
+    }
+
+    @Test
+    void withdrawnTokenStillMapsToWithdrawn() {
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, null, null, "povucen", null, null, false, null, false), ANY_LIMIT);
+        assertThat(captureParams().getValue("rnStatus")).isEqualTo("WITHDRAWN");
+    }
+
     /**
      * An unrecognised status token used to switch the filter off and return everything, withdrawn
      * registration numbers included. On an oversight screen that silence is worse than an error.

@@ -48,7 +48,10 @@ public enum StrDocumentType {
             "OBAVIJEST O DODJELI REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
-    /** Opoziv na zahtjev samog iznajmljivača — evidencijska obavijest, bez pravnog lijeka. */
+    /**
+     * Opoziv na zahtjev samog iznajmljivača ({@code REVOKED}) — evidencijska obavijest, bez
+     * pravnog lijeka.
+     */
     OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O OPOZIVU REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
@@ -69,7 +72,10 @@ public enum StrDocumentType {
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
                     ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
 
-    /** Kao suspenzija, ali trajno (WITHDRAWN je terminalan) — uputa je time još važnija. */
+    /**
+     * Povlačenje po službenoj dužnosti ({@code WITHDRAWN}). Kao suspenzija, ali trajno — uputa
+     * je time još važnija.
+     */
     POVLACENJE("povlacenje", "Obavijest o povlačenju registracijskog broja", Smjer.IZLAZNO,
             "OBAVIJEST O POVLAČENJU REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
@@ -214,11 +220,10 @@ public enum StrDocumentType {
      * <p>Izdavanje RB-a ovdje ne dolazi: RB nastaje odmah kao {@code ACTIVE}, bez prijelaza, a
      * urudžbira se u registracijskom toku, koji PDF renderira <i>iz</i> urudžbenog broja.
      *
-     * @param byLessor je li promjenu pokrenuo iznajmljivač — isti okidač
-     *                 {@code WITHDRAWAL} pokriva i opoziv i povlačenje po službenoj dužnosti
+     * <p>Opoziv i povlačenje razlikuju se po ciljnom statusu, ne po akteru: opoziv iznajmljivača
+     * vodi u {@code REVOKED}, povlačenje po službenoj dužnosti u {@code WITHDRAWN}.
      */
-    public static Optional<StrDocumentType> forTransition(RnStatus to, RnTrigger trigger,
-                                                          boolean byLessor) {
+    public static Optional<StrDocumentType> forTransition(RnStatus to, RnTrigger trigger) {
         if (to == RnStatus.SUSPENSION_PROPOSED) {
             return Optional.of(PRIJEDLOG_SUSPENZIJE);
         }
@@ -231,8 +236,11 @@ public enum StrDocumentType {
         if (to == RnStatus.ACTIVE && trigger == RnTrigger.REVOKE_PROPOSAL) {
             return Optional.of(OBUSTAVA_SUSPENZIJE);
         }
+        if (to == RnStatus.REVOKED) {
+            return Optional.of(OPOZIV);
+        }
         if (to == RnStatus.WITHDRAWN) {
-            return Optional.of(byLessor ? OPOZIV : POVLACENJE);
+            return Optional.of(POVLACENJE);
         }
         return Optional.empty();
     }

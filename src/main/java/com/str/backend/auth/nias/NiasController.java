@@ -334,7 +334,7 @@ public class NiasController {
         return categorizationDecisionService.upload(ownerOibForChange(authentication, actingSubjectHeader), req);
     }
 
-    /** STR-1.3-001: NIAS user revokes (opoziv) their own RN. Vlasništvo se provjerava
+    /** STR-1.3-001: NIAS user revokes (opoziv) their own RN → REVOKED. Vlasništvo se provjerava
      *  po OIB-u (svaki NIAS submission kreira novi LessorEntity snapshot, pa lessorId
      *  nije stabilan kroz povijest istog korisnika). */
     @PostMapping("/registrations/{rn}/withdraw")
