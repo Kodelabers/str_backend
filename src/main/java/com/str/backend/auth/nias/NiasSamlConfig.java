@@ -1,6 +1,5 @@
 package com.str.backend.auth.nias;
 
-import jakarta.servlet.http.HttpSession;
 import org.opensaml.saml.saml2.core.AuthnRequest;
 import org.opensaml.saml.saml2.core.Conditions;
 import org.opensaml.saml.saml2.core.LogoutRequest;
@@ -49,7 +48,6 @@ import java.security.KeyStoreException;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -204,16 +202,15 @@ public class NiasSamlConfig {
                 String samlResponse = saml2Auth.getSaml2Response();
                 List<String> sessionIndexes = NiasSecurityUtil.extractSessionIndexes(samlResponse);
                 Saml2AuthenticatedPrincipal currentPrincipal = (Saml2AuthenticatedPrincipal) saml2Auth.getPrincipal();
-                Duration authnAge = NiasSecurityUtil.authnAgeOf(samlResponse);
-                boolean ssoReuse = reusedNiasSession(authnAge, props.ssoReuseThreshold());
                 // Samo NAZIVI atributa, bez vrijednosti (osobni podaci), i OBLIK sesija_id: stiže
                 // li uopće (bez njega e-Ovlaštenja ne rade) i odgovara li formatu koji šaljemo.
-                // authn_age_s: samo broj sekundi, po njemu se na okolini podešava prag (docs/EOVLASTENJA.md).
-                log.info("nias_login attributes={} sesija_id={} authn_age_s={} sso_reuse={}",
-                        currentPrincipal.getAttributes().keySet(),
-                        sesijaIdShape(currentPrincipal.getFirstAttribute("sesija_id")),
-                        authnAge == null ? "nema" : authnAge.toSeconds(), ssoReuse ? "da" : "ne");
-                resetActingSubject(request.getSession(), ssoReuse);
+                log.info("nias_login attributes={} sesija_id={}", currentPrincipal.getAttributes().keySet(),
+                        sesijaIdShape(currentPrincipal.getFirstAttribute("sesija_id")));
+                // Nova prijava poništava ranije odabran subjekt u čije se ime djelovalo.
+                request.getSession().removeAttribute(ActingSubjectService.SESSION_KEY);
+                request.getSession().removeAttribute(ActingSubjectService.OPTIONS_KEY);
+                request.getSession().removeAttribute(NavigationBarService.STATE_KEY);
+                request.getSession().removeAttribute(NavigationBarService.ENTITY_SEARCH_SHOWN_KEY);
                 DefaultSaml2AuthenticatedPrincipal newPrincipal = new DefaultSaml2AuthenticatedPrincipal(
                         currentPrincipal.getName(),
                         currentPrincipal.getAttributes(),
@@ -230,34 +227,6 @@ public class NiasSamlConfig {
             }
             response.sendRedirect(props.successRedirectUrl());
         };
-    }
-
-    /**
-     * Je li NIAS prijavu odradio iz postojeće SSO sjednice, bez unosa vjerodajnica: tada
-     * {@code AuthnInstant} nosi vrijeme izvorne prijave, pa je osjetno stariji od odgovora.
-     * Nepoznata starost (nema {@code AuthnStatement}, šifrirana asercija), negativna starost i
-     * prag 0 ili manji (prepoznavanje isključeno) znače svježu prijavu, tj. dosadašnje ponašanje.
-     * Starost točno jednaka pragu je još svježa.
-     */
-    static boolean reusedNiasSession(Duration authnAge, Duration threshold) {
-        return authnAge != null && threshold.isPositive() && authnAge.compareTo(threshold) > 0;
-    }
-
-    /**
-     * Nova prijava poništava ranije odabran subjekt u čije se ime djelovalo — i kad je preuzeta iz
-     * NIAS SSO sjednice: osoba kreće u svoje ime, a subjekt mijenja u traci („Promjena subjekta").
-     * Odabir subjekta traka sama otvara samo nakon svježe prijave. Kod preuzete ga je osoba već
-     * prošla u aplikaciji iz koje je došla (tuStart), pa se oznaka „već ponuđen" postavlja odmah.
-     */
-    static void resetActingSubject(HttpSession session, boolean reusedNiasSession) {
-        session.removeAttribute(ActingSubjectService.SESSION_KEY);
-        session.removeAttribute(ActingSubjectService.OPTIONS_KEY);
-        session.removeAttribute(NavigationBarService.STATE_KEY);
-        if (reusedNiasSession) {
-            session.setAttribute(NavigationBarService.ENTITY_SEARCH_SHOWN_KEY, Boolean.TRUE);
-        } else {
-            session.removeAttribute(NavigationBarService.ENTITY_SEARCH_SHOWN_KEY);
-        }
     }
 
     /**

@@ -45,11 +45,7 @@ import java.util.stream.Collectors;
 public class NavigationBarService {
 
     static final String STATE_KEY = NavigationBarService.class.getName() + ".STATE";
-    /**
-     * Oznaka da je odabir subjekta u ovoj prijavi već ponuđen. Svježa prijava je briše, a prijava
-     * preuzeta iz postojeće NIAS SSO sjednice (npr. dolazak iz tuStarta) je odmah postavlja
-     * ({@link NiasSamlConfig#resetActingSubject}).
-     */
+    /** Oznaka da je odabir subjekta u ovoj prijavi već ponuđen; nova prijava je briše ({@link NiasSamlConfig}). */
     static final String ENTITY_SEARCH_SHOWN_KEY = NavigationBarService.class.getName() + ".ENTITY_SEARCH_SHOWN";
     static final String CHANGE_ENTITY_PATH = "/api/nias/acting-subject/change-entity";
     private static final String LOGIN_PATH = "/saml2/authenticate/nias";
@@ -204,9 +200,6 @@ public class NavigationBarService {
      * sama otvori odabir subjekta ({@code showEntitySearch()}). Svaki odabir se vraća punim učitavanjem
      * stranice, pa bi se dijalog otvarao iznova i skrivao poruku o ishodu. Nudi se zato jednom po prijavi,
      * i to samo dok subjekt nije odabran; poslije je odabir u traci pod „Promjena subjekta".
-     *
-     * <p>Prijava preuzeta iz postojeće NIAS SSO sjednice ne nudi ga ni jednom: osoba je dijalog već
-     * prošla u aplikaciji iz koje je došla, pa {@link NiasSamlConfig} oznaku postavlja već pri prijavi.
      */
     private static boolean promptEntitySearch(HttpSession session, boolean subjectSelected) {
         if (session.getAttribute(ENTITY_SEARCH_SHOWN_KEY) != null) {
