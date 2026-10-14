@@ -1,10 +1,6 @@
 package com.str.backend.auth.nias;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.convert.DurationUnit;
-
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 
 @ConfigurationProperties("nias.saml")
 public record NiasSamlProperties(
@@ -34,26 +30,8 @@ public record NiasSamlProperties(
          * traži po {@code InResponseTo} i cookie mu uopće ne treba. Vidi
          * {@link DatabaseSaml2AuthenticationRequestRepository}.
          */
-        String requestStore,
-
-        /**
-         * Od koje starosti {@code AuthnInstant} (u odnosu na {@code IssueInstant} asercije) prijavu
-         * smatramo preuzetom iz postojeće NIAS SSO sjednice — npr. osoba se prijavila u tuStart i
-         * gumbom prešla k nama. Tada traka ne otvara sama odabir subjekta: osoba ga je već prošla
-         * na tuStartu. Nepostavljeno ili prazno = {@value #DEFAULT_SSO_REUSE_THRESHOLD_SECONDS} s; broj
-         * bez jedinice su sekunde (ne Springove milisekunde); {@code 0} ili negativno isključuje
-         * prepoznavanje, pa svaka prijava otvara odabir kao prije. Vidi {@code NiasSamlConfig#reusedNiasSession}.
-         */
-        @DurationUnit(ChronoUnit.SECONDS)
-        Duration ssoReuseThreshold
+        String requestStore
 ) {
-
-    static final long DEFAULT_SSO_REUSE_THRESHOLD_SECONDS = 60;
-
-    public NiasSamlProperties {
-        ssoReuseThreshold = ssoReuseThreshold == null
-                ? Duration.ofSeconds(DEFAULT_SSO_REUSE_THRESHOLD_SECONDS) : ssoReuseThreshold;
-    }
 
     /** Prazno ili nepostavljeno = Springovo zadano ponašanje (sesija). */
     public boolean useDatabaseRequestStore() {

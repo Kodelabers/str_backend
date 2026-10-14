@@ -61,53 +61,6 @@ ih mi kao parametre skripte (potvrđeno iz core aplikacije 30.09.2026.), pa odab
   skriptu upiše `showEntitySearch()`). Šalje se samo pri prvom učitavanju nakon prijave, dok subjekt
   nije odabran — inače bi se dijalog otvarao nakon svakog osvježavanja i povratka s odabira, preko
   poruke o ishodu.
-- **Prijava preuzeta iz NIAS SSO sjednice ne otvara odabir.** Osoba koja se prijavila u tuStart i
-  gumbom prešla k nama dijalog je već prošla na tuStartu. Naša prijava tada prolazi bez upisa
-  vjerodajnica, jer NIAS odgovara iz postojeće sjednice. Po SAML 2.0 `AuthnStatement@AuthnInstant` tada
-  nosi vrijeme **izvorne** prijave, pa je osjetno stariji od `Assertion@IssueInstant`. Kod svježe
-  prijave razlika je tek koja sekunda. Pravilo je u `NiasSamlConfig.reusedNiasSession`: ako je razlika
-  veća od `nias.saml.sso-reuse-threshold` (default `60s`, env `NIAS_SSO_REUSE_THRESHOLD`), prijava
-  odmah postavlja oznaku „odabir već ponuđen" (`ENTITY_SEARCH_SHOWN_KEY`) i traka dobiva
-  `show_entity_search=False`. Inače, i kad se starost ne može pročitati, ostaje ponašanje iznad.
-  Subjekt se i tada briše: osoba kreće u svoje ime, a tvrtku bira u traci pod „Promjena subjekta"
-  (oznaka utječe samo na automatsko otvaranje, `change_entity_url` i popis ostaju).
-- Oba trenutka čitaju se iz **iste, potpisane asercije**: prve izravne `Assertion` u `Response`, iz koje
-  Spring gradi prijavu i čiji potpis provjerava (`NiasSecurityUtil.authnAgeOf`). Omotnica odgovora
-  (`Response@IssueInstant`, `Extensions`) nije potpisana kad NIAS potpisuje samo aserciju, pa se ne
-  čita. Oba trenutka su s NIAS-ova sata: razlika između njegova i našeg sata ne utječe, a negativna
-  starost znači svježu prijavu. Uz više `AuthnStatement` odlučuje najnoviji. Vrijeme se prihvaća sa
-  `Z`, s pomakom (`+02:00`), s razlomcima sekunde i bez zone (UTC).
-- Prag: broj bez jedinice su **sekunde**; starost točno jednaka pragu je svježa prijava; `0` (ili
-  negativno) isključuje prepoznavanje, pa se odabir otvara nakon svake prijave kao prije. Prag se
-  mijenja bez builda, preko `NIAS_SSO_REUSE_THRESHOLD`.
-- Posljedice pravila, svjesno prihvaćene:
-  - nama istekne sesija dok je NIAS sjednica živa (401 → automatska ponovna prijava na frontendu):
-    prijava je preuzeta, dijalog se ne otvara, a osoba koja je djelovala za tvrtku vraća se u svoje
-    ime i tvrtku ponovno bira u traci. Obrazac pripremljen za tvrtku ne može otići u njezino ime
-    (`ActingSubjectGuard`, 409 `ACTING_SUBJECT_CHANGED`);
-  - odjava kod nas (SLO) gasi i NIAS sjednicu, pa je sljedeća prijava svježa i dijalog se otvara. Ako
-    SLO ne uspije i NIAS sjednica preživi, sljedeća prijava je preuzeta i dijalog se ne otvara;
-  - druga kartica dijeli istu sesiju i ne prijavljuje se iznova, pa se ništa ne mijenja;
-  - osoba koja se u tuStart prijavi i **unutar praga** klikne gumb prema nama dobije dijalog (prijava
-    izgleda svježe). Manji prag to smanjuje, ali svježa prijava sa sporim koracima na NIAS-u (npr.
-    eIDAS) tada može izgledati preuzeto. Prag se zato podešava po stvarnim `authn_age_s` iz loga.
-- To da NIAS šalje izvorni `AuthnInstant` još **nije potvrđeno**. Ako ga šalje uvijek svježeg, prag
-  se nikad ne prijeđe i sve ostaje kao dosad. Odluka se vidi u retku prijave (bez osobnih podataka):
-
-  ```
-  nias_login attributes=[…] sesija_id=len=… znakovi=[…] authn_age_s=<sekunde|nema> sso_reuse=<da|ne>
-  ```
-
-  Provjera na CDU-u (`docker logs str-backend-cdu 2>&1 | grep nias_login | tail -1` nakon svakog koraka):
-  1. odjava sa svega (ili privatni prozor), pa **izravna** prijava u TuRegBroj → mali `authn_age_s`
-     (nekoliko sekundi), `sso_reuse=ne`, dijalog odabira se otvori;
-  2. prijava u **tuStart** → gumb prema TuRegBroju → velik `authn_age_s` (vrijeme od prijave u
-     tuStart), `sso_reuse=da`, dijalog se ne otvara.
-
-  Ako je u koraku 2 `authn_age_s` mali, NIAS ne šalje izvorni trenutak i ovim putem se ponovna prijava
-  ne da prepoznati. `authn_age_s=nema` znači da u odgovoru nema čitljive asercije s `AuthnStatement`,
-  npr. jer je šifrirana: čitamo neraščlanjeni odgovor (`Saml2Authentication.getSaml2Response()`), a u
-  njemu je tada samo `EncryptedAssertion`. Iz iste asercije čita se i `SessionIndex` za SLO.
 
 Izbornik u zaglavlju (popis iz `GetNavigationData` + upis OIB-a) ostaje kao rezerva: kad traka nije
 uključena ili prijava ne nosi `nav_token`.
