@@ -1,6 +1,7 @@
 package com.str.backend.auth;
 
 import com.str.backend.auth.dto.MeResponse;
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.nias.NiasIdentity;
 import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.auth.nias.NiasOibResolver;
@@ -32,10 +33,13 @@ public class SessionIdentityResolver {
 
     private final LessorRepository lessorRepository;
     private final NiasOibResolver niasOibResolver;
+    private final InternalAccessService internalAccess;
 
-    public SessionIdentityResolver(LessorRepository lessorRepository, NiasOibResolver niasOibResolver) {
+    public SessionIdentityResolver(LessorRepository lessorRepository, NiasOibResolver niasOibResolver,
+                                   InternalAccessService internalAccess) {
         this.lessorRepository = lessorRepository;
         this.niasOibResolver = niasOibResolver;
+        this.internalAccess = internalAccess;
     }
 
     @Transactional(readOnly = true)
@@ -47,13 +51,13 @@ public class SessionIdentityResolver {
         Optional<NiasIdentity> identity = NiasOibExtractor.extractIdentity(authentication);
         if (identity.isPresent()) {
             NiasIdentity id = identity.get();
-            return nias(id.oib(), id.firstName(), id.lastName());
+            return nias(id.oib(), id.firstName(), id.lastName(), internalAccess.effectiveRole(authentication));
         }
 
         // local/mock: nema pravog SAML principala, ali nias.mock.fixed-oib daje OIB
         Optional<String> mockOib = niasOibResolver.resolve(authentication);
         if (mockOib.isPresent()) {
-            return nias(mockOib.get(), null, null);
+            return nias(mockOib.get(), null, null, internalAccess.effectiveRole(authentication));
         }
 
         throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
@@ -66,8 +70,9 @@ public class SessionIdentityResolver {
                 e.getUsername(), e.getFirstName(), e.getLastName(), LessorPrincipal.ROLE, e.getEmail());
     }
 
-    // NIAS assertion ne nosi rolu ni email → oba null (do razrješenja izvora role).
-    private static MeResponse nias(String oib, String firstName, String lastName) {
-        return new MeResponse(AUTH_TYPE_NIAS, oib, null, null, firstName, lastName, null, null);
+    // NIAS assertion ne nosi ni rolu ni email. Rola je uloga u STR-u iz sheme str
+    // (InternalAccessService#effectiveRole): RN_MANAGEMENT za službenika, inače USER.
+    private static MeResponse nias(String oib, String firstName, String lastName, String role) {
+        return new MeResponse(AUTH_TYPE_NIAS, oib, null, null, firstName, lastName, role, null);
     }
 }

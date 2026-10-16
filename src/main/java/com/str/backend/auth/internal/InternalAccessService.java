@@ -39,6 +39,12 @@ public class InternalAccessService {
     /** Upravljanje registracijskim brojevima ({@code str.application_role.sys_name}). */
     public static final String RN_MANAGEMENT = "RN_MANAGEMENT";
 
+    /**
+     * Obični NIAS korisnik (iznajmljivač): svatko tko nije službenik s {@link #RN_MANAGEMENT} —
+     * i interni korisnik bez te role. Nije rola iz sheme {@code str}, nego zadana uloga u STR-u.
+     */
+    public static final String USER = "USER";
+
     private static final Pattern OIB = Pattern.compile("\\d{11}");
     private static final String ACTOR_PREFIX = "INTERNAL:";
 
@@ -60,6 +66,23 @@ public class InternalAccessService {
 
     public boolean hasRole(Authentication authentication, String role) {
         return rolesFor(authentication).contains(role);
+    }
+
+    /**
+     * Uloga NIAS korisnika u STR-u: {@link #RN_MANAGEMENT} za službenika, inače {@link #USER}.
+     *
+     * <p>Kad se shema {@code str} ne može pročitati, korisnik je {@link #USER}: obični
+     * iznajmljivač ne smije ostati bez aplikacije zbog provjere koja se tiče samo službenika.
+     * To nije propust — back-office endpointi rolu provjeravaju sami i tada odbijaju
+     * ({@link InternalRoleAuthorizationManager}).
+     */
+    public String effectiveRole(Authentication authentication) {
+        try {
+            return hasRole(authentication, RN_MANAGEMENT) ? RN_MANAGEMENT : USER;
+        } catch (DataAccessException e) {
+            log.warn("internal_role_lookup_failed fallback={}", USER, e);
+            return USER;
+        }
     }
 
     /**

@@ -8,6 +8,8 @@ import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -22,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(InternalUserRepository.class)
+// Repozitorij čita izvan okolne transakcije (NOT_SUPPORTED), pa ne bi vidio retke iz
+// nepotvrđene testne transakcije — podaci se zato potvrđuju i čiste ručno.
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 class InternalUserRepositoryTest {
 
     @Autowired JdbcTemplate jdbc;
@@ -33,6 +38,9 @@ class InternalUserRepositoryTest {
         jdbc.execute("CREATE TABLE IF NOT EXISTS str.application_role (sys_name VARCHAR(255) PRIMARY KEY, name VARCHAR(255) NOT NULL)");
         jdbc.execute("CREATE TABLE IF NOT EXISTS str.application_user (id BIGINT PRIMARY KEY, active BOOLEAN NOT NULL, username VARCHAR(255) NOT NULL, internal BOOLEAN, first_name VARCHAR(255), last_name VARCHAR(255))");
         jdbc.execute("CREATE TABLE IF NOT EXISTS str.application_user_roles (users_id BIGINT NOT NULL, roles_sys_name VARCHAR(255) NOT NULL)");
+        jdbc.update("DELETE FROM str.application_user_roles");
+        jdbc.update("DELETE FROM str.application_user");
+        jdbc.update("DELETE FROM str.application_role");
         jdbc.update("INSERT INTO str.application_role (sys_name, name) VALUES ('RN_MANAGEMENT', 'Upravljanje registracijskim brojevima'), ('VERIFIER', 'Verifikator')");
     }
 

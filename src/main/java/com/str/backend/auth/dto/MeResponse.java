@@ -5,7 +5,8 @@ import java.util.UUID;
 /**
  * Unificirani "who am I" odgovor za sve tokove prijave.
  * <ul>
- *   <li>{@code authType = "NIAS"} — identitet iz NIAS SAML assertiona ({@code lessorId}/{@code username} su null).</li>
+ *   <li>{@code authType = "NIAS"} — identitet iz NIAS SAML assertiona ({@code lessorId}/{@code username} su null);
+ *       {@code role} je {@code RN_MANAGEMENT} za službenika, inače {@code USER}.</li>
  *   <li>{@code authType = "LOCAL"} — non-EU username/password korisnik iz {@code LessorEntity}.</li>
  * </ul>
  */

@@ -19,7 +19,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import static com.str.backend.auth.internal.InternalAccessService.RN_MANAGEMENT;
@@ -120,13 +119,21 @@ class BackOfficeSecurityTest {
     }
 
     @Test
-    void internalAccess_returnsSortedRoles() throws Exception {
-        when(internalAccess.rolesFor(any())).thenReturn(Set.of("VERIFIER", RN_MANAGEMENT));
+    void internalAccess_returnsOfficialRole() throws Exception {
+        when(internalAccess.effectiveRole(any())).thenReturn(RN_MANAGEMENT);
 
         mvc.perform(get("/api/nias/internal-access"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.roles[0]").value(RN_MANAGEMENT))
-                .andExpect(jsonPath("$.roles[1]").value("VERIFIER"));
+                .andExpect(jsonPath("$.role").value(RN_MANAGEMENT));
+    }
+
+    @Test
+    void internalAccess_returnsUserRoleForOrdinaryUser() throws Exception {
+        when(internalAccess.effectiveRole(any())).thenReturn(InternalAccessService.USER);
+
+        mvc.perform(get("/api/nias/internal-access"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("USER"));
     }
 
     /** CSRF: forma s tuđe stranice ne može postaviti X-Requested-With. */
