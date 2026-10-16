@@ -1,5 +1,6 @@
 package com.str.backend.admin;
 
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
 import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionRepository;
@@ -11,6 +12,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -19,19 +22,23 @@ import java.util.UUID;
  * (verify) i odbijanje (reject). Audit se piše kroz {@link AdminAuditService}, kao i za ostale
  * admin akcije.
  *
- * <p>Obrazac je namjerno isti kao {@link AdminPendingRegistrationService}: actor je za sada
- * caller-supplied (v. {@code TODO(auth)} u kontroleru) dok NIAS role ne daju pouzdan identitet.
+ * <p>Obrazac je namjerno isti kao {@link AdminPendingRegistrationService}: akter je službenik
+ * iz NIAS sesije ({@code INTERNAL:<oib>}, v. {@code InternalAccessService#actorFor}), a u
+ * sučelju se prikazuje njegovo ime ({@code InternalAccessService#displayNames}).
  */
 @Service
 public class AdminCategorizationDecisionService {
 
     private final CategorizationDecisionRepository repository;
     private final AdminAuditService auditService;
+    private final InternalAccessService internalAccess;
 
     public AdminCategorizationDecisionService(CategorizationDecisionRepository repository,
-                                              AdminAuditService auditService) {
+                                              AdminAuditService auditService,
+                                              InternalAccessService internalAccess) {
         this.repository = repository;
         this.auditService = auditService;
+        this.internalAccess = internalAccess;
     }
 
     /**
@@ -43,12 +50,18 @@ public class AdminCategorizationDecisionService {
         Page<CategorizationDecisionEntity> page = status != null
                 ? repository.findForReviewByStatus(status, pageable)
                 : repository.findForReview(pageable);
-        return page.map(CategorizationDecisionAdminDto::of);
+        // Jedan upit za imena svih službenika na stranici, ne po retku.
+        Map<String, String> names = internalAccess.displayNames(
+                page.getContent().stream().map(CategorizationDecisionEntity::getVerifiedBy).toList());
+        return page.map(e -> CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy())));
     }
 
     @Transactional(readOnly = true)
     public CategorizationDecisionAdminDto detail(UUID id) {
-        return CategorizationDecisionAdminDto.of(findOrThrow(id));
+        CategorizationDecisionEntity e = findOrThrow(id);
+        Map<String, String> names = internalAccess.displayNames(
+                e.getVerifiedBy() == null ? List.of() : List.of(e.getVerifiedBy()));
+        return CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy()));
     }
 
     @Transactional(readOnly = true)

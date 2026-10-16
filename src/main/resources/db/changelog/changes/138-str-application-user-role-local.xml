@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock korisnika i rola iz eTurizmove sheme 'str' — samo stupci koje čita
+      InternalUserRepository. Na dev/cdu/prod tablice već postoje, a rolu RN_MANAGEMENT
+      dodaje changeset u njihovom changelogu (docs/sql/str-rn-management-role.xml).
+
+      Seed:
+      - 12345678903: interni službenik s rolom RN_MANAGEMENT — za interni tok lokalno postaviti
+        nias.mock.fixed-oib=12345678903 (zadani 99999999990 ostaje iznajmljivač);
+      - 77777777778: ista rola, ali internal = false — ne smije dobiti pristup.
+
+      Gated context="local".
+    -->
+
+    <changeSet id="138-str-application-role" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="application_role"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="application_role">
+            <column name="sys_name" type="VARCHAR(255)"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="name" type="VARCHAR(255)"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="138-str-application-user" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="application_user"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="application_user">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN"><constraints nullable="false"/></column>
+            <column name="username" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="internal" type="BOOLEAN"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="138-str-application-user-roles" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="application_user_roles"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="application_user_roles">
+            <column name="users_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="roles_sys_name" type="VARCHAR(255)"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <!-- Seed samo u mock tablicu: ako je lokalna baza obnovljena iz dumpa s deva, prava
+         application_user ima NOT NULL stupce (created_by, ...) i insert bi srušio pokretanje. -->
+    <changeSet id="138-str-application-user-role-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="application_user" columnName="created_by"/></not>
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str.application_role WHERE sys_name = 'RN_MANAGEMENT'
+            </sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.application_role (sys_name, name)
+            VALUES ('RN_MANAGEMENT', 'Upravljanje registracijskim brojevima');
+
+            INSERT INTO str.application_user (id, active, username, internal) VALUES
+                (900001, TRUE, '12345678903', TRUE),
+                (900002, TRUE, '77777777778', FALSE);
+
+            INSERT INTO str.application_user_roles (users_id, roles_sys_name) VALUES
+                (900001, 'RN_MANAGEMENT'),
+                (900002, 'RN_MANAGEMENT');
+        </sql>
+        <rollback>
+            <sql>
+                DELETE FROM str.application_user_roles WHERE users_id IN (900001, 900002);
+                DELETE FROM str.application_user WHERE id IN (900001, 900002);
+                DELETE FROM str.application_role WHERE sys_name = 'RN_MANAGEMENT';
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!-- Ime i prezime službenika — prikaz aktera (verifiedBy) umjesto OIB-a. -->
+    <changeSet id="138-str-application-user-names" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="application_user" columnName="first_name"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="application_user">
+            <column name="first_name" type="VARCHAR(255)"/>
+            <column name="last_name" type="VARCHAR(255)"/>
+        </addColumn>
+        <sql>
+            UPDATE str.application_user SET first_name = 'Ana', last_name = 'Službenica' WHERE id = 900001;
+            UPDATE str.application_user SET first_name = 'Ivo', last_name = 'Vanjski' WHERE id = 900002;
+        </sql>
+        <rollback>
+            <dropColumn schemaName="str" tableName="application_user" columnName="first_name"/>
+            <dropColumn schemaName="str" tableName="application_user" columnName="last_name"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

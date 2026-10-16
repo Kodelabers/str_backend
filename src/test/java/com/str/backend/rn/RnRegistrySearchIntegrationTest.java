@@ -1,5 +1,6 @@
 package com.str.backend.rn;
 
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.domain.OfferType;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -24,6 +26,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -38,6 +43,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RnRegistrySearchIntegrationTest {
 
     @Autowired private MockMvc mvc;
+
+    /** Endpoint je back-office; ovdje se testira pretraga, ne autorizacija (v. BackOfficeSecurityTest). */
+    @MockBean private InternalAccessService internalAccess;
     @Autowired private RnRepository rnRepository;
     @Autowired private AccommodationRepository accommodationRepository;
     @Autowired private SubmissionRepository submissionRepository;
@@ -48,6 +56,7 @@ class RnRegistrySearchIntegrationTest {
 
     @BeforeEach
     void seed() {
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
         rnRepository.deleteAll();
         accommodationRepository.deleteAll();
         submissionRepository.deleteAll();

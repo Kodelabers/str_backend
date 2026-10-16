@@ -33,7 +33,8 @@ public record CategorizationDecisionAdminDto(
         UUID sourceDecisionId
 ) {
 
-    public static CategorizationDecisionAdminDto of(CategorizationDecisionEntity e) {
+    /** {@code verifiedBy} je prikaz aktera (ime službenika), ne sirovi zapis iz baze. */
+    public static CategorizationDecisionAdminDto of(CategorizationDecisionEntity e, String verifiedBy) {
         return new CategorizationDecisionAdminDto(
                 e.getDecisionId(),
                 e.getLessorOib(),
@@ -51,7 +52,7 @@ public record CategorizationDecisionAdminDto(
                 e.getStatus(),
                 e.getFacilityId(),
                 e.getUploadedAt(),
-                e.getVerifiedBy(),
+                verifiedBy,
                 e.getVerifiedAt(),
                 e.getSourceDecisionId());
     }

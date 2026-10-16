@@ -1,5 +1,6 @@
 package com.str.backend.admin;
 
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
+import org.springframework.security.core.Authentication;
 
 import java.nio.charset.StandardCharsets;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,15 +37,16 @@ import java.util.UUID;
 public class AdminCategorizationDecisionController {
 
     private final AdminCategorizationDecisionService service;
+    private final InternalAccessService internalAccess;
 
-    public AdminCategorizationDecisionController(AdminCategorizationDecisionService service) {
+    public AdminCategorizationDecisionController(AdminCategorizationDecisionService service,
+                                                 InternalAccessService internalAccess) {
         this.service = service;
+        this.internalAccess = internalAccess;
     }
 
-    record ReviewDecisionRequest(@Nullable @Size(max = 64) String actorId,
-                                 @Nullable @Size(max = 1000) String reason) {
+    record ReviewDecisionRequest(@Nullable @Size(max = 1000) String reason) {
         ReviewDecisionRequest {
-            if (actorId != null && actorId.isBlank()) actorId = null;
             if (reason != null && reason.isBlank()) reason = null;
         }
     }
@@ -74,19 +77,19 @@ public class AdminCategorizationDecisionController {
                 .body(f.content());
     }
 
+    /** Akter je službenik iz sesije ({@link InternalAccessService#actorFor}), nikad iz tijela zahtjeva. */
     @PostMapping("/{id}/verify")
-    public ResponseEntity<Void> verify(@PathVariable UUID id,
-                                       // TODO(auth): once ROLE_ADMIN is gated, derive actorId from SecurityContext instead
-                                       @RequestBody(required = false) @Valid ReviewDecisionRequest body) {
-        service.verify(id, body != null ? body.actorId() : null);
+    public ResponseEntity<Void> verify(@PathVariable UUID id, Authentication authentication) {
+        service.verify(id, internalAccess.actorFor(authentication).orElse(null));
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/reject")
     public ResponseEntity<Void> reject(@PathVariable UUID id,
-                                       // TODO(auth): once ROLE_ADMIN is gated, derive actorId from SecurityContext instead
-                                       @RequestBody(required = false) @Valid ReviewDecisionRequest body) {
-        service.reject(id, body != null ? body.actorId() : null, body != null ? body.reason() : null);
+                                       @RequestBody(required = false) @Valid ReviewDecisionRequest body,
+                                       Authentication authentication) {
+        service.reject(id, internalAccess.actorFor(authentication).orElse(null),
+                body != null ? body.reason() : null);
         return ResponseEntity.noContent().build();
     }
 }

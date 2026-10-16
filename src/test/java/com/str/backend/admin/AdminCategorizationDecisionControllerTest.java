@@ -1,5 +1,6 @@
 package com.str.backend.admin;
 
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationFileDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,8 +10,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -32,11 +35,12 @@ class AdminCategorizationDecisionControllerTest {
     private static final String BASE = "/api/admin/categorization-decisions";
 
     private final AdminCategorizationDecisionService service = mock(AdminCategorizationDecisionService.class);
+    private final InternalAccessService internalAccess = mock(InternalAccessService.class);
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new AdminCategorizationDecisionController(service))
+        mvc = MockMvcBuilders.standaloneSetup(new AdminCategorizationDecisionController(service, internalAccess))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .build();
     }
@@ -66,14 +70,28 @@ class AdminCategorizationDecisionControllerTest {
     }
 
     @Test
-    void reject_withBody_passesActorAndReason() throws Exception {
+    void reject_withBody_passesSessionActorAndReason() throws Exception {
         UUID id = UUID.randomUUID();
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:12345678903"));
 
         mvc.perform(post(BASE + "/{id}/reject", id)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"actorId\":\"sluzbenik-1\",\"reason\":\"sken nečitak\"}"))
+                        .content("{\"reason\":\"sken nečitak\"}"))
                 .andExpect(status().isNoContent());
 
-        verify(service).reject(id, "sluzbenik-1", "sken nečitak");
+        verify(service).reject(id, "INTERNAL:12345678903", "sken nečitak");
+    }
+
+    @Test
+    void reject_ignoresActorFromBody() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:12345678903"));
+
+        mvc.perform(post(BASE + "/{id}/reject", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"actorId\":\"netko-drugi\",\"reason\":\"sken nečitak\"}"))
+                .andExpect(status().isNoContent());
+
+        verify(service).reject(id, "INTERNAL:12345678903", "sken nečitak");
     }
 }

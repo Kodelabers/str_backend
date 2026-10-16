@@ -243,4 +243,8 @@
     <!-- Opozvan (REVOKED) kao zaseban konačni status za opoziv iznajmljivača; postojeći opozivi prelaze iz WITHDRAWN. -->
     <include file="db/changelog/changes/137-rn-status-revoked.xml"/>
 
+9    <!-- Mock str.application_user / application_role / application_user_roles s rolom
+         RN_MANAGEMENT i testnim službenikom 12345678903 — gated context="local". -->
+    <include file="db/changelog/changes/138-str-application-user-role-local.xml"/>
+
 </databaseChangeLog>

@@ -4,13 +4,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Writes admin-action audit rows. The actor is a placeholder (caller-supplied id or
- * {@link #SYSTEM}) until NIAS roles provide a reliable identity (BX0).
+ * Writes admin-action audit rows. The actor is the official from the NIAS session
+ * ({@code INTERNAL:<oib>}, see {@code InternalAccessService#actorFor}), or {@link #SYSTEM}
+ * for automated actions.
  */
 @Service
 public class AdminAuditService {
 
-    /** Actor for automated/unauthenticated actions until NIAS roles land. */
+    /** Actor for automated actions (jobs) — no official behind them. */
     public static final String SYSTEM = "SYSTEM";
 
     private final AdminAuditLogRepository repository;

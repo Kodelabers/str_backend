@@ -1,5 +1,6 @@
 package com.str.backend.admin;
 
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
 import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionEntity.CategorizationDecisionMetadata;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,8 +38,9 @@ class AdminCategorizationDecisionServiceTest {
 
     private final CategorizationDecisionRepository repository = mock(CategorizationDecisionRepository.class);
     private final AdminAuditService auditService = mock(AdminAuditService.class);
+    private final InternalAccessService internalAccess = mock(InternalAccessService.class);
     private final AdminCategorizationDecisionService service =
-            new AdminCategorizationDecisionService(repository, auditService);
+            new AdminCategorizationDecisionService(repository, auditService, internalAccess);
 
     @Test
     void list_byStatus_mapsToDto() {
@@ -140,5 +143,17 @@ class AdminCategorizationDecisionServiceTest {
         return CategorizationDecisionEntity.create(OIB, null, "rjesenje.pdf", "application/pdf", PDF,
                 new CategorizationDecisionMetadata("Soba Marija", "FS_SOBA", "Sjenjak 19, Osijek",
                         "UP/I-123", LocalDate.of(2020, 1, 1), 3, "napomena"));
+    }
+
+    /** U sučelju stoji ime službenika, ne INTERNAL:<oib> iz revizijskog zapisa. */
+    @Test
+    void detail_showsOfficialName_notRawActor() {
+        CategorizationDecisionEntity e = submitted();
+        e.verify("INTERNAL:12345678903");
+        when(repository.findById(e.getDecisionId())).thenReturn(java.util.Optional.of(e));
+        when(internalAccess.displayNames(List.of("INTERNAL:12345678903")))
+                .thenReturn(Map.of("INTERNAL:12345678903", "Ana Službenica"));
+
+        assertThat(service.detail(e.getDecisionId()).verifiedBy()).isEqualTo("Ana Službenica");
     }
 }

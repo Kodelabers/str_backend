@@ -1,5 +1,6 @@
 package com.str.backend.rn;
 
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.nias.ActingSubjectService;
 import com.str.backend.auth.nias.EffectiveOibResolver;
@@ -8,6 +9,7 @@ import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.rn.dto.RnDocumentDto;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -48,6 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RnDocumentControllerTest {
 
     /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean InternalAccessService internalAccess;
     @MockBean ActingSubjectService actingSubjectService;
 
     private static final String RN = "HR180000123456789001";
@@ -109,10 +112,11 @@ class RnDocumentControllerTest {
         UUID lessorId = UUID.randomUUID();
         when(principal.getLessorId()).thenReturn(lessorId);
         when(rnRepository.isOwnedByLessor(RN, lessorId)).thenReturn(true);
-        when(documentService.render(eq(StrDocumentType.SUSPENZIJA), eq(RN), any()))
+        when(documentService.render(eq(StrDocumentType.DODJELA), eq(RN), any(), any()))
                 .thenReturn(new byte[]{1});
 
-        mvc.perform(get("/api/rn/{rn}/documents/{tip}", RN, "suspenzija")
+        // Vlasnik renderira samo zahtjev i dodjelu; akte životnog ciklusa dobiva pohranjene.
+        mvc.perform(get("/api/rn/{rn}/documents/{tip}", RN, "dodjela")
                         .principal(new UsernamePasswordAuthenticationToken(principal, null)))
                 .andExpect(status().isOk());
     }
@@ -239,9 +243,18 @@ class RnDocumentControllerTest {
         verify(documentService).render(eq(StrDocumentType.DODJELA), eq(RN), any(), eq(filing));
     }
 
-    /** Prijavljen, ali nije iznajmljivač — do dolaska internih rola (BX0) prolazi bez ograničenja. */
+    /** Službenik s rolom RN_MANAGEMENT (stub u {@link #officialHasRole}); vidi akte svakog RB-a. */
+    private static final UsernamePasswordAuthenticationToken INTERNAL_USER =
+            new UsernamePasswordAuthenticationToken("referent", null);
+
     private static UsernamePasswordAuthenticationToken internalUser() {
-        return new UsernamePasswordAuthenticationToken("referent", null);
+        return INTERNAL_USER;
+    }
+
+    @BeforeEach
+    void officialHasRole() {
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT)))
+                .thenAnswer(inv -> inv.getArgument(0) == INTERNAL_USER);
     }
 
     private static Saml2Authentication samlAuth(String oib) {
