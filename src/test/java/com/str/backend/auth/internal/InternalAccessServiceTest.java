@@ -140,4 +140,28 @@ class InternalAccessServiceTest {
         assertThat(service.displayNames(List.of("INTERNAL:" + OIB)))
                 .containsEntry("INTERNAL:" + OIB, "12*******03");
     }
+
+    @Test
+    void effectiveRole_officialIsRnManagement_othersAreUser() {
+        Authentication official = mock(Authentication.class);
+        Authentication ordinary = mock(Authentication.class);
+        when(niasOibResolver.resolve(official)).thenReturn(Optional.of(OIB));
+        when(niasOibResolver.resolve(ordinary)).thenReturn(Optional.of("77777777778"));
+        when(repository.findRoles(OIB)).thenReturn(Set.of(InternalAccessService.RN_MANAGEMENT));
+        when(repository.findRoles("77777777778")).thenReturn(Set.of());
+
+        assertThat(service.effectiveRole(official)).isEqualTo(InternalAccessService.RN_MANAGEMENT);
+        assertThat(service.effectiveRole(ordinary)).isEqualTo(InternalAccessService.USER);
+        assertThat(service.effectiveRole(null)).isEqualTo(InternalAccessService.USER);
+    }
+
+    /** Obični korisnik ne smije ostati bez aplikacije kad je shema str nedostupna. */
+    @Test
+    void effectiveRole_lookupFailure_isUser() {
+        Authentication auth = mock(Authentication.class);
+        when(niasOibResolver.resolve(auth)).thenReturn(Optional.of(OIB));
+        when(repository.findRoles(OIB)).thenThrow(new DataAccessResourceFailureException("str nedostupan"));
+
+        assertThat(service.effectiveRole(auth)).isEqualTo(InternalAccessService.USER);
+    }
 }

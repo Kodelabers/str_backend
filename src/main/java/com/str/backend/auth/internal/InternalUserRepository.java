@@ -2,6 +2,8 @@ package com.str.backend.auth.internal;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -15,6 +17,12 @@ import java.util.Set;
  * <p>OIB internog korisnika stoji u {@code application_user.username}. Uspoređuje se točnom
  * jednakošću: {@code LIKE} ili normalizacija u SQL-u mogli bi pogoditi tuđi zapis. Rola vrijedi
  * samo za aktivnog korisnika s {@code internal = true}.
+ *
+ * <p>Upiti idu <b>izvan</b> okolne transakcije ({@link Propagation#NOT_SUPPORTED}). Pozivaju se
+ * i iz transakcijskih servisa ({@code /api/auth/me}, popis rješenja), a neuspio upit (npr.
+ * {@code permission denied} na shemi eTurizma) u PostgreSQL-u prekida cijelu transakciju —
+ * pozivatelj grešku hvata i nastavlja, ali bi commit tada pao („database returned ROLLBACK")
+ * i srušio zahtjev koji sa službenicima nema veze.
  */
 @Repository
 public class InternalUserRepository {
@@ -34,11 +42,13 @@ public class InternalUserRepository {
         this.jdbc = jdbc;
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Set<String> findRoles(String oib) {
         return Set.copyOf(jdbc.queryForList(ROLES_BY_OIB, String.class, oib));
     }
 
     /** Ime i prezime internih korisnika po OIB-u — za prikaz aktera; nepoznat OIB izostaje. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Map<String, String> findNames(Collection<String> oibs) {
         Map<String, String> names = new HashMap<>();
         if (oibs.isEmpty()) {

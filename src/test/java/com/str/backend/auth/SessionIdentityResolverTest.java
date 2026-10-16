@@ -1,6 +1,7 @@
 package com.str.backend.auth;
 
 import com.str.backend.auth.dto.MeResponse;
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.nias.NiasOibResolver;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
@@ -29,12 +30,15 @@ class SessionIdentityResolverTest {
     private LessorRepository lessorRepository;
     private NiasOibResolver niasOibResolver;
     private SessionIdentityResolver resolver;
+    private InternalAccessService internalAccess;
 
     @BeforeEach
     void setUp() {
         lessorRepository = mock(LessorRepository.class);
         niasOibResolver = mock(NiasOibResolver.class);
-        resolver = new SessionIdentityResolver(lessorRepository, niasOibResolver);
+        internalAccess = mock(InternalAccessService.class);
+        when(internalAccess.effectiveRole(any())).thenReturn(InternalAccessService.USER);
+        resolver = new SessionIdentityResolver(lessorRepository, niasOibResolver, internalAccess);
     }
 
     @Test
@@ -88,8 +92,8 @@ class SessionIdentityResolverTest {
         assertThat(me.lastName()).isEqualTo("Horvat");
         assertThat(me.lessorId()).isNull();
         assertThat(me.username()).isNull();
-        // NIAS assertion ne nosi rolu ni email
-        assertThat(me.role()).isNull();
+        // Obični NIAS korisnik ima ulogu USER (ne null); email assertion ne nosi
+        assertThat(me.role()).isEqualTo("USER");
         assertThat(me.email()).isNull();
     }
 

@@ -4,12 +4,10 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 /**
- * Role prijavljenog NIAS korisnika, za izbornik i čuvare ruta na frontendu. Autorizacija na
- * backendu ne ovisi o ovom odgovoru — svaki interni endpoint provjerava rolu sam
- * ({@link InternalRoleAuthorizationManager}).
+ * Uloga prijavljenog NIAS korisnika ({@code RN_MANAGEMENT} ili {@code USER}), za izbornik i
+ * čuvare ruta na frontendu. Autorizacija na backendu ne ovisi o ovom odgovoru — svaki interni
+ * endpoint provjerava rolu sam ({@link InternalRoleAuthorizationManager}).
  *
  * <p>Pod {@code /api/nias/**}, a ne u {@code /api/auth/me}: lokalni mock tok nema prijave
  * (samo {@code nias.mock.fixed-oib}), pa bi {@code /me} vratio 401.
@@ -17,7 +15,7 @@ import java.util.List;
 @RestController
 public class InternalAccessController {
 
-    public record InternalAccessResponse(List<String> roles) {}
+    public record InternalAccessResponse(String role) {}
 
     private final InternalAccessService internalAccess;
 
@@ -27,6 +25,6 @@ public class InternalAccessController {
 
     @GetMapping("/api/nias/internal-access")
     public InternalAccessResponse internalAccess(Authentication authentication) {
-        return new InternalAccessResponse(internalAccess.rolesFor(authentication).stream().sorted().toList());
+        return new InternalAccessResponse(internalAccess.effectiveRole(authentication));
     }
 }
