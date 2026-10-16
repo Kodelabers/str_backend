@@ -123,9 +123,12 @@ public class RnService {
      * {@code SUSPENSION_PROPOSED} — dok akt stranci već tvrdi da rok teče („u roku od 15 dana",
      * {@code rok.default} u {@code documents/hr/labels.properties}). Zadana vrijednost prati taj
      * tekst; mijenja se preko {@code str.rn.suspension.response-days}.
+     *
+     * <p>{@code actor} je službenik ({@code INTERNAL:<oib>}) — zapisuje se u revizijski trag, kao i
+     * kod obustave, reaktivacije i povlačenja.
      */
     @Transactional
-    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note) {
+    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor) {
         if (trigger != RnTrigger.CONSENT_EXPIRY
                 && trigger != RnTrigger.INSPECTION
                 && trigger != RnTrigger.INCOMPLETE_DOCUMENTATION
@@ -142,7 +145,7 @@ public class RnService {
             throw new BusinessException("error.rn.suspend.deadline.past");
         }
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, null, Strings.blankToNull(note));
+        transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, Strings.blankToNull(note));
         e.setSuspensionDeadline(suspensionDeadline != null
                 ? suspensionDeadline
                 : LocalDate.now(clock).plusDays(suspensionResponseDays));
@@ -150,16 +153,16 @@ public class RnService {
     }
 
     @Transactional
-    public RnEntity revokeProposal(String rn) {
+    public RnEntity revokeProposal(String rn, String actor) {
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL);
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null);
         return e;
     }
 
     @Transactional
-    public RnEntity reactivate(String rn) {
+    public RnEntity reactivate(String rn, String actor) {
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REACTIVATE);
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null);
         return e;
     }
 
@@ -175,9 +178,9 @@ public class RnService {
      * koji {@link RnEntity#applyStatus} postavlja na dan povlačenja.
      */
     @Transactional
-    public RnEntity withdraw(String rn, String reason) {
+    public RnEntity withdraw(String rn, String reason, String actor) {
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, Strings.blankToNull(reason));
+        transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, Strings.blankToNull(reason));
         return e;
     }
 

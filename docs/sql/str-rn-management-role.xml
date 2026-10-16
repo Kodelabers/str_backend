@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Za changelog sheme 'str' (eTurizam), ne za str-backend master changelog.
+      Predloženi naziv: db/changelog/2_0_0/db.changelog-NN-str-rn-management-role.xml
+
+      Rola za interne korisnike STR-a (MINTS i županije): popis registracijskih brojeva
+      s filterima i izvozom, prijedlog i potvrda suspenzije, reaktivacija, povlačenje RB-a,
+      STR dashboard, aktivnosti RB-ova na internetskim platformama, odobravanje non-EU
+      registracija i rješenja o kategorizaciji.
+
+      str-backend rolu prepoznaje po sys_name preko str.application_user_roles, uz
+      application_user.internal = true i active = true; OIB je u application_user.username.
+      Rola se službenicima dodjeljuje ručno, ovaj changeset je samo kreira.
+    -->
+    <changeSet id="str-role-RN_MANAGEMENT" author="Mladen Hangi">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM str.application_role WHERE sys_name = 'RN_MANAGEMENT'
+            </sqlCheck>
+        </preConditions>
+        <insert schemaName="str" tableName="application_role">
+            <column name="sys_name" value="RN_MANAGEMENT"/>
+            <column name="name" value="Upravljanje registracijskim brojevima"/>
+        </insert>
+        <rollback>
+            <delete schemaName="str" tableName="application_user_roles">
+                <where>roles_sys_name = 'RN_MANAGEMENT'</where>
+            </delete>
+            <delete schemaName="str" tableName="application_role">
+                <where>sys_name = 'RN_MANAGEMENT'</where>
+            </delete>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

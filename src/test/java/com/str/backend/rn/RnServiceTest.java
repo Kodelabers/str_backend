@@ -176,7 +176,7 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, null, null);
+        service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, null, null, null);
 
         verify(transitionService).transition(
                 rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION, null, null);
@@ -191,7 +191,7 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.suspend(rn.getRn(), RnTrigger.INSPECTION, null, null);
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, null, null, null);
 
         assertThat(rn.getSuspensionDeadline())
                 .isEqualTo(LocalDate.now(clock).plusDays(SUSPENSION_RESPONSE_DAYS));
@@ -203,7 +203,7 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         LocalDate chosen = LocalDate.of(2026, 6, 1);
 
-        service.suspend(rn.getRn(), RnTrigger.INSPECTION, chosen, null);
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, chosen, null, null);
 
         assertThat(rn.getSuspensionDeadline()).isEqualTo(chosen);
     }
@@ -212,7 +212,7 @@ class RnServiceTest {
     @Test
     void suspend_rejectsDeadlineInThePast() {
         assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.INSPECTION,
-                LocalDate.now(clock).minusDays(1), null))
+                LocalDate.now(clock).minusDays(1), null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.deadline.past");
         verify(transitionService, never())
@@ -226,14 +226,14 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         LocalDate today = LocalDate.now(clock);
 
-        service.suspend(rn.getRn(), RnTrigger.INSPECTION, today, null);
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, today, null, null);
 
         assertThat(rn.getSuspensionDeadline()).isEqualTo(today);
     }
 
     @Test
     void suspend_requiresNote_forOtherReason() {
-        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.OTHER, null, "  "))
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.OTHER, null, "  ", null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.note.required");
         verify(transitionService, never())
@@ -242,7 +242,7 @@ class RnServiceTest {
 
     @Test
     void suspend_rejectsNonSuspendTrigger() {
-        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.WITHDRAWAL, null, null))
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.WITHDRAWAL, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.trigger.invalid");
         verify(transitionService, never())
@@ -254,7 +254,7 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.withdraw(rn.getRn(), "  nedostaje suglasnost  ");
+        service.withdraw(rn.getRn(), "  nedostaje suglasnost  ", null);
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
                 null, "nedostaje suglasnost");
@@ -265,7 +265,7 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.withdraw(rn.getRn(), null);
+        service.withdraw(rn.getRn(), null, null);
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, null);
     }
@@ -298,5 +298,25 @@ class RnServiceTest {
             throw new RuntimeException(ex);
         }
         return e;
+    }
+
+    /** Revizijski trag: tko je kao službenik pokrenuo prijelaz. */
+    @Test
+    void lifecycle_passesOfficialActorToTransition() {
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        String actor = "INTERNAL:12345678903";
+
+        service.withdraw(rn.getRn(), "razlog", actor);
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, "razlog");
+
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, null, null, actor);
+        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION, actor, null);
+
+        service.revokeProposal(rn.getRn(), actor);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null);
+
+        service.reactivate(rn.getRn(), actor);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null);
     }
 }

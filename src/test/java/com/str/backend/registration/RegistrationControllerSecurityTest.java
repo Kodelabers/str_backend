@@ -3,6 +3,7 @@ package com.str.backend.registration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.SecurityConfig;
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.nias.ActingSubjectService;
 import com.str.backend.auth.nias.ActingSubjectGuard;
 import com.str.backend.auth.nias.EffectiveOibResolver;
@@ -44,6 +45,7 @@ class RegistrationControllerSecurityTest {
 
     /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
     @MockBean ActingSubjectService actingSubjectService;
+    @MockBean InternalAccessService internalAccess;
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper om;

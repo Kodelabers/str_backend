@@ -1,6 +1,7 @@
 package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.document.StrDocumentService;
@@ -14,6 +15,9 @@ import com.str.backend.rn.dto.RnResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
 import com.str.backend.statistics.StatisticsExportService;
 import jakarta.validation.constraints.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +27,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,14 +39,18 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Validated
 @RestController
 @RequestMapping("/api/rn")
 public class RnController {
+
+    private static final Logger log = LoggerFactory.getLogger(RnController.class);
 
     private final RnService service;
     private final RnMapper mapper;
@@ -50,10 +59,12 @@ public class RnController {
     private final RnRepository rnRepository;
     private final StatisticsExportService exportService;
     private final EffectiveOibResolver effectiveOibResolver;
+    private final InternalAccessService internalAccess;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
                         RnDocumentsService documentsService, RnRepository rnRepository,
-                        StatisticsExportService exportService, EffectiveOibResolver effectiveOibResolver) {
+                        StatisticsExportService exportService, EffectiveOibResolver effectiveOibResolver,
+                        InternalAccessService internalAccess) {
         this.service = service;
         this.mapper = mapper;
         this.documentService = documentService;
@@ -61,6 +72,7 @@ public class RnController {
         this.rnRepository = rnRepository;
         this.exportService = exportService;
         this.effectiveOibResolver = effectiveOibResolver;
+        this.internalAccess = internalAccess;
     }
 
     /** STR-1.5: display of inactive RNs (SUSPENDED + REVOKED + WITHDRAWN). */
@@ -70,7 +82,8 @@ public class RnController {
     }
 
     /**
-     * STR wireframe §12 / §13: paginated public registry of RNs.
+     * STR wireframe §12 / §13: paginirani registar RB-ova za službenike (rola RN_MANAGEMENT, v.
+     * {@code SecurityConfig}) — javnosti je dostupna samo provjera pojedinog broja ({@code /api/verify}).
      *
      * <p>{@code deadlineWithinDays} je radna lista tražena na UAT-u: RB-ovi kojima rok za
      * očitovanje ističe u narednih x dana. Namjerno je filtar ovdje, a ne zaseban pregled —
@@ -96,9 +109,13 @@ public class RnController {
                 street, name, lessor, deadlineWithinDays, pageable);
     }
 
-    /** STR wireframe §12 / §13: full detail of a single RN (accommodation + lessor). */
+    /**
+     * STR wireframe §12 / §13: full detail of a single RN (accommodation + lessor). Službenik s
+     * rolom vidi svaki RB, iznajmljivač samo svoj (tuđi → 404), kao i kod akata.
+     */
     @GetMapping("/{rn}/detail")
-    public RnDetailDto detail(@PathVariable String rn) {
+    public RnDetailDto detail(@PathVariable String rn, Authentication authentication) {
+        requireAccess(rn, authentication);
         return service.detail(rn);
     }
 
@@ -107,29 +124,36 @@ public class RnController {
         return mapper.toResponse(service.find(rn));
     }
 
+    /*
+     * Životni ciklus RB-a po službenoj dužnosti — samo uz rolu RN_MANAGEMENT (SecurityConfig).
+     * Akter je službenik iz sesije (INTERNAL:<oib>) i ide u registration_number_log.
+     */
+
     @PostMapping("/{rn}/suspend")
     public RnResponse suspend(
             @PathVariable String rn,
             @RequestParam RnTrigger reason,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate suspensionDeadline,
-            @RequestParam(required = false) String note) {
-        return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline, note));
+            @RequestParam(required = false) String note,
+            Authentication authentication) {
+        return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline, note, actor(authentication)));
     }
 
     @PostMapping("/{rn}/revoke-proposal")
-    public RnResponse revokeProposal(@PathVariable String rn) {
-        return mapper.toResponse(service.revokeProposal(rn));
+    public RnResponse revokeProposal(@PathVariable String rn, Authentication authentication) {
+        return mapper.toResponse(service.revokeProposal(rn, actor(authentication)));
     }
 
     @PostMapping("/{rn}/reactivate")
-    public RnResponse reactivate(@PathVariable String rn) {
-        return mapper.toResponse(service.reactivate(rn));
+    public RnResponse reactivate(@PathVariable String rn, Authentication authentication) {
+        return mapper.toResponse(service.reactivate(rn, actor(authentication)));
     }
 
     @PostMapping("/{rn}/withdraw")
     public RnResponse withdraw(@PathVariable String rn,
-                              @RequestParam(required = false) String reason) {
-        return mapper.toResponse(service.withdraw(rn, reason));
+                              @RequestParam(required = false) String reason,
+                              Authentication authentication) {
+        return mapper.toResponse(service.withdraw(rn, reason, actor(authentication)));
     }
 
     /**
@@ -153,8 +177,14 @@ public class RnController {
      *
      * <p>Akt nosi osobne podatke stranke, uključujući OIB koji čl. 98. st. 2 traži u uvodu, pa
      * je zaštićen dvostruko: {@code SecurityConfig} traži prijavu, a ovdje se iznajmljivača
-     * ograničava na vlastite registracijske brojeve. Kad stignu interne role (BX0), voditelj
-     * postupka prolazi kroz istu granu kao svaki ne-iznajmljivač.
+     * ograničava na vlastite registracijske brojeve. Službenik s rolom
+     * {@link InternalAccessService#RN_MANAGEMENT} vidi akte svakog RB-a.
+     *
+     * <p>Vlasnik dobiva samo zahtjev i dodjelu; akte životnog ciklusa preuzima pohranjene
+     * ({@code /documents/pohranjeno/{id}}). Render na zahtjev bilo kojeg akta i slobodan
+     * {@code reason} su samo za službenika — inače bi vlasnik aktivnog RB-a mogao dobiti
+     * „Obavijest o povlačenju" sa zaglavljem tijela i razlogom po želji, za postupak koji se
+     * nikad nije dogodio. Nedopušten tip vraća 404, kao i tuđi RB.
      *
      * <p>{@code Content-Disposition: inline} — dokument se otvara u novom tabu, ne preuzima.
      * Frontend ga mora otvoriti kao <b>top-level navigaciju</b> ({@code window.open}): tako
@@ -175,13 +205,18 @@ public class RnController {
         StrDocumentType type = StrDocumentType.fromSlug(tip)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Nepoznata vrsta akta: " + tip));
-        requireAccess(rn, authentication);
+        boolean sluzbenik = requireAccess(rn, authentication) == Pristup.SLUZBENIK
+                || isOfficial(authentication);
+        if (!sluzbenik && !VLASNIKOVI_AKTI.contains(type)) {
+            throw new ResourceNotFoundException("document not available: " + type.slug() + " " + rn);
+        }
+        String razlog = sluzbenik ? reason : null;
         byte[] pdf = switch (type) {
             // Zahtjev nema predložak — servira se pohranjeni podnesak sa submissiona.
             case ZAHTJEV -> documentsService.zahtjevPdf(rn);
             // Dodjela se renderira s pravim URBROJ-em izlaznog pismena (kao verzija u eGOP-u).
-            case DODJELA -> documentService.render(type, rn, reason, documentsService.dodjelaFiling(rn));
-            default -> documentService.render(type, rn, reason);
+            case DODJELA -> documentService.render(type, rn, razlog, documentsService.dodjelaFiling(rn));
+            default -> documentService.render(type, rn, razlog);
         };
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
@@ -282,29 +317,55 @@ public class RnController {
                 .body(pdf);
     }
 
+    /** Akti koje vlasnik smije renderirati na zahtjev; ostale dobiva samo kao pohranjene. */
+    private static final Set<StrDocumentType> VLASNIKOVI_AKTI =
+            EnumSet.of(StrDocumentType.ZAHTJEV, StrDocumentType.DODJELA);
+
+    private enum Pristup { VLASNIK, SLUZBENIK }
+
     /**
-     * Prijavljeni iznajmljivač smije preuzeti samo akte koji se odnose na njegove RB-ove —
-     * on im je i adresat. Tuđi RB se prijavljuje kao 404, da endpoint ne otkriva postojanje.
+     * Pristup pojedinom RB-u: vlasnik (prijavljeni iznajmljivač; za NIAS po efektivnom OIB-u —
+     * zastupnik vidi RB-ove tvrtke u čije ime djeluje) ili službenik s rolom
+     * {@link InternalAccessService#RN_MANAGEMENT}. Sve ostalo je odbijeno: bez prijave 401,
+     * prijavljen bez prava 404, da endpoint ne otkriva postojanje tuđeg RB-a.
      *
-     * <p>Vlasništvo se provjerava po tipu prijave, kao i „moji RB-ovi" liste: username/password
-     * flow po {@code lessorId}, NIAS po OIB-u iz SAML-a (lessorId nije stabilan između prijava).
-     * Ostale prijave (buduće interne role) prolaze.
+     * <p>Vlasništvo se provjerava prvo, bez upita u shemu {@code str}: iznajmljivač tako ne ovisi
+     * o dostupnosti tablica eTurizma. Non-EU iznajmljivač (prijava lozinkom) nikad nije službenik.
      */
-    private void requireAccess(String rn, Authentication authentication) {
-        if (authentication == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
-        if (authentication.getPrincipal() instanceof LessorPrincipal principal) {
-            if (!rnRepository.isOwnedByLessor(rn, principal.getLessorId())) {
-                throw new ResourceNotFoundException("rn not found: " + rn);
+    private Pristup requireAccess(String rn, Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof LessorPrincipal principal) {
+            if (rnRepository.isOwnedByLessor(rn, principal.getLessorId())) {
+                return Pristup.VLASNIK;
             }
-            return;
-        }
-        // Zastupnik pravne osobe vidi akte RB-ova tvrtke u čije ime djeluje (EffectiveOibResolver).
-        Optional<String> oib = NiasOibExtractor.extractOib(authentication).isPresent()
-                ? effectiveOibResolver.resolve(authentication) : Optional.empty();
-        if (oib.isPresent() && !rnRepository.isOwnedByOib(rn, oib.get())) {
             throw new ResourceNotFoundException("rn not found: " + rn);
         }
+        Optional<String> oib = NiasOibExtractor.extractOib(authentication).isPresent()
+                ? effectiveOibResolver.resolve(authentication) : Optional.empty();
+        if (oib.isPresent() && rnRepository.isOwnedByOib(rn, oib.get())) {
+            return Pristup.VLASNIK;
+        }
+        // Lokalni mock NIAS-a nema autentikacije — rolu tada daje nias.mock.fixed-oib.
+        if (isOfficial(authentication)) {
+            return Pristup.SLUZBENIK;
+        }
+        if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        throw new ResourceNotFoundException("rn not found: " + rn);
+    }
+
+    /** Nedostupna shema {@code str} znači „nije službenik" — vlasnik je već prošao gore. */
+    private boolean isOfficial(Authentication authentication) {
+        try {
+            return internalAccess.hasRole(authentication, InternalAccessService.RN_MANAGEMENT);
+        } catch (DataAccessException e) {
+            log.error("internal_role_check_failed context=rn_access", e);
+            return false;
+        }
+    }
+
+    /** Endpoint je iza role, pa službenik iz sesije postoji; {@code null} samo u testovima bez lanca. */
+    private String actor(Authentication authentication) {
+        return internalAccess.actorFor(authentication).orElse(null);
     }
 }
