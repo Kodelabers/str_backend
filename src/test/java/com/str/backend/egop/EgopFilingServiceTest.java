@@ -41,6 +41,7 @@ class EgopFilingServiceTest {
 
     private EgopClient egopClient;
     private EgopFilingStore store;
+    private EgopKpOtpremaService kpOtprema;
     private EgopFilingService service;
 
     private SubmissionEntity submission;
@@ -50,6 +51,7 @@ class EgopFilingServiceTest {
     void setUp() {
         egopClient = mock(EgopClient.class);
         store = mock(EgopFilingStore.class);
+        kpOtprema = mock(EgopKpOtpremaService.class);
         when(store.readSubjektOznaka(any())).thenReturn(Optional.empty());
         when(store.storeSubjektOznaka(any(), anyInt())).thenAnswer(inv -> inv.getArgument(1));
         when(store.findPismeno(any(), anyString(), anyString())).thenReturn(Optional.empty());
@@ -62,7 +64,7 @@ class EgopFilingServiceTest {
                 "Zahtjev za registracijski broj", "101",
                 "Obavijest o dodjeli registracijskog broja", "102"));
 
-        service = new EgopFilingService(egopClient, store, resolver(), properties("MINT", "str-svc"),
+        service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, properties("MINT", "str-svc"),
                 "", "NP");
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
@@ -195,7 +197,7 @@ class EgopFilingServiceTest {
 
     @Test
     void fileRegistration_usesConfiguredRjesavateljWhenSet() throws Exception {
-        service = new EgopFilingService(egopClient, store, resolver(), properties("MINT", "str-svc"),
+        service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, properties("MINT", "str-svc"),
                 "MINT\\ivan.ivic", "NP");
         givenSubjektAndPredmetCreated();
 
@@ -318,6 +320,89 @@ class EgopFilingServiceTest {
                 "nakon prilaganja dokumenta pismeno mora biti SYNCED, ne ostati na PISMENO_OK");
         assertTrue(captor.getAllValues().stream().allMatch(EgopPismenoEntity::isDocumentAttached),
                 "dokument mora biti označen kao priložen");
+    }
+
+    /**
+     * Otprema u KP: samo za izlazno pismeno, zapisana prije prilaganja dokumenta (da je retry nađe
+     * i kad tok padne između) i poslana tek na kraju, kad je urudžba gotova.
+     */
+    @Test
+    void fileRegistration_registersAndSendsKpOnlyForOutgoingPismeno() throws Exception {
+        givenSubjektAndPredmetCreated();
+
+        service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
+
+        ArgumentCaptor<EgopPismenoEntity> registered = ArgumentCaptor.forClass(EgopPismenoEntity.class);
+        verify(kpOtprema, atLeastOnce()).register(registered.capture(), eq(lessor), eq(submission.getCreatedAt()));
+        assertTrue(registered.getAllValues().stream()
+                        .allMatch(p -> p.getSmjer() == EgopPismenoEntity.Smjer.IZLAZNO),
+                "u KP ide samo obavijest o dodjeli, ne zahtjev stranke");
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(kpOtprema, store);
+        order.verify(kpOtprema).register(any(), eq(lessor), any());
+        order.verify(store).saveSuccess(any(), anyString(), any());
+        order.verify(kpOtprema).otpremi(registered.getValue().getId());
+    }
+
+    /**
+     * Akt životnog ciklusa: otpremu je zapisao listener kad je akt nastao, pa je fileAct samo
+     * pokreće — novo zapisivanje ovdje bi poslalo i akte nastale dok je KP bio ugašen.
+     */
+    @Test
+    void fileAct_sendsKpAfterFiling_butDoesNotRegister() throws Exception {
+        lessor.assignEgopSubjekt(42);
+        submission.applyEgopPredmet(2026, 55, "334-01/26-01/55");
+        PredmetInfo postoji = new PredmetInfo();
+        postoji.setOperationSucceeded(true);
+        when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
+        when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o suspenziji registracijskog broja", "103"));
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1003, "529-06/26-3"));
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-1",
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "pdf".getBytes());
+
+        service.fileAct(akt, submission, lessor);
+
+        verify(kpOtprema).otpremi(akt.getId());
+        verify(kpOtprema, never()).register(any(), any(), any());
+    }
+
+    /** Ako urudžba padne, otprema se ne pokušava — njen red ostaje za retry. */
+    @Test
+    void fileRegistration_failedFiling_doesNotSendKp() throws Exception {
+        givenSubjektAndPredmetCreated();
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenThrow(new EgopBadRequestException("boom"));
+
+        assertThrows(EgopBadRequestException.class,
+                () -> service.fileRegistration(submission, lessor, documents("pdf".getBytes())));
+
+        verify(kpOtprema, never()).otpremi(any());
+    }
+
+    /**
+     * Render obavijesti padne: izlazno pismeno ostaje bez dokumenta, otprema se ne šalje, a
+     * submission se ne označava kao SYNCED — retry nastavlja od tog pismena.
+     */
+    @Test
+    void fileRegistration_noticeRenderFails_leavesOutgoingUnattachedAndUnsent() throws Exception {
+        givenSubjektAndPredmetCreated();
+        EgopDocumentSupplier documents = new EgopDocumentSupplier() {
+            @Override
+            public byte[] zahtjev(FilingReference filing) {
+                return "zahtjev".getBytes();
+            }
+
+            @Override
+            public byte[] obavijestODodjeli(FilingReference filing) {
+                throw new IllegalStateException("render");
+            }
+        };
+
+        assertThrows(IllegalStateException.class, () -> service.fileRegistration(submission, lessor, documents));
+
+        // samo ulazno pismeno je dobilo dokument
+        verify(egopClient, times(1)).kreirajDokumentZaPismeno(any());
+        verify(store, never()).saveSuccess(any(), anyString(), any());
+        verify(kpOtprema, never()).otpremi(any());
     }
 
     /** Isti PDF za oba pismena — testovima koji ne provjeravaju sadržaj dokumenta. */

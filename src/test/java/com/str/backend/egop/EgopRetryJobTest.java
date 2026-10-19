@@ -23,13 +23,15 @@ class EgopRetryJobTest {
     private final EgopRegistrationDispatcher dispatcher = mock(EgopRegistrationDispatcher.class);
     private final EgopPismenoRepository pismenoRepository = mock(EgopPismenoRepository.class);
     private final EgopAktDispatcher aktDispatcher = mock(EgopAktDispatcher.class);
+    private final EgopKpOtpremaRepository kpOtpremaRepository = mock(EgopKpOtpremaRepository.class);
+    private final EgopKpOtpremaService kpOtprema = mock(EgopKpOtpremaService.class);
 
     private final EgopRetryPolicy retryPolicy =
             new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2));
 
     private EgopRetryJob job(int batchSize) {
         return new EgopRetryJob(submissionRepository, pismenoRepository, dispatcher, aktDispatcher,
-                retryPolicy, new EgopAktiBezSifre(java.util.Set.of()),
+                retryPolicy, new EgopAktiBezSifre(java.util.Set.of()), kpOtpremaRepository, kpOtprema,
                 Duration.ofMinutes(5), Duration.ofDays(7), batchSize);
     }
 
@@ -93,6 +95,30 @@ class EgopRetryJobTest {
         job(50).retryPending();
 
         verify(aktDispatcher).dispatch(drugi);
+    }
+
+    @Test
+    void retryPending_kpEnabled_retriesKpOtpreme() {
+        UUID otprema = UUID.randomUUID();
+        when(kpOtprema.isEnabled()).thenReturn(true);
+        when(kpOtpremaRepository.findRetryCandidates(eq(EgopSyncStatus.SYNCED),
+                eq(List.of(EgopKpOtpremaEntity.Status.PENDING, EgopKpOtpremaEntity.Status.FAILED)),
+                eq(10), any(), any(), any()))
+                .thenReturn(List.of(otprema));
+
+        job(50).retryPending();
+
+        verify(kpOtprema).retry(otprema);
+    }
+
+    @Test
+    void retryPending_kpDisabled_doesNotQueryKp() {
+        when(kpOtprema.isEnabled()).thenReturn(false);
+
+        job(50).retryPending();
+
+        verify(kpOtpremaRepository, times(0)).findRetryCandidates(any(), any(), any(Integer.class), any(), any(), any());
+        verify(kpOtprema, times(0)).retry(any());
     }
 
 }

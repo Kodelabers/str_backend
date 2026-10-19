@@ -25,6 +25,11 @@ import hr.infodom.egov.pismeno.ObrisiDokumentPriloga;
 import hr.infodom.egov.pismeno.ObrisiDokumentPrilogaResponse;
 import hr.infodom.egov.pismeno.ObrisiDokumentZaPismeno;
 import hr.infodom.egov.pismeno.ObrisiDokumentZaPismenoResponse;
+import hr.infodom.egov.pismeno.DohvatiKPStatusPorukeSaVremenima;
+import hr.infodom.egov.pismeno.DohvatiKPStatusPorukeSaVremenimaResponse;
+import hr.infodom.egov.pismeno.OtpremiPismenoUKorisnickiPretinac;
+import hr.infodom.egov.pismeno.OtpremiPismenoUKorisnickiPretinacResponse;
+import hr.infodom.egov.pismeno.OtpremnicaKPInfo;
 import hr.infodom.egov.pismeno.PismenoBasicInfo2;
 import hr.infodom.egov.pismeno.PismenoInfo;
 import hr.infodom.egov.pismeno.PriloziPismenaInfo;
@@ -318,6 +323,54 @@ class EgopClientImpl implements EgopClient {
         handleErrors(((ObrisiDokumentPrilogaResponse) call(
                 egopPismenoWebServiceTemplate, request, PISMENO_OBRISI_DOKUMENT_PRILOGA_SOAP_ACTION))
                 .getObrisiDokumentPrilogaResult());
+    }
+
+    /**
+     * Primatelj se zadaje OIB-om, ne oznakom subjekta: zastupnik pravne osobe ne mora postojati
+     * kao subjekt u eGOP-u. {@code subjektOznakaPrimatelja} je u WSDL-u {@code nillable} i
+     * {@code minOccurs=1}, pa ide kao {@code xsi:nil}. Prilozi se ne otpremaju — STR pismenu
+     * prilaže samo glavni dokument.
+     */
+    @Override
+    public void otpremiUKorisnickiPretinac(String username, int jop, String primateljOib, String napomena)
+            throws EgopTransportException, EgopBadRequestException {
+        OtpremiPismenoUKorisnickiPretinac request = new OtpremiPismenoUKorisnickiPretinac();
+        request.setUsername(username);
+        request.setJop(jop);
+        request.setSubjektOIBPrimatelja(primateljOib);
+        request.setNapomena(napomena);
+        request.setOtpremaPriloga(false);
+        var response = (OtpremiPismenoUKorisnickiPretinacResponse) call(
+                egopPismenoWebServiceTemplate, request, PISMENO_OTPREMI_U_KORISNICKI_PRETINAC_SOAP_ACTION);
+        if (response.getOtpremiPismenoUKorisnickiPretinacResult() == null) {
+            // Bez rezultata ne znamo je li poruka otišla — tretira se kao neuspjeh, pa retry.
+            throw new EgopBadRequestException("OtpremiPismenoUKorisnickiPretinac nije vratio rezultat");
+        }
+        handleErrors(response.getOtpremiPismenoUKorisnickiPretinacResult());
+    }
+
+    @Override
+    public KpStatusPoruke dohvatiKpStatusPoruke(String username, int jop, String primateljOib)
+            throws EgopTransportException, EgopBadRequestException, EgopParseException {
+        DohvatiKPStatusPorukeSaVremenima request = new DohvatiKPStatusPorukeSaVremenima();
+        request.setUsername(username);
+        request.setJop(jop);
+        request.setSubjektOIBPrimatelja(primateljOib);
+        var response = (DohvatiKPStatusPorukeSaVremenimaResponse) call(
+                egopPismenoWebServiceTemplate, request, PISMENO_DOHVATI_KP_STATUS_PORUKE_SA_VREMENIMA_SOAP_ACTION);
+        OtpremnicaKPInfo info = response.getDohvatiKPStatusPorukeSaVremenimaResult();
+        if (info == null) {
+            throw new EgopParseException("DohvatiKPStatusPorukeSaVremenima nije vratio OtpremnicaKPInfo");
+        }
+        handleErrors(info);
+        return new KpStatusPoruke(info.getStatusPoruke(),
+                EgopDates.toInstant(info.getDatumVrijemeKreiranja()),
+                EgopDates.toInstant(info.getDatumVrijemeSlanja()),
+                EgopDates.toInstant(info.getDatumVrijemeZaprimanjaNIAS()),
+                EgopDates.toInstant(info.getDatumVrijemeProsljedivanjaPrimatelju()),
+                EgopDates.toInstant(info.getDatumVrijemeZaprimanjaPrimatelj()),
+                EgopDates.toInstant(info.getDatumVrijemeZadnjeProvjereAktivnosti()),
+                EgopDates.toInstant(info.getDatumVrijemeZadnjeAktivnosti()));
     }
 
     private Object handleErrors(hr.infodom.egov.pismeno.BaseInfo response) throws EgopBadRequestException {

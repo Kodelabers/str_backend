@@ -46,17 +46,20 @@ public class RnLifecycleFilingListener {
     private final EgopFilingStore store;
     private final EgopAktDispatcher dispatcher;
     private final EgopAktiBezSifre bezSifre;
+    private final EgopKpOtpremaService kpOtprema;
 
     public RnLifecycleFilingListener(RnLifecycleLookup lookup,
                                      StrDocumentService documentService,
                                      EgopFilingStore store,
                                      EgopAktDispatcher dispatcher,
-                                     EgopAktiBezSifre bezSifre) {
+                                     EgopAktiBezSifre bezSifre,
+                                     EgopKpOtpremaService kpOtprema) {
         this.lookup = lookup;
         this.documentService = documentService;
         this.store = store;
         this.dispatcher = dispatcher;
         this.bezSifre = bezSifre;
+        this.kpOtprema = kpOtprema;
     }
 
     /**
@@ -94,6 +97,10 @@ public class RnLifecycleFilingListener {
                     event.rn(), type.get().vrstaPismenaNaziv(), e.getMessage(), e);
             return;
         }
+
+        // Otprema u KP nastaje s aktom — i za vrste bez šifre, koje se urudžbiraju (i šalju) tek
+        // kad šifra stigne, ako akt do tada ne zastari. Akt nastao dok je KP ugašen je nema.
+        kpOtprema.registerForAkt(akt);
 
         if (!bezSifre.urudzbiv(type.get())) {
             // Akt je zapisan i vidljiv stranci; staje samo slanje, jer bi razrješavanje vrste

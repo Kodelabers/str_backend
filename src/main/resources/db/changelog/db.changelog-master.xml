@@ -247,4 +247,7 @@
          RN_MANAGEMENT i testnim službenikom 12345678903 — gated context="local". -->
     <include file="db/changelog/changes/138-str-application-user-role-local.xml"/>
 
+    <!-- Otprema izlaznih pismena u korisnički pretinac (KP) preko eGOP-a + zapis KP statusa poruke. -->
+    <include file="db/changelog/changes/139-egop-kp-otprema.xml"/>
+
 </databaseChangeLog>

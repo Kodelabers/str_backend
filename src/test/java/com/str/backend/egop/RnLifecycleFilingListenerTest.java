@@ -29,6 +29,7 @@ class RnLifecycleFilingListenerTest {
     private StrDocumentService documentService;
     private EgopFilingStore store;
     private EgopAktDispatcher dispatcher;
+    private EgopKpOtpremaService kpOtprema;
     private UUID submissionId;
 
     @BeforeEach
@@ -37,6 +38,7 @@ class RnLifecycleFilingListenerTest {
         documentService = mock(StrDocumentService.class);
         store = mock(EgopFilingStore.class);
         dispatcher = mock(EgopAktDispatcher.class);
+        kpOtprema = mock(EgopKpOtpremaService.class);
 
         submissionId = UUID.randomUUID();
         when(lookup.findSubmissionId(RN)).thenReturn(Optional.of(submissionId));
@@ -47,7 +49,7 @@ class RnLifecycleFilingListenerTest {
     /** @param bezSifre slugovi na blokadnoj listi; prazno = sve se urudžbira */
     private RnLifecycleFilingListener listener(String... bezSifre) {
         return new RnLifecycleFilingListener(lookup, documentService, store, dispatcher,
-                new EgopAktiBezSifre(Set.of(bezSifre)));
+                new EgopAktiBezSifre(Set.of(bezSifre)), kpOtprema);
     }
 
     @Test
@@ -169,6 +171,20 @@ class RnLifecycleFilingListenerTest {
         assertThat(akt.getPdfContent()).isNotEmpty();
         assertThat(akt.getRn()).isEqualTo(RN);
         verify(dispatcher, never()).dispatch(any());
+    }
+
+    /**
+     * Otprema u KP nastaje s aktom — i kad vrsta još nema šifru, da se akt dostavi kad se
+     * urudžbi (ako do tada ne zastari). Kasnije je zapisivati značilo bi slati akte nastale dok je
+     * KP bio ugašen.
+     */
+    @Test
+    void act_registersKpOtpremaWhenRecorded_evenWithoutCodebookEntry() {
+        listener("reaktivacija").onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.ACTIVE,
+                RnTrigger.REACTIVATE, null, null));
+
+        EgopPismenoEntity akt = capturedAkt();
+        verify(kpOtprema).registerForAkt(akt);
     }
 
     /** Blokadna lista je po slugu, pa vrijedi za bilo koju vrstu — ne samo za reaktivaciju. */
