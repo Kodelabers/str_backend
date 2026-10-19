@@ -38,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -351,6 +352,31 @@ class EgopRegistrationDispatcherTest {
         assertEquals(1, submission.getEgopSyncAttempts());
         // fallback PDF (bez filing broja) ipak ide non-EU korisniku
         assertEquals("ana@example.com", sentMail().to());
+    }
+
+    /**
+     * Pad rendera obavijesti o dodjeli ne smije izlaznom pismenu podmetnuti PDF zahtjeva — taj bi
+     * se dokument u eGOP-u vodio kao akt i otpremio u korisnički pretinac. Greška propagira,
+     * urudžba ide na FAILED, a retry priloži pravi akt.
+     */
+    @Test
+    void dispatch_noticeRenderFails_doesNotSubstituteRequestPdf() throws Exception {
+        lessor.setLessorOib("12345678901");
+        FilingReference izlazno = new FilingReference("UP/I-334-01/26-01/1", "2181-26-2");
+        when(documentService.render(eq(StrDocumentType.DODJELA), anyString(), isNull(), eq(izlazno)))
+                .thenThrow(new IllegalStateException("render"));
+        java.util.concurrent.atomic.AtomicReference<byte[]> prilozeno = new java.util.concurrent.atomic.AtomicReference<>();
+        when(egopFilingService.fileRegistration(any(), any(), any())).thenAnswer(inv -> {
+            EgopDocumentSupplier documents = inv.getArgument(2);
+            prilozeno.set(documents.obavijestODodjeli(izlazno));
+            return new EgopFilingService.FilingResult("KLASA: x, URBROJ: y", "zahtjev".getBytes());
+        });
+
+        dispatcher.dispatch(submission.getSubmissionId());
+
+        assertNull(prilozeno.get(), "izlaznom pismenu ne smije biti priložen nikakav dokument");
+        assertEquals(EgopSyncStatus.FAILED, submission.getEgopSyncStatus());
+        verify(pdfGenerator, never()).generate(argThat(ctx -> ctx != null && ctx.filingNumber() != null));
     }
 
     /** Backoff se mora upisati, inače retry job odmah ponovo napada isti submission. */

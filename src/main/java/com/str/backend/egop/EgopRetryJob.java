@@ -35,6 +35,8 @@ public class EgopRetryJob {
     private final EgopAktDispatcher aktDispatcher;
     private final EgopRetryPolicy retryPolicy;
     private final EgopAktiBezSifre bezSifre;
+    private final EgopKpOtpremaRepository kpOtpremaRepository;
+    private final EgopKpOtpremaService kpOtprema;
     private final Duration grace;
     private final Duration maxAge;
     private final int batchSize;
@@ -45,6 +47,8 @@ public class EgopRetryJob {
                         EgopAktDispatcher aktDispatcher,
                         EgopRetryPolicy retryPolicy,
                         EgopAktiBezSifre bezSifre,
+                        EgopKpOtpremaRepository kpOtpremaRepository,
+                        EgopKpOtpremaService kpOtprema,
                         @Value("${str.egop.retry.grace:PT5M}") Duration grace,
                         @Value("${str.egop.retry.max-age:P7D}") Duration maxAge,
                         @Value("${str.egop.retry.batch-size:50}") int batchSize) {
@@ -54,6 +58,8 @@ public class EgopRetryJob {
         this.aktDispatcher = aktDispatcher;
         this.retryPolicy = retryPolicy;
         this.bezSifre = bezSifre;
+        this.kpOtpremaRepository = kpOtpremaRepository;
+        this.kpOtprema = kpOtprema;
         this.grace = grace;
         this.maxAge = maxAge;
         this.batchSize = batchSize;
@@ -64,6 +70,7 @@ public class EgopRetryJob {
         Instant now = Instant.now();
         retryRegistracije(now);
         retryAkte(now);
+        retryKpOtpreme(now);
     }
 
     private void retryRegistracije(Instant now) {
@@ -121,6 +128,36 @@ public class EgopRetryJob {
             }
         }
         log.info("egop_akt_retry_done processed={} unexpected_errors={}", batch.size(), failed);
+    }
+
+    /**
+     * Otpreme u korisnički pretinac koje nisu prošle ili nisu stigle krenuti. Idu nakon
+     * urudžbe u istom prolazu, pa akt koji je upravo urudžbiran ovdje ne dobiva drugi poziv —
+     * njegova je otprema već pokušana inline, a kandidat postaje tek nakon {@code grace}.
+     */
+    private void retryKpOtpreme(Instant now) {
+        if (!kpOtprema.isEnabled()) {
+            return;
+        }
+        List<UUID> candidates = kpOtpremaRepository.findRetryCandidates(
+                EgopSyncStatus.SYNCED,
+                List.of(EgopKpOtpremaEntity.Status.PENDING, EgopKpOtpremaEntity.Status.FAILED),
+                retryPolicy.maxAttempts(), now.minus(grace), now.minus(maxAge), now);
+        if (candidates.isEmpty()) {
+            return;
+        }
+        List<UUID> batch = batch(candidates);
+        log.info("egop_kp_retry_start candidates={} batch={}", candidates.size(), batch.size());
+        int failed = 0;
+        for (UUID otpremaId : batch) {
+            try {
+                kpOtprema.retry(otpremaId);
+            } catch (RuntimeException e) {
+                failed++;
+                log.error("egop_kp_retry_error otprema={}: {}", otpremaId, e.getMessage(), e);
+            }
+        }
+        log.info("egop_kp_retry_done processed={} unexpected_errors={}", batch.size(), failed);
     }
 
     private List<UUID> batch(List<UUID> candidates) {

@@ -37,7 +37,9 @@ import java.util.Optional;
  *       submissionu, provjeri postojanje pa kreiraj;</li>
  *   <li>ulazno pismeno (zahtjev) + PDF dokument — PDF se renderira tek nakon
  *       kreiranja pismena jer tada postoje KLASA i URBROJ;</li>
- *   <li>izlazno pismeno (obavijest o dodjeli) + PDF dokument.</li>
+ *   <li>izlazno pismeno (obavijest o dodjeli) + PDF dokument;</li>
+ *   <li>otprema izlaznog pismena u korisnički pretinac ({@link EgopKpOtpremaService}) — iza
+ *       {@code str.egop.kp.enabled}, i bez utjecaja na ishod urudžbe.</li>
  * </ol>
  *
  * Napredak se vodi kroz {@link EgopSyncStatus} na submissionu; svaki dovršeni korak
@@ -58,6 +60,7 @@ public class EgopFilingService {
     private final EgopClient egopClient;
     private final EgopFilingStore store;
     private final EgopVrstaResolver vrste;
+    private final EgopKpOtpremaService kpOtprema;
 
     private final String appUsername;
     private final String rjesavatelj;
@@ -74,6 +77,7 @@ public class EgopFilingService {
     public EgopFilingService(EgopClient egopClient,
                              EgopFilingStore store,
                              EgopVrstaResolver vrste,
+                             EgopKpOtpremaService kpOtprema,
                              EgopProperties properties,
                              @Value("${str.egop.rjesavatelj:}") String rjesavatelj,
                              // Konfigurabilna jer posudbena vrsta predmeta ne mora biti dopuštena
@@ -82,6 +86,7 @@ public class EgopFilingService {
         this.egopClient = egopClient;
         this.store = store;
         this.vrste = vrste;
+        this.kpOtprema = kpOtprema;
         this.appUsername = properties.qualifiedAppUsername();
         // InfoDom (26.07.2026): rješavatelj mora biti osoba s username-om; probna
         // vrijednost je servisni račun, a property dopušta zamjenu bez rebuilda.
@@ -114,17 +119,17 @@ public class EgopFilingService {
         advance(submission, EgopSyncStatus.PREDMET_OK);
 
         EgopPismenoEntity ulazno = ensurePismeno(submission, ULAZNO_PISMENO_NAZIV,
-                EgopPismenoEntity.Smjer.ULAZNO, subjektOznaka, lessor.getLessorOib());
+                EgopPismenoEntity.Smjer.ULAZNO, subjektOznaka, lessor);
         FilingReference ulaznaOznaka = filing(submission, ulazno);
         byte[] zahtjevPdf = documents.zahtjev(ulaznaOznaka);
         attachPdfOnce(ulazno, zahtjevPdf);
         advance(submission, EgopSyncStatus.PISMENO_OK);
 
         // Smjer (ulazno/izlazno) ne šaljemo — eGOP ga određuje sam iz konfiguracije vrste
-        // pismena; Smjer na našem entitetu je samo interna evidencija. Dostavu obavijesti
-        // (KP eGrađana za EU) također rješava eGOP strana, ne STR.
+        // pismena; Smjer na našem entitetu je samo interna evidencija.
+        // Otpremu u KP zapisuje ensurePismeno, kad pismeno nastane; šalje se na kraju ove metode.
         EgopPismenoEntity izlazno = ensurePismeno(submission, IZLAZNO_PISMENO_NAZIV,
-                EgopPismenoEntity.Smjer.IZLAZNO, subjektOznaka, lessor.getLessorOib());
+                EgopPismenoEntity.Smjer.IZLAZNO, subjektOznaka, lessor);
         // Izlazno pismeno nosi vlastiti URBROJ, pa i vlastiti PDF — ranije se ovdje prilagala
         // kopija PDF-a zahtjeva, dokument s krivim urudžbenim brojem i krivim naslovom.
         attachPdfOnce(izlazno, documents.obavijestODodjeli(filing(submission, izlazno)));
@@ -135,6 +140,10 @@ public class EgopFilingService {
         submission.applyEgopSyncStatus(EgopSyncStatus.SYNCED);
         log.info("egop_filing_ok submission={} klasa={} urbroj_ulazno={} urbroj_izlazno={}",
                 submission.getSubmissionId(), submission.getEgopKlasa(), ulazno.getUrBroj(), izlazno.getUrBroj());
+
+        // Dostava u korisnički pretinac (EU/OIB). Ne baca iznimke: pad otpreme ne mijenja ishod
+        // urudžbe, a ponavlja ga EgopRetryJob.
+        kpOtprema.otpremi(izlazno.getId());
         return new FilingResult(filingNumber, zahtjevPdf);
     }
 
@@ -297,21 +306,28 @@ public class EgopFilingService {
         return predmet != null && predmet.isOperationSucceeded();
     }
 
+    /**
+     * Uz novo izlazno pismeno zapisuje i otpremu u KP — jednom, kad pismeno nastane, a ne pri
+     * svakom pokušaju. Akt je nastao kad i RB, pa se zastarjelost mjeri od nastanka submissiona.
+     */
     private EgopPismenoEntity ensurePismeno(SubmissionEntity submission, String vrstaNaziv,
                                             EgopPismenoEntity.Smjer smjer, Integer subjektOznaka,
-                                            String subjektOib) throws EgopException {
+                                            LessorEntity lessor) throws EgopException {
         Optional<EgopPismenoEntity> existing = store.findPismeno(submission.getSubmissionId(),
                 vrstaNaziv, EgopPismenoEntity.ACT_REF_REGISTRACIJA);
         if (existing.isPresent()) {
             return existing.get();
         }
 
-        Kreirano kreirano = kreirajPismeno(submission, vrstaNaziv, subjektOznaka, subjektOib);
+        Kreirano kreirano = kreirajPismeno(submission, vrstaNaziv, subjektOznaka, lessor.getLessorOib());
         PismenoBasicInfo2 pismeno = kreirano.pismeno();
-        EgopPismenoEntity entity = EgopPismenoEntity.create(
+        EgopPismenoEntity saved = store.savePismeno(EgopPismenoEntity.create(
                 submission.getSubmissionId(), vrstaNaziv, smjer, pismeno.getJop(), pismeno.getUrBroj(),
-                kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
-        return store.savePismeno(entity);
+                kreirano.vrsta().sifra(), kreirano.vrsta().privremena()));
+        if (smjer == EgopPismenoEntity.Smjer.IZLAZNO) {
+            kpOtprema.register(saved, lessor, submission.getCreatedAt());
+        }
+        return saved;
     }
 
     /** Odgovor eGOP-a + šifra vrste pod kojom je pismeno stvarno urudžbirano. */
@@ -373,6 +389,9 @@ public class EgopFilingService {
         log.info("egop_akt_filed akt={} rn={} vrsta='{}' klasa={} urbroj={}",
                 akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(),
                 submission.getEgopKlasa(), akt.getUrBroj());
+
+        // Otpremu je zapisao RnLifecycleFilingListener kad je akt nastao (ako je KP tada bio uključen).
+        kpOtprema.otpremi(akt.getId());
     }
 
     /**

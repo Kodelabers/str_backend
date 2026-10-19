@@ -325,4 +325,19 @@ class EgopClientMock implements EgopClient {
     @Override
     public void obrisiDokumentPriloga(ObrisiDokumentPriloga request) {
     }
+
+    @Override
+    public void otpremiUKorisnickiPretinac(String username, int jop, String primateljOib, String napomena) {
+        log.info("Mock eGOP otpremiUKorisnickiPretinac called: jop={}, primatelj={}, napomena='{}'",
+                jop, primateljOib, napomena);
+    }
+
+    /** Potvrđen primitak (2) odmah — da lokalno prođe cijeli tok, uključujući zapis vremena. */
+    @Override
+    public KpStatusPoruke dohvatiKpStatusPoruke(String username, int jop, String primateljOib) {
+        log.info("Mock eGOP dohvatiKpStatusPoruke called: jop={}, primatelj={}", jop, primateljOib);
+        java.time.Instant sada = java.time.Instant.now();
+        return new KpStatusPoruke(EgopKpOtpremaEntity.KP_POTVRDEN_PRIMITAK, sada, sada, sada, sada, sada,
+                sada, sada);
+    }
 }

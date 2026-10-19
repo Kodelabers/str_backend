@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Otprema izlaznih pismena u korisnički pretinac (KP) eGrađana preko eGOP-a
+      (OtpremiPismenoUKorisnickiPretinac), i zapis statusa poruke
+      (DohvatiKPStatusPorukeSaVremenima).
+
+      Zasebna tablica, ne stupci na egop_pismeno: otprema je vlastita jedinica posla s
+      vlastitim pokušajima. Pad otpreme ne smije dirati status urudžbe, kao što pad akta
+      životnog ciklusa ne dira status registracije.
+
+      Redak nastaje kad nastane izlazno pismeno, i to samo dok je KP uključen ("kreiramo
+      lokalno pa šaljemo"); šalje se tek kad je pismeno urudžbirano s priloženim dokumentom.
+      pismeno_id je UNIQUE: jedno pismeno ide u KP jednom. Briše se zajedno s pismenom.
+
+      akt_nastao_at je trenutak nastanka akta (za obavijest o dodjeli: izdavanje RB-a). Akt
+      koji se urudžbi kasnije od str.egop.kp.max-akt-age ne šalje se, nego ide u SKIPPED —
+      zastarjeli akt (npr. prijedlog suspenzije u već obustavljenom postupku) ne smije stranci
+      otvoriti rok.
+
+      kp_* stupci su ono što eGOP vrati o poruci; samo se zapisuju (ne izlažu se na API-ju).
+      kp_status_poruke: 0 bez aktivnosti, 1 suglasnost, 2 potvrđen primitak, 3 odbijeno,
+      4 odustao od preuzimanja.
+    -->
+    <changeSet id="139-egop-kp-otprema" author="str-backend">
+
+        <createTable schemaName="str_rn" tableName="egop_kp_otprema">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_egop_kp_otprema" nullable="false"/>
+            </column>
+            <column name="pismeno_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_egop_kp_otprema_pismeno"
+                             foreignKeyName="fk_egop_kp_otprema_pismeno"
+                             referencedTableSchemaName="str_rn" referencedTableName="egop_pismeno"
+                             referencedColumnNames="id" deleteCascade="true"/>
+            </column>
+            <column name="primatelj_oib" type="VARCHAR(11)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="akt_nastao_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attempts" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="next_attempt_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="error" type="TEXT"/>
+            <column name="sent_at" type="TIMESTAMP WITH TIME ZONE"/>
+
+            <column name="kp_status_poruke" type="INT"/>
+            <column name="kp_kreirano_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_poslano_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_zaprimljeno_nias_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_proslijedeno_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_zaprimljeno_primatelj_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_zadnja_provjera_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_zadnja_aktivnost_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_status_checked_at" type="TIMESTAMP WITH TIME ZONE"/>
+
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>ALTER TABLE str_rn.egop_kp_otprema ADD CONSTRAINT chk_egop_kp_otprema_status CHECK (status IN ('PENDING', 'SENT', 'FAILED', 'SKIPPED'))</sql>
+
+        <!-- Retry: neposlani retci kojima je došlo vrijeme sljedećeg pokušaja. -->
+        <createIndex schemaName="str_rn" tableName="egop_kp_otprema" indexName="ix_egop_kp_otprema_retry">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+
+        <!-- Status job: poslani retci s nekonačnim statusom poruke. -->
+        <createIndex schemaName="str_rn" tableName="egop_kp_otprema" indexName="ix_egop_kp_otprema_status_poruke">
+            <column name="status"/>
+            <column name="kp_status_poruke"/>
+            <column name="sent_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="egop_kp_otprema"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
