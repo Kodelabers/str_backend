@@ -267,9 +267,12 @@ public class EgopRegistrationDispatcher {
      * pismeno postoji, jer urudžbeni broj mora biti otisnut u dokumentu koji se tom pismenu
      * prilaže.
      *
-     * <p>Ako render obavijesti o dodjeli pukne (npr. nedostaje predložak), urudžbiranje se ne
-     * ruši — zahtjev je već uložen i valjan, a obavijest pokupi retry. Za razliku od toga,
-     * pad PDF-a zahtjeva propagira: bez njega pismeno ostaje bez dokumenta.
+     * <p>Pad rendera <b>propagira</b> za oba pismena. Ranije se izlaznom pismenu u tom slučaju
+     * prilagao PDF zahtjeva — dokument s tuđim naslovom i URBROJ-em, koji je eGOP onda vodio kao
+     * obavijest o dodjeli, a otprema u korisnički pretinac bi ga dostavila stranci kao akt. Sada
+     * izlazno pismeno ostaje bez dokumenta (pa i bez otpreme), submission ide na {@code FAILED}, a
+     * {@link EgopRetryJob} nastavlja od tog pismena i priloži pravi akt. RB je valjan neovisno o
+     * tome.
      */
     private final class Documents implements EgopDocumentSupplier {
 
@@ -326,10 +329,10 @@ public class EgopRegistrationDispatcher {
                 obavijest = documentService.render(StrDocumentType.DODJELA, rn, null, filing);
                 return obavijest;
             } catch (RuntimeException e) {
-                log.error("egop_dodjela_pdf_failed rn={} urbroj={}: {} — prilaže se PDF zahtjeva",
+                log.error("egop_dodjela_pdf_failed rn={} urbroj={}: {} — izlazno pismeno ostaje bez"
+                                + " dokumenta i bez otpreme u KP do sljedećeg pokušaja",
                         rn, filing.urBroj(), e.getMessage(), e);
-                return pdfGenerator.generate(
-                        pdfContext.withFilingNumber(EgopFilingService.formatFilingNumber(filing)));
+                throw e;
             }
         }
     }
