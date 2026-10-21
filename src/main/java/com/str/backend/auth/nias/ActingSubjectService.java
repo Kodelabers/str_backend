@@ -17,9 +17,12 @@ import java.text.Collator;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -72,7 +75,7 @@ public class ActingSubjectService {
         }
         rateLimiter.acquire(person.oib(), session.getId());
         ActingSubject subject = verify(person, oib);
-        session.setAttribute(SESSION_KEY, subject);
+        session.setAttribute(SESSION_KEY, subject.toSessionValue());
         log.info("acting_subject selected functions={}", subject.functions().size());
         return subject;
     }
@@ -93,8 +96,10 @@ public class ActingSubjectService {
      */
     public List<ZastupanaTvrtka> representedCompanies(HttpSession session, NiasIdentity person) {
         Instant now = Instant.now(clock);
-        if (session.getAttribute(OPTIONS_KEY) instanceof CachedOptions cached
-                && person.oib().equals(cached.personOib())) {
+        Optional<CachedOptions> stored = CachedOptions.fromSessionValue(session.getAttribute(OPTIONS_KEY))
+                .filter(c -> person.oib().equals(c.personOib()));
+        if (stored.isPresent()) {
+            CachedOptions cached = stored.get();
             if (cached.unavailable() && now.isBefore(cached.fetchedAt().plus(OPTIONS_FAILURE_TTL))) {
                 throw new ActingSubjectOptionsUnavailableException();
             }
@@ -118,22 +123,62 @@ public class ActingSubjectService {
                 .filter(c -> !c.oib().equals(person.oib()))
                 .sorted(Comparator.comparing((ZastupanaTvrtka c) -> c.naziv() != null ? c.naziv() : c.oib(), hr))
                 .toList();
-        session.setAttribute(OPTIONS_KEY, new CachedOptions(person.oib(), now, companies, false));
+        session.setAttribute(OPTIONS_KEY, new CachedOptions(person.oib(), now, companies, false).toSessionValue());
         log.info("acting_subject options companies={}", companies.size());
         return companies;
     }
 
     private static ActingSubjectOptionsUnavailableException unavailable(HttpSession session, NiasIdentity person,
                                                                          Instant now, String cause) {
-        session.setAttribute(OPTIONS_KEY, new CachedOptions(person.oib(), now, List.of(), true));
+        session.setAttribute(OPTIONS_KEY, new CachedOptions(person.oib(), now, List.of(), true).toSessionValue());
         // Jedan WARN po minuti i sesiji, bez stack tracea; uzrok je naša poruka ili šifra, bez osobnih podataka.
         log.warn("acting_subject options_unavailable cause={}", cause);
         return new ActingSubjectOptionsUnavailableException();
     }
 
-    /** Popis (ili neuspjeh) iz sesije; {@link Serializable} zbog Spring Session JDBC. */
+    /**
+     * Popis (ili neuspjeh) iz sesije. U sesiju ide kao {@link #toSessionValue()}, mapa samih JDK
+     * tipova, iz istog razloga kao {@link ActingSubject}: sesija je zajednička sa str-internal-api.
+     * {@link Serializable} ostaje samo za sesije spremljene prije te promjene.
+     */
     record CachedOptions(String personOib, Instant fetchedAt, List<ZastupanaTvrtka> companies,
                          boolean unavailable) implements Serializable {
+
+        HashMap<String, Object> toSessionValue() {
+            ArrayList<HashMap<String, String>> list = new ArrayList<>();
+            for (ZastupanaTvrtka c : companies) {
+                HashMap<String, String> company = new HashMap<>();
+                company.put("oib", c.oib());
+                company.put("naziv", c.naziv());
+                list.add(company);
+            }
+            HashMap<String, Object> value = new HashMap<>();
+            value.put("personOib", personOib);
+            value.put("fetchedAt", fetchedAt.toString());
+            value.put("companies", list);
+            value.put("unavailable", unavailable);
+            return value;
+        }
+
+        /** Nepoznat ili oštećen oblik znači „nema keša" — popis se dohvati ponovo. */
+        static Optional<CachedOptions> fromSessionValue(Object value) {
+            if (value instanceof CachedOptions legacy) {
+                return Optional.of(legacy);
+            }
+            if (!(value instanceof Map<?, ?> map)) {
+                return Optional.empty();
+            }
+            try {
+                List<ZastupanaTvrtka> companies = ((List<?>) map.get("companies")).stream()
+                        .map(o -> (Map<?, ?>) o)
+                        .map(c -> new ZastupanaTvrtka((String) c.get("oib"), (String) c.get("naziv")))
+                        .toList();
+                return Optional.of(new CachedOptions((String) map.get("personOib"),
+                        Instant.parse((String) map.get("fetchedAt")), companies, (Boolean) map.get("unavailable")));
+            } catch (RuntimeException e) {
+                return Optional.empty();
+            }
+        }
     }
 
     public void clear(HttpSession session) {
@@ -148,9 +193,8 @@ public class ActingSubjectService {
         if (session == null || personOib == null) {
             return Optional.empty();
         }
-        return session.getAttribute(SESSION_KEY) instanceof ActingSubject s
-                && personOib.equals(s.representativeOib())
-                ? Optional.of(s) : Optional.empty();
+        return ActingSubject.fromSessionValue(session.getAttribute(SESSION_KEY))
+                .filter(s -> personOib.equals(s.representativeOib()));
     }
 
     /**
@@ -161,7 +205,7 @@ public class ActingSubjectService {
     public ActingSubject reverify(HttpSession session, NiasIdentity person, ActingSubject subject) {
         try {
             ActingSubject fresh = verify(person, subject.legalOib());
-            session.setAttribute(SESSION_KEY, fresh);
+            session.setAttribute(SESSION_KEY, fresh.toSessionValue());
             log.info("acting_subject reverified functions={}", fresh.functions().size());
             return fresh;
         } catch (EOvlastenjaException e) {
