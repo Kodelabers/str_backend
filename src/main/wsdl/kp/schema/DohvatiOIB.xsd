@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" targetNamespace="http://apis-it.hr/umu/2015/types/kp"
+  xmlns:tns="http://apis-it.hr/umu/2015/types/kp" elementFormDefault="qualified"
+  version="1.0">
+
+
+  <element name="Upit" type="tns:UpitType" />
+  <element name="Odgovor" type="tns:OdgovorType" />
+
+
+  <complexType name="UpitType">
+    <sequence>
+      <element name="IdPosiljatelja" type="tns:PosiljateljIdType" minOccurs="1" maxOccurs="1" />
+      <element name="TipPoruke" type="tns:IntWithZeroInclusiveType" minOccurs="1" maxOccurs="1" />
+      <element name="IdUpita" type="tns:UUIDType" minOccurs="1" maxOccurs="1" />
+      <choice>
+      	<element name="BrojStranice" type="tns:IntWithZeroInclusiveType" />
+      	<element name="PinCountryCodeId" type="tns:PinCountryCodeIdType" />
+      </choice>
+      <element name="DatumVrijemeUpita" type="dateTime" minOccurs="1" maxOccurs="1" />
+    </sequence>
+  </complexType>
+
+
+  <complexType name="OdgovorType">
+    <sequence>
+    	<choice>
+			<element name="PinsCountryCodeIds" type="tns:PinsCountryCodeIds" />
+      		<element name="EmptyResultSet" type="normalizedString" />
+      		<element name="PinsCcIdsAsXmlZipBase64" type="base64Binary" />
+      	</choice>
+      	<element name="IdUpitaPosiljatelja" type="tns:UUIDType" minOccurs="1" maxOccurs="1" />
+      	<element name="DatumVrijemeObrade" type="dateTime" minOccurs="1" maxOccurs="1" />
+      	<element name="Greske" type="tns:GreskeType" minOccurs="0" maxOccurs="1" />
+    </sequence>
+  </complexType>
+  
+ 		
+  <element name="PinsCcIdsAsXmlZipBase64" type="base64Binary" />
+  <!-- ROOT element unutar zippanog xml file-a -->
+  <element name="PinsCountryCodeIds" type="tns:PinsCountryCodeIds" />
+
+  <complexType name="PinsCountryCodeIds">
+      <sequence>
+        <element name="PinCountryCodeId" type="tns:PinCountryCodeIdType" minOccurs="0" maxOccurs="unbounded"/>
+      </sequence>
+  </complexType>
+  
+  <complexType name="PinCountryCodeIdType">
+		<sequence>
+			<element name="CountryCodeId" minOccurs="1" maxOccurs="1">
+				<annotation>
+					<documentation>
+						Oznaka države prema šifarniku. Za hrvatske građane oznaka HR
+					</documentation>
+				</annotation>
+				<simpleType>
+					<restriction base="string">
+						<minLength value="2"/>
+						<maxLength value="2"/>
+					</restriction>
+				</simpleType>
+			</element>
+			<element name="PinPrimatelja" type="tns:PinType" minOccurs="1" maxOccurs="1"/>
+		</sequence>
+	</complexType>	
+
+  <complexType name="GreskeType">
+    <sequence>
+      <element name="Greska" type="tns:GreskaType" minOccurs="1" maxOccurs="unbounded" />
+    </sequence>
+  </complexType>
+
+  <complexType name="GreskaType">
+    <sequence>
+      <element name="SifraGreske" type="tns:SifraGreskeType" minOccurs="1" maxOccurs="1" />
+      <element name="OpisGreske" type="tns:OpisGreskeType" minOccurs="1" maxOccurs="1" />
+    </sequence>
+  </complexType>
+
+  <simpleType name="SifraGreskeType">
+    <restriction base="string">
+      <pattern value="s[0-9]{3}" />
+    </restriction>
+  </simpleType>
+
+  <simpleType name="UUIDType">
+    <restriction base="string">
+      <pattern value="[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" />
+    </restriction>
+  </simpleType>
+
+  <simpleType name="OpisGreskeType">
+    <restriction base="string">
+      <maxLength value="500" />
+    </restriction>
+  </simpleType>
+
+  <simpleType name="PosiljateljIdType">
+    <restriction base="string">
+      <minLength value="1" />
+      <maxLength value="9" />
+      <pattern value="[0-9]+" />
+    </restriction>
+  </simpleType>
+
+  <simpleType name="IntWithZeroInclusiveType">
+    <restriction base="integer">
+      <minInclusive value="0" />
+    </restriction>
+  </simpleType>
+
+  <simpleType name="PinType">
+    <restriction base="string">
+      <minLength value="1" />
+      <maxLength value="20" />
+      <pattern value="[0-9]+" />
+    </restriction>
+  </simpleType>
+
+</schema>

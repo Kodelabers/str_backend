@@ -1,6 +1,7 @@
 package com.str.backend.email;
 
 import com.str.backend.egop.EgopRegistrationDispatcher;
+import com.str.backend.kp.KpZamjenskaDostava;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,6 +37,7 @@ public class MailRetryJob {
     private final MailRetryStore store;
     private final EgopRegistrationDispatcher registrationDispatcher;
     private final RnLifecycleEmailListener lifecycleListener;
+    private final KpZamjenskaDostava kpZamjenska;
     private final Clock clock;
     private final Duration maxAge;
     private final int batchSize;
@@ -43,12 +45,14 @@ public class MailRetryJob {
     public MailRetryJob(MailRetryStore store,
                         EgopRegistrationDispatcher registrationDispatcher,
                         RnLifecycleEmailListener lifecycleListener,
+                        KpZamjenskaDostava kpZamjenska,
                         Clock clock,
                         @Value("${app.mail.retry.max-age:P3D}") Duration maxAge,
                         @Value("${app.mail.retry.batch-size:50}") int batchSize) {
         this.store = store;
         this.registrationDispatcher = registrationDispatcher;
         this.lifecycleListener = lifecycleListener;
+        this.kpZamjenska = kpZamjenska;
         this.clock = clock;
         this.maxAge = maxAge;
         this.batchSize = batchSize;
@@ -72,6 +76,7 @@ public class MailRetryJob {
                 switch (zapis.getKind()) {
                     case RN_ISSUED -> registrationDispatcher.retryEmail(zapis.getRefId());
                     case RN_LIFECYCLE -> lifecycleListener.retry(zapis.getRefId());
+                    case KP_ZAMJENSKA -> kpZamjenska.retry(zapis.getRefId());
                 }
             } catch (RuntimeException e) {
                 // Put slanja sam bilježi svoje ishode; ovo je pad prije toga (npr. render

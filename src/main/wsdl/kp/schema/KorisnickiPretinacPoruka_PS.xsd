@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" targetNamespace="http://www.apis-it.hr/umu/2018/elements/ReceiveMessage" xmlns:tns="http://www.apis-it.hr/umu/2018/elements/ReceiveMessage">
+
+	<!-- OPERATIONS -->
+
+	<!-- ZAPRIMI PORUKU -->
+	<xs:element name="ZaprimiPorukuRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="ZaprimiPoruku" type="tns:ZaprimiPorukuType" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="ZaprimiPorukuResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="ZaprimiPorukuOdgovor" type="tns:ZaprimiPorukuOdgovorType" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- DOHVATI AKTIVNOST PORUKE -->
+	<xs:element name="DohvatiAktivnostPorukeRequest">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="DohvatiAktivnostPoruke" type="tns:DohvatiAktivnostPorukeType" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="DohvatiAktivnostPorukeResponse">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="DohvatiAktivnostPorukeOdgovor" type="tns:DohvatiAktivnostPorukeOdgovorType" />
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- END OF OPERATIONS -->
+
+	<!-- COMPLEX TYPES -->
+
+	<xs:complexType name="DohvatiAktivnostPorukeType">
+		<xs:sequence>
+			<xs:element name="SenderId" type="tns:BrojType" />
+			<xs:element name="IdPosiljatelja" type="tns:IdPosiljateljaType" />
+			<xs:element name="IdUpitaPosiljatelja" type="tns:GuidType" />
+			<xs:element name="TsSlanja" type="tns:TimestampType" />
+			<xs:element name="IPS" type="tns:IPSType" />
+			<xs:element name="IzvorRegistar" type="tns:IzvorRegistarType" />
+			<xs:element name="UuidPoruke" type="tns:GuidType" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="DohvatiAktivnostPorukeOdgovorType">
+		<xs:sequence>
+			<xs:element name="SenderId" type="tns:BrojType" />
+			<xs:element name="IdPosiljatelja" type="tns:IdPosiljateljaType" />
+			<xs:element name="IdUpitaPosiljatelja" type="tns:GuidType" />
+			<xs:element name="TsObrade" type="tns:TimestampType" />
+			<xs:element name="IPS" type="tns:IPSType" />
+			<xs:element name="IzvorRegistar" type="tns:IzvorRegistarType" />
+			<xs:element name="UuidPoruke" type="tns:GuidType" />
+			<xs:element name="DatumIVrijemePrimitkaPoruke" type="tns:DatumVrijemeType" minOccurs="0" />
+			<xs:element name="TrazenaSuglasnost" type="tns:BooleanType" minOccurs="0" />
+			<xs:element name="TrazenaPotvrda" type="tns:BooleanType" minOccurs="0" />
+			<xs:element name="TrazenaPotvrdaUzElPotpis" type="tns:BooleanType" minOccurs="0" />
+			<xs:element name="RokDani" type="tns:BrojType" minOccurs="0" />
+			<xs:element name="NeradniDanURok" type="tns:BooleanType" minOccurs="0" />
+			<xs:element name="IstekRoka" type="tns:DatumVrijemeType" minOccurs="0" />
+			<xs:element name="DatumIVrijemeAktivnosti" type="tns:DatumVrijemeType" minOccurs="0" />
+			<xs:element name="StatusAktivnosti" type="tns:StatusAktivnostiType" minOccurs="0" />
+			<xs:element name="IdSlijednostiDokumenta" type="tns:IdSlijednostiDokumentaType" minOccurs="0" />
+			<xs:element name="PdfPotvrdeElPotpisa" type="tns:Base64Type" minOccurs="0" />
+			<xs:element name="OznakaDrzave" type="tns:SifraDrzaveType" minOccurs="0" />
+			<xs:element name="StatusOdgovora" type="tns:StatusZaprimanjaType" />
+			<xs:element name="Pogreske" type="tns:PogreskeType" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="ZaprimiPorukuType">
+		<xs:sequence>
+			<xs:element name="Zaglavlje" type="tns:ZaglavljeType" minOccurs="1" maxOccurs="1" />
+			<xs:element name="Poruka" type="tns:PorukaType" minOccurs="1" maxOccurs="1" />
+			<xs:element name="Privici" type="tns:PriviciType" minOccurs="0" maxOccurs="1" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="ZaprimiPorukuOdgovorType">
+		<xs:sequence>
+			<xs:element name="IdPorukePosiljatelja" type="tns:GuidType" />
+			<xs:element name="StatusZaprimanja" type="tns:StatusZaprimanjaType" />
+			<xs:element name="TsObrade" type="tns:TimestampType" />
+			<xs:element name="Pogreske" type="tns:PogreskeType" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="ZaglavljeType">
+		<xs:sequence>
+			<xs:element name="SenderId" type="tns:SenderIdType" />
+			<xs:element name="IdPosiljatelja" type="tns:IdPosiljateljaType" />
+			<xs:element name="IdPorukeURegistru" type="tns:IdPorukeURegistruType" />
+			<xs:element name="IdPorukePosiljatelja" type="tns:GuidType" />
+			<xs:element name="OznakaSljedivosti" type="tns:OznakaSljedivostiType" minOccurs="0" />
+			<xs:element name="TsSlanja" type="tns:TimestampType" />
+			<xs:element name="RazinaSigurnosti" type="tns:RazinaSigurnostiType" />
+			<xs:element name="PotrebnaPotvrdaPrimitka" type="tns:BooleanType" />
+			<xs:element name="RokDani" type="tns:BrojType" minOccurs="0" />
+			<xs:element name="NeradniDanURok" type="tns:BooleanType" minOccurs="0" />
+			<xs:element name="PotrebanDSigPotvrde" type="tns:BooleanType" />
+			<xs:element name="KlasaBrDok" type="tns:StringFrom5To30LenghtType" minOccurs="0" />
+			<xs:element name="UrBroj" type="tns:StringFrom5To30LenghtType" minOccurs="0" />
+			<xs:element name="PotrebnaSuglasnostZaPregledPoruke" type="tns:BooleanType" />
+			<xs:element name="PorukaSPravnimUcinkom" type="tns:BooleanType" />
+			<xs:element name="TrajnoCuvanje" type="tns:BooleanType" minOccurs="0" />
+			<xs:element name="GodineCuvanja" type="tns:BrojType" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="PorukaType">
+		<xs:sequence>
+			<xs:element name="JIPSPrimatelja" type="tns:JipsType" />
+			<xs:element name="Drzava" type="tns:SifraDrzaveType" />
+			<xs:element name="Naslov" type="tns:String200Type" />
+			<xs:element name="Sadrzaj" type="tns:SadrzajType" />
+			<xs:element name="KalendarDogadjaji" type="tns:KalendarDogadjajiType" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="KalendarDogadjajiType">
+		<xs:sequence>
+			<xs:element name="KalendarDogadjaj" type="tns:KalendarDogadjajType" minOccurs="1" maxOccurs="unbounded" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="KalendarDogadjajType">
+		<xs:sequence>
+			<xs:element name="KalendarDatum" type="tns:DatumType" />
+			<xs:element name="KalendarNaslov" type="tns:String200Type" />
+			<xs:element name="KalendarOpis" type="tns:String500Type" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="PriviciType">
+		<xs:sequence>
+			<xs:element name="Privitak" type="tns:PrivitakType" minOccurs="1" maxOccurs="unbounded" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="PrivitakType">
+		<xs:sequence>
+			<xs:element name="Naziv" type="tns:FileNameType" />
+			<xs:element name="MimeType" type="tns:String100Type" />
+			<xs:element name="Opis" type="tns:String2000Type" minOccurs="0" />
+			<xs:element name="SadrzajPrivitka" type="tns:SadrzajPrivitkaType" />
+			<xs:element name="JedinstveniIdentifikatorPismena" type="tns:StringMin1Max100Type" minOccurs="0" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="PogreskeType">
+		<xs:sequence>
+			<xs:element name="Pogreska" type="tns:PogreskaType" minOccurs="1" maxOccurs="unbounded" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="PogreskaType">
+		<xs:sequence>
+			<xs:element name="IndikatorPogreske" type="tns:IndikatorPogreskeType" />
+			<xs:element name="PorukaPogreske" type="tns:PorukaPogreskeType" />
+			<xs:element name="GUID" type="tns:GuidType" />
+			<xs:element name="VrijemePogreske" type="tns:TimestampType" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="JipsType">
+		<xs:sequence>
+			<xs:element name="IPS" type="tns:IPSType" />
+			<xs:element name="IzvorRegistar" type="tns:IzvorRegistarType" />
+		</xs:sequence>
+	</xs:complexType>
+
+	<!-- END OF COMPLEX TYPES -->
+
+	<!-- SIMPLE TYPES -->
+
+	<xs:simpleType name="BrojType">
+		<xs:restriction base="xs:int">
+			<xs:minInclusive value="0"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="PorukaPogreskeType">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="300" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="GuidType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="IndikatorPogreskeType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[0-9A-Za-z]{1,4}" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="IPSType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[A-Z]*[a-z]*[a-zA-Z]*[0-9]*[a-zA-Z0-9]*" />
+			<xs:minLength value="5" />
+			<xs:maxLength value="30" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="StringFrom5To30LenghtType">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="5" />
+			<xs:maxLength value="30" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="IzvorRegistarType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[0-9]{3}" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="SifraDrzaveType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[A-Z]{2}" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="SadrzajType">
+		<xs:restriction base="xs:base64Binary">
+			<xs:maxLength value="5500" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="SadrzajPrivitkaType">
+		<xs:restriction base="xs:base64Binary">
+			<xs:maxLength value="1500000" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="BooleanType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[T|F]" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="TimestampType">
+		<xs:annotation>
+			<xs:documentation>Primjer formata: 01.02.2003 01:23:45.678</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:pattern value="(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[012])\.(18|19|20)\d\d ([0-1][0-9]|[2][0-3]):([0-5][0-9]):([0-5][0-9])\.[0-9]{3}" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="DatumVrijemeType">
+		<xs:annotation>
+			<xs:documentation>Primjer formata: 01.02.2003 01:23:45</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:pattern value="(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[012])\.(18|19|20)\d\d ([0-1][0-9]|[2][0-3]):([0-5][0-9]):([0-5][0-9])" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="DatumType">
+		<xs:annotation>
+			<xs:documentation>Primjer formata: 01.02.2003</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:pattern value="(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[012])\.(18|19|20)\d\d" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="SenderIdType">
+		<xs:restriction base="xs:int">
+			<xs:minInclusive value="0"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="IdPosiljateljaType">
+		<xs:restriction base="xs:int">
+			<xs:minInclusive value="0"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="IdPorukeURegistruType">
+		<xs:restriction base="xs:int">
+			<xs:minInclusive value="0"/>
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="OznakaSljedivostiType">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="6" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="String50Type">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="50" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="FileNameType">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="255" />
+			<xs:pattern value="([a-zA-Z0-9_\.-])([ a-zA-Z0-9_\.-])*([a-zA-Z0-9]{1})"></xs:pattern><!-- najmanje dva znaka, prvi ne smije biti blank, zadnji ne smije biti blank ni tocka -->
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="String100Type">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="100" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="StringMin1Max100Type">
+		<xs:restriction base="xs:string">
+			<xs:minLength value="1" />
+			<xs:maxLength value="100" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="RazinaSigurnostiType">
+		<xs:restriction base="xs:int">
+			<xs:pattern value="[1|2|3|4]" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="String200Type">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="200" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="String500Type">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="500" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="String2000Type">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="2000" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="StatusZaprimanjaType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="OK|Greska" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="StatusAktivnostiType">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[0-9]{1}" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="IdSlijednostiDokumentaType">
+		<xs:restriction base="xs:string">
+			<xs:maxLength value="7" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="Base64Type">
+		<xs:restriction base="xs:base64Binary" />
+	</xs:simpleType>
+
+	<!-- END OF SIMPLE TYPES -->
+
+</xs:schema>

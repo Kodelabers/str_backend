@@ -2,6 +2,7 @@ package com.str.backend.egop;
 
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
+import com.str.backend.kp.KpOtpremaService;
 import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import org.slf4j.Logger;
@@ -46,14 +47,14 @@ public class RnLifecycleFilingListener {
     private final EgopFilingStore store;
     private final EgopAktDispatcher dispatcher;
     private final EgopAktiBezSifre bezSifre;
-    private final EgopKpOtpremaService kpOtprema;
+    private final KpOtpremaService kpOtprema;
 
     public RnLifecycleFilingListener(RnLifecycleLookup lookup,
                                      StrDocumentService documentService,
                                      EgopFilingStore store,
                                      EgopAktDispatcher dispatcher,
                                      EgopAktiBezSifre bezSifre,
-                                     EgopKpOtpremaService kpOtprema) {
+                                     KpOtpremaService kpOtprema) {
         this.lookup = lookup;
         this.documentService = documentService;
         this.store = store;

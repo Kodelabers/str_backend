@@ -1,6 +1,9 @@
 package com.str.backend.egop;
 
 import com.str.backend.domain.EgopSyncStatus;
+import com.str.backend.kp.KpOtpremaEntity;
+import com.str.backend.kp.KpOtpremaRepository;
+import com.str.backend.kp.KpOtpremaService;
 import com.str.backend.request.SubmissionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,8 +38,8 @@ public class EgopRetryJob {
     private final EgopAktDispatcher aktDispatcher;
     private final EgopRetryPolicy retryPolicy;
     private final EgopAktiBezSifre bezSifre;
-    private final EgopKpOtpremaRepository kpOtpremaRepository;
-    private final EgopKpOtpremaService kpOtprema;
+    private final KpOtpremaRepository kpOtpremaRepository;
+    private final KpOtpremaService kpOtprema;
     private final Duration grace;
     private final Duration maxAge;
     private final int batchSize;
@@ -47,8 +50,8 @@ public class EgopRetryJob {
                         EgopAktDispatcher aktDispatcher,
                         EgopRetryPolicy retryPolicy,
                         EgopAktiBezSifre bezSifre,
-                        EgopKpOtpremaRepository kpOtpremaRepository,
-                        EgopKpOtpremaService kpOtprema,
+                        KpOtpremaRepository kpOtpremaRepository,
+                        KpOtpremaService kpOtprema,
                         @Value("${str.egop.retry.grace:PT5M}") Duration grace,
                         @Value("${str.egop.retry.max-age:P7D}") Duration maxAge,
                         @Value("${str.egop.retry.batch-size:50}") int batchSize) {
@@ -141,23 +144,23 @@ public class EgopRetryJob {
         }
         List<UUID> candidates = kpOtpremaRepository.findRetryCandidates(
                 EgopSyncStatus.SYNCED,
-                List.of(EgopKpOtpremaEntity.Status.PENDING, EgopKpOtpremaEntity.Status.FAILED),
+                List.of(KpOtpremaEntity.Status.PENDING, KpOtpremaEntity.Status.FAILED),
                 retryPolicy.maxAttempts(), now.minus(grace), now.minus(maxAge), now);
         if (candidates.isEmpty()) {
             return;
         }
         List<UUID> batch = batch(candidates);
-        log.info("egop_kp_retry_start candidates={} batch={}", candidates.size(), batch.size());
+        log.info("kp_retry_start candidates={} batch={}", candidates.size(), batch.size());
         int failed = 0;
         for (UUID otpremaId : batch) {
             try {
                 kpOtprema.retry(otpremaId);
             } catch (RuntimeException e) {
                 failed++;
-                log.error("egop_kp_retry_error otprema={}: {}", otpremaId, e.getMessage(), e);
+                log.error("kp_retry_error otprema={}: {}", otpremaId, e.getMessage(), e);
             }
         }
-        log.info("egop_kp_retry_done processed={} unexpected_errors={}", batch.size(), failed);
+        log.info("kp_retry_done processed={} unexpected_errors={}", batch.size(), failed);
     }
 
     private List<UUID> batch(List<UUID> candidates) {

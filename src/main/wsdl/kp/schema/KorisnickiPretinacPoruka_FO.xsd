@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema"
+		targetNamespace="http://apis-it.hr/umu/2013/types/kp"
+	    xmlns:tns="http://apis-it.hr/umu/2013/types/kp"
+	    elementFormDefault="qualified"
+        version="2.0">
+
+	<element name="KorisnickiPretinacPoruka" type="tns:KorisnickiPretinacPorukaType"/>
+	<element name="Odgovor" type="tns:OdgovorType"/>
+	<element name="DohvatiAktivnostPorukeRequest" type="tns:DohvatiAktivnostPorukeType"/>
+	<element name="DohvatiAktivnostPorukeResponse" type="tns:DohvatiAktivnostPorukeOdgovorType"/>
+
+	<complexType name="KorisnickiPretinacPorukaType">
+		<sequence>
+			<element name="Zaglavlje" type="tns:ZaglavljeType" minOccurs="1" maxOccurs="1"/>
+			<element name="Poruka" type="tns:PorukaType" minOccurs="1" maxOccurs="1"/>
+			<element name="Privici" type="tns:PriviciType" minOccurs="0" maxOccurs="1"/>
+		</sequence>
+	</complexType>
+
+	<complexType name="OdgovorType">
+		<sequence>
+			<element name="IdPorukePosiljatelja" type="tns:UUIDType" minOccurs="0" maxOccurs="1"/>
+			<element name="DatumVrijemeObrade" type="dateTime" minOccurs="0" maxOccurs="1"/>
+			<element name="Greske" type="tns:GreskeType" minOccurs="0" maxOccurs="1"/>
+		</sequence>
+	</complexType>
+
+
+	<complexType name="ZaglavljeType">
+		<sequence>
+			<element name="IdPosiljatelja" type="tns:PosiljateljIdType" minOccurs="1" maxOccurs="1" />
+            <element name="TipPoruke" type="tns:TipPorukeType" minOccurs="1" maxOccurs="1"/>
+			<element name="IdPoruke" type="tns:UUIDType" minOccurs="1" maxOccurs="1"/>
+			<element name="DatumVrijemeSlanja" type="dateTime" minOccurs="1" maxOccurs="1"/>
+			<element name="RazinaSigurnosti" minOccurs="1" maxOccurs="1">
+				<simpleType>
+					<restriction base="string">
+						<minLength value="1"/>
+						<maxLength value="1"/>
+					</restriction>
+				</simpleType>
+			</element>
+			<element name="PotrebnaPotvrdaPrimitka" type="tns:BooleanType" minOccurs="0" maxOccurs="1"/>
+			<element name="RokDani" type="tns:BrojType" minOccurs="0" maxOccurs="1"/>
+			<element name="NeradniDanURok" type="tns:BooleanType" minOccurs="0" maxOccurs="1"/>
+			<element name="PotrebanDSigPotvrde" type="tns:BooleanType" minOccurs="0" maxOccurs="1"/>
+			<element name="KlasaBrDok" type="tns:StringFrom5To30LenghtType" minOccurs="0" maxOccurs="1"/>
+			<element name="UrBroj" type="tns:StringFrom5To30LenghtType" minOccurs="0" maxOccurs="1"/>
+			<element name="PotrebnaSuglasnostZaPregledPoruke" type="tns:BooleanType" minOccurs="0" maxOccurs="1"/>
+			<element name="PorukaSPravnimUcinkom" type="tns:BooleanType" minOccurs="0" maxOccurs="1"/>
+			<element name="TrajnoCuvanje" type="tns:BooleanType" minOccurs="0" maxOccurs="1"/>
+			<element name="GodineCuvanja" type="tns:BrojType" minOccurs="0" maxOccurs="1"/>
+			<element name="OznakaSljedivosti" type="tns:OznakaSljedivostiType" minOccurs="0" maxOccurs="1"/>
+		</sequence>
+	</complexType>
+
+	<complexType name="PorukaType">
+		<sequence>
+			<element name="PinPrimatelja" type="tns:PinType" minOccurs="1" maxOccurs="1"/>
+			<element name="OznakaDrzave" type="tns:SifraDrzaveType" minOccurs="1" maxOccurs="1" />
+			<element name="Predmet" minOccurs="1" maxOccurs="1">
+				<simpleType>
+					<restriction base="string">
+						<minLength value="1"/>
+						<maxLength value="200"/>
+					</restriction>
+				</simpleType>
+			</element>
+			<element name="Sadrzaj" minOccurs="1" maxOccurs="1">
+				<simpleType>
+					<restriction base="string">
+						<minLength value="1"/>
+						<maxLength value="2000"/>
+					</restriction>
+				</simpleType>
+			</element>
+		</sequence>
+	</complexType>
+
+	<complexType name="PriviciType">
+		<sequence>
+			<element name="Privitak" type="tns:PrivitakType" minOccurs="1" maxOccurs="unbounded"/>
+		</sequence>
+	</complexType>
+
+	<complexType name="PrivitakType">
+		<sequence>
+			<element name="Naziv" type="tns:String255Type" minOccurs="1" maxOccurs="1"/>
+			<element name="MimeType" type="tns:String100Type" minOccurs="1" maxOccurs="1" />
+			<element name="Opis" type="tns:String2000Type" minOccurs="0" maxOccurs="1" />
+			<element name="Data" minOccurs="1" maxOccurs="1">
+				<complexType mixed="true">
+					<sequence minOccurs="0" maxOccurs="unbounded">
+						<any namespace="##any" processContents="lax" />
+					</sequence>
+					<attribute name="encoding" use="required">
+						<simpleType>
+							<restriction base="string">
+								<enumeration value="EMBEDDED" />
+								<enumeration value="BASE64" />
+							</restriction>
+						</simpleType>
+					</attribute>
+					<anyAttribute namespace="##any" />
+				</complexType>
+			</element>
+			<element name="JedinstveniIdentifikatorPismena" type="tns:StringMin1Max100Type" minOccurs="0" maxOccurs="1"/>
+		</sequence>
+	</complexType>
+
+	<complexType name="GreskeType">
+		<sequence>
+			<element name="Greska" type="tns:GreskaType" minOccurs="1" 	maxOccurs="unbounded" />
+		</sequence>
+	</complexType>
+
+	<complexType name="GreskaType">
+		<sequence>
+			<element name="SifraGreske" type="tns:SifraGreskeType" minOccurs="1" maxOccurs="1" />
+			<element name="OpisGreske" type="tns:OpisGreskeType" minOccurs="1" maxOccurs="1" />
+			<element name="UuidGreske" type="tns:UUIDType" minOccurs="0" maxOccurs="1" />
+		</sequence>
+	</complexType>
+	
+	<complexType name="DohvatiAktivnostPorukeType">
+		<sequence>
+			<element name="SenderId" type="tns:BrojType" />
+			<element name="IdPosiljatelja" type="tns:PosiljateljIdType" />
+			<element name="IdUpitaPosiljatelja" type="tns:UUIDType" />
+			<element name="TsSlanja" type="tns:TimestampType" />
+			<element name="PinPrimatelja" type="tns:PinType" />
+			<element name="UuidPoruke" type="tns:UUIDType" />
+		</sequence>
+	</complexType>
+
+	<complexType name="DohvatiAktivnostPorukeOdgovorType">
+		<sequence>
+			<element name="SenderId" type="tns:BrojType" />
+			<element name="IdPosiljatelja" type="tns:PosiljateljIdType" />
+			<element name="IdUpitaPosiljatelja" type="tns:UUIDType" />
+			<element name="TsObrade" type="tns:TimestampType" />
+			<element name="PinPrimatelja" type="tns:PinType" />
+			<element name="UuidPoruke" type="tns:UUIDType" />
+			<element name="DatumIVrijemePrimitkaPoruke" type="dateTime" minOccurs="0" />
+			<element name="TrazenaSuglasnost" type="tns:BooleanType" minOccurs="0" />
+			<element name="TrazenaPotvrda" type="tns:BooleanType" minOccurs="0" />
+			<element name="TrazenaPotvrdaUzElPotpis" type="tns:BooleanType" minOccurs="0" />
+			<element name="RokDani" type="tns:BrojType" minOccurs="0" />
+			<element name="NeradniDanURok" type="tns:BooleanType" minOccurs="0" />
+			<element name="IstekRoka" type="dateTime" minOccurs="0" />
+			<element name="DatumIVrijemeAktivnosti" type="dateTime" minOccurs="0" />
+			<element name="StatusAktivnosti" type="tns:StatusAktivnostiType" minOccurs="0" />
+			<element name="IdSlijednostiDokumenta" type="tns:IdSlijednostiDokumentaType" minOccurs="0" />
+			<element name="PdfPotvrdeElPotpisa" type="tns:Base64Type" minOccurs="0" />
+			<element name="StatusOdgovora" type="tns:StatusZaprimanjaType" />
+			<element name="Greske" type="tns:GreskeType" minOccurs="0" />
+		</sequence>
+	</complexType>
+	
+	<simpleType name="SifraGreskeType">
+		<restriction base="string">
+			<pattern value="s[0-9]{3}" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="OpisGreskeType">
+		<restriction base="string">
+			<maxLength value="500" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="PosiljateljIdType">
+		<restriction base="string">
+			<minLength value="1" />
+			<maxLength value="9" />
+			<pattern value="[0-9]+" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="PinType">
+		<restriction base="string">
+			<minLength value="1" />
+			<maxLength value="20" />
+			<pattern value="[0-9]+" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="UUIDType">
+		<restriction base="string">
+			<pattern
+				value="[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" />
+		</restriction>
+	</simpleType>
+
+    <simpleType name="TipPorukeType">
+      <restriction base="integer">
+        <minInclusive value="0"/>
+      </restriction>
+    </simpleType>
+    
+	<simpleType name="BooleanType">
+		<restriction base="string">
+			<pattern value="[T|F]" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="BrojType">
+		<restriction base="int">
+			<minInclusive value="0"/>
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="StringFrom5To30LenghtType">
+		<restriction base="string">
+			<minLength value="5" />
+			<maxLength value="30" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="TimestampType">
+		<annotation>
+			<documentation>Primjer formata: 01.02.2003 01:23:45.678</documentation>
+		</annotation>
+		<restriction base="string">
+			<pattern value="(0[1-9]|[12][0-9]|3[01])\.(0[1-9]|1[012])\.(18|19|20)\d\d ([0-1][0-9]|[2][0-3]):([0-5][0-9]):([0-5][0-9])\.[0-9]{3}" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="StatusAktivnostiType">
+		<restriction base="string">
+			<pattern value="[0-9]{1}" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="IdSlijednostiDokumentaType">
+		<restriction base="string">
+			<maxLength value="7" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="Base64Type">
+		<restriction base="base64Binary" />
+	</simpleType>
+	
+	<simpleType name="SifraDrzaveType">
+		<restriction base="string">
+			<pattern value="[A-Z]{2}" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="StatusZaprimanjaType">
+		<restriction base="string">
+			<pattern value="OK|Greska" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="StringMin1Max100Type">
+		<restriction base="string">
+			<minLength value="1" />
+			<maxLength value="100" />
+		</restriction>
+	</simpleType>
+	<simpleType name="String100Type">
+		<restriction base="string">
+			<maxLength value="100" />
+		</restriction>
+	</simpleType>
+	
+	<simpleType name="String255Type">
+		<restriction base="string">
+			<maxLength value="255" />
+		</restriction>
+	</simpleType>
+	<simpleType name="OznakaSljedivostiType">
+		<restriction base="string">
+			<maxLength value="6" />
+		</restriction>
+	</simpleType>
+	<simpleType name="String2000Type">
+		<restriction base="string">
+			<maxLength value="2000" />
+		</restriction>
+	</simpleType>
+</schema>

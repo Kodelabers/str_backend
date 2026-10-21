@@ -1,5 +1,6 @@
 package com.str.backend.egop;
 
+import com.str.backend.kp.KpOtpremaService;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RnStatus;
@@ -29,7 +30,7 @@ class RnLifecycleFilingListenerTest {
     private StrDocumentService documentService;
     private EgopFilingStore store;
     private EgopAktDispatcher dispatcher;
-    private EgopKpOtpremaService kpOtprema;
+    private KpOtpremaService kpOtprema;
     private UUID submissionId;
 
     @BeforeEach
@@ -38,7 +39,7 @@ class RnLifecycleFilingListenerTest {
         documentService = mock(StrDocumentService.class);
         store = mock(EgopFilingStore.class);
         dispatcher = mock(EgopAktDispatcher.class);
-        kpOtprema = mock(EgopKpOtpremaService.class);
+        kpOtprema = mock(KpOtpremaService.class);
 
         submissionId = UUID.randomUUID();
         when(lookup.findSubmissionId(RN)).thenReturn(Optional.of(submissionId));

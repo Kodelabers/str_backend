@@ -139,6 +139,9 @@ An `ExternalRegistryException` from MPGI or DGU propagates unhandled through the
 ### Registration number
 Format `HR` + 18 decimal digits encoding county code, group code, type code, and 12 digits of randomness, validated by `RegistrationNumber` record (pattern `^HR\d{18}$`). Assigned only on transition to `RnStatus.ACTIVE`. Generation retries up to 5× checking uniqueness before insert — a `DataIntegrityViolationException` on concurrent collision surfaces as 409 with `details.code=DATA_CONFLICT` (rare; `GlobalExceptionHandler` maps SQLState 23505 to 409 and every other integrity violation to 500).
 
+### Delivery to the user inbox (KP)
+Outgoing acts go to the e-Građani user inbox **directly** through APIS IT's message intake system (SZP, KP tech spec 3.6), not through eGOP — `com.str.backend.kp`, table `str_rn.kp_otprema`, behind `str.kp.enabled` (and only with eGOP on, since an act without KLASA/URBROJ is not sent). A natural person receives in the citizen inbox by OIB; a legal entity receives in the **business inbox of the company** (JIPS), not the representative's. No active inbox (K006/Z005) means the act is served by e-mail (`KpZamjenskaDostava`). Every attempt carries the same `id_poruke`, so a resend comes back as a duplicate (K009/Z012) instead of a second delivery. Registration values, legal-effect parameters and open questions are in `docs/KP-INTEGRACIJA.md`; nothing there has a built-in default.
+
 ## Key Constraints
 
 - `ddl-auto=none` always. Schema changes go in a new numbered Liquibase changeset under `db/changelog/changes/`.

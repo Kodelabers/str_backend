@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Dostava u korisnički pretinac više ne ide preko eGOP-a (OtpremiPismenoUKorisnickiPretinac),
+      nego izravno, preko APIS IT „Sustava za zaprimanje poruka" (tehnička spec. KP 3.6; odluka od
+      21. 10. 2026.). Tablica iz 139 se preimenuje i prilagođava; 139 se ne dira (već je primijenjen).
+
+      - id_poruke: naš IdPoruke / IdPorukePosiljatelja. Nastaje sa retkom i ne mijenja se, pa je
+        ponovno slanje idempotentno — SZP drugi primitak iste poruke odbija kao duplikat (K009/Z012).
+        Postojeći retci dobivaju novi UUID (eGOP kanal ga nije imao).
+      - primatelj_tip FO (KP građana, po OIB-u) / PS (poslovni KP, po JIPS-u = IPS + izvor_registar).
+        Pravna osoba od sada prima u poslovni KP tvrtke, ne u osobni pretinac zastupnika.
+        primatelj_oib postaje primatelj_id (OIB ili IPS) i širi se na 30 znakova (IPSType).
+      - NEMA_PRETINCA: primatelj nema aktivan KP (K006/Z005); konačno za KP, akt ide e-poštom.
+      - tip_poruke, pravni_ucinak: s čime je poruka poslana. Aktivnost (servisi 128/129) postoji
+        samo za poruke s pravnim učinkom, pa status job pita samo njih.
+      - kp_* stupci eGOP-ova OtpremnicaKPInfo se brišu; dolaze polja odgovora aktivnosti i PDF
+        potvrde primitka (dokaz dostave).
+    -->
+    <changeSet id="140-kp-izravno" author="str-backend">
+
+        <renameTable schemaName="str_rn" oldTableName="egop_kp_otprema" newTableName="kp_otprema"/>
+        <sql>ALTER TABLE str_rn.kp_otprema RENAME CONSTRAINT pk_egop_kp_otprema TO pk_kp_otprema</sql>
+        <sql>ALTER TABLE str_rn.kp_otprema RENAME CONSTRAINT uq_egop_kp_otprema_pismeno TO uq_kp_otprema_pismeno</sql>
+        <sql>ALTER TABLE str_rn.kp_otprema RENAME CONSTRAINT fk_egop_kp_otprema_pismeno TO fk_kp_otprema_pismeno</sql>
+        <sql>ALTER TABLE str_rn.kp_otprema DROP CONSTRAINT chk_egop_kp_otprema_status</sql>
+        <dropIndex schemaName="str_rn" tableName="kp_otprema" indexName="ix_egop_kp_otprema_retry"/>
+        <dropIndex schemaName="str_rn" tableName="kp_otprema" indexName="ix_egop_kp_otprema_status_poruke"/>
+
+        <renameColumn schemaName="str_rn" tableName="kp_otprema"
+                      oldColumnName="primatelj_oib" newColumnName="primatelj_id"/>
+        <modifyDataType schemaName="str_rn" tableName="kp_otprema" columnName="primatelj_id" newDataType="VARCHAR(30)"/>
+        <renameColumn schemaName="str_rn" tableName="kp_otprema"
+                      oldColumnName="kp_status_poruke" newColumnName="kp_status_aktivnosti"/>
+
+        <dropColumn schemaName="str_rn" tableName="kp_otprema">
+            <column name="kp_kreirano_at"/>
+            <column name="kp_poslano_at"/>
+            <column name="kp_zaprimljeno_nias_at"/>
+            <column name="kp_proslijedeno_at"/>
+            <column name="kp_zaprimljeno_primatelj_at"/>
+            <column name="kp_zadnja_provjera_at"/>
+            <column name="kp_zadnja_aktivnost_at"/>
+        </dropColumn>
+
+        <addColumn schemaName="str_rn" tableName="kp_otprema">
+            <column name="id_poruke" type="UUID"/>
+            <!-- Dosadašnji retci su svi fizičke osobe ili zastupnici — sve FO. -->
+            <column name="primatelj_tip" type="VARCHAR(2)" defaultValue="FO">
+                <constraints nullable="false"/>
+            </column>
+            <column name="izvor_registar" type="VARCHAR(3)"/>
+            <column name="tip_poruke" type="INT"/>
+            <column name="pravni_ucinak" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="error_code" type="VARCHAR(64)"/>
+            <!-- GsbId zadnjeg poziva: po njemu helpdesk APIS-a traži incident (spec. 3.1, 7). -->
+            <column name="gsb_id" type="VARCHAR(36)"/>
+            <column name="kp_primitak_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_aktivnost_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_istek_roka_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="kp_potvrda_pdf" type="BYTEA"/>
+        </addColumn>
+        <sql>UPDATE str_rn.kp_otprema SET id_poruke = gen_random_uuid() WHERE id_poruke IS NULL</sql>
+        <addNotNullConstraint schemaName="str_rn" tableName="kp_otprema" columnName="id_poruke" columnDataType="UUID"/>
+        <addUniqueConstraint schemaName="str_rn" tableName="kp_otprema" columnNames="id_poruke"
+                             constraintName="uq_kp_otprema_id_poruke"/>
+        <dropDefaultValue schemaName="str_rn" tableName="kp_otprema" columnName="primatelj_tip"/>
+
+        <sql>ALTER TABLE str_rn.kp_otprema ADD CONSTRAINT chk_kp_otprema_status CHECK (status IN ('PENDING', 'SENT', 'FAILED', 'SKIPPED', 'NEMA_PRETINCA'))</sql>
+        <sql>ALTER TABLE str_rn.kp_otprema ADD CONSTRAINT chk_kp_otprema_primatelj_tip CHECK (primatelj_tip IN ('FO', 'PS'))</sql>
+        <!-- Poslovni KP adresira se JIPS-om — bez izvora registra poruka ne može otići. -->
+        <sql>ALTER TABLE str_rn.kp_otprema ADD CONSTRAINT chk_kp_otprema_jips CHECK (primatelj_tip = 'FO' OR izvor_registar IS NOT NULL)</sql>
+
+        <!-- Retry: neposlani retci kojima je došlo vrijeme sljedećeg pokušaja. -->
+        <createIndex schemaName="str_rn" tableName="kp_otprema" indexName="ix_kp_otprema_retry">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+
+        <!-- Status job: poslane poruke s pravnim učinkom i nekonačnom aktivnošću. -->
+        <createIndex schemaName="str_rn" tableName="kp_otprema" indexName="ix_kp_otprema_aktivnost">
+            <column name="status"/>
+            <column name="pravni_ucinak"/>
+            <column name="kp_status_aktivnosti"/>
+            <column name="sent_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

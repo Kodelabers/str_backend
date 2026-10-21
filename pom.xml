@@ -235,6 +235,42 @@
                             </wsdlOptions>
                         </configuration>
                     </execution>
+                    <!-- Korisnički pretinac (APIS IT, tehnička spec. KP 3.6): GSB omotnica iz APIS-ova
+                         WSDL-a, poslovne poruke FO/PS iz našeg omota KpPoslovneSheme.wsdl. -->
+                    <execution>
+                        <id>generate-kp-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>wsdl2java</goal>
+                        </goals>
+                        <configuration>
+                            <sourceRoot>${project.build.directory}/generated-sources/kp</sourceRoot>
+                            <wsdlOptions>
+                                <wsdlOption>
+                                    <wsdl>${basedir}/src/main/wsdl/kp/wsdl/KorisnickiPretinacService.wsdl</wsdl>
+                                    <extraargs>
+                                        <extraarg>-p</extraarg>
+                                        <extraarg>http://apis-it.hr/umu/2013/types/gsb=hr.apis.kp.gsb</extraarg>
+                                        <extraarg>-p</extraarg>
+                                        <extraarg>http://www.apis-it.hr/umu/2013/services/GSBService=hr.apis.kp.gsb.service</extraarg>
+                                        <extraarg>-p</extraarg>
+                                        <extraarg>http://www.w3.org/2000/09/xmldsig#=hr.apis.kp.xmldsig</extraarg>
+                                    </extraargs>
+                                </wsdlOption>
+                                <wsdlOption>
+                                    <wsdl>${basedir}/src/main/wsdl/kp/wsdl/KpPoslovneSheme.wsdl</wsdl>
+                                    <extraargs>
+                                        <extraarg>-p</extraarg>
+                                        <extraarg>http://apis-it.hr/umu/2013/types/kp=hr.apis.kp.fo</extraarg>
+                                        <extraarg>-p</extraarg>
+                                        <extraarg>http://www.apis-it.hr/umu/2018/elements/ReceiveMessage=hr.apis.kp.ps</extraarg>
+                                        <extraarg>-p</extraarg>
+                                        <extraarg>urn:str:kp:codegen=hr.apis.kp.codegen</extraarg>
+                                    </extraargs>
+                                </wsdlOption>
+                            </wsdlOptions>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>

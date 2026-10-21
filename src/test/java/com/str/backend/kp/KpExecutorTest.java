@@ -1,4 +1,4 @@
-package com.str.backend.egop;
+package com.str.backend.kp;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -10,9 +10,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-class EgopKpExecutorTest {
+class KpExecutorTest {
 
-    private EgopKpExecutor executor;
+    private KpExecutor executor;
 
     @AfterEach
     void tearDown() {
@@ -22,7 +22,7 @@ class EgopKpExecutorTest {
     /** Otprema ne smije čekati na niti pozivatelja — to je nit HTTP zahtjeva. */
     @Test
     void submit_runsOnPoolThread() throws Exception {
-        executor = new EgopKpExecutor(1, 5);
+        executor = new KpExecutor(1, 5);
         AtomicReference<String> thread = new AtomicReference<>();
         CountDownLatch done = new CountDownLatch(1);
 
@@ -32,7 +32,7 @@ class EgopKpExecutorTest {
         });
 
         assertThat(done.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(thread.get()).startsWith("egop-kp-").isNotEqualTo(Thread.currentThread().getName());
+        assertThat(thread.get()).startsWith("kp-").isNotEqualTo(Thread.currentThread().getName());
     }
 
     /**
@@ -41,7 +41,7 @@ class EgopKpExecutorTest {
      */
     @Test
     void submit_queueFull_dropsWithoutThrowingOrRunningInline() throws Exception {
-        executor = new EgopKpExecutor(1, 1);
+        executor = new KpExecutor(1, 1);
         CountDownLatch release = new CountDownLatch(1);
         Runnable blocker = () -> {
             try {

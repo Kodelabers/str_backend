@@ -1,5 +1,6 @@
 package com.str.backend.egop;
 
+import com.str.backend.kp.KpOtpremaService;
 import com.str.backend.document.FilingReference;
 import com.str.backend.domain.EgopSyncStatus;
 import com.str.backend.egop.exception.EgopBadRequestException;
@@ -41,7 +42,7 @@ class EgopFilingServiceTest {
 
     private EgopClient egopClient;
     private EgopFilingStore store;
-    private EgopKpOtpremaService kpOtprema;
+    private KpOtpremaService kpOtprema;
     private EgopFilingService service;
 
     private SubmissionEntity submission;
@@ -51,7 +52,7 @@ class EgopFilingServiceTest {
     void setUp() {
         egopClient = mock(EgopClient.class);
         store = mock(EgopFilingStore.class);
-        kpOtprema = mock(EgopKpOtpremaService.class);
+        kpOtprema = mock(KpOtpremaService.class);
         when(store.readSubjektOznaka(any())).thenReturn(Optional.empty());
         when(store.storeSubjektOznaka(any(), anyInt())).thenAnswer(inv -> inv.getArgument(1));
         when(store.findPismeno(any(), anyString(), anyString())).thenReturn(Optional.empty());
@@ -341,6 +342,30 @@ class EgopFilingServiceTest {
         order.verify(kpOtprema).register(any(), eq(lessor), any());
         order.verify(store).saveSuccess(any(), anyString(), any());
         order.verify(kpOtprema).otpremi(registered.getValue().getId());
+    }
+
+    /**
+     * Izravni KP šalje akt sam, pa obavijest o dodjeli mora ostati i lokalno — isti dokument koji
+     * je priložen u eGOP, spremljen prije prilaganja, i samo na izlaznom pismenu.
+     */
+    @Test
+    void fileRegistration_keepsObavijestPdfOnOutgoingPismeno() throws Exception {
+        givenSubjektAndPredmetCreated();
+        ArgumentCaptor<EgopPismenoEntity> saved = ArgumentCaptor.forClass(EgopPismenoEntity.class);
+
+        service.fileRegistration(submission, lessor, documents("obavijest".getBytes()));
+
+        verify(store, atLeastOnce()).savePismeno(saved.capture());
+        EgopPismenoEntity izlazno = saved.getAllValues().stream()
+                .filter(p -> p.getSmjer() == EgopPismenoEntity.Smjer.IZLAZNO).findFirst().orElseThrow();
+        EgopPismenoEntity ulazno = saved.getAllValues().stream()
+                .filter(p -> p.getSmjer() == EgopPismenoEntity.Smjer.ULAZNO).findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertArrayEquals("obavijest".getBytes(), izlazno.getPdfContent());
+        org.junit.jupiter.api.Assertions.assertNull(ulazno.getPdfContent(),
+                "zahtjev se čuva na submissionu, ne na pismenu");
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(store);
+        order.verify(store).savePdf(eq(izlazno.getId()), any());
+        order.verify(store).markDocumentAttached(izlazno.getId());
     }
 
     /**

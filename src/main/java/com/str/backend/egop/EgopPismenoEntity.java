@@ -192,6 +192,15 @@ public class EgopPismenoEntity {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Dokument registracijskog akta, renderiran tek iz urudžbenog broja (vidi {@link #create}) —
+     * čuva se da ga dostava u korisnički pretinac može poslati.
+     */
+    public void keepPdf(byte[] pdf) {
+        this.pdfContent = pdf;
+        this.updatedAt = Instant.now();
+    }
+
     public void markSynced() {
         this.status = EgopSyncStatus.SYNCED;
         this.syncError = null;

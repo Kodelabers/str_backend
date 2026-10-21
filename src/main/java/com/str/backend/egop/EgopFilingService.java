@@ -6,6 +6,7 @@ import com.str.backend.domain.EgopSyncStatus;
 import com.str.backend.egop.codebook.VrstaUpisneKnjige;
 import com.str.backend.egop.exception.EgopBadRequestException;
 import com.str.backend.egop.exception.EgopException;
+import com.str.backend.kp.KpOtpremaService;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.request.SubmissionEntity;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismeno;
@@ -38,8 +39,8 @@ import java.util.Optional;
  *   <li>ulazno pismeno (zahtjev) + PDF dokument — PDF se renderira tek nakon
  *       kreiranja pismena jer tada postoje KLASA i URBROJ;</li>
  *   <li>izlazno pismeno (obavijest o dodjeli) + PDF dokument;</li>
- *   <li>otprema izlaznog pismena u korisnički pretinac ({@link EgopKpOtpremaService}) — iza
- *       {@code str.egop.kp.enabled}, i bez utjecaja na ishod urudžbe.</li>
+ *   <li>dostava izlaznog pismena u korisnički pretinac ({@link KpOtpremaService}, izravno preko
+ *       SZP-a APIS IT-a) — iza {@code str.kp.enabled}, i bez utjecaja na ishod urudžbe.</li>
  * </ol>
  *
  * Napredak se vodi kroz {@link EgopSyncStatus} na submissionu; svaki dovršeni korak
@@ -60,7 +61,7 @@ public class EgopFilingService {
     private final EgopClient egopClient;
     private final EgopFilingStore store;
     private final EgopVrstaResolver vrste;
-    private final EgopKpOtpremaService kpOtprema;
+    private final KpOtpremaService kpOtprema;
 
     private final String appUsername;
     private final String rjesavatelj;
@@ -77,7 +78,7 @@ public class EgopFilingService {
     public EgopFilingService(EgopClient egopClient,
                              EgopFilingStore store,
                              EgopVrstaResolver vrste,
-                             EgopKpOtpremaService kpOtprema,
+                             KpOtpremaService kpOtprema,
                              EgopProperties properties,
                              @Value("${str.egop.rjesavatelj:}") String rjesavatelj,
                              // Konfigurabilna jer posudbena vrsta predmeta ne mora biti dopuštena
@@ -132,7 +133,9 @@ public class EgopFilingService {
                 EgopPismenoEntity.Smjer.IZLAZNO, subjektOznaka, lessor);
         // Izlazno pismeno nosi vlastiti URBROJ, pa i vlastiti PDF — ranije se ovdje prilagala
         // kopija PDF-a zahtjeva, dokument s krivim urudžbenim brojem i krivim naslovom.
-        attachPdfOnce(izlazno, documents.obavijestODodjeli(filing(submission, izlazno)));
+        byte[] obavijestPdf = documents.obavijestODodjeli(filing(submission, izlazno));
+        keepPdfOnce(izlazno, obavijestPdf);
+        attachPdfOnce(izlazno, obavijestPdf);
 
         // Na submission ide oznaka ULAZNOG pismena — to je akt kojim je postupak pokrenut.
         String filingNumber = formatFilingNumber(ulaznaOznaka);
@@ -392,6 +395,19 @@ public class EgopFilingService {
 
         // Otpremu je zapisao RnLifecycleFilingListener kad je akt nastao (ako je KP tada bio uključen).
         kpOtprema.otpremi(akt.getId());
+    }
+
+    /**
+     * Obavijest o dodjeli se, za razliku od akata životnog ciklusa, renderira tek ovdje (iz
+     * urudžbenog broja). Dostava u KP šalje akt sama, pa se čuva isti dokument koji je priložen u
+     * eGOP — prvi, da ga ponovni pokušaj ne zamijeni novim renderom.
+     */
+    private void keepPdfOnce(EgopPismenoEntity pismeno, byte[] pdf) {
+        if (pismeno.getPdfContent() != null) {
+            return;
+        }
+        pismeno.keepPdf(pdf);
+        store.savePdf(pismeno.getId(), pdf);
     }
 
     /**

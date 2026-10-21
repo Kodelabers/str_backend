@@ -112,7 +112,7 @@ public class RnLifecycleEmailListener {
             return;
         }
 
-        String razlog = razlog(event);
+        String razlog = razlog(labels, event);
         boolean sent = emailService.sendRnLifecycleNotification(new RnLifecycleMail(
                 template,
                 detail.lessorEmail(),
@@ -120,7 +120,7 @@ public class RnLifecycleEmailListener {
                 event.rn(),
                 objekt(detail),
                 razlog,
-                rok(detail),
+                rok(labels, detail),
                 aktPdf(akt.get(), event.rn(), razlog),
                 // Non-EU iznajmljivač nema OIB pa ni pristup korisničkom pretincu — njemu je
                 // e-pošta kanal dostave, a ne samo obavijest. Klauzula se po tome razlikuje.
@@ -132,7 +132,7 @@ public class RnLifecycleEmailListener {
         }
     }
 
-    private static MailTemplate mailTemplateFor(StrDocumentType type) {
+    static MailTemplate mailTemplateFor(StrDocumentType type) {
         return switch (type) {
             case SUSPENZIJA -> MailTemplate.SUSPENZIJA;
             case POVLACENJE -> MailTemplate.POVLACENJE;
@@ -159,27 +159,27 @@ public class RnLifecycleEmailListener {
         }
     }
 
-    private String razlog(RnLifecycleEvent event) {
+    static String razlog(DocumentLabels labels, RnLifecycleEvent event) {
         if (event.reason() != null && !event.reason().isBlank()) {
             return event.reason().strip();
         }
         return labels.trigger(event.trigger());
     }
 
-    private String rok(RnDetailDto detail) {
+    static String rok(DocumentLabels labels, RnDetailDto detail) {
         return detail.suspensionDeadline() == null
                 ? labels.get("rok.default")
                 : labels.format("rok.doDatuma", detail.suspensionDeadline().format(DATE));
     }
 
-    private String ime(RnDetailDto detail) {
+    static String ime(RnDetailDto detail) {
         if (detail.lessorFirstName() != null && !detail.lessorFirstName().isBlank()) {
             return detail.lessorFirstName();
         }
         return detail.lessorLegalEntityName() == null ? "" : detail.lessorLegalEntityName();
     }
 
-    private static String objekt(RnDetailDto detail) {
+    static String objekt(RnDetailDto detail) {
         String naziv = detail.accommodationName();
         String adresa = ((detail.street() == null ? "" : detail.street()) + " "
                 + (detail.streetNumber() == null ? "" : detail.streetNumber())).strip();

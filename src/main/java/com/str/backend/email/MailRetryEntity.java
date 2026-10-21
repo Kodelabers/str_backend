@@ -30,7 +30,12 @@ public class MailRetryEntity {
         /** {@code refId} = {@code submission_id}. */
         RN_ISSUED,
         /** {@code refId} = {@code registration_number_log.log_id}. */
-        RN_LIFECYCLE
+        RN_LIFECYCLE,
+        /**
+         * Dostava akta e-poštom jer primatelj nema aktivan korisnički pretinac;
+         * {@code refId} = {@code kp_otprema.id}.
+         */
+        KP_ZAMJENSKA
     }
 
     public enum Status {

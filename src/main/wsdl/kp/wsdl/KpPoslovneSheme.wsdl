@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  NAŠ omot, ne APIS-ov: služi samo da cxf-codegen-plugin generira JAXB klase poslovnih shema
+  KP-a, koje APIS-ov WSDL (KorisnickiPretinacService.wsdl) ne referencira — one putuju unutar
+  GsbEnvelope/Content/Data. Operacija je fiktivna i nikad se ne poziva.
+
+  FO = korisnički pretinac fizičkih osoba (ServiceId 123 slanje, 129 aktivnost)
+  PS = korisnički pretinac poslovnih subjekata (ServiceId 125 slanje, 128 aktivnost)
+  Sheme su nepromijenjene iz paketa KP_wsdl_sheme_8.9.2026_2 (tehnička spec. KP 3.6).
+-->
+<wsdl:definitions name="KpPoslovneSheme"
+	xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+	xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+	xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+	xmlns:tns="urn:str:kp:codegen"
+	xmlns:fo="http://apis-it.hr/umu/2013/types/kp"
+	targetNamespace="urn:str:kp:codegen">
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="urn:str:kp:codegen">
+      <xsd:import namespace="http://apis-it.hr/umu/2013/types/kp" schemaLocation="../schema/KorisnickiPretinacPoruka_FO.xsd"/>
+      <xsd:import namespace="http://www.apis-it.hr/umu/2018/elements/ReceiveMessage" schemaLocation="../schema/KorisnickiPretinacPoruka_PS.xsd"/>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="Codegen">
+    <wsdl:part element="fo:KorisnickiPretinacPoruka" name="poruka"/>
+  </wsdl:message>
+
+  <wsdl:portType name="KpCodegenPortType">
+    <wsdl:operation name="codegen">
+      <wsdl:input message="tns:Codegen"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="KpCodegenBinding" type="tns:KpCodegenPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="codegen">
+      <soap:operation soapAction="urn:str:kp:codegen"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="KpCodegenService">
+    <wsdl:port binding="tns:KpCodegenBinding" name="KpCodegenPort">
+      <soap:address location="urn:str:kp:codegen"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>

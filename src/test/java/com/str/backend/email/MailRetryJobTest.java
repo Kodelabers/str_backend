@@ -1,6 +1,7 @@
 package com.str.backend.email;
 
 import com.str.backend.egop.EgopRegistrationDispatcher;
+import com.str.backend.kp.KpZamjenskaDostava;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +29,7 @@ class MailRetryJobTest {
     private MailRetryStore store;
     private EgopRegistrationDispatcher dispatcher;
     private RnLifecycleEmailListener lifecycleListener;
+    private KpZamjenskaDostava kpZamjenska;
     private MailRetryJob job;
 
     @BeforeEach
@@ -35,7 +37,8 @@ class MailRetryJobTest {
         store = mock(MailRetryStore.class);
         dispatcher = mock(EgopRegistrationDispatcher.class);
         lifecycleListener = mock(RnLifecycleEmailListener.class);
-        job = new MailRetryJob(store, dispatcher, lifecycleListener,
+        kpZamjenska = mock(KpZamjenskaDostava.class);
+        job = new MailRetryJob(store, dispatcher, lifecycleListener, kpZamjenska,
                 Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofDays(3), 50);
     }
 
@@ -43,14 +46,17 @@ class MailRetryJobTest {
     void routesEachKindToItsSendingPath() {
         UUID submission = UUID.randomUUID();
         UUID logId = UUID.randomUUID();
+        UUID otprema = UUID.randomUUID();
         when(store.due(anyInt())).thenReturn(List.of(
                 zapis(MailRetryEntity.Kind.RN_ISSUED, submission, NOW.minus(Duration.ofHours(1))),
-                zapis(MailRetryEntity.Kind.RN_LIFECYCLE, logId, NOW.minus(Duration.ofHours(1)))));
+                zapis(MailRetryEntity.Kind.RN_LIFECYCLE, logId, NOW.minus(Duration.ofHours(1))),
+                zapis(MailRetryEntity.Kind.KP_ZAMJENSKA, otprema, NOW.minus(Duration.ofHours(1)))));
 
         job.retryDue();
 
         verify(dispatcher).retryEmail(submission);
         verify(lifecycleListener).retry(logId);
+        verify(kpZamjenska).retry(otprema);
     }
 
     /** Obavijest stara više dana se ne šalje — stanje je iznajmljivaču odavno vidljivo drugdje. */

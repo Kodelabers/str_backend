@@ -140,6 +140,14 @@ public class EgopFilingStore {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void savePdf(UUID pismenoId, byte[] pdf) {
+        egopPismenoRepository.findById(pismenoId).ifPresent(pismeno -> {
+            pismeno.keepPdf(pdf);
+            egopPismenoRepository.save(pismeno);
+        });
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markDocumentAttached(UUID pismenoId) {
         egopPismenoRepository.findById(pismenoId).ifPresent(pismeno -> {
             pismeno.markDocumentAttached();

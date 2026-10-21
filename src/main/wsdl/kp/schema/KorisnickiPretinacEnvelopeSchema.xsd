@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" targetNamespace="http://apis-it.hr/umu/2013/types/gsb"
+	xmlns:tns="http://apis-it.hr/umu/2013/types/gsb" xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
+	elementFormDefault="qualified">
+
+	<import namespace="http://www.w3.org/2000/09/xmldsig#"
+		schemaLocation="xmldsig-core-schema.xsd" />
+
+	<element name="SendMessageRequest">
+		<annotation>
+			<documentation>
+				Send message service request
+			</documentation>
+		</annotation>
+		<complexType>
+			<sequence>
+				<element name="GsbEnvelope" type="tns:GsbEnvelopeType" minOccurs="1" maxOccurs="1"/>
+			</sequence>
+		</complexType>
+	</element>
+
+	<element name="SendMessageResponse">
+		<annotation>
+			<documentation>
+				Send message service response
+			</documentation>
+		</annotation>
+		<complexType>
+			<sequence>
+				<element name="MessageHeader" type="tns:MessageHeaderType" minOccurs="0" maxOccurs="1" />
+				<element name="Content" type="tns:ContentType" minOccurs="0" maxOccurs="1" />
+				<element name="Errors" type="tns:ErrorsType" minOccurs="0" maxOccurs="1" />
+				<element ref="ds:Signature" minOccurs="0" maxOccurs="1" />
+			</sequence>
+		</complexType>
+	</element>
+
+	<element name="EchoRequest" type="string" nillable="false">
+    	<annotation>
+      		<documentation>Poruka echo metodi.</documentation>
+    	</annotation>
+  	</element>
+
+  	<element name="EchoResponse" type="string" nillable="false">
+   		<annotation>
+      		<documentation>Odgovor echo metode u obliku: "Request:
+        		'echoRequest'. Response: 'yyyy-MM-dd'T'HH:mm:ss.SSSZ'.
+      		</documentation>
+    	</annotation>
+  	</element>
+
+
+	<complexType name="GsbEnvelopeType">
+		<annotation>
+			<documentation>
+				Envelope used in gsb communication
+        </documentation>
+		</annotation>
+		<sequence>
+			<element name="MessageHeader" type="tns:MessageHeaderType"
+				minOccurs="1" maxOccurs="1" />
+			<element ref="ds:Signature" minOccurs="0" maxOccurs="1" />
+			<element name="Content" type="tns:ContentType" minOccurs="1"
+				maxOccurs="1" />
+		</sequence>
+	</complexType>
+
+	<complexType name="MessageHeaderType">
+		<sequence>
+			<element name="SenderId" type="tns:SenderIdType" minOccurs="1" maxOccurs="1" />
+			<element name="ServiceId" type="tns:ServiceIdType" minOccurs="1" maxOccurs="1" />
+			<element name="AditionalServiceId" type="tns:ServiceIdType" minOccurs="0" maxOccurs="1" />
+			<element name="MessageId" type="tns:UUIDType" minOccurs="1" maxOccurs="1" />
+			<element name="GsbId" type="tns:UUIDType" minOccurs="0" maxOccurs="1" />
+			<element name="SenderTimeStamp" type="dateTime" minOccurs="1" maxOccurs="1" />
+			<element name="ReceivingTimeStamp" type="dateTime" minOccurs="0" maxOccurs="1" />
+			<element name="ForwardingTimeStamp" type="dateTime" minOccurs="0" maxOccurs="1" />
+			<element name="ReceiverTimeStamp" type="dateTime" minOccurs="0" maxOccurs="1" />
+			<element name="ExchangeStatus" type="tns:StatusType" minOccurs="0" maxOccurs="1" />
+		</sequence>
+	</complexType>
+
+	<complexType name="ContentType">
+		<sequence>
+			<element name="MimeType" type="string" minOccurs="1"
+				maxOccurs="1" />
+			<element name="Description" type="string" minOccurs="0"
+				maxOccurs="1">
+				<annotation>
+					<documentation>
+						Optional document description. Max lenght 255
+						characters.
+	        </documentation>
+				</annotation>
+			</element>
+			<element name="Data" minOccurs="1" maxOccurs="1">
+				<complexType mixed="true">
+					<sequence minOccurs="0" maxOccurs="unbounded">
+						<any namespace="##any" processContents="lax" />
+					</sequence>
+					<attribute name="encoding" use="required">
+						<simpleType>
+							<restriction base="string">
+								<enumeration value="EMBEDDED" />
+								<enumeration value="BASE64" />
+							</restriction>
+						</simpleType>
+					</attribute>
+					<anyAttribute namespace="##any" />
+				</complexType>
+			</element>
+		</sequence>
+	</complexType>
+
+	<complexType name="ErrorsType">
+		<sequence>
+			<element name="Error" type="tns:ErrorType" minOccurs="1"
+				maxOccurs="unbounded" />
+		</sequence>
+	</complexType>
+
+	<complexType name="ErrorType">
+		<sequence>
+			<element name="ErrorCode" type="tns:ErrorCodeType" minOccurs="1"
+				maxOccurs="1" />
+			<element name="ErrorMessage" type="tns:ErrorMessageType"
+				minOccurs="1" maxOccurs="1" />
+		</sequence>
+	</complexType>
+
+	<simpleType name="ErrorCodeType">
+		<restriction base="string">
+			<pattern value="M[0-9]{3}" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="ErrorMessageType">
+		<restriction base="string">
+			<maxLength value="500" />
+		</restriction>
+	</simpleType>
+
+
+	<simpleType name="SenderIdType">
+		<restriction base="string">
+			<minLength value="1" />
+			<maxLength value="9" />
+			<pattern value="[0-9]+" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="StatusType">
+		<restriction base="string">
+			<minLength value="1" />
+			<maxLength value="1" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="ServiceIdType">
+		<restriction base="string">
+			<minLength value="1" />
+			<maxLength value="9" />
+			<pattern value="[0-9]+" />
+		</restriction>
+	</simpleType>
+
+	<simpleType name="UUIDType">
+		<restriction base="string">
+			<pattern
+				value="[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" />
+		</restriction>
+	</simpleType>
+
+</schema>

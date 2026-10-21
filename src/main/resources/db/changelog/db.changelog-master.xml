@@ -250,4 +250,7 @@
     <!-- Otprema izlaznih pismena u korisnički pretinac (KP) preko eGOP-a + zapis KP statusa poruke. -->
     <include file="db/changelog/changes/139-egop-kp-otprema.xml"/>
 
+    <!-- KP izravno preko SZP-a APIS IT-a (umjesto eGOP otpreme): egop_kp_otprema → kp_otprema. -->
+    <include file="db/changelog/changes/140-kp-izravno.xml"/>
+
 </databaseChangeLog>

@@ -1,5 +1,8 @@
 package com.str.backend.egop;
 
+import com.str.backend.kp.KpOtpremaService;
+import com.str.backend.kp.KpOtpremaRepository;
+import com.str.backend.kp.KpOtpremaEntity;
 import com.str.backend.domain.EgopSyncStatus;
 import com.str.backend.request.SubmissionRepository;
 import org.junit.jupiter.api.Test;
@@ -23,8 +26,8 @@ class EgopRetryJobTest {
     private final EgopRegistrationDispatcher dispatcher = mock(EgopRegistrationDispatcher.class);
     private final EgopPismenoRepository pismenoRepository = mock(EgopPismenoRepository.class);
     private final EgopAktDispatcher aktDispatcher = mock(EgopAktDispatcher.class);
-    private final EgopKpOtpremaRepository kpOtpremaRepository = mock(EgopKpOtpremaRepository.class);
-    private final EgopKpOtpremaService kpOtprema = mock(EgopKpOtpremaService.class);
+    private final KpOtpremaRepository kpOtpremaRepository = mock(KpOtpremaRepository.class);
+    private final KpOtpremaService kpOtprema = mock(KpOtpremaService.class);
 
     private final EgopRetryPolicy retryPolicy =
             new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2));
@@ -102,7 +105,7 @@ class EgopRetryJobTest {
         UUID otprema = UUID.randomUUID();
         when(kpOtprema.isEnabled()).thenReturn(true);
         when(kpOtpremaRepository.findRetryCandidates(eq(EgopSyncStatus.SYNCED),
-                eq(List.of(EgopKpOtpremaEntity.Status.PENDING, EgopKpOtpremaEntity.Status.FAILED)),
+                eq(List.of(KpOtpremaEntity.Status.PENDING, KpOtpremaEntity.Status.FAILED)),
                 eq(10), any(), any(), any()))
                 .thenReturn(List.of(otprema));
 

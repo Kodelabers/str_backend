@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions name="GSBService"
+	xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+	xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+	xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+	targetNamespace="http://www.apis-it.hr/umu/2013/services/GSBService"
+	xmlns:umu="http://www.apis-it.hr/umu/2013/services/GSBService"
+	xmlns:gsb="http://apis-it.hr/umu/2013/types/gsb">
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://www.apis-it.hr/umu/2013/services/GSBService">
+    	<xsd:import namespace="http://apis-it.hr/umu/2013/types/gsb" schemaLocation="../schema/KorisnickiPretinacEnvelopeSchema.xsd"/>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="SendMessageRequest">
+    <wsdl:part element="gsb:SendMessageRequest" name="request"/>
+  </wsdl:message>
+  <wsdl:message name="SendMessageResponse">
+    <wsdl:part element="gsb:SendMessageResponse" name="response"/>
+  </wsdl:message>
+
+  <wsdl:message name="EchoRequest">
+    <wsdl:part element="gsb:EchoRequest" name="request" />
+  </wsdl:message>
+  <wsdl:message name="EchoResponse">
+    <wsdl:part element="gsb:EchoResponse" name="response" />
+  </wsdl:message>
+
+  <wsdl:portType name="GSBServicePortType">
+    <wsdl:operation name="sendMessage">
+      <wsdl:input message="umu:SendMessageRequest"/>
+      <wsdl:output message="umu:SendMessageResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="echo">
+    	<wsdl:input message="umu:EchoRequest"/>
+    	<wsdl:output message="umu:EchoResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="GSBService" type="umu:GSBServicePortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="sendMessage">
+      <soap:operation soapAction="http://www.apis-it.hr/umu/2013/services/GSBService/sendMessage"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="echo">
+    	<soap:operation soapAction="http://www.apis-it.hr/umu/2013/services/GSBService/echo"/>
+    	<wsdl:input>
+    		<soap:body use="literal"/>
+    	</wsdl:input>
+    	<wsdl:output>
+    		<soap:body use="literal"/>
+    	</wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="GSBService">
+    <wsdl:port binding="umu:GSBService" name="GSBServicePortType">
+      <soap:address location="http://www.apis-it.hr:8849/GsbService"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>

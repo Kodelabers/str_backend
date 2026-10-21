@@ -1,6 +1,9 @@
-package com.str.backend.egop;
+package com.str.backend.kp;
 
 import com.str.backend.domain.EgopSyncStatus;
+import com.str.backend.egop.EgopPismenoEntity;
+import com.str.backend.egop.EgopPismenoRepository;
+import com.str.backend.kp.client.KpAktivnost;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,46 +14,45 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * JPQL odabira kandidata za otpremu u KP i za provjeru statusa, protiv prave baze (H2). Jobovi
+ * JPQL odabira kandidata za otpremu u KP i za provjeru aktivnosti, protiv prave baze (H2). Jobovi
  * u unit testovima mockaju repozitorij, pa bi kriv uvjet ovdje prošao nezapažen.
  */
 @SpringBootTest
 @ActiveProfiles("test")
-class EgopKpCandidateQueryTest {
+class KpCandidateQueryTest {
 
-    private static final List<EgopKpOtpremaEntity.Status> NEPOSLANI =
-            List.of(EgopKpOtpremaEntity.Status.PENDING, EgopKpOtpremaEntity.Status.FAILED);
+    private static final List<KpOtpremaEntity.Status> NEPOSLANI =
+            List.of(KpOtpremaEntity.Status.PENDING, KpOtpremaEntity.Status.FAILED);
     private static final List<Integer> KONACNI =
-            List.of(EgopKpOtpremaEntity.KP_POTVRDEN_PRIMITAK, EgopKpOtpremaEntity.KP_ODBIJENO);
+            List.of(KpOtpremaEntity.KP_POTVRDEN_PRIMITAK, KpOtpremaEntity.KP_ODBIJENO);
+    private static final KpPrimatelj FO = new KpPrimatelj(KpPrimatelj.Tip.FO, "12345678903", null);
 
     @Autowired
     private EgopPismenoRepository pismenoRepository;
 
     @Autowired
-    private EgopKpOtpremaRepository repository;
+    private KpOtpremaRepository repository;
 
     @Test
     void retryCandidates_onlyUnsentWithFiledPismeno() {
         UUID pending = otprema(true, o -> { });
         UUID waitingForFiling = otprema(false, o -> { });
-        UUID failedDue = otprema(true, o -> o.markFailed("boom", Instant.now().minus(1, ChronoUnit.MINUTES)));
-        UUID failedInBackoff = otprema(true, o -> o.markFailed("boom", Instant.now().plus(1, ChronoUnit.HOURS)));
-        UUID sent = otprema(true, o -> o.markSent(Instant.now()));
+        UUID failedDue = otprema(true, o -> o.markFailed("M008", "boom", Instant.now().minus(1, ChronoUnit.MINUTES), null));
+        UUID failedInBackoff = otprema(true, o -> o.markFailed("M008", "boom", Instant.now().plus(1, ChronoUnit.HOURS), null));
+        UUID sent = otprema(true, o -> o.markSent(Instant.now(), 101, true, null));
         UUID skipped = otprema(true, o -> o.markSkipped("zastario"));
-        UUID exhausted = otprema(true, o -> {
-            for (int i = 0; i < 10; i++) {
-                o.markFailed("boom", Instant.now().minus(1, ChronoUnit.MINUTES));
-            }
-        });
+        UUID nemaPretinca = otprema(true, o -> o.markNemaPretinca("K006", "nema KP", null));
+        UUID exhausted = otprema(true, o -> o.markExhausted("K013", "nije registriran", 10, null));
 
         List<UUID> candidates = retryCandidates(Instant.now().plus(1, ChronoUnit.HOURS));
 
         assertThat(candidates).contains(pending, failedDue);
-        assertThat(candidates).doesNotContain(waitingForFiling, failedInBackoff, sent, skipped, exhausted);
+        assertThat(candidates).doesNotContain(waitingForFiling, failedInBackoff, sent, skipped, nemaPretinca, exhausted);
     }
 
     /** Neprobana otprema čeka grace od urudžbe, da cron ne preotme inline slanje. */
@@ -62,27 +64,28 @@ class EgopKpCandidateQueryTest {
     }
 
     @Test
-    void statusCandidates_sentWithNonFinalStatus_neverCheckedFirst() {
+    void statusCandidates_sentWithLegalEffectAndNonFinalActivity_neverCheckedFirst() {
         UUID checked = otprema(true, o -> {
-            o.markSent(Instant.now());
-            o.applyKpStatus(new KpStatusPoruke(1, null, null, null, null, null, null, null), Instant.now());
+            o.markSent(Instant.now(), 101, true, null);
+            o.applyAktivnost(aktivnost(1), Instant.now());
         });
-        UUID neverChecked = otprema(true, o -> o.markSent(Instant.now()));
+        UUID neverChecked = otprema(true, o -> o.markSent(Instant.now(), 101, true, null));
         UUID confirmed = otprema(true, o -> {
-            o.markSent(Instant.now());
-            o.applyKpStatus(new KpStatusPoruke(2, null, null, null, null, null, null, null), Instant.now());
+            o.markSent(Instant.now(), 101, true, null);
+            o.applyAktivnost(aktivnost(2), Instant.now());
         });
         UUID rejected = otprema(true, o -> {
-            o.markSent(Instant.now());
-            o.applyKpStatus(new KpStatusPoruke(3, null, null, null, null, null, null, null), Instant.now());
+            o.markSent(Instant.now(), 101, true, null);
+            o.applyAktivnost(aktivnost(3), Instant.now());
         });
+        UUID withoutLegalEffect = otprema(true, o -> o.markSent(Instant.now(), 101, false, null));
         UUID notSent = otprema(true, o -> { });
 
-        List<UUID> candidates = repository.findStatusCandidates(EgopKpOtpremaEntity.Status.SENT, KONACNI,
+        List<UUID> candidates = repository.findStatusCandidates(KpOtpremaEntity.Status.SENT, KONACNI,
                 Instant.now().minus(1, ChronoUnit.HOURS), PageRequest.of(0, 1000));
 
         assertThat(candidates).contains(checked, neverChecked);
-        assertThat(candidates).doesNotContain(confirmed, rejected, notSent);
+        assertThat(candidates).doesNotContain(confirmed, rejected, withoutLegalEffect, notSent);
         assertThat(candidates.indexOf(neverChecked)).isLessThan(candidates.indexOf(checked));
     }
 
@@ -92,7 +95,11 @@ class EgopKpCandidateQueryTest {
                 now.minus(1, ChronoUnit.HOURS), now);
     }
 
-    private UUID otprema(boolean pismenoSynced, java.util.function.Consumer<EgopKpOtpremaEntity> setup) {
+    private static KpAktivnost aktivnost(int status) {
+        return new KpAktivnost(List.of(), "", status, null, null, null, null);
+    }
+
+    private UUID otprema(boolean pismenoSynced, Consumer<KpOtpremaEntity> setup) {
         EgopPismenoEntity pismeno = EgopPismenoEntity.create(UUID.randomUUID(),
                 "Obavijest o dodjeli registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO,
                 1002, "529-06/26-2", "102", false);
@@ -100,7 +107,7 @@ class EgopKpCandidateQueryTest {
             pismeno.markDocumentAttached();
         }
         pismenoRepository.saveAndFlush(pismeno);
-        EgopKpOtpremaEntity otprema = EgopKpOtpremaEntity.pending(pismeno.getId(), "12345678903", Instant.now());
+        KpOtpremaEntity otprema = KpOtpremaEntity.pending(pismeno.getId(), FO, Instant.now());
         setup.accept(otprema);
         return repository.saveAndFlush(otprema).getId();
     }

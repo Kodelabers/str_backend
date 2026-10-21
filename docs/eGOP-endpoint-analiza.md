@@ -1913,76 +1913,32 @@ izuzima iz reda kandidata (`findRetryCandidates`, uvjet `vrstaPismenaNaziv NOT I
 
 | Kanal | Stanje |
 | :--- | :--- |
-| KP eGrađana (korisnici s OIB-om) | 🟡 implementirano iza `str.egop.kp.enabled=false` — čeka odgovore InfoDoma i prvi živi test (vidi §KP otprema niže) |
+| KP eGrađana / poslovni KP (korisnici s OIB-om) | 🟡 izravno preko SZP-a APIS IT-a, iza `str.kp.enabled=false` — čeka registraciju u REGUP-u i odgovore APIS-a/MINT-a (`docs/KP-INTEGRACIJA.md`) |
 | E-pošta (non-EU) | ✅ radi; akt ide u privitku |
 
 Poruka razlikuje dva slučaja jer bi inače lagala: non-EU iznajmljivač nema pretinac, pa mu je
 e-pošta **kanal dostave** (čl. 94. st. 4) i rokovi teku od nje; korisniku s OIB-om poruka kaže da
 se akt dostavlja u pretinac i da rokovi teku odande — **ne** tvrdi da je dostava već obavljena.
 
-#### KP otprema (listopad 2026.)
+#### KP otprema (listopad 2026.) — zamijenjeno izravnim KP-om
 
-InfoDom je mailom opisao tri metode **izvan specifikacije v1.11**: `OtpremiPismenoUKorisnickiPretinac`,
-`DohvatiKPStatusPoruke` i `DohvatiKPStatusPorukeSaVremenima`. `ServicePismeno.wsdl` je zato 19. 10. 2026.
-zamijenjen verzijom s `egopeaitest.mint.hr/ServicePismeno.asmx?wsdl`; strukturna usporedba sa starim:
-ništa uklonjeno ni promijenjeno, dodano 5 operacija (tri KP + `DohvatiDodatnePodatkePismenaComplex`,
-`PostaviUpozorenjeNaPismenu`, koje ne koristimo). Primatelj se zadaje OIB-om (`subjektOznakaPrimatelja`
-ide kao `xsi:nil`), `otpremaPriloga=false`.
+Od 21. 10. 2026. dostava u KP **ne ide preko eGOP-a**, nego izravno, preko APIS IT „Sustava za
+zaprimanje poruka" — vidi **`docs/KP-INTEGRACIJA.md`**. eGOP i dalje urudžbira; njegove KP metode
+(`OtpremiPismenoUKorisnickiPretinac`, `DohvatiKPStatusPoruke*`) uklonjene su iz `EgopClient`-a, a
+tablica `egop_kp_otprema` (changeset 139) preimenovana je u `kp_otprema` (changeset 140).
 
-Vremena iz `OtpremnicaKPInfo` bez oznake zone čitaju se kao Europe/Zagreb, a `0001-01-01` (.NET
-`DateTime.MinValue` za ne-nillable polje) kao prazno (`EgopDates.toInstant`). **Provjeriti na prvom
-živom pozivu:** `kp_poslano_at` mora biti blizu našeg `sent_at`; razlika od 1–2 h znači da eGOP šalje
-UTC bez oznake.
+`ServicePismeno.wsdl` ostaje verzija s `egopeaitest.mint.hr` (19. 10. 2026.): u odnosu na prethodnu
+samo dodaje operacije, a ostale operacije se koriste. Pitanja InfoDomu o KP metodama (konfiguracija
+slanja, prava, idempotentnost) više nisu otvorena.
 
-Odluke (19. 10. 2026.): u KP idu **sva izlazna** pismena; pravnoj osobi ide u pretinac **zastupnika
-iz zahtjeva** (`lessor.representative_oib`); otprema ide **i bez ePečata** (svjesno prihvaćen rizik
-prema čl. 98. st. 8 — pečat uključiti prije produkcije); KP status se **samo zapisuje**;
-zatvaranje predmeta je izvan opsega.
-
-Tok (`EgopKpOtpremaService`, tablica `str_rn.egop_kp_otprema`, changeset 139):
-
-- **Zapis kad akt nastane** (`PENDING`), samo ako je KP tada uključen: akt životnog ciklusa u
-  `RnLifecycleFilingListener` (i za vrste bez šifre), obavijest o dodjeli kad se izlazno pismeno prvi
-  put spremi. Akt nastao dok je KP ugašen nema zapisa i nikad ne ide u KP.
-- **Slanje** kad je pismeno `SYNCED`: odmah nakon urudžbe, ali **izvan niti zahtjeva**, u zasebnom
-  poolu (`EgopKpExecutor`, 2 niti, red 20). Otprema je outbox — redak je zapisan prije slanja — pa
-  izgubljen zadatak (restart, pun red) šalje `EgopRetryJob.retryKpOtpreme` nakon grace roka. Pad ide
-  na `FAILED` + backoff i ne dira status urudžbe. Namjerno nije `@Async`/`Executor` bean: Boot bi
-  ugasio svoj `applicationTaskExecutor`, a `@EnableAsync` bi vrijedio za cijelu aplikaciju.
-- **Zastarjelost** (odluka 19. 10. 2026.: „samo novi akti"): akt urudžbiran kasnije od
-  `str.egop.kp.max-akt-age` (default 7 dana) od nastanka ide u `SKIPPED` i ne šalje se — npr.
-  prijedlog suspenzije koji je čekao šifru dok je postupak obustavljen. Za obavijest o dodjeli
-  nastanak je izdavanje RB-a (`submission.created_at`).
-- **Bez duple poruke**: retry prije slanja pita `DohvatiKPStatusPorukeSaVremenima`; ako eGOP poruku
-  zna (`DatumVrijemeSlanja`), samo je upiše kao poslanu. Pad upisa nakon uspješnog slanja ne računa
-  se kao neuspjeh slanja.
-- Radi samo uz uključen **eGOP i KP** — s mockom bi otpreme bile `SENT` iako ništa nije poslano.
-- `EgopKpStatusJob` zapisuje status i vremena poruke dok primitak nije potvrđen (2) ili odbijen (3),
-  najdulje 30 dana. Ne izlaže se na API-ju.
-
-Svjesno ostavljeno: sama urudžba i dalje ide sinkrono u zahtjevu (§17, PDF s KLASA/URBROJ-em mora
-postojati odmah), pa KP ne usporava zahtjev, ali urudžba da. Jobovi nemaju zaključavanje — uz više
-instanci retry bi mogao poslati duplikat (isto vrijedi za postojeće jobove).
-
-Otvoreno prema InfoDomu / MINT-u:
-1. Jesu li naše vrste pismena konfigurirane za slanje u KP (test i prod), i uz privremene šifre?
-2. Ima li servisni račun pravo na sve tri metode?
-3. Mora li pismeno prije otpreme biti potpisano/pečatirano ili u određenom statusu?
-4. errorCode kad primatelj nema KP / NIAS račun; koje su greške prolazne?
-5. Duplicira li ponovljeni poziv za isti `jop` + OIB poruku? (o tome ovisi retry nakon timeouta)
-6. Smije li se akt koji glasi na tvrtku dostaviti u KP zastupnika?
-7. Je li status 1 konačan za poruke bez potvrde primitka; posljedice statusa 0 i 3?
-8. Ograničenje učestalosti za `DohvatiKPStatusPoruke*`.
-9. Potvrda `otpremaPriloga=false` (priloge ne šaljemo, PDF je glavni dokument).
-
-Popravljeno uz KP: kad je render obavijesti o dodjeli pao, `EgopRegistrationDispatcher` je izlaznom
-pismenu prilagao PDF **zahtjeva**, koji bi uz KP otišao stranci kao akt. Sada greška propagira:
-izlazno pismeno ostaje bez dokumenta i bez otpreme, submission ide na `FAILED`, a retry priloži pravi
+Ostaje iz te izmjene: kad je render obavijesti o dodjeli pao, `EgopRegistrationDispatcher` je
+izlaznom pismenu prilagao PDF **zahtjeva**, koji bi uz KP otišao stranci kao akt. Sada greška
+propagira: izlazno pismeno ostaje bez dokumenta, submission ide na `FAILED`, a retry priloži pravi
 akt.
 
 #### Neriješeno
 
-- **KP dostava** — vidi §KP otprema.
+- **KP dostava** — vidi `docs/KP-INTEGRACIJA.md`.
 - **Gubitak akta pri padu između commita i listenera.** Akt se zapisuje u AFTER_COMMIT; ako
   proces padne točno između, prijelaz je u `registration_number_log` a akta nema. Isti stupanj
   trajnosti kao postojeći registracijski put. Zatvorilo bi ga usklađivanje log ↔ akt.

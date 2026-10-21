@@ -158,21 +158,4 @@ public interface EgopClient {
 
     void obrisiDokumentPriloga(ObrisiDokumentPriloga request) throws EgopTransportException,
             EgopBadRequestException;
-
-    /**
-     * OtpremiPismenoUKorisnickiPretinac — otprema urudžbiranog izlaznog pismena u korisnički
-     * pretinac primatelja, po konfiguraciji slanja iz eGOP-a. Prilozi se ne otpremaju: STR
-     * pismenu prilaže samo glavni dokument.
-     *
-     * <p>Potpis je domenski, ne generirani DTO: metode nisu u specifikaciji v1.11 nego u
-     * zasebnom opisu InfoDoma, pa preslikavanje na WSDL tipove ostaje unutar implementacije.
-     *
-     * @param username {@code DOMENA\korisnik} operatera, kao u ostalim pozivima
-     */
-    void otpremiUKorisnickiPretinac(String username, int jop, String primateljOib, String napomena)
-            throws EgopTransportException, EgopBadRequestException;
-
-    /** DohvatiKPStatusPorukeSaVremenima — status i vremena poruke prethodno otpremljene u KP. */
-    KpStatusPoruke dohvatiKpStatusPoruke(String username, int jop, String primateljOib)
-            throws EgopTransportException, EgopBadRequestException, EgopParseException;
 }
