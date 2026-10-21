@@ -13,6 +13,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.regex.Pattern;
@@ -34,7 +37,8 @@ import java.util.regex.Pattern;
  * „registar ga ne poznaje"; 3xx/401/403 → poziv bez prijave; sve ostalo (5xx, timeout, nečitljiv
  * odgovor, greške bez podataka — v. {@link OibRegistryResponseMapper}) →
  * {@link ExternalRegistryException}, tj. 503. U log ide samo vrsta, status i trajanje — OIB i podaci
- * o osobi ne.
+ * o osobi ne. Iznimka je tijelo odgovora s greškom (osim 404 i 3xx/401/403), skraćeno i s maskiranim
+ * OIB-ovima: to je jedini trag uzroka koji vidimo s naše strane.
  */
 @Component
 @Conditional(OibRegistryConfig.AnyFlowEnabled.class)
@@ -43,6 +47,8 @@ public class OibRegistryHttpClient {
     static final String REGISTRY = "OIB";
     private static final String PATH = "/pretraga-registra/oib/{kind}/{oib}";
     private static final Pattern OIB = Pattern.compile("\\d{11}");
+    private static final Pattern OIB_ANYWHERE = Pattern.compile("(?<!\\d)\\d{11}(?!\\d)");
+    static final int ERROR_BODY_MAX = 500;
     private static final Logger log = LoggerFactory.getLogger(OibRegistryHttpClient.class);
 
     private final RestClient restClient;
@@ -82,6 +88,10 @@ public class OibRegistryHttpClient {
                                     "OIB sustav odbio poziv bez prijave (status " + status + ")");
                         }
                         if (!response.getStatusCode().is2xxSuccessful()) {
+                            // Bez tijela se iz našeg loga ne vidi ZAŠTO je servis pao (njegov log nam
+                            // nije dostupan). OIB-ovi se maskiraju, tijelo se skraćuje.
+                            log.warn("oib_registry_error kind={} status={} content_type={} body={}", kind, status,
+                                    response.getHeaders().getContentType(), errorBody(response.getBody()));
                             throw new ExternalRegistryException(REGISTRY, "OIB sustav vratio status " + status);
                         }
                         JsonNode body = response.bodyTo(JsonNode.class);
@@ -94,6 +104,18 @@ public class OibRegistryHttpClient {
             log.warn("oib_registry_lookup failed kind={} ms={} error={}",
                     kind, elapsedMs(start), e.getClass().getSimpleName());
             throw new ExternalRegistryException(REGISTRY, "OIB sustav nije dostupan", e);
+        }
+    }
+
+    /** Prvih {@value #ERROR_BODY_MAX} znakova, u jednom retku, s maskiranim OIB-ovima. */
+    static String errorBody(InputStream body) {
+        try (InputStream in = body) {
+            byte[] bytes = in.readNBytes(ERROR_BODY_MAX * 4);
+            String text = new String(bytes, StandardCharsets.UTF_8).replaceAll("\\s+", " ").strip();
+            text = OIB_ANYWHERE.matcher(text).replaceAll("{oib}");
+            return text.length() > ERROR_BODY_MAX ? text.substring(0, ERROR_BODY_MAX) + "…" : text;
+        } catch (IOException | RuntimeException e) {
+            return "<nečitljivo: " + e.getClass().getSimpleName() + ">";
         }
     }
 

@@ -93,6 +93,29 @@ class OibRegistryHttpClientTest {
         server.verify();
     }
 
+    /** Tijelo greške je jedini trag uzroka s naše strane — ali bez OIB-ova i u jednom retku. */
+    @Test
+    void errorBody_isMaskedAndTruncated() {
+        String body = "{\"status\":500,\n \"message\":\"Neuspjelo za OIB 12312312316\"}";
+        assertThat(OibRegistryHttpClient.errorBody(new java.io.ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8))))
+                .isEqualTo("{\"status\":500, \"message\":\"Neuspjelo za OIB {oib}\"}");
+
+        String dugo = "x".repeat(OibRegistryHttpClient.ERROR_BODY_MAX + 50);
+        assertThat(OibRegistryHttpClient.errorBody(new java.io.ByteArrayInputStream(dugo.getBytes(StandardCharsets.UTF_8))))
+                .hasSize(OibRegistryHttpClient.ERROR_BODY_MAX + 1)
+                .endsWith("…");
+    }
+
+    @Test
+    void serverErrorWithBody_isStillRegistryUnavailable() {
+        server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"error\":\"Internal Server Error\",\"trace\":\"java.lang.ClassCastException\"}"));
+
+        assertThatThrownBy(() -> client.findPerson(OIB)).isInstanceOf(ExternalRegistryException.class)
+                .hasMessageContaining("500");
+    }
+
     @Test
     void outsideHttpRequest_sendsNoCookie() {
         server.expect(requestTo(URL)).andExpect(headerDoesNotExist(HttpHeaders.COOKIE))
