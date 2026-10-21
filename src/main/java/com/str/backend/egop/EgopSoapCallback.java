@@ -47,6 +47,8 @@ class EgopSoapCallback {
             "http://www.infodom.hr/egov/DohvatiListuPrilogaPismena");
     static final SoapActionCallback PISMENO_OBRISI_DOKUMENT_PRILOGA_SOAP_ACTION = new SoapActionCallback(
             "http://www.infodom.hr/egov/ObrisiDokumentPriloga");
+    static final SoapActionCallback PISMENO_KREIRAJ_IZLAZNO_PISMENO_SOAP_ACTION = new SoapActionCallback(
+            "http://www.infodom.hr/egov/KreirajIzlaznoPismeno");
     // Korisnički pretinac — izvan specifikacije v1.11, opisano InfoDomovim mailom; actioni iz WSDL-a s testa.
     static final SoapActionCallback PISMENO_OTPREMI_U_KORISNICKI_PRETINAC_SOAP_ACTION = new SoapActionCallback(
             "http://www.infodom.hr/egov/OtpremiPismenoUKorisnickiPretinac");

@@ -7,8 +7,10 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.request.SubmissionEntity;
 import hr.infodom.egov.pismeno.DokumentInfo;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismeno;
+import hr.infodom.egov.pismeno.KreirajIzlaznoPismeno;
 import hr.infodom.egov.pismeno.KreirajPismeno2;
 import hr.infodom.egov.pismeno.PismenoBasicInfo2;
+import hr.infodom.egov.pismeno.PismenoInfo;
 import hr.infodom.egov.predmet.KreirajPredmet2;
 import hr.infodom.egov.predmet.OdrediRjesavatelja;
 import hr.infodom.egov.predmet.PredmetBasicInfo2;
@@ -107,9 +109,8 @@ class EgopFilingServiceTest {
         predmet.setKlasifikacijskaOznaka("334-01/26-01/55");
         when(egopClient.kreirajPredmet2(any())).thenReturn(predmet);
 
-        PismenoBasicInfo2 ulazno = pismeno(1001, "529-06/26-1");
-        PismenoBasicInfo2 izlazno = pismeno(1002, "529-06/26-2");
-        when(egopClient.kreirajPismeno2(any())).thenReturn(ulazno, izlazno);
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1001, "529-06/26-1"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1002, "529-06/26-2"));
         when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
 
         AtomicReference<FilingReference> seenZahtjev = new AtomicReference<>();
@@ -154,18 +155,23 @@ class EgopFilingServiceTest {
         assertEquals(559, predmetCaptor.getValue().getNadleznaOrgJedinica());
         assertEquals(42, predmetCaptor.getValue().getSubjektOznaka());
 
-        ArgumentCaptor<KreirajPismeno2> pismenoCaptor = ArgumentCaptor.forClass(KreirajPismeno2.class);
-        verify(egopClient, times(2)).kreirajPismeno2(pismenoCaptor.capture());
-        assertEquals("101", pismenoCaptor.getAllValues().get(0).getVrstaPismena());
-        assertEquals("102", pismenoCaptor.getAllValues().get(1).getVrstaPismena());
+        // Zahtjev je ulazno pismeno (KreirajPismeno2, sa subjektom), obavijest izlazno
+        // (KreirajIzlaznoPismeno) — eGOP smjer ne izvodi pouzdano iz vrste.
+        ArgumentCaptor<KreirajPismeno2> ulaznoCaptor = ArgumentCaptor.forClass(KreirajPismeno2.class);
+        verify(egopClient).kreirajPismeno2(ulaznoCaptor.capture());
+        assertEquals("101", ulaznoCaptor.getValue().getVrstaPismena());
+        ArgumentCaptor<KreirajIzlaznoPismeno> izlaznoCaptor = ArgumentCaptor.forClass(KreirajIzlaznoPismeno.class);
+        verify(egopClient).kreirajIzlaznoPismeno(izlaznoCaptor.capture());
+        assertEquals("102", izlaznoCaptor.getValue().getVrstaPismena());
+        assertEquals("Obavijest o dodjeli registracijskog broja", izlaznoCaptor.getValue().getNazivPismena());
         // Oba pismena moraju nositi predmet u koji idu. Kad eGOP nije uključen, urudžbeni broj
         // dodjeljuje LocalFilingNumberAllocator brojanjem pismena UNUTAR tog predmeta — regresija
         // na 0/null ovdje tiho svali sve predmete u isti brojač i razbije "podnesak 1, akt 2",
         // a da nijedan drugi test ne padne.
-        for (KreirajPismeno2 poslano : pismenoCaptor.getAllValues()) {
-            assertEquals(55, poslano.getRbrSpisa());
-            assertEquals((short) 2026, poslano.getUredskaGodina());
-        }
+        assertEquals(55, ulaznoCaptor.getValue().getRbrSpisa());
+        assertEquals((short) 2026, ulaznoCaptor.getValue().getUredskaGodina());
+        assertEquals(55, izlaznoCaptor.getValue().getRbrSpisa());
+        assertEquals((short) 2026, izlaznoCaptor.getValue().getUredskaGodina());
 
         ArgumentCaptor<KreirajDokumentZaPismeno> dokCaptor = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
         verify(egopClient, times(2)).kreirajDokumentZaPismeno(dokCaptor.capture());
@@ -228,8 +234,7 @@ class EgopFilingServiceTest {
                 EgopPismenoEntity.ACT_REF_REGISTRACIJA))
                 .thenReturn(Optional.of(postojeceUlazno));
 
-        PismenoBasicInfo2 izlazno = pismeno(1002, "529-06/26-2");
-        when(egopClient.kreirajPismeno2(any())).thenReturn(izlazno);
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1002, "529-06/26-2"));
         when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
 
         EgopFilingService.FilingResult result = service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
@@ -240,7 +245,8 @@ class EgopFilingServiceTest {
         verify(egopClient, never()).kreirajSubjekta(any());
         verify(egopClient, never()).kreirajPredmet2(any());
         // samo izlazno pismeno se kreira — ulazno već postoji
-        verify(egopClient, times(1)).kreirajPismeno2(any());
+        verify(egopClient, never()).kreirajPismeno2(any());
+        verify(egopClient, times(1)).kreirajIzlaznoPismeno(any());
         // ulazno već ima priložen dokument — prilaže se samo izlazni, bez duplikata
         verify(egopClient, times(1)).kreirajDokumentZaPismeno(any());
     }
@@ -290,8 +296,8 @@ class EgopFilingServiceTest {
         predmet.setKlasifikacijskaOznaka("334-01/26-01/55");
         when(egopClient.kreirajPredmet2(any())).thenReturn(predmet);
 
-        when(egopClient.kreirajPismeno2(any()))
-                .thenReturn(pismeno(1001, "529-06/26-1"), pismeno(1002, "529-06/26-2"));
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1001, "529-06/26-1"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1002, "529-06/26-2"));
         when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
     }
 
@@ -300,6 +306,15 @@ class EgopFilingServiceTest {
         p.setOperationSucceeded(true);
         p.setJop(jop);
         p.setUrBroj(urBroj);
+        return p;
+    }
+
+    private PismenoInfo izlazno(int jop, String urBroj) {
+        PismenoInfo p = new PismenoInfo();
+        p.setOperationSucceeded(true);
+        p.setJop(jop);
+        p.setUrBroj(urBroj);
+        p.setUI("I");
         return p;
     }
 
@@ -357,7 +372,7 @@ class EgopFilingServiceTest {
         postoji.setOperationSucceeded(true);
         when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
         when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o suspenziji registracijskog broja", "103"));
-        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1003, "529-06/26-3"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1003, "529-06/26-3"));
         when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-1",
                 "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "pdf".getBytes());
@@ -383,7 +398,7 @@ class EgopFilingServiceTest {
         predmet.setKlasifikacijskaOznaka("334-06/11-26/77");
         when(egopClient.kreirajPredmet2(any())).thenReturn(predmet);
         when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o suspenziji registracijskog broja", "103"));
-        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1003, "529-06-03/01-27-5-1"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1003, "529-06-03/01-27-5-1"));
         when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-1",
                 "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
@@ -405,8 +420,8 @@ class EgopFilingServiceTest {
         verify(egopClient).odrediRjesavatelja(rjesavatelj.capture());
         assertEquals("ana.sluzbenica", rjesavatelj.getValue().getRjesavatelj());
 
-        ArgumentCaptor<KreirajPismeno2> pismenoRequest = ArgumentCaptor.forClass(KreirajPismeno2.class);
-        verify(egopClient).kreirajPismeno2(pismenoRequest.capture());
+        ArgumentCaptor<KreirajIzlaznoPismeno> pismenoRequest = ArgumentCaptor.forClass(KreirajIzlaznoPismeno.class);
+        verify(egopClient).kreirajIzlaznoPismeno(pismenoRequest.capture());
         assertEquals("ana.sluzbenica", pismenoRequest.getValue().getUserName());
         assertEquals(77, pismenoRequest.getValue().getRbrSpisa());
 
@@ -438,7 +453,7 @@ class EgopFilingServiceTest {
         });
 
         verify(egopClient, never()).kreirajPredmet2(any());
-        verify(egopClient, never()).kreirajPismeno2(any());
+        verify(egopClient, never()).kreirajIzlaznoPismeno(any());
         assertEquals(null, seen.get(), "konačni dokument se ne renderira");
         ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
         verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
@@ -454,7 +469,7 @@ class EgopFilingServiceTest {
         postoji.setOperationSucceeded(true);
         when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
         when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o povlačenju registracijskog broja", "104"));
-        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1004, "529-06-03/01-27-5-2"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1004, "529-06-03/01-27-5-2"));
         when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-2",
                 "Obavijest o povlačenju registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());

@@ -15,6 +15,8 @@ import hr.infodom.egov.pismeno.DohvatiPodatkePismena;
 import hr.infodom.egov.pismeno.DohvatiPodatkePismenaResponse;
 import hr.infodom.egov.pismeno.DokumentInfo;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismeno;
+import hr.infodom.egov.pismeno.KreirajIzlaznoPismeno;
+import hr.infodom.egov.pismeno.KreirajIzlaznoPismenoResponse;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismenoResponse;
 import hr.infodom.egov.pismeno.KreirajPismeno2;
 import hr.infodom.egov.pismeno.KreirajPismeno2Response;
@@ -208,6 +210,17 @@ class EgopClientImpl implements EgopClient {
         var response = (KreirajPismeno2Response) call(
                 egopPismenoWebServiceTemplate, request, PISMENO_KREIRAJ_PISMENO_2_SOAP_ACTION);
         return (PismenoBasicInfo2) handleErrors(response.getKreirajPismeno2Result());
+    }
+
+    @Override
+    public PismenoInfo kreirajIzlaznoPismeno(KreirajIzlaznoPismeno request) throws EgopTransportException,
+            EgopBadRequestException {
+        var response = (KreirajIzlaznoPismenoResponse) call(
+                egopPismenoWebServiceTemplate, request, PISMENO_KREIRAJ_IZLAZNO_PISMENO_SOAP_ACTION);
+        if (response.getKreirajIzlaznoPismenoResult() == null) {
+            throw new EgopBadRequestException("KreirajIzlaznoPismeno nije vratio rezultat");
+        }
+        return (PismenoInfo) handleErrors(response.getKreirajIzlaznoPismenoResult());
     }
 
     @Override

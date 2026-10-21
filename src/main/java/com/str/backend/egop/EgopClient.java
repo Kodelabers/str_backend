@@ -9,6 +9,7 @@ import hr.infodom.egov.pismeno.DohvatiListuPrilogaPismena;
 import hr.infodom.egov.pismeno.DohvatiPodatkePismena;
 import hr.infodom.egov.pismeno.DokumentInfo;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismeno;
+import hr.infodom.egov.pismeno.KreirajIzlaznoPismeno;
 import hr.infodom.egov.pismeno.KreirajPismeno2;
 import hr.infodom.egov.pismeno.KreirajPrilogIPridruziDokument;
 import hr.infodom.egov.pismeno.ObrisiDokumentPriloga;
@@ -87,6 +88,15 @@ public interface EgopClient {
      * KreirajPismeno2 — jedini koji vraća UrBroj.
      */
     PismenoBasicInfo2 kreirajPismeno2(KreirajPismeno2 request) throws EgopTransportException,
+            EgopBadRequestException;
+
+    /**
+     * KreirajIzlaznoPismeno (spec str. 34–36) — izlazno pismeno u predmetu. {@code KreirajPismeno2}
+     * smjer ne prima, a eGOP ga ne izvodi uvijek iz vrste: na egopeaitest.mint.hr je obavijest
+     * pod vrstom „Obavijest" upisana kao ulazna, pa je otprema u KP odbijena („Pismeno mora biti
+     * izlazno!", 21.10.2026.).
+     */
+    PismenoInfo kreirajIzlaznoPismeno(KreirajIzlaznoPismeno request) throws EgopTransportException,
             EgopBadRequestException;
 
     void stornirajPismeno(StornirajPismeno request) throws EgopTransportException,

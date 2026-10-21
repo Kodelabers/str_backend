@@ -7,6 +7,7 @@ import hr.infodom.egov.pismeno.DohvatiListuPrilogaPismena;
 import hr.infodom.egov.pismeno.DohvatiPodatkePismena;
 import hr.infodom.egov.pismeno.DokumentInfo;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismeno;
+import hr.infodom.egov.pismeno.KreirajIzlaznoPismeno;
 import hr.infodom.egov.pismeno.KreirajPismeno2;
 import hr.infodom.egov.pismeno.KreirajPrilogIPridruziDokument;
 import hr.infodom.egov.pismeno.ObrisiDokumentPriloga;
@@ -238,6 +239,20 @@ class EgopClientMock implements EgopClient {
         mockResponse.setOperationSucceeded(true);
         mockResponse.setJop(request.getRbrSpisa() * 100 + urBroj.redni());
         mockResponse.setUrBroj(urBroj.vrijednost());
+        return mockResponse;
+    }
+
+    @Override
+    public PismenoInfo kreirajIzlaznoPismeno(KreirajIzlaznoPismeno request) {
+        log.info("Mock eGOP kreirajIzlaznoPismeno called: vrsta={}, rbrSpisa={}, uredskaGodina={}",
+                request.getVrstaPismena(), request.getRbrSpisa(), request.getUredskaGodina());
+        LocalFilingNumberAllocator.UrBroj urBroj =
+                allocator.nextUrBroj(request.getUredskaGodina(), request.getRbrSpisa());
+        PismenoInfo mockResponse = new PismenoInfo();
+        mockResponse.setOperationSucceeded(true);
+        mockResponse.setJop(request.getRbrSpisa() * 100 + urBroj.redni());
+        mockResponse.setUrBroj(urBroj.vrijednost());
+        mockResponse.setUI("I");
         return mockResponse;
     }
 

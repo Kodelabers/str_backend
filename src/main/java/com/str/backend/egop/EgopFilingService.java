@@ -9,8 +9,10 @@ import com.str.backend.egop.exception.EgopException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.request.SubmissionEntity;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismeno;
+import hr.infodom.egov.pismeno.KreirajIzlaznoPismeno;
 import hr.infodom.egov.pismeno.KreirajPismeno2;
 import hr.infodom.egov.pismeno.PismenoBasicInfo2;
+import hr.infodom.egov.pismeno.PismenoInfo;
 import hr.infodom.egov.predmet.DohvatiPodatkePredmeta;
 import hr.infodom.egov.predmet.KreirajPredmet2;
 import hr.infodom.egov.predmet.OdrediRjesavatelja;
@@ -350,10 +352,9 @@ public class EgopFilingService {
         }
 
         Kreirano kreirano = kreirajPismeno(submission.getEgopUredskaGodina(), submission.getEgopRbrPredmeta(),
-                vrstaNaziv, subjektOznaka, lessor.getLessorOib(), appUsername);
-        PismenoBasicInfo2 pismeno = kreirano.pismeno();
+                vrstaNaziv, smjer, subjektOznaka, lessor.getLessorOib(), appUsername);
         EgopPismenoEntity saved = store.savePismeno(EgopPismenoEntity.create(
-                submission.getSubmissionId(), vrstaNaziv, smjer, pismeno.getJop(), pismeno.getUrBroj(),
+                submission.getSubmissionId(), vrstaNaziv, smjer, kreirano.jop(), kreirano.urBroj(),
                 kreirano.vrsta().sifra(), kreirano.vrsta().privremena()));
         if (smjer == EgopPismenoEntity.Smjer.IZLAZNO) {
             kpOtprema.register(saved, lessor, submission.getCreatedAt());
@@ -361,13 +362,32 @@ public class EgopFilingService {
         return saved;
     }
 
-    /** Odgovor eGOP-a + šifra vrste pod kojom je pismeno stvarno urudžbirano. */
-    private record Kreirano(PismenoBasicInfo2 pismeno, EgopVrstaResolver.Vrsta vrsta) {}
+    /** JOP i urbroj novog pismena + šifra vrste pod kojom je stvarno urudžbirano. */
+    private record Kreirano(int jop, String urBroj, EgopVrstaResolver.Vrsta vrsta) {}
 
+    /**
+     * Ulazno pismeno ide kroz {@code KreirajPismeno2} (sa subjektom), izlazno kroz
+     * {@code KreirajIzlaznoPismeno}: {@code KreirajPismeno2} smjer ne prima, a eGOP ga ne izvodi
+     * pouzdano iz vrste — na MINT-ovom testu je obavijest pod vrstom „Obavijest" postala ulazna i
+     * otprema u KP je odbijena (21.10.2026.).
+     */
     private Kreirano kreirajPismeno(int uredskaGodina, int rbrPredmeta, String vrstaNaziv,
-                                    Integer subjektOznaka, String subjektOib, String korisnik)
-            throws EgopException {
+                                    EgopPismenoEntity.Smjer smjer, Integer subjektOznaka, String subjektOib,
+                                    String korisnik) throws EgopException {
         EgopVrstaResolver.Vrsta vrsta = vrste.vrstaPismena(vrstaNaziv);
+        if (smjer == EgopPismenoEntity.Smjer.IZLAZNO) {
+            KreirajIzlaznoPismeno request = new KreirajIzlaznoPismeno();
+            request.setUserName(korisnik);
+            request.setRbrSpisa(rbrPredmeta);
+            request.setUredskaGodina((short) uredskaGodina);
+            request.setVrstaPismena(vrsta.sifra());
+            request.setNazivPismena(vrstaNaziv);
+            request.setDatumNastanka(EgopDates.toXml(LocalDateTime.now()));
+            PismenoInfo pismeno = egopClient.kreirajIzlaznoPismeno(request);
+            log.debug("egop_izlazno_pismeno jop={} urbroj={} ui={}", pismeno.getJop(), pismeno.getUrBroj(),
+                    pismeno.getUI());
+            return new Kreirano(pismeno.getJop(), pismeno.getUrBroj(), vrsta);
+        }
         KreirajPismeno2 request = new KreirajPismeno2();
         request.setUserName(korisnik);
         request.setRbrSpisa(rbrPredmeta);
@@ -379,7 +399,8 @@ public class EgopFilingService {
         // eGOP-u vidi o kojem je aktu riječ kad je šifra vrste privremena.
         request.setNazivPismena(vrstaNaziv);
         request.setDatumNastanka(EgopDates.toXml(LocalDateTime.now()));
-        return new Kreirano(egopClient.kreirajPismeno2(request), vrsta);
+        PismenoBasicInfo2 pismeno = egopClient.kreirajPismeno2(request);
+        return new Kreirano(pismeno.getJop(), pismeno.getUrBroj(), vrsta);
     }
 
     /**
@@ -420,12 +441,11 @@ public class EgopFilingService {
 
         if (!akt.isFiled()) {
             Kreirano kreirano = kreirajPismeno(submission.getEgopAktiUredskaGodina(),
-                    submission.getEgopAktiRbrPredmeta(), akt.getVrstaPismenaNaziv(), subjektOznaka,
+                    submission.getEgopAktiRbrPredmeta(), akt.getVrstaPismenaNaziv(), akt.getSmjer(), subjektOznaka,
                     lessor.getLessorOib(), korisnik);
-            PismenoBasicInfo2 pismeno = kreirano.pismeno();
-            akt.applyPismeno(pismeno.getJop(), pismeno.getUrBroj(), kreirano.vrsta().sifra(),
+            akt.applyPismeno(kreirano.jop(), kreirano.urBroj(), kreirano.vrsta().sifra(),
                     kreirano.vrsta().privremena());
-            store.applyPismeno(akt.getId(), pismeno.getJop(), pismeno.getUrBroj(),
+            store.applyPismeno(akt.getId(), kreirano.jop(), kreirano.urBroj(),
                     kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
         }
 
