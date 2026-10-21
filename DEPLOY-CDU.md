@@ -402,6 +402,43 @@ pa korak 7 i ponoviti točku 4. U `docker logs` se tada vidi `CertificateRequest
 `Produced client Certificate message` od nas. Ispis je velik (i za NIAS) — **odmah nakon toga
 ukloniti** redak i ponovo korak 7.
 
+### 8c. Zajednička sesija i OIB sustav
+
+Sesije više nisu u `str_rn.spring_session`, nego u zajedničkoj tablici `session.spring_session`.
+Tablica je u istoj bazi i drži je str-internal-api. Na OIB sustav (`et2-test-internal-eturizam.gov.hr/str-internal-api`,
+iza NIAS-a) šaljemo korisnikov cookie `SESSION`, pa ga taj servis prepoznaje kao prijavljenog
+(`SharedSessionCookieInterceptor`). OIB sustav je uključen u `application-cdu.properties` (FO i
+PO). Za povratak na stare postavke bez rebuilda, u `.env.cdu` postaviti
+`SPRING_SESSION_TABLE=str_rn.spring_session` i `APP_OIB_REGISTRY_ENABLED=false`
+(+ `APP_OIB_REGISTRY_LEGAL_ENTITY_ENABLED=false`), pa korak 7.
+
+**Prije prvog deploya**, psql s **našim** DB userom:
+
+```sql
+\d session.spring_session                -- stupci kao naš changeset 024 (Spring Session 3.x)
+\d session.spring_session_attributes
+SELECT has_schema_privilege('session', 'USAGE'),
+       has_table_privilege('session.spring_session', 'SELECT,INSERT,UPDATE,DELETE'),
+       has_table_privilege('session.spring_session_attributes', 'SELECT,INSERT,UPDATE,DELETE');
+```
+
+Ako ijedan rezultat bude `f`, nijedna sesija se ne može spremiti i **svaki** zahtjev pada s 500.
+Deploy odjavljuje sve korisnike, jer se mijenja tablica sesija.
+
+**Nakon deploya** (NIAS prijava u pregledniku):
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "oib_registry( base|_lookup)" | tail -5
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `oib_registry_lookup kind=FO status=200` | servis je prepoznao sesiju |
+| `kind=FO status=302` | servis sesiju **nije** prepoznao. Provjeriti je li red u `session.spring_session` (`SELECT session_id, principal_name FROM session.spring_session ORDER BY last_access_time DESC LIMIT 5`) i jesu li verzije Spring Securityja na obje strane kompatibilne (deserijalizacija `SPRING_SECURITY_CONTEXT`) |
+| `SerializationFailedException` u logu | jedna strana ne može pročitati atribut druge. Javiti kolegi s nazivom klase iz iznimke |
+
+Zatim provjeriti da `GET /api/nias/me` i dalje vraća 200, tj. da njihov servis nije zamijenio sesiju.
+
 ## 9. Iz browsera
 
 ```

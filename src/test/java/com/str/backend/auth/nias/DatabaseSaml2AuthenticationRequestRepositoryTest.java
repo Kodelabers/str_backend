@@ -143,6 +143,32 @@ class DatabaseSaml2AuthenticationRequestRepositoryTest {
     }
 
     @Test
+    @DisplayName("?returnTo= se sprema uz zahtjev i na ACS-u prelazi u request atribut")
+    void returnTo_travelsWithRequest() {
+        MockHttpServletRequest start = new MockHttpServletRequest("GET", "/saml2/authenticate/nias");
+        start.addParameter(NiasReturnTo.PARAM, "/moji-rb?x=1");
+        repo.saveAuthenticationRequest(saved(), start, new MockHttpServletResponse());
+
+        MockHttpServletRequest acs = acsRequest(REQ_ID);
+        repo.removeAuthenticationRequest(acs, new MockHttpServletResponse());
+
+        assertThat(acs.getAttribute(NiasReturnTo.REQUEST_ATTR)).isEqualTo("/moji-rb?x=1");
+    }
+
+    @Test
+    @DisplayName("neispravan ?returnTo= se ne sprema")
+    void invalidReturnTo_isNotStored() {
+        MockHttpServletRequest start = new MockHttpServletRequest("GET", "/saml2/authenticate/nias");
+        start.addParameter(NiasReturnTo.PARAM, "https://evil.com");
+        repo.saveAuthenticationRequest(saved(), start, new MockHttpServletResponse());
+
+        assertThat(store.rows.get(REQ_ID).getReturnTo()).isNull();
+        MockHttpServletRequest acs = acsRequest(REQ_ID);
+        repo.removeAuthenticationRequest(acs, new MockHttpServletResponse());
+        assertThat(acs.getAttribute(NiasReturnTo.REQUEST_ATTR)).isNull();
+    }
+
+    @Test
     @DisplayName("save(null) je Springov način brisanja — ne smije puknuti na NPE")
     void save_null_removesInstead() {
         repo.saveAuthenticationRequest(saved(), new MockHttpServletRequest(), new MockHttpServletResponse());

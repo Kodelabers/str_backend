@@ -13,6 +13,7 @@ import org.opensaml.saml.saml2.core.impl.NameIDPolicyBuilder;
 import org.opensaml.saml.saml2.core.impl.OneTimeUseBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -153,8 +154,8 @@ public class NiasSamlConfig {
     }
 
     /**
-     * Aktivan samo uz {@code nias.saml.request-store=database}. Bez njega Spring koristi svoj
-     * {@code HttpSessionSaml2AuthenticationRequestRepository}, pa se ponašanje okolina iza
+     * Aktivan samo uz {@code nias.saml.request-store=database}. Bez njega AuthnRequest ostaje u
+     * sesiji ({@link #niasSessionAuthenticationRequestRepository()}), pa se ponašanje okolina iza
      * HTTPS-a (CDU) ne mijenja.
      */
     @Bean
@@ -164,6 +165,16 @@ public class NiasSamlConfig {
         log.info("NIAS AuthnRequest se sprema u bazu (str_rn.saml_auth_request), ne u HttpSession — "
                 + "sesijski cookie nije potreban na povratku s NIAS-a");
         return new DatabaseSaml2AuthenticationRequestRepository(store, registrations, clock);
+    }
+
+    /**
+     * Komplement gornjeg beana: bez {@code database} AuthnRequest ostaje u sesiji kao i dosad, samo
+     * uz zapamćeni {@code ?returnTo=} ({@link NiasReturnTo}).
+     */
+    @Bean
+    @ConditionalOnExpression("!'${nias.saml.request-store:}'.equalsIgnoreCase('database')")
+    public Saml2AuthenticationRequestRepository<AbstractSaml2AuthenticationRequest> niasSessionAuthenticationRequestRepository() {
+        return new SessionReturnToAuthenticationRequestRepository();
     }
 
     @Bean
@@ -225,7 +236,7 @@ public class NiasSamlConfig {
                     sessionRegistry.register(currentPrincipal.getName(), sessionIndex, request.getSession());
                 }
             }
-            response.sendRedirect(props.successRedirectUrl());
+            response.sendRedirect(NiasReturnTo.redirectTarget(request, props.successRedirectUrl()));
         };
     }
 

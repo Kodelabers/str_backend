@@ -1,5 +1,6 @@
 package com.str.backend.registries.oib;
 
+import com.str.backend.auth.SharedSessionCookieInterceptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.AnyNestedCondition;
@@ -51,9 +52,17 @@ public class OibRegistryConfig {
         properties.requireComplete();
         log.info("oib_registry base={} person={} legal_entity={}",
                 properties.baseUrl(), properties.enabled(), properties.legalEntityEnabled());
-        // Bez slijeđenja preusmjerenja: servis je bio iza NIAS-a i anonimni poziv dobivao 302 na
-        // /saml2/authenticate/nias. Slijeđen, takav bi 302 završio HTML stranicom prijave i u logu
-        // bi pisalo „nečitljiv odgovor"; ovako piše status 302, tj. da poziv nije autoriziran.
+        return configure(RestClient.builder(), properties).build();
+    }
+
+    /**
+     * Servis je iza NIAS-a: poziv nosi korisnikovu sesiju iz zajedničke tablice
+     * ({@link SharedSessionCookieInterceptor}). Izdvojeno da test koristi isti builder.
+     */
+    static RestClient.Builder configure(RestClient.Builder builder, OibRegistryProperties properties) {
+        // Bez slijeđenja preusmjerenja: anonimni poziv, ili sesija koju servis ne prepozna, dobije
+        // 302 na /saml2/authenticate/nias. Slijeđen, takav bi 302 završio HTML stranicom prijave i u
+        // logu bi pisalo „nečitljiv odgovor"; ovako piše status 302, tj. da poziv nije autoriziran.
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
             @Override
             protected void prepareConnection(HttpURLConnection connection, String httpMethod)
@@ -64,9 +73,9 @@ public class OibRegistryConfig {
         };
         factory.setConnectTimeout(properties.effectiveConnectTimeoutMs());
         factory.setReadTimeout(properties.effectiveReadTimeoutMs());
-        return RestClient.builder()
+        return builder
                 .baseUrl(properties.baseUrl())
                 .requestFactory(factory)
-                .build();
+                .requestInterceptor(new SharedSessionCookieInterceptor());
     }
 }

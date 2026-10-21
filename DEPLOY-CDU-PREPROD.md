@@ -521,6 +521,13 @@ Redoslijed jutarnjeg oporavka (`tools/cdupreprod-nightly.sh`, cron **nakon** nji
 - **Ako `databasechangelog` preživi drop, a ostale tablice ne**, Liquibase neće ništa kreirati i
   aplikacija se digne nad praznom shemom (vidi A1/6b). `bootstrap` to otkriva i javlja s točnim
   popravkom; popravak je u našoj nadležnosti jer smo vlasnici sheme.
+- **Zajednička sesija (`session.spring_session`).** Sesije su u tablici str-internal-api, ne u
+  `str_rn` (vidi DEPLOY-CDU.md §8c: provjere prava i dijagnostika su iste). Te tablice NISU naše:
+  ako ih reset dropa, a str-internal-api ih ne vrati prije našeg restarta, nijedna sesija se ne
+  može spremiti i svaki zahtjev pada s 500. **OTVORENO:** potvrditi s kolegom (str-internal-api)
+  i DBA-om preživljavaju li `session.*` reset i tko ih vraća. Hitno vraćanje bez rebuilda:
+  `SPRING_SESSION_TABLE=str_rn.spring_session` i `APP_OIB_REGISTRY_ENABLED=false`
+  (+ `APP_OIB_REGISTRY_LEGAL_ENTITY_ENABLED=false`) u `.env.cdupreprod`, pa restart.
 
 ## C4. Repo rad — ✅ napravljeno
 

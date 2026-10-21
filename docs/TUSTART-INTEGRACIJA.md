@@ -229,10 +229,15 @@ sadržaj 400 `error.categorization.file.type`.
 ## 7. Napomene za STR frontend
 
 - **Identitet** (ime/prezime/OIB) iz NIAS sesije (`GET /api/nias/me`), nikad iz URL-a.
-- **Param survival:** kod hladnog ulaska (nema STR sesije) ide redirect na NIAS i query parametri se
-  gube. Frontend prije skoka na NIAS sprema puni URL s upitom u `sessionStorage` (`nias:return-to`),
-  a nakon povratka na `nias.saml.success-redirect-url` (`/new-registration-number`) vraća korisnika
-  na njega. Zato `NIAS_SUCCESS_REDIRECT_URL` mora pokazivati na `/new-registration-number`.
+- **Param survival:** kod hladnog ulaska (nema STR sesije) ide redirect na NIAS. Frontend prijavu
+  pokreće s `/saml2/authenticate/nias?returnTo=<URL-encoded put s upitom>`, npr.
+  `returnTo=%2Fnew-registration-number%3FfacilityId%3D123`. Backend put pamti uz AuthnRequest i
+  nakon prijave vodi korisnika na `origin(NIAS_SUCCESS_REDIRECT_URL) + returnTo` (`NiasReturnTo`).
+  Uz postojeću NIAS SSO sjednicu (dolazak iz TuStarta) to je tihi povratak, bez unosa podataka.
+  Prihvaća se samo relativan put (`/…`, ne `//…`, bez sheme i hosta, najviše 2048 znakova); bez
+  parametra ili s neispravnim prijava završava na `nias.saml.success-redirect-url`
+  (`/new-registration-number`). Raniji FE mehanizam (`sessionStorage` `nias:return-to`) smije ostati
+  kao rezerva, ali ne smije prepisati odredište na koje je backend već preusmjerio.
 - **Adresni autocomplete:** primljene nazive (`county`/`municipality`/`settlement`) razriješiti u
   stavke kaskade (da se uhvate ID-evi koje submit traži); ako string ne pogodi, ostaviti korisniku.
 
