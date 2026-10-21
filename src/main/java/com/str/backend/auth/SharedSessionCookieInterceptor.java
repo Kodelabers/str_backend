@@ -1,6 +1,8 @@
 package com.str.backend.auth;
 
 import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpRequest;
 import org.springframework.http.client.ClientHttpRequestExecution;
@@ -29,6 +31,8 @@ import java.util.Base64;
  */
 public class SharedSessionCookieInterceptor implements ClientHttpRequestInterceptor {
 
+    private static final Logger log = LoggerFactory.getLogger(SharedSessionCookieInterceptor.class);
+
     static final String COOKIE_NAME = "SESSION";
 
     @Override
@@ -38,6 +42,11 @@ public class SharedSessionCookieInterceptor implements ClientHttpRequestIntercep
         if (session != null) {
             String value = Base64.getEncoder().encodeToString(session.getId().getBytes(StandardCharsets.UTF_8));
             request.getHeaders().add(HttpHeaders.COOKIE, COOKIE_NAME + "=" + value);
+        } else {
+            // Bez ovoga se u logu vidi samo 302 servisa, a ne da cookie uopće nije poslan.
+            log.warn("shared_session_cookie_missing path={} reason={} — servis će vratiti 302",
+                    request.getURI().getPath().replaceAll("\\d{11}", "{oib}"),
+                    RequestContextHolder.getRequestAttributes() == null ? "izvan_http_zahtjeva" : "nema_sesije");
         }
         return execution.execute(request, body);
     }

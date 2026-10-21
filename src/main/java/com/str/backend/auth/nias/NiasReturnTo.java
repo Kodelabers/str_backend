@@ -1,6 +1,8 @@
 package com.str.backend.auth.nias;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -21,6 +23,8 @@ import java.util.Optional;
  * ignorira i prijava završava na fiksnom URL-u, kao i bez parametra.
  */
 public final class NiasReturnTo {
+
+    private static final Logger log = LoggerFactory.getLogger(NiasReturnTo.class);
 
     public static final String PARAM = "returnTo";
     static final String SESSION_KEY = NiasReturnTo.class.getName() + ".RETURN_TO";
@@ -61,6 +65,23 @@ public final class NiasReturnTo {
         return Optional.of(raw);
     }
 
+    /**
+     * {@code ?returnTo=} iz zahtjeva za prijavu, ako je siguran. Odbijena vrijednost se logira
+     * (duljina, ne sadržaj: upit može nositi podatke iz forme), da se FE greška ne vidi samo kao
+     * „završio sam na početnoj".
+     */
+    static Optional<String> fromRequest(HttpServletRequest request) {
+        String raw = request.getParameter(PARAM);
+        if (raw == null) {
+            return Optional.empty();
+        }
+        Optional<String> safe = sanitize(raw);
+        if (safe.isEmpty()) {
+            log.warn("nias_return_to_rejected length={} — prijava završava na success-redirect-url", raw.length());
+        }
+        return safe;
+    }
+
     /** Origin (shema, host, port) success URL-a + put. */
     static String target(String successRedirectUrl, String returnTo) {
         URI success = URI.create(successRedirectUrl);
@@ -69,8 +90,10 @@ public final class NiasReturnTo {
 
     /** Kamo success handler šalje korisnika: na zapamćeni put ako ga ima, inače na fiksni URL. */
     static String redirectTarget(HttpServletRequest request, String successRedirectUrl) {
-        return request.getAttribute(REQUEST_ATTR) instanceof String returnTo
-                ? target(successRedirectUrl, returnTo)
+        boolean remembered = request.getAttribute(REQUEST_ATTR) instanceof String;
+        log.info("nias_login_redirect return_to={}", remembered);
+        return remembered
+                ? target(successRedirectUrl, (String) request.getAttribute(REQUEST_ATTR))
                 : successRedirectUrl;
     }
 }

@@ -439,14 +439,33 @@ DELETE FROM str_rn.spring_session;       -- atributi se brišu kaskadno (FK u ch
 Preskočiti ako se planira povratak bez rebuilda (`SPRING_SESSION_TABLE=str_rn.spring_session`)
 — nakon povratka korisnici se ionako moraju ponovno prijaviti.
 
-**Nakon deploya** (NIAS prijava u pregledniku):
+**Na startu** backend sam provjerava prava na tablici sesija:
 
 ```bash
-docker logs str-backend-cdu 2>&1 | grep -E "oib_registry( base|_lookup)" | tail -5
+docker logs str-backend-cdu 2>&1 | grep startup_session_store
 ```
 
 | Redak | Značenje |
 | :--- | :--- |
+| `startup_session_store tablica=session.spring_session prava=[SELECT, INSERT, UPDATE, DELETE]` (i za `_ATTRIBUTES`) | u redu |
+| `startup_session_store_missing_privileges … nedostaje=[…]` | **svaki zahtjev pada s 500**. GRANT traži od vlasnika tablice, ili vrati `SPRING_SESSION_TABLE=str_rn.spring_session` |
+| `startup_session_store_unreadable` | tablica ne postoji (npr. noćni reset na cdupreprodu) ili nema USAGE na shemi `session` |
+
+Ako se to dogodi dok backend radi, u logu je Tomcatov stack trace s
+`permission denied for table spring_session` ili `relation "session.spring_session" does not exist`.
+
+**Nakon deploya** (NIAS prijava u pregledniku):
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "oib_registry|shared_session_cookie|nias_login|nias_return_to" | tail -10
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `nias_login_redirect return_to=true` | korisnik je vraćen na put iz `?returnTo=` |
+| `nias_login_redirect return_to=false` | prijava je završila na `success-redirect-url`. FE nije poslao `returnTo`, ili ga je poslao, a u sesijskom načinu se izgubio na ACS-u |
+| `nias_return_to_rejected length=N` | FE je poslao put koji nije prošao provjeru (apsolutni URL, `//`, ne-ASCII…) |
+| `shared_session_cookie_missing reason=nema_sesije` | poziv OIB sustavu otišao je bez sesije, pa slijedi 302 i fallback |
 | `oib_registry_lookup kind=FO status=200` | servis je prepoznao sesiju |
 | `oib_registry_fallback reason=not_found` | OIB sustav osobu ne zna; ime i adresa dolaze iz `str.subject*` (kao prije) |
 | `oib_registry_fallback reason=unavailable` | OIB sustav nije odgovorio ili je vratio 302/5xx; korisnik dobiva podatke iz `str.subject*`. Uzrok je u retku `oib_registry_lookup` prije toga |
