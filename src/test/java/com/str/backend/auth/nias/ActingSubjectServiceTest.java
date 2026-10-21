@@ -186,17 +186,49 @@ class ActingSubjectServiceTest {
         verify(client, times(2)).representedCompanies(any(), any());
     }
 
-    /** Keš ide u Spring Session JDBC, pa mora preživjeti serijalizaciju. */
+    /** Keš ide u Spring Session JDBC kao mapa JDK tipova, pa mora preživjeti serijalizaciju i povratak. */
     @Test
-    void cachedOptions_areSerializable() throws Exception {
+    void cachedOptions_surviveSessionRoundTrip() throws Exception {
         ActingSubjectService.CachedOptions original = new ActingSubjectService.CachedOptions(PERSON,
                 Instant.parse("2026-09-29T10:00:00Z"), List.of(new ZastupanaTvrtka(COMPANY, "TVRTKA")), false);
+
+        Object stored = roundTrip(original.toSessionValue());
+
+        assertThat(ActingSubjectService.CachedOptions.fromSessionValue(stored)).contains(original);
+    }
+
+    @Test
+    void actingSubject_survivesSessionRoundTrip() throws Exception {
+        ActingSubject original = new ActingSubject(COMPANY, "TVRTKA", List.of("Direktor"), PERSON, "Ana", "Horvat",
+                Instant.parse("2026-09-29T10:00:00Z"));
+
+        assertThat(ActingSubject.fromSessionValue(roundTrip(original.toSessionValue()))).contains(original);
+    }
+
+    /** Sesija spremljena prije prelaska na JDK tipove i dalje vrijedi dok ne istekne. */
+    @Test
+    void legacySessionValues_areStillRead() {
+        ActingSubject subject = new ActingSubject(COMPANY, "TVRTKA", List.of("Direktor"), PERSON, "Ana", "Horvat",
+                Instant.parse("2026-09-29T10:00:00Z"));
+        session.setAttribute(ActingSubjectService.SESSION_KEY, subject);
+
+        assertThat(service.current(session, PERSON)).contains(subject);
+    }
+
+    @Test
+    void damagedSessionValue_meansNoSubject() {
+        session.setAttribute(ActingSubjectService.SESSION_KEY, Map.of("legalOib", COMPANY));
+
+        assertThat(service.current(session, PERSON)).isEmpty();
+    }
+
+    private static Object roundTrip(Object value) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
-            out.writeObject(original);
+            out.writeObject(value);
         }
         try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes.toByteArray()))) {
-            assertThat(in.readObject()).isEqualTo(original);
+            return in.readObject();
         }
     }
 

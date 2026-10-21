@@ -35,7 +35,7 @@ public class SessionReturnToAuthenticationRequestRepository
         }
         // Nova prijava uvijek prepisuje put prethodne, pa napuštena prijava ne ostavlja svoj put.
         HttpSession session = request.getSession();
-        NiasReturnTo.sanitize(request.getParameter(NiasReturnTo.PARAM)).ifPresentOrElse(
+        NiasReturnTo.fromRequest(request).ifPresentOrElse(
                 returnTo -> session.setAttribute(NiasReturnTo.SESSION_KEY, returnTo),
                 () -> session.removeAttribute(NiasReturnTo.SESSION_KEY));
     }

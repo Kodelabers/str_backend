@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -41,6 +42,9 @@ public class StartupDiagnostics {
             new SchemaProbe("str", "country", "padajući izbornik država"),
             new SchemaProbe("rpj_dgu", "zupanije", "adresna kaskada u registracijskom formularu"),
             new SchemaProbe("eturizam_test", "ar_ulice", "ulice i kućni brojevi u formularu"));
+
+    /** Spring Session JDBC čita, upisuje, produžuje i briše (cleanup) sesije. */
+    private static final List<String> SESSION_PRIVILEGES = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
 
     private final Environment env;
     private final JdbcTemplate jdbc;
@@ -165,6 +169,7 @@ public class StartupDiagnostics {
         }
 
         PROBES.forEach(this::probeOne);
+        probeSessionStore();
 
         // Odrediste FacilityRegistrationNumberWriteBack-a (upis broja i brisanje povucenog). Bez
         // UPDATE prava RB se svejedno izda i povuce, ali se ne upise natrag u eTurizam. Provjerava
@@ -203,6 +208,40 @@ public class StartupDiagnostics {
             log.error("startup_schema_unreadable tablica={} — shema je dostupna, ali tablica nije "
                             + "(nema SELECT ili tablica ne postoji). Ne radi: {}. Uzrok: {}",
                     qualified, probe.brokenIfMissing(), e.getMessage());
+        }
+    }
+
+    /**
+     * Tablica sesija ({@code spring.session.jdbc.table-name}) i njezina {@code _ATTRIBUTES}. Na
+     * cdu/cdupreprod je tuđa ({@code session.spring_session}, str-internal-api), a noćni reset na
+     * cdupreprodu dropa tablice. Bez prava aplikacija se digne uredno, ali svaki zahtjev pada s 500
+     * pri spremanju sesije, i u logu ostane samo Tomcatov stack trace. Svako pravo se pita zasebno:
+     * {@code has_table_privilege} s popisom vraća true čim postoji bilo koje.
+     */
+    private void probeSessionStore() {
+        String table = env.getProperty("spring.session.jdbc.table-name", "SPRING_SESSION");
+        for (String t : List.of(table, table + "_ATTRIBUTES")) {
+            List<String> missing = new ArrayList<>();
+            try {
+                for (String privilege : SESSION_PRIVILEGES) {
+                    Boolean has = jdbc.queryForObject("select has_table_privilege(?, ?)", Boolean.class, t, privilege);
+                    if (!Boolean.TRUE.equals(has)) {
+                        missing.add(privilege);
+                    }
+                }
+            } catch (RuntimeException e) {
+                log.error("startup_session_store_unreadable tablica={} — tablica ne postoji ili nema USAGE na "
+                                + "shemi. Nijedna sesija se ne može spremiti: SVAKI zahtjev pada s 500. "
+                                + "DEPLOY-CDU.md §8c. Uzrok: {}", t, e.getMessage());
+                continue;
+            }
+            if (missing.isEmpty()) {
+                log.info("startup_session_store tablica={} prava={}", t, SESSION_PRIVILEGES);
+            } else {
+                log.error("startup_session_store_missing_privileges tablica={} nedostaje={} — sesija se ne "
+                        + "može spremiti ili produžiti: SVAKI zahtjev pada s 500. GRANT traži od vlasnika "
+                        + "tablice. DEPLOY-CDU.md §8c", t, missing);
+            }
         }
     }
 

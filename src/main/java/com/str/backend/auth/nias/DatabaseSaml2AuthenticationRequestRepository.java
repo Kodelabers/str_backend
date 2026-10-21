@@ -69,7 +69,7 @@ public class DatabaseSaml2AuthenticationRequestRepository
                 authenticationRequest.getAuthenticationRequestUri(),
                 authenticationRequest.getRelyingPartyRegistrationId(),
                 now,
-                NiasReturnTo.sanitize(request.getParameter(NiasReturnTo.PARAM)).orElse(null)));
+                NiasReturnTo.fromRequest(request).orElse(null)));
 
         // Čišćenje se vozi ovdje umjesto zasebnim @Scheduled poslom: tablica raste samo kad netko
         // krene u prijavu, pa je to točan trenutak za brisanje zaostataka i nema posla koji se
