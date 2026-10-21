@@ -29,12 +29,15 @@ import java.util.Map;
 public record EgopVrsteProperties(Sifre sifre, Nazivi nazivi) {
 
     /**
+     * @param predmetAkti     vrsta predmeta za akte nakon dodjele (suspenzija, povlačenje,
+     *                        reaktivacija, opoziv) — klasa 334-06/11
      * @param pismena         šifra po slugu {@code StrDocumentType} (npr. {@code suspenzija})
      * @param pismenaFallback šifra za svaku vrstu pismena koja nije razriješena drukčije;
      *                        prazno = nerazriješena vrsta je greška
      */
     public record Sifre(
             String predmet,
+            String predmetAkti,
             Integer ustroj,
             String subjektFizicka,
             String subjektPravna,
@@ -50,6 +53,7 @@ public record EgopVrsteProperties(Sifre sifre, Nazivi nazivi) {
     /** Isto, ali vrijednosti su nazivi koje treba razriješiti kroz MDM šifrarnik. */
     public record Nazivi(
             String predmet,
+            String predmetAkti,
             String ustroj,
             Map<String, String> pismena,
             String pismenaFallback
@@ -61,9 +65,9 @@ public record EgopVrsteProperties(Sifre sifre, Nazivi nazivi) {
 
     public EgopVrsteProperties {
         sifre = sifre == null
-                ? new Sifre(null, null, null, null, Map.of(), null, false)
+                ? new Sifre(null, null, null, null, null, Map.of(), null, false)
                 : sifre;
-        nazivi = nazivi == null ? new Nazivi(null, null, Map.of(), null) : nazivi;
+        nazivi = nazivi == null ? new Nazivi(null, null, null, Map.of(), null) : nazivi;
     }
 
     /**

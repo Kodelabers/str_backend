@@ -34,8 +34,11 @@ import org.springframework.ws.client.WebServiceTransportException;
 import org.springframework.ws.client.core.WebServiceTemplate;
 import org.springframework.ws.soap.client.core.SoapActionCallback;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import static com.str.backend.egop.EgopSoapCallback.MDM_DOHVATI_USTROJ_ACTIVE_SOAP_ACTION;
@@ -228,7 +231,7 @@ class EgopCodebooks {
                 .getTipOsobeInfo()
                 .stream()
                 .peek(this::handleErrors)
-                .collect(Collectors.toMap(TipOsobeInfo::getNaziv, TipOsobeInfo::getOznaka, (a, b) -> a));
+                .collect(codebook(TipOsobeInfo::getNaziv, TipOsobeInfo::getOznaka));
     }
 
     /**
@@ -271,8 +274,7 @@ class EgopCodebooks {
     private Map<String, Integer> toUstrojMap(java.util.List<UstrojInfo> jedinice) {
         return jedinice.stream()
                 .peek(this::handleErrors)
-                .collect(Collectors.toMap(UstrojInfo::getNazivorgjedinice, UstrojInfo::getIdorgjedinice,
-                        (a, b) -> a));
+                .collect(codebook(UstrojInfo::getNazivorgjedinice, UstrojInfo::getIdorgjedinice));
     }
 
     private Map<String, String> loadVrstePredmeta() {
@@ -285,10 +287,7 @@ class EgopCodebooks {
                 .getVrstePredmetaInfo()
                 .stream()
                 .peek(this::handleErrors)
-                .collect(Collectors.toMap(
-                        VrstePredmetaInfo::getNazivVrstePredmeta,
-                        VrstePredmetaInfo::getIdvrste,
-                        (a, b) -> a));
+                .collect(codebook(VrstePredmetaInfo::getNazivVrstePredmeta, VrstePredmetaInfo::getIdvrste));
     }
 
     private Map<String, String> loadVrstePismena() {
@@ -301,10 +300,7 @@ class EgopCodebooks {
                 .getVrstePismenaInfo()
                 .stream()
                 .peek(this::handleErrors)
-                .collect(Collectors.toMap(
-                        VrstePismenaInfo::getNazivVrstePismena,
-                        VrstePismenaInfo::getIdVrstePismena,
-                        (a, b) -> a));
+                .collect(codebook(VrstePismenaInfo::getNazivVrstePismena, VrstePismenaInfo::getIdVrstePismena));
     }
 
     private Map<String, Integer> loadVrstePriloga() {
@@ -317,10 +313,32 @@ class EgopCodebooks {
                 .getVrstePrilogaInfo()
                 .stream()
                 .peek(this::handleErrors)
-                .collect(Collectors.toMap(
-                        VrstePrilogaInfo::getNazivVrstePriloga,
-                        VrstePrilogaInfo::getIdVrstePriloga,
-                        (a, b) -> a));
+                .collect(codebook(VrstePrilogaInfo::getNazivVrstePriloga, VrstePrilogaInfo::getIdVrstePriloga));
+    }
+
+    /**
+     * {@code naziv → šifra}. Stavke bez naziva ili šifre se preskaču uz WARN: na
+     * {@code egopeaitest.mint.hr} je šifrarnik vrsta subjekata uz nepostojećeg korisnika vratio
+     * takvu stavku, a {@link Collectors#toMap} je na {@code null} pao s
+     * {@code NullPointerException} bez poruke (21.10.2026.). Kod duplog naziva vrijedi prvi.
+     */
+    private static <T, V> Collector<T, ?, Map<String, V>> codebook(Function<T, String> naziv, Function<T, V> sifra) {
+        return Collector.<T, Map<String, V>>of(
+                HashMap::new,
+                (map, item) -> {
+                    String key = naziv.apply(item);
+                    V value = sifra.apply(item);
+                    if (key == null || value == null) {
+                        log.warn("egop_codebook_entry_skipped naziv='{}' sifra={} — stavka bez naziva ili šifre",
+                                key, value);
+                        return;
+                    }
+                    map.putIfAbsent(key, value);
+                },
+                (left, right) -> {
+                    right.forEach(left::putIfAbsent);
+                    return left;
+                });
     }
 
     private void handleErrors(BaseInfo response) {

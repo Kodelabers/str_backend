@@ -46,7 +46,7 @@ public class EgopKpOtpremaService {
     private final RnRepository rnRepository;
     private final EgopRetryPolicy retryPolicy;
     private final EgopKpExecutor executor;
-    private final String appUsername;
+    private final EgopAktKorisnik korisnik;
     private final Duration maxAktAge;
     private final boolean enabled;
 
@@ -57,7 +57,7 @@ public class EgopKpOtpremaService {
                                 RnRepository rnRepository,
                                 EgopRetryPolicy retryPolicy,
                                 EgopKpExecutor executor,
-                                EgopProperties properties,
+                                EgopAktKorisnik korisnik,
                                 @Value("${str.egop.kp.max-akt-age:P7D}") Duration maxAktAge,
                                 @Value("${str.egop.kp.enabled:false}") boolean kpEnabled,
                                 @Value("${hr.infodom.str.integration.egop.enabled:false}") boolean egopEnabled) {
@@ -68,7 +68,7 @@ public class EgopKpOtpremaService {
         this.rnRepository = rnRepository;
         this.retryPolicy = retryPolicy;
         this.executor = executor;
-        this.appUsername = properties.qualifiedAppUsername();
+        this.korisnik = korisnik;
         this.maxAktAge = maxAktAge;
         this.enabled = kpEnabled && egopEnabled;
         if (kpEnabled && !egopEnabled) {
@@ -197,8 +197,11 @@ public class EgopKpOtpremaService {
                     otprema.getAktNastaoAt());
             return;
         }
+        // Pod istim korisnikom pod kojim je pismeno urudžbirano (odluka 21.10.2026.): akt
+        // službenika je u predmetu za koji je nadležan službenik, ne aplikacijski korisnik.
+        String korisnikPismena = korisnik.za(pismeno);
         if (provjeriPretinac) {
-            Optional<Instant> poslano = vecUPretincu(otprema, pismeno);
+            Optional<Instant> poslano = vecUPretincu(otprema, pismeno, korisnikPismena);
             if (poslano.isPresent()) {
                 recordSent(otprema, pismeno, poslano.get(), "already_in_pretinac");
                 return;
@@ -206,7 +209,7 @@ public class EgopKpOtpremaService {
         }
 
         try {
-            egopClient.otpremiUKorisnickiPretinac(appUsername, pismeno.getJop(), otprema.getPrimateljOib(),
+            egopClient.otpremiUKorisnickiPretinac(korisnikPismena, pismeno.getJop(), otprema.getPrimateljOib(),
                     napomena(pismeno));
         } catch (EgopException | RuntimeException e) {
             handleFailure(otprema, pismeno, e);
@@ -218,19 +221,25 @@ public class EgopKpOtpremaService {
     }
 
     /**
-     * Je li poruka za ovo pismeno i ovog primatelja već u pretincu. Greška ili nepoznata poruka
+     * Je li poruka za ovo pismeno i ovog primatelja već otpremljena. Greška ili nepoznata poruka
      * znače „nije" — tada se šalje.
+     *
+     * <p>Dovoljno je da otpremnica postoji ({@code DatumVrijemeKreiranja}): eGOP je zaprimio naš
+     * raniji poziv, a slanje prema KP-u radi sam i može kasniti. Čekati {@code DatumVrijemeSlanja}
+     * značilo bi u tom razmaku poslati drugu otpremnicu iste poruke.
      */
-    private Optional<Instant> vecUPretincu(EgopKpOtpremaEntity otprema, EgopPismenoEntity pismeno) {
+    private Optional<Instant> vecUPretincu(EgopKpOtpremaEntity otprema, EgopPismenoEntity pismeno,
+                                           String korisnikPismena) {
         KpStatusPoruke kp;
         try {
-            kp = egopClient.dohvatiKpStatusPoruke(appUsername, pismeno.getJop(), otprema.getPrimateljOib());
+            kp = egopClient.dohvatiKpStatusPoruke(korisnikPismena, pismeno.getJop(), otprema.getPrimateljOib());
         } catch (EgopException | RuntimeException e) {
             log.debug("egop_kp_status_unknown otprema={} pismeno={}: {} — šalje se",
                     otprema.getId(), pismeno.getId(), e.getMessage());
             return Optional.empty();
         }
-        if (kp.poslano() == null) {
+        Instant otpremljeno = kp.poslano() != null ? kp.poslano() : kp.kreirano();
+        if (otpremljeno == null) {
             return Optional.empty();
         }
         // Zapis statusa je usputan; njegov pad ne mijenja činjenicu da je poruka u pretincu.
@@ -239,7 +248,7 @@ public class EgopKpOtpremaService {
         } catch (RuntimeException e) {
             log.warn("egop_kp_status_not_recorded otprema={}: {}", otprema.getId(), e.getMessage());
         }
-        return Optional.of(kp.poslano());
+        return Optional.of(otpremljeno);
     }
 
     private void recordSent(EgopKpOtpremaEntity otprema, EgopPismenoEntity pismeno, Instant sentAt,

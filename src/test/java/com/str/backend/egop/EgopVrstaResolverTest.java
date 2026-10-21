@@ -33,11 +33,11 @@ class EgopVrstaResolverTest {
 
     private static EgopVrsteProperties.Sifre sifre(Map<String, String> pismena, String fallback,
                                                   boolean privremene) {
-        return new EgopVrsteProperties.Sifre(null, null, null, null, pismena, fallback, privremene);
+        return new EgopVrsteProperties.Sifre(null, null, null, null, null, pismena, fallback, privremene);
     }
 
     private static EgopVrsteProperties.Nazivi nazivi(Map<String, String> pismena, String fallback) {
-        return new EgopVrsteProperties.Nazivi("Izdavanje Registracijskog broja",
+        return new EgopVrsteProperties.Nazivi("Izdavanje Registracijskog broja", null,
                 "MINISTARSTVO TURIZMA", pismena, fallback);
     }
 
@@ -138,7 +138,7 @@ class EgopVrstaResolverTest {
 
     @Test
     void predmetUstrojISubjekt_zadaneSifrePreskacuMdm() throws Exception {
-        EgopVrsteProperties.Sifre sifre = new EgopVrsteProperties.Sifre("7765", 559, "3", "2",
+        EgopVrsteProperties.Sifre sifre = new EgopVrsteProperties.Sifre("7765", null, 559, "3", "2",
                 Map.of(), null, true);
         EgopVrstaResolver resolver = new EgopVrstaResolver(client, props(sifre, nazivi(Map.of(), null)));
 

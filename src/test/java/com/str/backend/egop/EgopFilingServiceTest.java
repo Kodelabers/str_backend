@@ -58,7 +58,8 @@ class EgopFilingServiceTest {
         when(store.savePismeno(any())).thenAnswer(inv -> inv.getArgument(0));
 
         when(egopClient.getVrstePoslovnihSubjekata()).thenReturn(Map.of("Fizička osoba", "3", "Pravna osoba", "2"));
-        when(egopClient.getVrstePredmeta()).thenReturn(Map.of("Izdavanje Registracijskog broja", "9282"));
+        when(egopClient.getVrstePredmeta()).thenReturn(Map.of("Izdavanje Registracijskog broja", "9282",
+                "Suspenzija, povlačenje i reaktiviranje dodjela registracijskog STR broja", "9283"));
         when(egopClient.getUstroj()).thenReturn(Map.of("MINISTARSTVO TURIZMA", 559));
         when(egopClient.getVrstePismena()).thenReturn(Map.of(
                 "Zahtjev za registracijski broj", "101",
@@ -76,7 +77,7 @@ class EgopFilingServiceTest {
     private EgopVrstaResolver resolver() {
         return new EgopVrstaResolver(egopClient, new EgopVrsteProperties(null,
                 new EgopVrsteProperties.Nazivi("Izdavanje Registracijskog broja",
-                        "MINISTARSTVO TURIZMA", Map.of(), null)));
+                        "Suspenzija, povlačenje i reaktiviranje dodjela registracijskog STR broja", "MINISTARSTVO TURIZMA", Map.of(), null)));
     }
 
     private static EgopProperties properties(String appDomain, String appUsername) {
@@ -351,6 +352,7 @@ class EgopFilingServiceTest {
     void fileAct_sendsKpAfterFiling_butDoesNotRegister() throws Exception {
         lessor.assignEgopSubjekt(42);
         submission.applyEgopPredmet(2026, 55, "334-01/26-01/55");
+        submission.applyEgopAktiPredmet(2026, 77, "334-06/11-26/77");
         PredmetInfo postoji = new PredmetInfo();
         postoji.setOperationSucceeded(true);
         when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
@@ -360,10 +362,110 @@ class EgopFilingServiceTest {
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-1",
                 "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "pdf".getBytes());
 
-        service.fileAct(akt, submission, lessor);
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
 
         verify(kpOtprema).otpremi(akt.getId());
         verify(kpOtprema, never()).register(any(), any(), any());
+    }
+
+    /**
+     * Prvi akt nakon dodjele otvara predmet akata (klasa 334-06/11) pod službenikom, koji je i
+     * rješavatelj; pismeno ide u taj predmet, a u eGOP se prilaže konačni dokument s klasom i
+     * urbrojem umjesto snimka.
+     */
+    @Test
+    void fileAct_firstAct_opensAktiPredmetUnderOfficial_andAttachesFinalDocument() throws Exception {
+        lessor.assignEgopSubjekt(42);
+        PredmetBasicInfo2 predmet = new PredmetBasicInfo2();
+        predmet.setOperationSucceeded(true);
+        predmet.setUredskaGodina(2026);
+        predmet.setRbrPredmeta(77);
+        predmet.setKlasifikacijskaOznaka("334-06/11-26/77");
+        when(egopClient.kreirajPredmet2(any())).thenReturn(predmet);
+        when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o suspenziji registracijskog broja", "103"));
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1003, "529-06-03/01-27-5-1"));
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-1",
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
+        AtomicReference<FilingReference> seen = new AtomicReference<>();
+
+        service.fileAct(akt, submission, lessor, "ana.sluzbenica", filing -> {
+            seen.set(filing);
+            return Optional.of("konacni".getBytes());
+        });
+
+        ArgumentCaptor<KreirajPredmet2> predmetRequest = ArgumentCaptor.forClass(KreirajPredmet2.class);
+        verify(egopClient).kreirajPredmet2(predmetRequest.capture());
+        assertEquals("9283", predmetRequest.getValue().getVrstaPredmeta());
+        assertEquals("ana.sluzbenica", predmetRequest.getValue().getUserName());
+        assertTrue(predmetRequest.getValue().getNazivPredmeta().contains("HR1"));
+        verify(store).saveAktiPredmet(submission.getSubmissionId(), 2026, 77, "334-06/11-26/77");
+
+        ArgumentCaptor<OdrediRjesavatelja> rjesavatelj = ArgumentCaptor.forClass(OdrediRjesavatelja.class);
+        verify(egopClient).odrediRjesavatelja(rjesavatelj.capture());
+        assertEquals("ana.sluzbenica", rjesavatelj.getValue().getRjesavatelj());
+
+        ArgumentCaptor<KreirajPismeno2> pismenoRequest = ArgumentCaptor.forClass(KreirajPismeno2.class);
+        verify(egopClient).kreirajPismeno2(pismenoRequest.capture());
+        assertEquals("ana.sluzbenica", pismenoRequest.getValue().getUserName());
+        assertEquals(77, pismenoRequest.getValue().getRbrSpisa());
+
+        assertEquals(new FilingReference("334-06/11-26/77", "529-06-03/01-27-5-1", 1003), seen.get());
+        verify(store).replacePdf(akt.getId(), "konacni".getBytes());
+        ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
+        assertEquals("konacni", new String(dokument.getValue().getAttachment()));
+        assertEquals("ana.sluzbenica", dokument.getValue().getUserName());
+    }
+
+    /**
+     * Pismeno kreirano prije predmeta akata živi u predmetu registracije: dovršava se ondje,
+     * bez novog predmeta i bez dokumenta s klasom predmeta u kojem pismeno nije.
+     */
+    @Test
+    void fileAct_pismenoFiledBeforeAktiPredmet_isCompletedInRegistrationPredmet() throws Exception {
+        lessor.assignEgopSubjekt(42);
+        submission.applyEgopPredmet(2026, 55, "334-06/10-26/55");
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-3",
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
+        akt.applyPismeno(1005, "529-06/26-3", "103", false);
+        AtomicReference<FilingReference> seen = new AtomicReference<>();
+
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> {
+            seen.set(filing);
+            return Optional.of("konacni".getBytes());
+        });
+
+        verify(egopClient, never()).kreirajPredmet2(any());
+        verify(egopClient, never()).kreirajPismeno2(any());
+        assertEquals(null, seen.get(), "konačni dokument se ne renderira");
+        ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
+        assertEquals("snimak", new String(dokument.getValue().getAttachment()));
+    }
+
+    /** Svi kasniji akti istog RB-a idu u već otvoren predmet akata. */
+    @Test
+    void fileAct_existingAktiPredmet_isReused() throws Exception {
+        lessor.assignEgopSubjekt(42);
+        submission.applyEgopAktiPredmet(2026, 77, "334-06/11-26/77");
+        PredmetInfo postoji = new PredmetInfo();
+        postoji.setOperationSucceeded(true);
+        when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
+        when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o povlačenju registracijskog broja", "104"));
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1004, "529-06-03/01-27-5-2"));
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-2",
+                "Obavijest o povlačenju registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
+
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
+
+        verify(egopClient, never()).kreirajPredmet2(any());
+        verify(store, never()).replacePdf(any(), any());
+        ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
+        assertEquals("snimak", new String(dokument.getValue().getAttachment()), "bez konačnog vrijedi snimak");
     }
 
     /** Ako urudžba padne, otprema se ne pokušava — njen red ostaje za retry. */

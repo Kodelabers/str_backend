@@ -33,7 +33,7 @@ import java.util.Optional;
  *
  * <ol>
  *   <li>subjekt (iznajmljivač) mora postojati u eGOP registru — lookup pa create;</li>
- *   <li>neupravni predmet vrste "Izdavanje Registracijskog broja" — jedan po
+ *   <li>neupravni predmet vrste "Dodjela registracijskog STR broja" (klasa 334-06/10) — jedan po
  *       submissionu, provjeri postojanje pa kreiraj;</li>
  *   <li>ulazno pismeno (zahtjev) + PDF dokument — PDF se renderira tek nakon
  *       kreiranja pismena jer tada postoje KLASA i URBROJ;</li>
@@ -122,7 +122,7 @@ public class EgopFilingService {
                 EgopPismenoEntity.Smjer.ULAZNO, subjektOznaka, lessor);
         FilingReference ulaznaOznaka = filing(submission, ulazno);
         byte[] zahtjevPdf = documents.zahtjev(ulaznaOznaka);
-        attachPdfOnce(ulazno, zahtjevPdf);
+        attachPdfOnce(ulazno, zahtjevPdf, appUsername);
         advance(submission, EgopSyncStatus.PISMENO_OK);
 
         // Smjer (ulazno/izlazno) ne šaljemo — eGOP ga određuje sam iz konfiguracije vrste
@@ -132,7 +132,7 @@ public class EgopFilingService {
                 EgopPismenoEntity.Smjer.IZLAZNO, subjektOznaka, lessor);
         // Izlazno pismeno nosi vlastiti URBROJ, pa i vlastiti PDF — ranije se ovdje prilagala
         // kopija PDF-a zahtjeva, dokument s krivim urudžbenim brojem i krivim naslovom.
-        attachPdfOnce(izlazno, documents.obavijestODodjeli(filing(submission, izlazno)));
+        attachPdfOnce(izlazno, documents.obavijestODodjeli(filing(submission, izlazno)), appUsername);
 
         // Na submission ide oznaka ULAZNOG pismena — to je akt kojim je postupak pokrenut.
         String filingNumber = formatFilingNumber(ulaznaOznaka);
@@ -235,72 +235,102 @@ public class EgopFilingService {
     }
 
     /**
-     * Jedan eGOP predmet po submissionu; identitet (godina + rbr + klasa) se trajno
-     * sprema jer se u isti predmet kasnije urudžbiraju i akti životnog ciklusa RB-a.
+     * Predmet registracije (vrsta „Dodjela registracijskog STR broja", klasa 334-06/10) — jedan po
+     * submissionu: u njega idu zahtjev (urbroj 1) i obavijest o dodjeli (urbroj 2). Akti nakon
+     * dodjele imaju vlastiti predmet, vidi {@link #ensurePredmetAkti}.
      */
     private void ensurePredmet(SubmissionEntity submission, LessorEntity lessor, Integer subjektOznaka)
             throws EgopException {
         if (submission.getEgopUredskaGodina() != null && submission.getEgopRbrPredmeta() != null
-                && predmetPostoji(submission)) {
+                && predmetPostoji(submission.getEgopUredskaGodina(), submission.getEgopRbrPredmeta())) {
             return;
         }
-
-        KreirajPredmet2 request = new KreirajPredmet2();
-        request.setUserName(appUsername);
-        request.setUpisnaKnjiga(upisnaKnjiga.getCode());
-        request.setVrstaPredmeta(vrste.vrstaPredmeta());
-        request.setNadleznaOrgJedinica(vrste.nadleznaOrgJedinica());
-        request.setSubjektOznaka(subjektOznaka);
-        request.setSubjektOIB(lessor.getLessorOib());
-        String identitet = lessor.getLessorOib() != null
-                ? subjektNaziv(lessor) + ", OIB " + lessor.getLessorOib()
-                : subjektNaziv(lessor);
         // Naziv predmeta ostaje naš i čitljiv i kad je šifra vrste posudbena — inače se u
         // urudžbenom zapisniku ne bi vidjelo o čemu je predmet.
-        request.setNazivPredmeta(vrste.predmetNaziv() + " — " + identitet);
-        request.setDatumOtvaranja(EgopDates.toXml(LocalDateTime.now()));
-
-        PredmetBasicInfo2 predmet = egopClient.kreirajPredmet2(request);
+        PredmetBasicInfo2 predmet = kreirajPredmet(lessor, subjektOznaka, vrste.vrstaPredmeta(),
+                vrste.predmetNaziv() + " — " + identitet(lessor), appUsername);
         submission.applyEgopPredmet(predmet.getUredskaGodina(), predmet.getRbrPredmeta(),
                 predmet.getKlasifikacijskaOznaka());
         store.savePredmet(submission.getSubmissionId(), predmet.getUredskaGodina(),
                 predmet.getRbrPredmeta(), predmet.getKlasifikacijskaOznaka());
 
-        odrediRjesavatelja(submission, predmet);
+        odrediRjesavatelja(submission, predmet, appUsername, rjesavatelj);
     }
 
     /**
-     * Servisni račun mora biti nadležan za predmet da bi smio kreirati pismena
-     * (spec str. 30/50). Ostaje best-effort — predmet u ovom trenutku već postoji, pa
-     * bi rušenje ostavilo siroče — ali pad se logira glasno: InfoDom je upozorio da je
-     * rješavatelj upravo ono što možda neće raditi sa servisnim računom, a stvarna
-     * posljedica se vidi tek kasnije, kod kreiranja pismena.
+     * Predmet akata nakon dodjele (vrsta „Suspenzija, povlačenje i reaktiviranje…", klasa
+     * 334-06/11) — jedan po RB-u, otvara ga prvi takav akt (odluka 21.10.2026.), pod korisnikom
+     * pod kojim ide taj akt ({@link EgopAktKorisnik}).
      */
-    private void odrediRjesavatelja(SubmissionEntity submission, PredmetBasicInfo2 predmet) {
+    private void ensurePredmetAkti(SubmissionEntity submission, LessorEntity lessor, Integer subjektOznaka,
+                                   String korisnik, String rn) throws EgopException {
+        if (submission.getEgopAktiUredskaGodina() != null && submission.getEgopAktiRbrPredmeta() != null
+                && predmetPostoji(submission.getEgopAktiUredskaGodina(), submission.getEgopAktiRbrPredmeta())) {
+            return;
+        }
+        PredmetBasicInfo2 predmet = kreirajPredmet(lessor, subjektOznaka, vrste.vrstaPredmetaAkti(),
+                vrste.predmetAktiNaziv() + " — " + rn + " — " + identitet(lessor), korisnik);
+        submission.applyEgopAktiPredmet(predmet.getUredskaGodina(), predmet.getRbrPredmeta(),
+                predmet.getKlasifikacijskaOznaka());
+        store.saveAktiPredmet(submission.getSubmissionId(), predmet.getUredskaGodina(),
+                predmet.getRbrPredmeta(), predmet.getKlasifikacijskaOznaka());
+
+        // Službenik je sam svoj rješavatelj; aplikacijski korisnik koristi zadanog, kao registracija.
+        odrediRjesavatelja(submission, predmet, korisnik, korisnik.equals(appUsername) ? rjesavatelj : korisnik);
+    }
+
+    private PredmetBasicInfo2 kreirajPredmet(LessorEntity lessor, Integer subjektOznaka, String vrstaPredmeta,
+                                             String naziv, String korisnik) throws EgopException {
+        KreirajPredmet2 request = new KreirajPredmet2();
+        request.setUserName(korisnik);
+        request.setUpisnaKnjiga(upisnaKnjiga.getCode());
+        request.setVrstaPredmeta(vrstaPredmeta);
+        request.setNadleznaOrgJedinica(vrste.nadleznaOrgJedinica());
+        request.setSubjektOznaka(subjektOznaka);
+        request.setSubjektOIB(lessor.getLessorOib());
+        request.setNazivPredmeta(naziv);
+        request.setDatumOtvaranja(EgopDates.toXml(LocalDateTime.now()));
+        return egopClient.kreirajPredmet2(request);
+    }
+
+    private String identitet(LessorEntity lessor) {
+        return lessor.getLessorOib() != null
+                ? subjektNaziv(lessor) + ", OIB " + lessor.getLessorOib()
+                : subjektNaziv(lessor);
+    }
+
+    /**
+     * Korisnik koji radi u predmetu mora biti nadležan za njega da bi smio kreirati pismena
+     * (spec str. 30/50). Ostaje best-effort — predmet u ovom trenutku već postoji, pa bi
+     * rušenje ostavilo siroče — ali pad se logira glasno: stvarna posljedica se vidi tek
+     * kasnije, kod kreiranja pismena.
+     */
+    private void odrediRjesavatelja(SubmissionEntity submission, PredmetBasicInfo2 predmet, String korisnik,
+                                    String rjesavateljPredmeta) {
         try {
             OdrediRjesavatelja request = new OdrediRjesavatelja();
-            request.setUserName(appUsername);
+            request.setUserName(korisnik);
             request.setUredskaGodina((short) predmet.getUredskaGodina());
             request.setRbrPredmeta(predmet.getRbrPredmeta());
-            request.setRjesavatelj(rjesavatelj);
+            request.setRjesavatelj(rjesavateljPredmeta);
             egopClient.odrediRjesavatelja(request);
             log.info("egop_odredi_rjesavatelja_ok submission={} predmet={}/{} rjesavatelj={}",
                     submission.getSubmissionId(), predmet.getUredskaGodina(), predmet.getRbrPredmeta(),
-                    rjesavatelj);
+                    rjesavateljPredmeta);
         } catch (EgopException e) {
             log.error("egop_odredi_rjesavatelja_failed submission={} predmet={}/{} rjesavatelj={}:"
                             + " {} — kreiranje pismena će vjerojatno pasti zbog nenadležnosti;"
                             + " probati drugu vrijednost u str.egop.rjesavatelj",
                     submission.getSubmissionId(), predmet.getUredskaGodina(), predmet.getRbrPredmeta(),
-                    rjesavatelj, e.getMessage(), e);
+                    rjesavateljPredmeta, e.getMessage(), e);
         }
     }
 
-    private boolean predmetPostoji(SubmissionEntity submission) throws EgopException {
+    private boolean predmetPostoji(int uredskaGodina, int rbrPredmeta) throws EgopException {
         DohvatiPodatkePredmeta request = new DohvatiPodatkePredmeta();
         request.setUserName(appUsername);
-        request.setUredskaGodina(submission.getEgopUredskaGodina().shortValue());
-        request.setRbrPredmeta(submission.getEgopRbrPredmeta());
+        request.setUredskaGodina((short) uredskaGodina);
+        request.setRbrPredmeta(rbrPredmeta);
         // -100 ("predmet ne postoji") prolazi kao validan odgovor s OperationSucceeded=false
         PredmetInfo predmet = egopClient.dohvatiPodatkePredmeta(request);
         return predmet != null && predmet.isOperationSucceeded();
@@ -319,7 +349,8 @@ public class EgopFilingService {
             return existing.get();
         }
 
-        Kreirano kreirano = kreirajPismeno(submission, vrstaNaziv, subjektOznaka, lessor.getLessorOib());
+        Kreirano kreirano = kreirajPismeno(submission.getEgopUredskaGodina(), submission.getEgopRbrPredmeta(),
+                vrstaNaziv, subjektOznaka, lessor.getLessorOib(), appUsername);
         PismenoBasicInfo2 pismeno = kreirano.pismeno();
         EgopPismenoEntity saved = store.savePismeno(EgopPismenoEntity.create(
                 submission.getSubmissionId(), vrstaNaziv, smjer, pismeno.getJop(), pismeno.getUrBroj(),
@@ -333,14 +364,14 @@ public class EgopFilingService {
     /** Odgovor eGOP-a + šifra vrste pod kojom je pismeno stvarno urudžbirano. */
     private record Kreirano(PismenoBasicInfo2 pismeno, EgopVrstaResolver.Vrsta vrsta) {}
 
-    private Kreirano kreirajPismeno(SubmissionEntity submission, String vrstaNaziv,
-                                    Integer subjektOznaka, String subjektOib)
+    private Kreirano kreirajPismeno(int uredskaGodina, int rbrPredmeta, String vrstaNaziv,
+                                    Integer subjektOznaka, String subjektOib, String korisnik)
             throws EgopException {
         EgopVrstaResolver.Vrsta vrsta = vrste.vrstaPismena(vrstaNaziv);
         KreirajPismeno2 request = new KreirajPismeno2();
-        request.setUserName(appUsername);
-        request.setRbrSpisa(submission.getEgopRbrPredmeta());
-        request.setUredskaGodina(submission.getEgopUredskaGodina().shortValue());
+        request.setUserName(korisnik);
+        request.setRbrSpisa(rbrPredmeta);
+        request.setUredskaGodina((short) uredskaGodina);
         request.setVrstaPismena(vrsta.sifra());
         request.setSubjektOznaka(subjektOznaka);
         request.setSubjektOIB(subjektOib);
@@ -352,18 +383,27 @@ public class EgopFilingService {
     }
 
     /**
-     * Urudžbira jedan akt životnog ciklusa RB-a u <b>isti</b> predmet u kojem je registracija.
-     *
-     * <p>Subjekt i predmet se osiguravaju i ovdje, ne samo pri registraciji: ako je
-     * registracijsko urudžbiranje trajno palo, predmet u eGOP-u ne postoji, a
-     * {@code KreirajPismeno2} ga ne stvara — pismeno bi bilo odbijeno. Isto vrijedi ako je
-     * predmet u međuvremenu nestao s eGOP strane.
-     *
-     * <p>PDF se <b>ne renderira</b> ovdje nego dolazi snimljen na aktu; vidi
-     * {@link EgopPismenoEntity#getPdfContent()}.
+     * Konačni dokument akta nakon dodjele, s klasom predmeta akata i urudžbenim brojem pismena.
+     * Prazno znači da vrijedi snimak iz trenutka događaja (stanje RB-a se u međuvremenu promijenilo).
      */
-    public void fileAct(EgopPismenoEntity akt, SubmissionEntity submission, LessorEntity lessor)
-            throws EgopException {
+    @FunctionalInterface
+    public interface AktDokument {
+        Optional<byte[]> konacni(FilingReference filing);
+    }
+
+    /**
+     * Urudžbira jedan akt nakon dodjele u predmet akata tog RB-a (klasa 334-06/11), pod
+     * korisnikom koji je radnju napravio ({@link EgopAktKorisnik}).
+     *
+     * <p>Subjekt se osigurava i ovdje: ako je registracijsko urudžbiranje trajno palo, subjekt
+     * u eGOP-u možda ne postoji.
+     *
+     * <p>Akt dolazi sa snimkom PDF-a iz trenutka događaja (prikaz stranci, preslika u mailu).
+     * Klasa predmeta akata i urbroj poznati su tek nakon {@code KreirajPismeno2}, pa se prije
+     * prilaganja renderira konačni dokument s njima ({@code dokument}) i zamjenjuje snimak.
+     */
+    public void fileAct(EgopPismenoEntity akt, SubmissionEntity submission, LessorEntity lessor,
+                        String korisnik, AktDokument dokument) throws EgopException {
         if (akt.getPdfContent() == null || akt.getPdfContent().length == 0) {
             throw new EgopBadRequestException(
                     "Akt " + akt.getId() + " nema snimljen PDF — uredsko poslovanje traži dokument"
@@ -371,11 +411,17 @@ public class EgopFilingService {
         }
 
         Integer subjektOznaka = ensureSubjekt(lessor);
-        ensurePredmet(submission, lessor, subjektOznaka);
+        // Pismeno kreirano prije uvođenja predmeta akata (21.10.2026.) živi u predmetu registracije:
+        // ne otvara se novi predmet i ne renderira dokument s klasom predmeta u kojem pismeno nije.
+        boolean pismenoUPredmetuRegistracije = akt.isFiled() && submission.getEgopAktiRbrPredmeta() == null;
+        if (!pismenoUPredmetuRegistracije) {
+            ensurePredmetAkti(submission, lessor, subjektOznaka, korisnik, akt.getRn());
+        }
 
         if (!akt.isFiled()) {
-            Kreirano kreirano = kreirajPismeno(submission, akt.getVrstaPismenaNaziv(),
-                    subjektOznaka, lessor.getLessorOib());
+            Kreirano kreirano = kreirajPismeno(submission.getEgopAktiUredskaGodina(),
+                    submission.getEgopAktiRbrPredmeta(), akt.getVrstaPismenaNaziv(), subjektOznaka,
+                    lessor.getLessorOib(), korisnik);
             PismenoBasicInfo2 pismeno = kreirano.pismeno();
             akt.applyPismeno(pismeno.getJop(), pismeno.getUrBroj(), kreirano.vrsta().sifra(),
                     kreirano.vrsta().privremena());
@@ -383,12 +429,22 @@ public class EgopFilingService {
                     kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
         }
 
-        // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
-        attachPdfOnce(akt, akt.getPdfContent());
+        if (!akt.isDocumentAttached() && !pismenoUPredmetuRegistracije) {
+            Optional<byte[]> konacni = dokument.konacni(
+                    new FilingReference(submission.getEgopAktiKlasa(), akt.getUrBroj(), akt.getJop()));
+            if (konacni.isPresent()) {
+                akt.replacePdf(konacni.get());
+                store.replacePdf(akt.getId(), konacni.get());
+            }
+        }
 
-        log.info("egop_akt_filed akt={} rn={} vrsta='{}' klasa={} urbroj={}",
+        // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
+        attachPdfOnce(akt, akt.getPdfContent(), korisnik);
+
+        log.info("egop_akt_filed akt={} rn={} vrsta='{}' klasa={} urbroj={} korisnik={}",
                 akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(),
-                submission.getEgopKlasa(), akt.getUrBroj());
+                pismenoUPredmetuRegistracije ? submission.getEgopKlasa() : submission.getEgopAktiKlasa(),
+                akt.getUrBroj(), korisnik);
 
         // Otpremu je zapisao RnLifecycleFilingListener kad je akt nastao (ako je KP tada bio uključen).
         kpOtprema.otpremi(akt.getId());
@@ -398,12 +454,12 @@ public class EgopFilingService {
      * Prilaže PDF samo ako već nije priložen — eGOP nema idempotentno prilaganje,
      * pa bi retry nakon djelomičnog pada duplicirao dokument na pismenu.
      */
-    private void attachPdfOnce(EgopPismenoEntity pismeno, byte[] pdf) throws EgopException {
+    private void attachPdfOnce(EgopPismenoEntity pismeno, byte[] pdf, String korisnik) throws EgopException {
         if (pismeno.isDocumentAttached()) {
             return;
         }
         KreirajDokumentZaPismeno request = new KreirajDokumentZaPismeno();
-        request.setUserName(appUsername);
+        request.setUserName(korisnik);
         request.setJop(pismeno.getJop());
         request.setExtension("pdf");
         request.setAttachment(pdf);

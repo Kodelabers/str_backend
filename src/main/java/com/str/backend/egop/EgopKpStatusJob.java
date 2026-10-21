@@ -42,7 +42,7 @@ public class EgopKpStatusJob {
     private final EgopKpOtpremaStore store;
     private final EgopFilingStore filingStore;
     private final EgopClient egopClient;
-    private final String appUsername;
+    private final EgopAktKorisnik korisnik;
     private final Duration maxAge;
     private final int batchSize;
 
@@ -50,14 +50,14 @@ public class EgopKpStatusJob {
                            EgopKpOtpremaStore store,
                            EgopFilingStore filingStore,
                            EgopClient egopClient,
-                           EgopProperties properties,
+                           EgopAktKorisnik korisnik,
                            @Value("${str.egop.kp.status.max-age:P30D}") Duration maxAge,
                            @Value("${str.egop.retry.batch-size:50}") int batchSize) {
         this.repository = repository;
         this.store = store;
         this.filingStore = filingStore;
         this.egopClient = egopClient;
-        this.appUsername = properties.qualifiedAppUsername();
+        this.korisnik = korisnik;
         this.maxAge = maxAge;
         this.batchSize = batchSize;
     }
@@ -89,7 +89,7 @@ public class EgopKpStatusJob {
                 log.error("egop_kp_status_skipped reason=missing_pismeno otprema={}", otpremaId);
                 return false;
             }
-            KpStatusPoruke kp = egopClient.dohvatiKpStatusPoruke(appUsername, pismeno.getJop(),
+            KpStatusPoruke kp = egopClient.dohvatiKpStatusPoruke(korisnik.za(pismeno), pismeno.getJop(),
                     otprema.getPrimateljOib());
             store.applyKpStatus(otpremaId, kp, now);
             if (!Objects.equals(otprema.getKpStatusPoruke(), kp.statusPoruke())) {

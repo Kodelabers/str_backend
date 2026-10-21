@@ -30,7 +30,7 @@ class EgopKpStatusJobTest {
     private final EgopClient egopClient = mock(EgopClient.class);
 
     private final EgopKpStatusJob job = new EgopKpStatusJob(repository, store, filingStore, egopClient,
-            EgopKpOtpremaServiceTest.properties(), Duration.ofDays(30), 50);
+            EgopKpOtpremaServiceTest.korisnik(), Duration.ofDays(30), 50);
 
     @Test
     void refresh_storesStatusAndTimes() throws Exception {

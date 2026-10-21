@@ -39,7 +39,11 @@ public class EgopVrstaResolver {
     private static final Logger log = LoggerFactory.getLogger(EgopVrstaResolver.class);
 
     /** Naziv vrste predmeta koji se ispisuje u {@code nazivPredmeta}, neovisno od šifre. */
-    private static final String PREDMET_NAZIV_FALLBACK = "Izdavanje Registracijskog broja";
+    private static final String PREDMET_NAZIV_FALLBACK = "Dodjela registracijskog STR broja";
+
+    /** Vrsta predmeta akata nakon dodjele (mail MINT-a 21.10.2026., klasa 334-06/11). */
+    private static final String PREDMET_AKTI_NAZIV_FALLBACK =
+            "Suspenzija, povlačenje i reaktiviranje dodjela registracijskog STR broja";
 
     private final EgopClient egopClient;
     private final EgopVrsteProperties properties;
@@ -62,9 +66,9 @@ public class EgopVrstaResolver {
     @PostConstruct
     void logMapping() {
         EgopVrsteProperties.Sifre sifre = properties.sifre();
-        log.info("egop_vrste_config privremene={} predmet={} ustroj={} subjekt_fizicka={}"
+        log.info("egop_vrste_config privremene={} predmet={} predmet_akti={} ustroj={} subjekt_fizicka={}"
                         + " subjekt_pravna={} pismena={} pismena_fallback={}",
-                sifre.privremene(), sifre.predmet(), sifre.ustroj(), sifre.subjektFizicka(),
+                sifre.privremene(), sifre.predmet(), sifre.predmetAkti(), sifre.ustroj(), sifre.subjektFizicka(),
                 sifre.subjektPravna(), sifre.pismena(), sifre.pismenaFallback());
         if (sifre.privremene()) {
             log.warn("egop_vrste_privremene — eGOP šifre vrsta su POSUDBENE (privremeno mapiranje"
@@ -85,6 +89,21 @@ public class EgopVrstaResolver {
             return sifra;
         }
         return resolveByNaziv(egopClient.getVrstePredmeta(), predmetNaziv(), "vrsta predmeta");
+    }
+
+    /** Naziv vrste predmeta akata nakon dodjele — i tekst njihova {@code nazivPredmeta}. */
+    public String predmetAktiNaziv() {
+        String naziv = properties.nazivi().predmetAkti();
+        return naziv == null || naziv.isBlank() ? PREDMET_AKTI_NAZIV_FALLBACK : naziv;
+    }
+
+    /** Šifra vrste predmeta akata nakon dodjele; ID se razlikuje po okolinama, pa po nazivu. */
+    public String vrstaPredmetaAkti() throws EgopBadRequestException {
+        String sifra = properties.sifre().predmetAkti();
+        if (isSet(sifra)) {
+            return sifra;
+        }
+        return resolveByNaziv(egopClient.getVrstePredmeta(), predmetAktiNaziv(), "vrsta predmeta akata");
     }
 
     public Integer nadleznaOrgJedinica() throws EgopBadRequestException {

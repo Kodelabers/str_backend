@@ -58,7 +58,7 @@ class EgopKpOtpremaServiceTest {
     private EgopKpOtpremaService service(boolean kpEnabled, boolean egopEnabled) {
         return new EgopKpOtpremaService(egopClient, store, filingStore, lessorRepository, rnRepository,
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)), EgopKpExecutor.direct(),
-                properties(),
+                korisnik(),
                 MAX_AKT_AGE, kpEnabled, egopEnabled);
     }
 
@@ -66,13 +66,11 @@ class EgopKpOtpremaServiceTest {
         return service(true, true);
     }
 
-    static EgopProperties properties() {
-        return new EgopProperties(true, "ntlm-user", "ntlm-pass", "MINT", "str-svc",
-                null, null, "http://egop",
-                new EgopProperties.Endpoint("http://mdm"),
-                new EgopProperties.Endpoint("http://pismeno"),
-                new EgopProperties.Endpoint("http://predmet"),
-                new EgopProperties.Endpoint("http://subjekt"));
+    /** Korisnik pod kojim je pismeno urudžbirano — u ovim testovima uvijek aplikacijski. */
+    static EgopAktKorisnik korisnik() {
+        EgopAktKorisnik korisnik = mock(EgopAktKorisnik.class);
+        when(korisnik.za(any())).thenReturn(USER);
+        return korisnik;
     }
 
     // --- register -------------------------------------------------------------------------
@@ -258,6 +256,44 @@ class EgopKpOtpremaServiceTest {
     }
 
     /** eGOP poruku ne zna (greška ili prazno vrijeme slanja) — tada se šalje. */
+    /**
+     * Otpremnica postoji, a eGOP je još nije proslijedio u KP: raniji poziv je prošao, pa se ne
+     * šalje druga otpremnica iste poruke.
+     */
+    @Test
+    void retry_otpremnicaCreatedButNotYetSent_isNotSentAgain() throws Exception {
+        EgopPismenoEntity pismeno = izlazno(true);
+        EgopKpOtpremaEntity otprema = otprema(pismeno, Instant.now());
+        when(store.find(otprema.getId())).thenReturn(Optional.of(otprema));
+        when(filingStore.findAkt(pismeno.getId())).thenReturn(Optional.of(pismeno));
+        Instant kreirano = Instant.parse("2026-10-19T08:00:30Z");
+        when(egopClient.dohvatiKpStatusPoruke(USER, 1002, OIB))
+                .thenReturn(new KpStatusPoruke(0, kreirano, null, null, null, null, null, null));
+
+        service().retry(otprema.getId());
+
+        verify(store).markSent(otprema.getId(), kreirano);
+        verify(egopClient, never()).otpremiUKorisnickiPretinac(anyString(), anyInt(), anyString(), anyString());
+    }
+
+    /** Akt službenika se otprema pod njegovim korisnikom — onim pod kojim je urudžbiran (21.10.2026.). */
+    @Test
+    void otpremi_sendsUnderUserWhoFiledThePismeno() throws Exception {
+        EgopPismenoEntity pismeno = izlazno(true);
+        EgopKpOtpremaEntity otprema = otprema(pismeno, Instant.now());
+        when(store.findByPismeno(pismeno.getId())).thenReturn(Optional.of(otprema));
+        when(filingStore.findAkt(pismeno.getId())).thenReturn(Optional.of(pismeno));
+        EgopAktKorisnik sluzbenik = mock(EgopAktKorisnik.class);
+        when(sluzbenik.za(pismeno)).thenReturn("ana.sluzbenica");
+        EgopKpOtpremaService service = new EgopKpOtpremaService(egopClient, store, filingStore, lessorRepository,
+                rnRepository, new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)),
+                EgopKpExecutor.direct(), sluzbenik, MAX_AKT_AGE, true, true);
+
+        service.otpremi(pismeno.getId());
+
+        verify(egopClient).otpremiUKorisnickiPretinac(eq("ana.sluzbenica"), eq(1002), eq(OIB), anyString());
+    }
+
     @Test
     void retry_messageUnknownToEgop_sends() throws Exception {
         EgopPismenoEntity pismeno = izlazno(true);
