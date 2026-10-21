@@ -13,7 +13,6 @@ import org.opensaml.saml.saml2.core.impl.NameIDPolicyBuilder;
 import org.opensaml.saml.saml2.core.impl.OneTimeUseBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -22,7 +21,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.saml2.core.Saml2X509Credential;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException;
 import org.springframework.security.saml2.core.Saml2X509Credential.Saml2X509CredentialType;
-import org.springframework.security.saml2.provider.service.authentication.AbstractSaml2AuthenticationRequest;
 import org.springframework.security.saml2.provider.service.authentication.DefaultSaml2AuthenticatedPrincipal;
 import org.springframework.security.saml2.provider.service.authentication.Saml2Authentication;
 import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticatedPrincipal;
@@ -34,7 +32,6 @@ import org.springframework.security.saml2.provider.service.registration.RelyingP
 import org.springframework.security.saml2.provider.service.registration.Saml2MessageBinding;
 import org.springframework.security.saml2.provider.service.web.DefaultRelyingPartyRegistrationResolver;
 import org.springframework.security.saml2.provider.service.web.RelyingPartyRegistrationResolver;
-import org.springframework.security.saml2.provider.service.web.Saml2AuthenticationRequestRepository;
 import org.springframework.security.saml2.provider.service.web.authentication.OpenSaml4AuthenticationRequestResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.logout.OpenSaml4LogoutRequestResolver;
 import org.springframework.security.saml2.provider.service.web.authentication.logout.Saml2LogoutRequestResolver;
@@ -48,7 +45,6 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
-import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -151,30 +147,6 @@ public class NiasSamlConfig {
                 .build();
 
         return new InMemoryRelyingPartyRegistrationRepository(registration);
-    }
-
-    /**
-     * Aktivan samo uz {@code nias.saml.request-store=database}. Bez njega AuthnRequest ostaje u
-     * sesiji ({@link #niasSessionAuthenticationRequestRepository()}), pa se ponašanje okolina iza
-     * HTTPS-a (CDU) ne mijenja.
-     */
-    @Bean
-    @ConditionalOnProperty(name = "nias.saml.request-store", havingValue = "database")
-    public Saml2AuthenticationRequestRepository<AbstractSaml2AuthenticationRequest> niasAuthenticationRequestRepository(
-            SamlAuthRequestRepository store, RelyingPartyRegistrationRepository registrations, Clock clock) {
-        log.info("NIAS AuthnRequest se sprema u bazu (str_rn.saml_auth_request), ne u HttpSession — "
-                + "sesijski cookie nije potreban na povratku s NIAS-a");
-        return new DatabaseSaml2AuthenticationRequestRepository(store, registrations, clock);
-    }
-
-    /**
-     * Komplement gornjeg beana: bez {@code database} AuthnRequest ostaje u sesiji kao i dosad, samo
-     * uz zapamćeni {@code ?returnTo=} ({@link NiasReturnTo}).
-     */
-    @Bean
-    @ConditionalOnExpression("!'${nias.saml.request-store:}'.equalsIgnoreCase('database')")
-    public Saml2AuthenticationRequestRepository<AbstractSaml2AuthenticationRequest> niasSessionAuthenticationRequestRepository() {
-        return new SessionReturnToAuthenticationRequestRepository();
     }
 
     @Bean

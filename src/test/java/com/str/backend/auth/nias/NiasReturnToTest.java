@@ -19,6 +19,7 @@ class NiasReturnToTest {
             "/new-registration-number",
             "/new-registration-number?facilityId=123&tip=FS_1",
             "/moji-rb#vrh",
+            "/naselje?ime=Po%C5%BEega",
             "/"})
     void acceptsRelativePaths(String raw) {
         assertThat(NiasReturnTo.sanitize(raw)).contains(raw);
@@ -37,7 +38,9 @@ class NiasReturnToTest {
             "new-registration-number",
             "/x\r\nSet-Cookie: a=b",
             "/x\ty",
-            "/x y{"})
+            "/x\u007fy",
+            "/x y{",
+            "/naselje?ime=Požega"})
     void rejectsAnythingElse(String raw) {
         assertThat(NiasReturnTo.sanitize(raw)).isEmpty();
     }

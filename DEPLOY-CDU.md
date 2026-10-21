@@ -417,13 +417,27 @@ PO). Za povratak na stare postavke bez rebuilda, u `.env.cdu` postaviti
 ```sql
 \d session.spring_session                -- stupci kao naš changeset 024 (Spring Session 3.x)
 \d session.spring_session_attributes
-SELECT has_schema_privilege('session', 'USAGE'),
-       has_table_privilege('session.spring_session', 'SELECT,INSERT,UPDATE,DELETE'),
-       has_table_privilege('session.spring_session_attributes', 'SELECT,INSERT,UPDATE,DELETE');
+-- Svako pravo ZASEBNO: has_table_privilege s popisom 'SELECT,INSERT,…' vraća true čim
+-- postoji BILO KOJE od njih, pa bi user sa samim SELECT-om prošao.
+SELECT t, p, has_table_privilege(t, p) AS ima
+FROM unnest(ARRAY['session.spring_session', 'session.spring_session_attributes']) AS t,
+     unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) AS p
+UNION ALL
+SELECT 'session', 'USAGE', has_schema_privilege('session', 'USAGE');
 ```
 
-Ako ijedan rezultat bude `f`, nijedna sesija se ne može spremiti i **svaki** zahtjev pada s 500.
-Deploy odjavljuje sve korisnike, jer se mijenja tablica sesija.
+Svih 9 redaka mora imati `ima = t`. Već jedan `f` znači da se nijedna sesija ne može spremiti i da
+**svaki** zahtjev pada s 500. Deploy odjavljuje sve korisnike, jer se mijenja tablica sesija.
+
+**Odmah nakon deploya** obrisati stare sesije. Naš cleanup job čisti samo konfiguriranu tablicu,
+pa bi redovi u `str_rn.spring_session` (uz SAML odgovor s OIB-om i imenom) inače ostali zauvijek:
+
+```sql
+DELETE FROM str_rn.spring_session;       -- atributi se brišu kaskadno (FK u changesetu 024)
+```
+
+Preskočiti ako se planira povratak bez rebuilda (`SPRING_SESSION_TABLE=str_rn.spring_session`)
+— nakon povratka korisnici se ionako moraju ponovno prijaviti.
 
 **Nakon deploya** (NIAS prijava u pregledniku):
 
@@ -434,6 +448,8 @@ docker logs str-backend-cdu 2>&1 | grep -E "oib_registry( base|_lookup)" | tail 
 | Redak | Značenje |
 | :--- | :--- |
 | `oib_registry_lookup kind=FO status=200` | servis je prepoznao sesiju |
+| `oib_registry_fallback reason=not_found` | OIB sustav osobu ne zna; ime i adresa dolaze iz `str.subject*` (kao prije) |
+| `oib_registry_fallback reason=unavailable` | OIB sustav nije odgovorio ili je vratio 302/5xx; korisnik dobiva podatke iz `str.subject*`. Uzrok je u retku `oib_registry_lookup` prije toga |
 | `kind=FO status=302` | servis sesiju **nije** prepoznao. Provjeriti je li red u `session.spring_session` (`SELECT session_id, principal_name FROM session.spring_session ORDER BY last_access_time DESC LIMIT 5`) i jesu li verzije Spring Securityja na obje strane kompatibilne (deserijalizacija `SPRING_SECURITY_CONTEXT`) |
 | `SerializationFailedException` u logu | jedna strana ne može pročitati atribut druge. Javiti kolegi s nazivom klase iz iznimke |
 

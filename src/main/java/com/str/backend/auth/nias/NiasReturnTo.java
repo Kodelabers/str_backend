@@ -41,9 +41,12 @@ public final class NiasReturnTo {
         if (!raw.startsWith("/") || raw.startsWith("//") || raw.indexOf('\\') >= 0) {
             return Optional.empty();
         }
+        // Samo ispisivi ASCII: kontrolni znakovi otvaraju header injection, a ne-ASCII Tomcat u
+        // Location piše kao ISO-8859-1 i preusmjerenje se pokvari. FE šalje pathname + search,
+        // koji preglednik već percent-encodira.
         for (int i = 0; i < raw.length(); i++) {
             char c = raw.charAt(i);
-            if (c < 0x20 || c == 0x7f) {
+            if (c < 0x20 || c > 0x7e) {
                 return Optional.empty();
             }
         }

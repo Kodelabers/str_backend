@@ -6,17 +6,16 @@ import com.str.backend.address.PostalCodes;
 import com.str.backend.lessor.RegistrySubject;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectRegistry;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
 /**
- * Podaci o subjektu iz eTurizma ({@code str.subject*}) — <b>privremeni</b> izvor dok se za
- * fizičku osobu ne uključi OIB sustav. Isto ponašanje
- * kao raniji {@code StrLessorLookupService}, samo iza {@link SubjectRegistry} porta, pa se na OIB
- * sustav prelazi zastavicom {@code app.oib-registry.enabled=true}, bez izmjene poziva.
+ * Podaci o subjektu iz eTurizma ({@code str.subject*}). Bez OIB sustava je jedini izvor; uz
+ * {@code app.oib-registry.enabled=true} je zamjenski izvor kad OIB sustav osobu ne zna ili nije
+ * dostupan ({@code registries.oib.OibSubjectRegistry}, koji je tada {@code @Primary}). Isto ponašanje
+ * kao raniji {@code StrLessorLookupService}, samo iza {@link SubjectRegistry} porta.
  *
  * <p>Na local/mock profilu {@code str.subject*} je mockiran (changeset 101), pa lokalni tok
  * radi nad istim testnim iznajmljivačima kao i prije.
@@ -31,7 +30,6 @@ import java.util.Optional;
  * {@link PostalCodes#single}.
  */
 @Component
-@ConditionalOnProperty(name = "app.oib-registry.enabled", havingValue = "false", matchIfMissing = true)
 @Transactional(readOnly = true)
 public class StrSubjectRegistry implements SubjectRegistry {
 

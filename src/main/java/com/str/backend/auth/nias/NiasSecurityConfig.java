@@ -76,7 +76,7 @@ public class NiasSecurityConfig {
                 // ga u Saml2WebSsoAuthenticationFilter, Saml2WebSsoAuthenticationRequestFilter i
                 // OpenSamlAuthenticationTokenConverter. Uvijek postoji točno jedan: database uz
                 // nias.saml.request-store=database, inače sesijski — oba pamte ?returnTo= (vidi
-                // NiasSamlConfig, NiasReturnTo).
+                // NiasAuthenticationRequestStoreConfig, NiasReturnTo).
                 .saml2Login(saml -> saml
                         .relyingPartyRegistrationRepository(registrations)
                         .authenticationRequestResolver(authenticationRequestResolver)
