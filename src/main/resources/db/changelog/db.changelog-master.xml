@@ -253,4 +253,7 @@
     <!-- Akti nakon dodjele u zaseban eGOP predmet (klasa 334-06/11) + eGOP korisnik službenika. -->
     <include file="db/changelog/changes/140-egop-predmet-akti.xml"/>
 
+    <!-- Povratni put nakon NIAS prijave (?returnTo=) uz request-store=database. -->
+    <include file="db/changelog/changes/141-saml-auth-request-return-to.xml"/>
+
 </databaseChangeLog>

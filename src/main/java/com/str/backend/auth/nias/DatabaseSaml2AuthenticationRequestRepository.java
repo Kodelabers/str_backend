@@ -68,7 +68,8 @@ public class DatabaseSaml2AuthenticationRequestRepository
                 authenticationRequest.getRelayState(),
                 authenticationRequest.getAuthenticationRequestUri(),
                 authenticationRequest.getRelyingPartyRegistrationId(),
-                now));
+                now,
+                NiasReturnTo.sanitize(request.getParameter(NiasReturnTo.PARAM)).orElse(null)));
 
         // Čišćenje se vozi ovdje umjesto zasebnim @Scheduled poslom: tablica raste samo kad netko
         // krene u prijavu, pa je to točan trenutak za brisanje zaostataka i nema posla koji se
@@ -89,7 +90,13 @@ public class DatabaseSaml2AuthenticationRequestRepository
     public AbstractSaml2AuthenticationRequest removeAuthenticationRequest(HttpServletRequest request,
                                                                           HttpServletResponse response) {
         Optional<SamlAuthRequestEntity> found = find(request);
-        found.ifPresent(e -> repository.deleteById(e.getRequestId()));
+        found.ifPresent(e -> {
+            repository.deleteById(e.getRequestId());
+            // Success handler čita put iz requesta: na ACS-u ovdje ionako nema sesije.
+            if (e.getReturnTo() != null) {
+                request.setAttribute(NiasReturnTo.REQUEST_ATTR, e.getReturnTo());
+            }
+        });
         return found.map(this::toSpring).orElse(null);
     }
 

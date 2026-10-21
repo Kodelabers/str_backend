@@ -44,21 +44,27 @@ public class SamlAuthRequestEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Put na FE-u kamo se korisnik vraća nakon prijave ({@link NiasReturnTo}); changeset 141. */
+    @Column(name = "return_to", updatable = false, length = NiasReturnTo.MAX_LENGTH)
+    private String returnTo;
+
     private SamlAuthRequestEntity(String requestId, String samlRequest, String relayState,
                                   String authenticationRequestUri, String relyingPartyRegistrationId,
-                                  Instant createdAt) {
+                                  Instant createdAt, String returnTo) {
         this.requestId = requestId;
         this.samlRequest = samlRequest;
         this.relayState = relayState;
         this.authenticationRequestUri = authenticationRequestUri;
         this.relyingPartyRegistrationId = relyingPartyRegistrationId;
         this.createdAt = createdAt;
+        this.returnTo = returnTo;
     }
 
     public static SamlAuthRequestEntity create(String requestId, String samlRequest, String relayState,
                                                String authenticationRequestUri,
-                                               String relyingPartyRegistrationId, Instant createdAt) {
+                                               String relyingPartyRegistrationId, Instant createdAt,
+                                               String returnTo) {
         return new SamlAuthRequestEntity(requestId, samlRequest, relayState, authenticationRequestUri,
-                relyingPartyRegistrationId, createdAt);
+                relyingPartyRegistrationId, createdAt, returnTo);
     }
 }

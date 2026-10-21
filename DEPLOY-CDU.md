@@ -402,6 +402,59 @@ pa korak 7 i ponoviti točku 4. U `docker logs` se tada vidi `CertificateRequest
 `Produced client Certificate message` od nas. Ispis je velik (i za NIAS) — **odmah nakon toga
 ukloniti** redak i ponovo korak 7.
 
+### 8c. Zajednička sesija i OIB sustav
+
+Sesije više nisu u `str_rn.spring_session`, nego u zajedničkoj tablici `session.spring_session`.
+Tablica je u istoj bazi i drži je str-internal-api. Na OIB sustav (`et2-test-internal-eturizam.gov.hr/str-internal-api`,
+iza NIAS-a) šaljemo korisnikov cookie `SESSION`, pa ga taj servis prepoznaje kao prijavljenog
+(`SharedSessionCookieInterceptor`). OIB sustav je uključen u `application-cdu.properties` (FO i
+PO). Za povratak na stare postavke bez rebuilda, u `.env.cdu` postaviti
+`SPRING_SESSION_TABLE=str_rn.spring_session` i `APP_OIB_REGISTRY_ENABLED=false`
+(+ `APP_OIB_REGISTRY_LEGAL_ENTITY_ENABLED=false`), pa korak 7.
+
+**Prije prvog deploya**, psql s **našim** DB userom:
+
+```sql
+\d session.spring_session                -- stupci kao naš changeset 024 (Spring Session 3.x)
+\d session.spring_session_attributes
+-- Svako pravo ZASEBNO: has_table_privilege s popisom 'SELECT,INSERT,…' vraća true čim
+-- postoji BILO KOJE od njih, pa bi user sa samim SELECT-om prošao.
+SELECT t, p, has_table_privilege(t, p) AS ima
+FROM unnest(ARRAY['session.spring_session', 'session.spring_session_attributes']) AS t,
+     unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) AS p
+UNION ALL
+SELECT 'session', 'USAGE', has_schema_privilege('session', 'USAGE');
+```
+
+Svih 9 redaka mora imati `ima = t`. Već jedan `f` znači da se nijedna sesija ne može spremiti i da
+**svaki** zahtjev pada s 500. Deploy odjavljuje sve korisnike, jer se mijenja tablica sesija.
+
+**Odmah nakon deploya** obrisati stare sesije. Naš cleanup job čisti samo konfiguriranu tablicu,
+pa bi redovi u `str_rn.spring_session` (uz SAML odgovor s OIB-om i imenom) inače ostali zauvijek:
+
+```sql
+DELETE FROM str_rn.spring_session;       -- atributi se brišu kaskadno (FK u changesetu 024)
+```
+
+Preskočiti ako se planira povratak bez rebuilda (`SPRING_SESSION_TABLE=str_rn.spring_session`)
+— nakon povratka korisnici se ionako moraju ponovno prijaviti.
+
+**Nakon deploya** (NIAS prijava u pregledniku):
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "oib_registry( base|_lookup)" | tail -5
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `oib_registry_lookup kind=FO status=200` | servis je prepoznao sesiju |
+| `oib_registry_fallback reason=not_found` | OIB sustav osobu ne zna; ime i adresa dolaze iz `str.subject*` (kao prije) |
+| `oib_registry_fallback reason=unavailable` | OIB sustav nije odgovorio ili je vratio 302/5xx; korisnik dobiva podatke iz `str.subject*`. Uzrok je u retku `oib_registry_lookup` prije toga |
+| `kind=FO status=302` | servis sesiju **nije** prepoznao. Provjeriti je li red u `session.spring_session` (`SELECT session_id, principal_name FROM session.spring_session ORDER BY last_access_time DESC LIMIT 5`) i jesu li verzije Spring Securityja na obje strane kompatibilne (deserijalizacija `SPRING_SECURITY_CONTEXT`) |
+| `SerializationFailedException` u logu | jedna strana ne može pročitati atribut druge. Javiti kolegi s nazivom klase iz iznimke |
+
+Zatim provjeriti da `GET /api/nias/me` i dalje vraća 200, tj. da njihov servis nije zamijenio sesiju.
+
 ## 9. Iz browsera
 
 ```

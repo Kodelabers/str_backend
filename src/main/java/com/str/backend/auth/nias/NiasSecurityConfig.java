@@ -74,9 +74,9 @@ public class NiasSecurityConfig {
                 // NAPOMENA: Saml2AuthenticationRequestRepository se ovdje NE postavlja jer
                 // Saml2LoginConfigurer sam traži takav bean u kontekstu (getBeanOrNull) i ubacuje
                 // ga u Saml2WebSsoAuthenticationFilter, Saml2WebSsoAuthenticationRequestFilter i
-                // OpenSamlAuthenticationTokenConverter; bez bean-a uzima
-                // HttpSessionSaml2AuthenticationRequestRepository. Bean postoji samo uz
-                // nias.saml.request-store=database (vidi NiasSamlConfig).
+                // OpenSamlAuthenticationTokenConverter. Uvijek postoji točno jedan: database uz
+                // nias.saml.request-store=database, inače sesijski — oba pamte ?returnTo= (vidi
+                // NiasAuthenticationRequestStoreConfig, NiasReturnTo).
                 .saml2Login(saml -> saml
                         .relyingPartyRegistrationRepository(registrations)
                         .authenticationRequestResolver(authenticationRequestResolver)

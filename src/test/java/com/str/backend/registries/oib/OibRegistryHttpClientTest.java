@@ -3,19 +3,29 @@ package com.str.backend.registries.oib;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.RegistryLegalEntity;
 import com.str.backend.lessor.RegistrySubject;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.headerDoesNotExist;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
@@ -39,9 +49,57 @@ class OibRegistryHttpClientTest {
 
     @BeforeEach
     void setUp() {
-        RestClient.Builder builder = RestClient.builder().baseUrl("http://oib.test/str-internal-api");
+        // Builder iz produkcijske konfiguracije (s interceptorom); bindTo mu zatim zamijeni samo
+        // request factory mockom.
+        RestClient.Builder builder = OibRegistryConfig.configure(RestClient.builder(),
+                new OibRegistryProperties(true, true, "http://oib.test/str-internal-api", null, null));
         server = MockRestServiceServer.bindTo(builder).build();
         client = new OibRegistryHttpClient(builder.build());
+    }
+
+    @AfterEach
+    void clearRequest() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    /** Servis je iza NIAS-a: poziv nosi korisnikovu sesiju iz zajedničke tablice, kao preglednik. */
+    @Test
+    void forwardsSharedSessionCookie() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        MockHttpSession session = new MockHttpSession(null, "3f0c2e7a-sesija");
+        request.setSession(session);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        String cookie = "SESSION=" + Base64.getEncoder()
+                .encodeToString("3f0c2e7a-sesija".getBytes(StandardCharsets.UTF_8));
+
+        server.expect(requestTo(URL)).andExpect(header(HttpHeaders.COOKIE, cookie))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+        server.expect(requestTo(LEGAL_URL)).andExpect(header(HttpHeaders.COOKIE, cookie))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        client.findPerson(OIB);
+        client.findLegalEntity(LEGAL_OIB);
+        server.verify();
+    }
+
+    @Test
+    void noSession_sendsNoCookie() {
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+
+        server.expect(requestTo(URL)).andExpect(headerDoesNotExist(HttpHeaders.COOKIE))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThat(client.findPerson(OIB)).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void outsideHttpRequest_sendsNoCookie() {
+        server.expect(requestTo(URL)).andExpect(headerDoesNotExist(HttpHeaders.COOKIE))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThat(client.findPerson(OIB)).isEmpty();
+        server.verify();
     }
 
     @Test
