@@ -250,4 +250,7 @@
     <!-- Otprema izlaznih pismena u korisnički pretinac (KP) preko eGOP-a + zapis KP statusa poruke. -->
     <include file="db/changelog/changes/139-egop-kp-otprema.xml"/>
 
+    <!-- Akti nakon dodjele u zaseban eGOP predmet (klasa 334-06/11) + eGOP korisnik službenika. -->
+    <include file="db/changelog/changes/140-egop-predmet-akti.xml"/>
+
 </databaseChangeLog>

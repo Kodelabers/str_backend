@@ -1,19 +1,26 @@
 package com.str.backend.egop;
 
+import com.str.backend.document.FilingReference;
+import com.str.backend.document.StrDocumentService;
+import com.str.backend.document.StrDocumentType;
 import com.str.backend.egop.exception.EgopException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.request.SubmissionEntity;
+import com.str.backend.rn.RnLifecycleLookup;
+import com.str.backend.rn.event.RnLifecycleEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Urudžbira jedan akt životnog ciklusa RB-a (opoziv, suspenzija, povlačenje, reaktivacija) u
- * isti neupravni predmet u kojem je registracija.
+ * predmet akata tog RB-a (klasa 334-06/11), pod korisnikom koji je radnju napravio
+ * ({@link EgopAktKorisnik}).
  *
  * <p>Odvojen od {@link EgopRegistrationDispatcher} jer su to različite jedinice posla:
  * registracija renderira PDF <i>iz</i> urudžbenog broja koji tek nastaje, pa mora ići u jednom
@@ -32,15 +39,24 @@ public class EgopAktDispatcher {
     private final LessorRepository lessorRepository;
     private final EgopFilingService filingService;
     private final EgopRetryPolicy retryPolicy;
+    private final EgopAktKorisnik korisnik;
+    private final StrDocumentService documentService;
+    private final RnLifecycleLookup lookup;
 
     public EgopAktDispatcher(EgopFilingStore store,
                              LessorRepository lessorRepository,
                              EgopFilingService filingService,
-                             EgopRetryPolicy retryPolicy) {
+                             EgopRetryPolicy retryPolicy,
+                             EgopAktKorisnik korisnik,
+                             StrDocumentService documentService,
+                             RnLifecycleLookup lookup) {
         this.store = store;
         this.lessorRepository = lessorRepository;
         this.filingService = filingService;
         this.retryPolicy = retryPolicy;
+        this.korisnik = korisnik;
+        this.documentService = documentService;
+        this.lookup = lookup;
     }
 
     /** Idempotentan: već urudžbiran akt se preskače, djelomično obavljen nastavlja gdje je stao. */
@@ -65,9 +81,45 @@ public class EgopAktDispatcher {
         }
 
         try {
-            filingService.fileAct(akt, submission, lessor);
+            filingService.fileAct(akt, submission, lessor, korisnik.za(akt), filing -> konacniDokument(akt, filing));
         } catch (EgopException | RuntimeException e) {
             handleFailure(akt, e);
+        }
+    }
+
+    /**
+     * Akt renderiran s klasom predmeta akata i urbrojem. Renderira se iz stanja RB-a, pa samo dok
+     * je prijelaz akta još zadnji za RB: noviji prijelaz briše npr. rok suspenzije, i dokument bi
+     * pod istim urbrojem rekao nešto drugo. Tada, i kad render padne, prilaže se snimak iz
+     * trenutka događaja — urudžba ne smije stati zbog dokumenta koji već postoji.
+     */
+    private Optional<byte[]> konacniDokument(EgopPismenoEntity akt, FilingReference filing) {
+        Optional<StrDocumentType> vrsta = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv());
+        Optional<RnLifecycleEvent> event = logId(akt).flatMap(lookup::findEvent);
+        if (vrsta.isEmpty() || event.isEmpty()) {
+            log.warn("egop_akt_snapshot_kept reason=missing_event akt={} rn={}", akt.getId(), akt.getRn());
+            return Optional.empty();
+        }
+        if (!lookup.isLatestTransition(akt.getRn(), event.get().logId())) {
+            log.warn("egop_akt_snapshot_kept reason=superseded akt={} rn={} vrsta='{}' — RB je u međuvremenu"
+                            + " promijenio status; prilaže se dokument iz trenutka događaja, bez klase i urbroja",
+                    akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv());
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(documentService.render(vrsta.get(), akt.getRn(), event.get().reason(), filing));
+        } catch (RuntimeException e) {
+            log.error("egop_akt_render_failed akt={} rn={} vrsta='{}': {} — prilaže se dokument iz trenutka"
+                    + " događaja", akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), e.getMessage(), e);
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<UUID> logId(EgopPismenoEntity akt) {
+        try {
+            return Optional.of(UUID.fromString(akt.getActRef()));
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return Optional.empty();
         }
     }
 

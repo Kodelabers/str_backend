@@ -97,9 +97,14 @@ public record EgopProperties(
         return new Endpoint(baseUrl + path);
     }
 
-    /** Oblik {@code DOMENA\korisnik} koji eGOP očekuje u {@code userName} poljima. */
+    /**
+     * Korisnik u {@code userName} poljima: {@code DOMENA\korisnik}, ili samo {@code korisnik} kad
+     * domene nema. Na {@code egopeaitest.mint.hr} aplikacijski korisnik nema domenu (21.10.2026.),
+     * a InfoDomov dev ({@code INFODOM\strservis}) je ima.
+     */
     public String qualifiedAppUsername() {
-        return appDomain + "\\" + appUsername;
+        String korisnik = appUsername == null ? "" : appUsername.strip();
+        return appDomain == null || appDomain.isBlank() ? korisnik : appDomain.strip() + "\\" + korisnik;
     }
 
     /**
@@ -112,7 +117,6 @@ public record EgopProperties(
         List<String> missing = new ArrayList<>();
         requireText(missing, "username", username);
         requireText(missing, "password", password);
-        requireText(missing, "app-domain", appDomain);
         requireText(missing, "app-username", appUsername);
         requireText(missing, "base-url", baseUrl);
         requireUrl(missing, "mdm.url", mdm);

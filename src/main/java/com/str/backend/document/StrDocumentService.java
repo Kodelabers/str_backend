@@ -91,7 +91,7 @@ public class StrDocumentService {
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
 
         FilingReference oznake = filing != null ? filing
-                : new FilingReference(klasaZa(detail), null);
+                : new FilingReference(klasaZa(type, detail), null);
 
         Map<String, String> ctx = contextFactory.forRn(
                 type, detail, razlog != null ? razlog : razlogIzTraga(type, rn), oznake);
@@ -103,13 +103,21 @@ public class StrDocumentService {
         return pdf;
     }
 
-    /** KLASA je na predmetu, a predmet na submissionu — dijele je svi akti istog RB-a. */
-    private String klasaZa(RnDetailDto detail) {
+    /**
+     * KLASA je na predmetu, a predmet na submissionu. Zahtjev, obavijest o dodjeli i zahtjev za
+     * promjenu podataka (odnosi se na registrirane podatke, ne urudžbira se) nose klasu registracije
+     * (334-06/10), akti nakon dodjele klasu predmeta akata (334-06/11). Dok predmet akata
+     * ne postoji (prvi akt RB-a, prije urudžbe), klase nema — bolje nego klasa tuđeg predmeta;
+     * konačni dokument s klasom i urbrojem renderira se nakon urudžbe ({@code EgopAktDispatcher}).
+     */
+    private String klasaZa(StrDocumentType type, RnDetailDto detail) {
         if (detail.submissionId() == null) {
             return null;
         }
+        boolean registracija = type == StrDocumentType.DODJELA || type == StrDocumentType.ZAHTJEV
+                || type == StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA;
         return submissionRepository.findById(detail.submissionId())
-                .map(s -> s.getEgopKlasa())
+                .map(s -> registracija ? s.getEgopKlasa() : s.getEgopAktiKlasa())
                 .orElse(null);
     }
 

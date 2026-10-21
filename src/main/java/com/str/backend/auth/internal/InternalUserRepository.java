@@ -9,6 +9,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -45,6 +46,25 @@ public class InternalUserRepository {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Set<String> findRoles(String oib) {
         return Set.copyOf(jdbc.queryForList(ROLES_BY_OIB, String.class, oib));
+    }
+
+    /**
+     * eGOP korisničko ime internog korisnika ({@code external_username}, bez domene) — akt koji je
+     * službenik napravio u STR-u urudžbira se pod njegovim eGOP korisnikom. Prazno ako korisnik
+     * nije aktivan interni korisnik ili nema upisano ime.
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public Optional<String> findExternalUsername(String oib) {
+        return jdbc.queryForList("""
+                        SELECT u.external_username
+                          FROM str.application_user u
+                         WHERE u.username = ?
+                           AND u.internal = TRUE
+                           AND u.active = TRUE
+                        """, String.class, oib).stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::strip)
+                .findFirst();
     }
 
     /** Ime i prezime internih korisnika po OIB-u — za prikaz aktera; nepoznat OIB izostaje. */

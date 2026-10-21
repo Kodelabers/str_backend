@@ -1980,6 +1980,30 @@ pismenu prilagao PDF **zahtjeva**, koji bi uz KP otišao stranci kao akt. Sada g
 izlazno pismeno ostaje bez dokumenta i bez otpreme, submission ide na `FAILED`, a retry priloži pravi
 akt.
 
+#### Klase, predmeti i korisnici na egopeaitest.mint.hr (21.10.2026.)
+
+MINT je s InfoDomom dopunio plan klasifikacijskih oznaka:
+
+| Klasa | Vrsta predmeta (po nazivu, ID se razlikuje po okolinama) | Što ide | Korisnik |
+| :--- | :--- | :--- | :--- |
+| 334-06/10 | „Dodjela registracijskog STR broja" (test: 6783) | jedan predmet po zahtjevu: zahtjev (urbroj 1), obavijest o dodjeli (urbroj 2) | aplikacijski (`strservis4`) |
+| 334-06/11 | „Suspenzija, povlačenje i reaktiviranje dodjela registracijskog STR broja" (test: 6784) | jedan predmet po RB-u (odluka 21.10.2026.), otvara ga prvi akt: prijedlog suspenzije, suspenzija, obustava, reaktivacija, povlačenje, opoziv | akt službenika (`INTERNAL:<oib>`) pod njegovim `str.application_user.external_username` — urbroj službenika; opoziv (iznajmljivač) i suspenzija po isteku roka (sustav) pod aplikacijskim |
+
+- Aplikacijski korisnik na testu nema domenu: `EGOP_APP_DOMAIN=` (prazno) šalje samo `strservis4`. U
+  `docker-compose.cdu.yml` je zato `${EGOP_APP_DOMAIN-INFODOM}` (bez dvotočke), da prazna vrijednost
+  ostane prazna.
+- Službenik bez `external_username`: akt ide pod aplikacijskim korisnikom uz ERROR
+  `egop_akt_korisnik_fallback` (urbroj tada nije službenikov).
+- Otprema u KP i dohvat statusa poruke idu pod istim korisnikom pod kojim je pismeno urudžbirano
+  (odluka 21.10.2026.) — akt službenika je u predmetu za koji je on nadležan.
+- Ako eGOP otpremnicu već ima (`DatumVrijemeKreiranja`), ponovni pokušaj je ne šalje drugi put,
+  ni kad još nije proslijeđena u KP.
+- Identitet predmeta akata čuva se na submissionu (`egop_akti_*`, changeset 140).
+- Akt se i dalje renderira odmah (prikaz stranci, preslika u mailu), ali bez klase dok predmet
+  akata ne postoji. Nakon `KreirajPismeno2` renderira se konačni dokument s klasom 334-06/11 i
+  urbrojem i prilaže se u eGOP umjesto snimka (`EgopAktDispatcher.konacniDokument`). Ako je RB u
+  međuvremenu promijenio status, ostaje snimak (WARN `egop_akt_snapshot_kept`).
+
 #### Neriješeno
 
 - **KP dostava** — vidi §KP otprema.

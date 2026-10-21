@@ -67,6 +67,16 @@ public class SubmissionEntity {
     @Column(name = "egop_klasa", length = 64)
     private String egopKlasa;
 
+    /** Predmet akata nakon dodjele (klasa 334-06/11) — jedan po RB-u, nastaje s prvim aktom. */
+    @Column(name = "egop_akti_uredska_godina")
+    private Integer egopAktiUredskaGodina;
+
+    @Column(name = "egop_akti_rbr_predmeta")
+    private Integer egopAktiRbrPredmeta;
+
+    @Column(name = "egop_akti_klasa", length = 64)
+    private String egopAktiKlasa;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "egop_sync_status", length = 20, nullable = false)
     private EgopSyncStatus egopSyncStatus = EgopSyncStatus.NEW;
@@ -117,13 +127,25 @@ public class SubmissionEntity {
     }
 
     /**
-     * Identitet eGOP predmeta u koji se urudžbiraju svi akti ovog submissiona
-     * (i budući akti životnog ciklusa RB-a — zato se sprema trajno).
+     * Identitet eGOP predmeta registracije (klasa 334-06/10): zahtjev i obavijest o dodjeli.
+     * Akti nakon dodjele idu u zaseban predmet, vidi {@link #applyEgopAktiPredmet}.
      */
     public void applyEgopPredmet(int uredskaGodina, int rbrPredmeta, String klasa) {
         this.egopUredskaGodina = uredskaGodina;
         this.egopRbrPredmeta = rbrPredmeta;
         this.egopKlasa = klasa;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Identitet eGOP predmeta akata nakon dodjele — suspenzija, povlačenje, reaktivacija, opoziv
+     * (vrsta „Suspenzija, povlačenje i reaktiviranje…", klasa 334-06/11). Jedan po RB-u
+     * (odluka 21.10.2026.); otvara ga prvi takav akt.
+     */
+    public void applyEgopAktiPredmet(int uredskaGodina, int rbrPredmeta, String klasa) {
+        this.egopAktiUredskaGodina = uredskaGodina;
+        this.egopAktiRbrPredmeta = rbrPredmeta;
+        this.egopAktiKlasa = klasa;
         this.updatedAt = Instant.now();
     }
 

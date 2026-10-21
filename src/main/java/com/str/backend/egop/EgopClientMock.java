@@ -105,7 +105,7 @@ class EgopClientMock implements EgopClient {
 
     @Override
     public Map<String, String> getVrstePredmeta() {
-        return Map.of("Izdavanje Registracijskog broja", "9282");
+        return Map.of("Dodjela registracijskog STR broja", "9282");
     }
 
     /**
@@ -328,14 +328,13 @@ class EgopClientMock implements EgopClient {
 
     @Override
     public void otpremiUKorisnickiPretinac(String username, int jop, String primateljOib, String napomena) {
-        log.info("Mock eGOP otpremiUKorisnickiPretinac called: jop={}, primatelj={}, napomena='{}'",
-                jop, primateljOib, napomena);
+        log.info("Mock eGOP otpremiUKorisnickiPretinac called: jop={}, napomena='{}'", jop, napomena);
     }
 
     /** Potvrđen primitak (2) odmah — da lokalno prođe cijeli tok, uključujući zapis vremena. */
     @Override
     public KpStatusPoruke dohvatiKpStatusPoruke(String username, int jop, String primateljOib) {
-        log.info("Mock eGOP dohvatiKpStatusPoruke called: jop={}, primatelj={}", jop, primateljOib);
+        log.info("Mock eGOP dohvatiKpStatusPoruke called: jop={}", jop);
         java.time.Instant sada = java.time.Instant.now();
         return new KpStatusPoruke(EgopKpOtpremaEntity.KP_POTVRDEN_PRIMITAK, sada, sada, sada, sada, sada,
                 sada, sada);

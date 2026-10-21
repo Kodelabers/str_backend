@@ -192,6 +192,18 @@ public class EgopPismenoEntity {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Zamjenjuje snimak iz trenutka događaja dokumentom renderiranim nakon {@code KreirajPismeno2},
+     * s klasom predmeta i urudžbenim brojem. Samo prije prilaganja dokumenta u eGOP.
+     */
+    public void replacePdf(byte[] pdf) {
+        if (documentAttached) {
+            throw new IllegalStateException("Dokument pismena " + id + " je već priložen u eGOP");
+        }
+        this.pdfContent = pdf;
+        this.updatedAt = Instant.now();
+    }
+
     public void markSynced() {
         this.status = EgopSyncStatus.SYNCED;
         this.syncError = null;

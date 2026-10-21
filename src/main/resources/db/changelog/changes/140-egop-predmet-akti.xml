@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Akti nakon dodjele RB-a (suspenzija, povlačenje, reaktivacija, opoziv) urudžbiraju se u
+      zaseban eGOP predmet vrste „Suspenzija, povlačenje i reaktiviranje dodjela registracijskog
+      STR broja" (klasa 334-06/11), a ne u predmet registracije (334-06/10). Jedan takav predmet
+      po RB-u (odluka 21.10.2026.); otvara ga prvi takav akt. Identitet se čuva na submissionu,
+      kao i identitet predmeta registracije (egop_uredska_godina / egop_rbr_predmeta / egop_klasa).
+    -->
+    <changeSet id="140-submission-egop-predmet-akti" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="submission">
+            <column name="egop_akti_uredska_godina" type="INT"/>
+            <column name="egop_akti_rbr_predmeta" type="INT"/>
+            <column name="egop_akti_klasa" type="VARCHAR(64)"/>
+        </addColumn>
+    </changeSet>
+
+    <!--
+      eGOP korisnik službenika (str.application_user.external_username) — akt koji je napravio
+      službenik urudžbira se pod njegovim korisnikom, pa nosi njegov urudžbeni broj. Na
+      dev/cdu/prod stupac postoji u eTurizmovoj shemi; ovo dopunjuje samo lokalni mock iz 138.
+    -->
+    <changeSet id="140-str-application-user-external-username-local" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <tableExists schemaName="str" tableName="application_user"/>
+            <not><columnExists schemaName="str" tableName="application_user" columnName="external_username"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="application_user">
+            <column name="external_username" type="VARCHAR(255)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

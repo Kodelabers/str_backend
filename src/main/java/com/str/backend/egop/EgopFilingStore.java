@@ -79,6 +79,23 @@ public class EgopFilingStore {
         });
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void saveAktiPredmet(UUID submissionId, int uredskaGodina, int rbrPredmeta, String klasa) {
+        submissionRepository.findById(submissionId).ifPresent(submission -> {
+            submission.applyEgopAktiPredmet(uredskaGodina, rbrPredmeta, klasa);
+            submissionRepository.save(submission);
+        });
+    }
+
+    /** Konačni dokument akta, s klasom i urudžbenim brojem, umjesto snimka iz trenutka događaja. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void replacePdf(UUID pismenoId, byte[] pdf) {
+        egopPismenoRepository.findById(pismenoId).ifPresent(pismeno -> {
+            pismeno.replacePdf(pdf);
+            egopPismenoRepository.save(pismeno);
+        });
+    }
+
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public Optional<EgopPismenoEntity> findPismeno(UUID submissionId, String vrstaNaziv,
                                                    String actRef) {
