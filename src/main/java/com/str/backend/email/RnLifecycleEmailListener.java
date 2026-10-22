@@ -122,14 +122,24 @@ public class RnLifecycleEmailListener {
                 razlog,
                 rok(detail),
                 aktPdf(akt.get(), event.rn(), razlog),
-                // Non-EU iznajmljivač nema OIB pa ni pristup korisničkom pretincu — njemu je
-                // e-pošta kanal dostave, a ne samo obavijest. Klauzula se po tome razlikuje.
-                detail.lessorOib() == null || detail.lessorOib().isBlank()));
+                dostava(akt.get(), detail)));
         if (sent) {
             retryStore.markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
         } else {
             retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "smtp_failed");
         }
+    }
+
+    /**
+     * Ulazno pismeno (opoziv) eGOP ne otprema u korisnički pretinac i nije akt koji se stranci
+     * dostavlja, pa poruka o dostavi ne govori ništa. Inače: non-EU iznajmljivač nema OIB pa ni
+     * pristup pretincu — njemu je e-pošta kanal dostave, a ne samo obavijest.
+     */
+    private static Dostava dostava(StrDocumentType type, RnDetailDto detail) {
+        if (type.smjer() == StrDocumentType.Smjer.ULAZNO) {
+            return Dostava.BEZ_KLAUZULE;
+        }
+        return detail.lessorOib() == null || detail.lessorOib().isBlank() ? Dostava.EPOSTA : Dostava.PRETINAC;
     }
 
     private static MailTemplate mailTemplateFor(StrDocumentType type) {

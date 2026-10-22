@@ -1,9 +1,6 @@
 # Obavijest o obustavi postupka suspenzije registracijskog broja
-# Vrsta pismena (eGOP): „Obavijest o obustavi postupka suspenzije registracijskog broja" — izlazno
-#
-# NAPOMENA: ova vrsta NIJE među 7 iz InfoDomovog maila od 22.07.2026. — nastala je uz dvofaznu
-# suspenziju, koje u tom trenutku nije bilo. Urudžbiranje je iza str.egop.akti-bez-sifre;
-# predložak postoji da se, kad InfoDom potvrdi šifru, upali bez izmjene koda.
+# Vrsta pismena (eGOP): „Obavijest o obustavi postupka suspenzije registracijskog broja" — izlazno,
+# ide u KP. Nastala je uz dvofaznu suspenziju; MINT je vrstu unio 22.10.2026.
 #
 # Akt zatvara postupak pokrenut „Obaviješću o prijedlogu suspenzije": stranka se očitovala
 # odnosno otklonila nedostatak, pa razloga za suspenziju više nema. Stranci je u korist, pa

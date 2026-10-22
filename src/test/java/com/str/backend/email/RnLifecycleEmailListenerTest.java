@@ -142,11 +142,7 @@ class RnLifecycleEmailListenerTest {
         assertThat(mail.razlog()).isEqualTo("nalaz inspekcije");
     }
 
-    /**
-     * Reaktivacija ima predložak akta, pa ga i mail nosi. Urudžbiranje je zasebno pitanje —
-     * vrsta pismena nema šifru u eGOP šifrarniku, pa ga blokira zastavica u
-     * {@code RnLifecycleFilingListener}, ne ovaj listener.
-     */
+    /** Reaktivacija ima predložak akta, pa ga i mail nosi. */
     @Test
     void reactivation_sendsMailWithAct() {
         listener.onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.ACTIVE,
@@ -169,7 +165,7 @@ class RnLifecycleEmailListenerTest {
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
                 RnTrigger.INSPECTION, null, null));
 
-        assertThat(captured().dostavaMailom()).isTrue();
+        assertThat(captured().dostava()).isEqualTo(Dostava.EPOSTA);
     }
 
     @Test
@@ -177,7 +173,30 @@ class RnLifecycleEmailListenerTest {
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
                 RnTrigger.INSPECTION, null, null));
 
-        assertThat(captured().dostavaMailom()).isFalse();
+        assertThat(captured().dostava()).isEqualTo(Dostava.PRETINAC);
+    }
+
+    /**
+     * Opoziv je u eGOP-u ulazno pismeno i ne ide u korisnički pretinac (MINT, 22.10.2026.), pa
+     * poruka ne smije tvrditi dostavu u pretinac — ni korisniku s OIB-om ni non-EU korisniku.
+     */
+    @Test
+    void revocation_hasNoDeliveryClause_forEuLessor() {
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "NIAS:12345678903", null));
+
+        assertThat(captured().dostava()).isEqualTo(Dostava.BEZ_KLAUZULE);
+        assertThat(captured().pdf()).isNotEmpty();
+    }
+
+    @Test
+    void revocation_hasNoDeliveryClause_forNonEuLessor() {
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
+
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), null));
+
+        assertThat(captured().dostava()).isEqualTo(Dostava.BEZ_KLAUZULE);
     }
 
     /** Pad rendera akta ne smije progutati obavijest — status je već promijenjen. */

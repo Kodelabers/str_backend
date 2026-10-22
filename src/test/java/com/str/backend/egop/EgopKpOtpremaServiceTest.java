@@ -134,6 +134,18 @@ class EgopKpOtpremaServiceTest {
         verify(store).register(akt.getId(), OIB, akt.getCreatedAt());
     }
 
+    /** Opoziv je ulazno pismeno (MINT, 22.10.2026.) — eGOP ulazno ne otprema u KP, pa nema ni zapisa. */
+    @Test
+    void registerForAkt_incomingRevocation_writesNothing() {
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", "log-1",
+                "Obavijest o opozivu registracijskog broja", EgopPismenoEntity.Smjer.ULAZNO, "pdf".getBytes());
+
+        service().registerForAkt(akt);
+
+        verify(filingStore, never()).findSubmission(any());
+        verify(store, never()).register(any(), anyString(), any());
+    }
+
     @Test
     void registerForAkt_missingLessor_writesNothing() {
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", "log-1",

@@ -10,10 +10,15 @@ import java.util.Set;
 /**
  * Sedam vrsta pismena koje STR urudžbira u eGOP predmet, prema mailu InfoDoma od 22.07.2026.
  *
- * <p>{@link #vrstaPismenaNaziv()} je <b>točan ključ eGOP šifrarnika</b> — po njemu
- * {@code EgopCodebooks} razrješava šifru. Ta su imena ranije živjela na tri mjesta
- * ({@code application.properties}, {@code EgopFilingService} i {@code EgopClientMock}); ovaj
- * enum je od sada jedini izvor.
+ * <p>{@link #vrstaPismenaNaziv()} je naš kanonski naziv: zapisuje se na {@code egop_pismeno}
+ * (dio unique ključa, filter retry joba, popis dokumenata) i ide u {@code nazivPismena}.
+ * Šifra se razrješava po {@link #egopVrstaNaziv()}, nazivu pod kojim je vrsta unesena u eGOP
+ * šifrarnik; razlikuju se za zahtjev i reaktivaciju (MINT, 22. 10. 2026.). Ta su imena ranije
+ * živjela na tri mjesta ({@code application.properties}, {@code EgopFilingService} i
+ * {@code EgopClientMock}); ovaj enum je od sada jedini izvor.
+ *
+ * <p>{@link #smjer()} je smjer u urudžbenom zapisniku, a {@link #aktTijela()} tko je autor
+ * dokumenta. Razilaze se samo kod {@link #OPOZIV}: PDF je akt tijela, a pismeno je ulazno.
  *
  * <p>{@link #requiredSections()} je <b>pravni minimum</b> koji {@link ZupTemplateLoader}
  * provjerava na startu. Sadržaj sekcije određuje predložak; ovaj popis samo brani da akt
@@ -32,7 +37,8 @@ public enum StrDocumentType {
      * Podnesak stranke po čl. 71. ZUP-a, ne akt po čl. 98. Renderira ga
      * {@code SubmissionPdfGenerator} kao tablični obrazac, pa nema predloška.
      */
-    ZAHTJEV("zahtjev", "Zahtjev za registracijski broj", Smjer.ULAZNO,
+    ZAHTJEV("zahtjev", "Zahtjev za registracijski broj", Smjer.ULAZNO, false,
+            "Zahtjev za dodjelu registracijskog broja",
             "ZAHTJEV ZA REGISTRACIJSKI BROJ", false, EnumSet.noneOf(ZupSection.class)),
 
     /**
@@ -44,15 +50,19 @@ public enum StrDocumentType {
      * stranke koja je u uvodu već imenovana. Isto vrijedi za sve ostale obavijesti — svaka
      * ima istu strukturu kao ova.
      */
-    DODJELA("dodjela", "Obavijest o dodjeli registracijskog broja", Smjer.IZLAZNO,
+    DODJELA("dodjela", "Obavijest o dodjeli registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O DODJELI REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
      * Opoziv na zahtjev samog iznajmljivača ({@code REVOKED}) — evidencijska obavijest, bez
      * pravnog lijeka.
+     *
+     * <p>U eGOP-u je <b>ulazno</b> pismeno (MINT, 22. 10. 2026.): radnju je pokrenula stranka,
+     * pa ide kroz {@code KreirajPismeno2} sa subjektom i ne otprema se u korisnički pretinac.
+     * Dokument ostaje akt tijela (zaglavlje, potpis, ePečat), zato {@code aktTijela=true}.
      */
-    OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.IZLAZNO,
+    OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.ULAZNO, true, null,
             "OBAVIJEST O OPOZIVU REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
@@ -62,12 +72,12 @@ public enum StrDocumentType {
      * ide u izreku.
      */
     PRIJEDLOG_SUSPENZIJE("prijedlog-suspenzije",
-            "Obavijest o prijedlogu suspenzije registracijskog broja", Smjer.IZLAZNO,
+            "Obavijest o prijedlogu suspenzije registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O PRIJEDLOGU SUSPENZIJE REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE)),
 
     /** Odluka koja dira u prava stranke → puna struktura čl. 98., uključujući uputu. */
-    SUSPENZIJA("suspenzija", "Obavijest o suspenziji registracijskog broja", Smjer.IZLAZNO,
+    SUSPENZIJA("suspenzija", "Obavijest o suspenziji registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O SUSPENZIJI REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
                     ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
@@ -76,7 +86,7 @@ public enum StrDocumentType {
      * Povlačenje po službenoj dužnosti ({@code WITHDRAWN}). Kao suspenzija, ali trajno — uputa
      * je time još važnija.
      */
-    POVLACENJE("povlacenje", "Obavijest o povlačenju registracijskog broja", Smjer.IZLAZNO,
+    POVLACENJE("povlacenje", "Obavijest o povlačenju registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O POVLAČENJU REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
                     ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
@@ -85,19 +95,19 @@ public enum StrDocumentType {
      * Podnesak stranke (čl. 71. + čl. 122.) — nema izreke ni upute; tijelo prigovora ide u
      * obrazloženje, jer čl. 108. st. 1 traži da stranka navede zbog čega je nezadovoljna.
      */
-    PRIGOVOR("prigovor", "Prigovor na prijedlog suspenzije", Smjer.ULAZNO,
+    PRIGOVOR("prigovor", "Prigovor na prijedlog suspenzije", Smjer.ULAZNO, false, null,
             "PRIGOVOR NA PRIJEDLOG SUSPENZIJE", true,
             EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.OBRAZLOZENJE)),
 
     /**
      * Ukidanje suspenzije — stranci u korist, pa nema obrazloženja ni upute.
      *
-     * <p><b>Nije među 7 vrsta pismena iz InfoDomovog maila</b> i nema šifru u eGOP šifrarniku,
-     * iako je Knjiga testiranja spominje (TC-STR-2.2-001). Predložak i okidač postoje, a
-     * urudžbiranje je iza {@code str.egop.akti-bez-sifre} (slug je na popisu) dok InfoDom ne
-     * potvrdi šifru. Akt se svejedno zapisuje i prikazuje stranci — staje samo slanje.
+     * <p>Nije bila među 7 vrsta pismena iz InfoDomovog maila; MINT ju je unio na testu pod
+     * nazivom „Obavijest o reaktiviranju…" (22. 10. 2026.), pa se urudžbira i otprema u KP kao
+     * i ostale obavijesti.
      */
-    REAKTIVACIJA("reaktivacija", "Obavijest o reaktivaciji registracijskog broja", Smjer.IZLAZNO,
+    REAKTIVACIJA("reaktivacija", "Obavijest o reaktivaciji registracijskog broja", Smjer.IZLAZNO, true,
+            "Obavijest o reaktiviranju registracijskog broja",
             "OBAVIJEST O REAKTIVACIJI REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
@@ -105,13 +115,11 @@ public enum StrDocumentType {
      * Postupak suspenzije obustavljen jer je stranka postupila po prijedlogu. Kao i
      * reaktivacija: stranci u korist, pa nema obrazloženja ni upute o pravnom lijeku.
      *
-     * <p><b>Nije među 7 vrsta pismena iz InfoDomovog maila</b> — nastala je uz dvofaznu
-     * suspenziju, koja u tom trenutku nije postojala. Urudžbiranje je zato iza
-     * {@code str.egop.akti-bez-sifre} dok InfoDom ne potvrdi šifru; akt se svejedno zapisuje,
-     * prikazuje stranci i šalje e-poštom.
+     * <p>Nije bila među 7 vrsta pismena iz InfoDomovog maila — nastala je uz dvofaznu
+     * suspenziju, koja u tom trenutku nije postojala. MINT ju je unio na testu (22. 10. 2026.).
      */
     OBUSTAVA_SUSPENZIJE("obustava-suspenzije",
-            "Obavijest o obustavi postupka suspenzije registracijskog broja", Smjer.IZLAZNO,
+            "Obavijest o obustavi postupka suspenzije registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O OBUSTAVI POSTUPKA SUSPENZIJE REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
@@ -125,7 +133,7 @@ public enum StrDocumentType {
      * konfiguraciji, jer vrsta nije među dogovorenim vrstama pismena i nema eGOP šifru.
      */
     ZAHTJEV_PROMJENE_PODATAKA("zahtjev-promjene-podataka", "Zahtjev za promjenu podataka",
-            Smjer.ULAZNO, "ZAHTJEV ZA PROMJENU PODATAKA", true,
+            Smjer.ULAZNO, false, null, "ZAHTJEV ZA PROMJENU PODATAKA", true,
             EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.OBRAZLOZENJE));
 
     /** Smjer pismena u urudžbenom zapisniku. Preslikava se na {@code EgopPismenoEntity.Smjer}. */
@@ -134,15 +142,23 @@ public enum StrDocumentType {
     private final String slug;
     private final String vrstaPismenaNaziv;
     private final Smjer smjer;
+    private final boolean aktTijela;
+    private final String egopVrstaNaziv;
     private final String naslov;
     private final boolean templateBacked;
     private final Set<ZupSection> requiredSections;
 
-    StrDocumentType(String slug, String vrstaPismenaNaziv, Smjer smjer, String naslov,
-                    boolean templateBacked, Set<ZupSection> requiredSections) {
+    /**
+     * @param egopVrstaNaziv naziv u eGOP šifrarniku; {@code null} = isti kao {@code vrstaPismenaNaziv}
+     */
+    StrDocumentType(String slug, String vrstaPismenaNaziv, Smjer smjer, boolean aktTijela,
+                    String egopVrstaNaziv, String naslov, boolean templateBacked,
+                    Set<ZupSection> requiredSections) {
         this.slug = slug;
         this.vrstaPismenaNaziv = vrstaPismenaNaziv;
         this.smjer = smjer;
+        this.aktTijela = aktTijela;
+        this.egopVrstaNaziv = egopVrstaNaziv != null ? egopVrstaNaziv : vrstaPismenaNaziv;
         this.naslov = naslov;
         this.templateBacked = templateBacked;
         this.requiredSections = requiredSections;
@@ -153,13 +169,27 @@ public enum StrDocumentType {
         return slug;
     }
 
-    /** Naziv iz eGOP šifrarnika vrsta pismena — mora se poklapati znak za znak. */
+    /** Naš kanonski naziv vrste pismena — ključ na {@code egop_pismeno}; ne mijenjati. */
     public String vrstaPismenaNaziv() {
         return vrstaPismenaNaziv;
     }
 
+    /** Naziv vrste u eGOP šifrarniku, po kojem se razrješava šifra. */
+    public String egopVrstaNaziv() {
+        return egopVrstaNaziv;
+    }
+
+    /** Smjer u urudžbenom zapisniku; samo izlazna pismena idu u korisnički pretinac. */
     public Smjer smjer() {
         return smjer;
+    }
+
+    /**
+     * Dokument izdaje tijelo: zaglavlje s grbom, potpis tijela i ePečat. Podnesak stranke
+     * ({@link #ZAHTJEV}, {@link #PRIGOVOR}) to nema.
+     */
+    public boolean aktTijela() {
+        return aktTijela;
     }
 
     /** Naslov koji se ispisuje na aktu; ne mora biti jednak nazivu vrste pismena. */

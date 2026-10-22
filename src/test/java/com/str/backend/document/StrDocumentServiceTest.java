@@ -67,7 +67,7 @@ class StrDocumentServiceTest {
     /** Akti koje izdaje tijelo — podnesak stranke (prigovor) nema okvir tijela. */
     static Stream<StrDocumentType> aktiTijela() {
         return StrDocumentType.templateBackedTypes().stream()
-                .filter(t -> t.smjer() == StrDocumentType.Smjer.IZLAZNO);
+                .filter(StrDocumentType::aktTijela);
     }
 
     @BeforeEach

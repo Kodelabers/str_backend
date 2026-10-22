@@ -59,18 +59,22 @@ public class EmailTemplates {
 
     /** Gotov HTML poruke uz dostavu u korisnički pretinac. */
     public String body(MailTemplate template, Map<String, String> values) {
-        return body(template, values, false);
+        return body(template, values, Dostava.PRETINAC);
     }
 
     /**
      * Gotov HTML poruke; {@code values} su sirove vrijednosti, escapiranje je ovdje.
      *
-     * @param dostavaMailom je li e-pošta kanal dostave (non-EU) ili samo obavijest
+     * @param dostava kanal dostave akta, o kojem ovisi klauzula na dnu poruke
      */
-    public String body(MailTemplate template, Map<String, String> values, boolean dostavaMailom) {
+    public String body(MailTemplate template, Map<String, String> values, Dostava dostava) {
         Map<String, String> safe = new HashMap<>();
         values.forEach((k, v) -> safe.put(k, escape(v)));
-        safe.put("klauzula.dostava", dostavaMailom ? KLAUZULA_EPOSTA : KLAUZULA_PRETINAC);
+        safe.put("klauzula.dostava", switch (dostava) {
+            case PRETINAC -> KLAUZULA_PRETINAC;
+            case EPOSTA -> KLAUZULA_EPOSTA;
+            case BEZ_KLAUZULE -> "";
+        });
         safe.put("gumb.prijava", button("Prijava", properties.loginUrl()));
         safe.put("gumb.logIn", button("Log in", properties.loginUrl()));
         return wrap(loader.body(template, safe));

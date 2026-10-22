@@ -140,7 +140,8 @@ public class ZupContextFactory {
         // Pečat je pečat tijela: podnesak stranke (prigovor) ga ne dobiva, pa mu se podaci ni ne
         // grade — inače bi se za svaki takav render generirao broj zapisa i, uz nekonfiguriran
         // certifikat, upisao ERROR za blok koji se nikad ne ispisuje.
-        if (type.smjer() == StrDocumentType.Smjer.IZLAZNO) {
+        // Po autorstvu, ne po smjeru: opoziv je ulazno pismeno, a dokument je akt tijela.
+        if (type.aktTijela()) {
             putEpecat(ctx, naziv);
         }
 

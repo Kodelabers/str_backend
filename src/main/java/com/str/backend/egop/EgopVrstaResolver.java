@@ -27,7 +27,7 @@ import java.util.Optional;
  * <ol>
  *   <li>zadana šifra za slug ({@code str.egop.vrste.sifre.pismena.<slug>});</li>
  *   <li>zadani naziv za slug, razriješen kroz MDM;</li>
- *   <li>naš kanonski naziv iz {@link StrDocumentType}, razriješen kroz MDM;</li>
+ *   <li>eGOP naziv vrste iz {@link StrDocumentType#egopVrstaNaziv()}, razriješen kroz MDM;</li>
  *   <li>zadana fallback šifra, odnosno fallback naziv.</li>
  * </ol>
  * Nerazriješena vrsta je {@link EgopBadRequestException} — ista greška kao i prije, samo
@@ -134,7 +134,8 @@ public class EgopVrstaResolver {
      *                      isti onaj koji je zapisan na {@code egop_pismeno}
      */
     public Vrsta vrstaPismena(String kanonskiNaziv) throws EgopBadRequestException {
-        Optional<String> slug = StrDocumentType.fromVrstaPismenaNaziv(kanonskiNaziv)
+        Optional<StrDocumentType> type = StrDocumentType.fromVrstaPismenaNaziv(kanonskiNaziv);
+        Optional<String> slug = type
                 .map(StrDocumentType::slug)
                 .map(EgopVrsteProperties::normalizeKey);
 
@@ -152,7 +153,9 @@ public class EgopVrstaResolver {
             return privremena(sifra, kanonskiNaziv, "zadani naziv '" + zadaniNaziv + "'");
         }
 
-        String vlastita = EgopNaziv.resolveId(codebook, kanonskiNaziv);
+        // Naziv u eGOP šifrarniku nije uvijek naš kanonski („Zahtjev za dodjelu…", „…o reaktiviranju…").
+        String egopNaziv = type.map(StrDocumentType::egopVrstaNaziv).orElse(kanonskiNaziv);
+        String vlastita = EgopNaziv.resolveId(codebook, egopNaziv);
         if (isSet(vlastita)) {
             // Naša vrsta postoji u eGOP šifrarniku — ništa posudbeno, ništa za storniranje.
             return new Vrsta(vlastita, false);

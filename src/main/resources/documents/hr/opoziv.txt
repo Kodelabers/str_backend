@@ -1,13 +1,15 @@
 # Obavijest o opozivu registracijskog broja
-# Vrsta pismena (eGOP): „Obavijest o opozivu registracijskog broja" — izlazno
+# Vrsta pismena (eGOP): „Obavijest o opozivu registracijskog broja" — ULAZNO (MINT, 22.10.2026.):
+# radnju pokreće stranka, pa pismeno ne ide u korisnički pretinac. Dokument je i dalje akt
+# tijela (zaglavlje, potpis, ePečat) — StrDocumentType.aktTijela.
 #
 # Opoziv pokreće sam iznajmljivač (LessorRnActionService), pa je ovo potvrda o upisanoj
 # promjeni po čl. 159. ZUP-a, a ne odluka protiv stranke — bez obrazloženja i bez upute
 # o pravnom lijeku.
 #
 # Struktura je ista kao na obavijesti o dodjeli (predložak MINT-a od 11.09.2026.): bez adresata,
-# bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu, a dostava ide
-# u korisnički pretinac.
+# bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu; dokument joj
+# je dostupan u „Moji registracijski brojevi" i u privitku e-pošte.
 #
 # Katalog placeholdera: docs/ZUP-predlosci.md
 

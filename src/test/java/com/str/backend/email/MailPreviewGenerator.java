@@ -26,11 +26,11 @@ class MailPreviewGenerator {
 
         for (MailTemplate t : MailTemplate.values()) {
             String html = "<!-- SUBJECT: " + templates.subject(t, values("Ana")) + " -->\n"
-                    + templates.body(t, values("Ana"), false);
+                    + templates.body(t, values("Ana"), Dostava.PRETINAC);
             Files.writeString(OUT.resolve("mail-" + t.slug() + ".html"), html);
         }
         String nonEu = "<!-- SUBJECT: " + templates.subject(MailTemplate.SUSPENZIJA, values("John")) + " -->\n"
-                + templates.body(MailTemplate.SUSPENZIJA, values("John"), true);
+                + templates.body(MailTemplate.SUSPENZIJA, values("John"), Dostava.EPOSTA);
         Files.writeString(OUT.resolve("mail-suspenzija-nonEU.html"), nonEu);
         System.out.println("MAIL PREVIEW OK -> " + OUT.toAbsolutePath());
     }

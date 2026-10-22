@@ -1867,7 +1867,7 @@ idu u **isti** neupravni predmet.
 | :--- | :--- | :--- | :--- |
 | Registracija | Zahtjev za registracijski broj | ulazno | `EgopRegistrationDispatcher` |
 | Registracija | Obavijest o dodjeli registracijskog broja | izlazno | isto |
-| Opoziv | Obavijest o opozivu registracijskog broja | izlazno | prijelaz → `REVOKED` (okidač `REVOCATION`; do changeseta 137 `WITHDRAWN` uz actor `LESSOR:`/`NIAS:`) |
+| Opoziv | Obavijest o opozivu registracijskog broja | izlazno (od 22.10.2026. **ulazno**, vidi „Smjer pismena po predmetu") | prijelaz → `REVOKED` (okidač `REVOCATION`; do changeseta 137 `WITHDRAWN` uz actor `LESSOR:`/`NIAS:`) |
 | Suspenzija | Obavijest o suspenziji registracijskog broja | izlazno | prijelaz → `SUSPENDED` |
 | Povlačenje | Obavijest o povlačenju registracijskog broja | izlazno | prijelaz → `WITHDRAWN` (okidač `WITHDRAWAL`) po sl. dužnosti |
 | Reaktivacija | Obavijest o reaktivaciji registracijskog broja | izlazno | prijelaz → `ACTIVE`, **iza zastavice** |
@@ -2004,6 +2004,44 @@ MINT je s InfoDomom dopunio plan klasifikacijskih oznaka:
   urbrojem i prilaže se u eGOP umjesto snimka (`EgopAktDispatcher.konacniDokument`). Ako je RB u
   međuvremenu promijenio status, ostaje snimak (WARN `egop_akt_snapshot_kept`).
 
+#### Smjer pismena po predmetu (22.10.2026.)
+
+MINT je propisao smjer svakog pismena. Samo izlazna idu u korisnički pretinac: eGOP otpremu
+ulaznog pismena odbija s `Pismeno mora biti izlazno!` (provjereno SoapUI-jem 22.10.2026. nad
+JOP-om pravog zahtjeva; zahtjev je poslan eGOP timu).
+
+| Predmet (klasa) | Pismeno | Naziv vrste u eGOP šifrarniku | Smjer | KP |
+| :--- | :--- | :--- | :--- | :--- |
+| 334-06/10 „Dodjela registracijskog STR broja" | Zahtjev za registracijski broj | **Zahtjev za dodjelu registracijskog broja** | ulazno | ne |
+| | Obavijest o dodjeli registracijskog broja | isti | izlazno | da |
+| 334-06/11 „Suspenzija, povlačenje i reaktiviranje…" | Obavijest o prijedlogu suspenzije | isti | izlazno | da |
+| | Obavijest o obustavi postupka suspenzije | isti | izlazno | da |
+| | Obavijest o suspenziji | isti | izlazno | da |
+| | Obavijest o reaktivaciji | **Obavijest o reaktiviranju registracijskog broja** | izlazno | da |
+| | Obavijest o povlačenju | isti | izlazno | da |
+| | **Obavijest o opozivu** | isti | **ulazno** | ne |
+
+- Smjer je `StrDocumentType.smjer()`: ulazna idu kroz `KreirajPismeno2` sa subjektom
+  (iznajmljivač), izlazna kroz `KreirajIzlaznoPismeno`. Otpremu u KP zapisuje
+  `EgopKpOtpremaService` samo za izlazna.
+- **Opoziv** je ulazno pismeno jer radnju pokreće stranka, ali PDF ostaje akt tijela
+  (zaglavlje, potpis, ePečat). Autorstvo dokumenta je zato zasebno polje,
+  `StrDocumentType.aktTijela()`, a render ga čita umjesto smjera. Mail o opozivu nema klauzulu o
+  dostavi (`Dostava.BEZ_KLAUZULE`), ni za korisnika s OIB-om ni za non-EU.
+- Opozivi zapisani prije ove promjene ostaju u `egop_pismeno` kao `IZLAZNO` (odluka: bez
+  migracije podataka; na okolinama su samo testni).
+- **Nazivi:** naš kanonski naziv (`vrstaPismenaNaziv`) ostaje ključ na `egop_pismeno` i ide u
+  `nazivPismena`. Šifra se razrješava po `StrDocumentType.egopVrstaNaziv()`, koji se razlikuje
+  za zahtjev i reaktivaciju. Nazivi su u enumu, ne u `application.properties`, jer Spring tu
+  datoteku čita kao ISO-8859-1.
+- `str.egop.akti-bez-sifre` je prazan (default i CDU): reaktivacija, prijedlog i obustava
+  suspenzije sada se urudžbiraju i otpremaju u KP. Zaostale akte tih vrsta `EgopRetryJob`
+  urudžbira dok su mlađi od `str.egop.retry.max-age`, a u KP idu samo ako nisu stariji od
+  `str.egop.kp.max-akt-age`.
+- Na okolini, šifre po slugu (`EGOP_SIFRA_PISMENA_*`) i fallback (`EGOP_SIFRA_PISMENA_FALLBACK`)
+  i dalje imaju prednost pred nazivom. Na CDU-u moraju biti prazni, inače se vrste ne
+  razrješavaju po nazivu.
+
 #### Neriješeno
 
 - **KP dostava** — vidi §KP otprema.
@@ -2064,8 +2102,9 @@ s merge `(a,b)->a` bira prvi unos iz odgovora, dakle arbitrarnu od dvije šifre.
 
 #### `EgopVrstaResolver` — jedino mjesto koje vrstu prevodi u šifru
 
-Redoslijed: zadana šifra po slugu → zadani naziv po slugu (kroz MDM) → naš kanonski naziv
-(kroz MDM) → fallback šifra/naziv → `EgopBadRequestException`. Zadana šifra se razrješava
+Redoslijed: zadana šifra po slugu → zadani naziv po slugu (kroz MDM) → naziv vrste u eGOP
+šifrarniku, `StrDocumentType.egopVrstaNaziv()` (kroz MDM; od 22.10.2026., ranije naš kanonski
+naziv) → fallback šifra/naziv → `EgopBadRequestException`. Zadana šifra se razrješava
 **prije** dohvata šifrarnika, pa uz pinane šifre MDM nije na kritičnom putu urudžbiranja —
 što je bitno jer dio šifrarnika na toj okolini vraća prazno.
 
