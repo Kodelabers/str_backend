@@ -5,6 +5,7 @@ import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +23,12 @@ import java.util.UUID;
  *
  * <p>Službenik bez upisanog eGOP korisnika: akt ide pod aplikacijskim korisnikom uz ERROR
  * (odluka 21.10.2026.) — urudžba ne smije stati, ali urbroj tada nije službenikov.
+ *
+ * <p>{@code str.egop.akti.korisnik=APLIKACIJSKI} šalje <b>sve</b> akte pod aplikacijskim
+ * korisnikom, bez obzira tko je radnju napravio. Uveden 22.10.2026. kad eGOP na testu nije dao
+ * službeniku otvoriti predmet 334-06/11 s nadležnom jedinicom koju vidi aplikacijski korisnik
+ * („Odabranu ustrojstvenu jedinicu nije moguće postaviti kao nadležnu…"). Akti tada ne nose
+ * urbroj službenika, suprotno uputi MINT-a, pa je default {@code SLUZBENIK}.
  */
 @Component
 public class EgopAktKorisnik {
@@ -30,19 +37,32 @@ public class EgopAktKorisnik {
 
     static final String INTERNAL_PREFIX = "INTERNAL:";
 
+    /** Pod čijim se korisnikom urudžbira akt službenika. */
+    public enum Nacin { SLUZBENIK, APLIKACIJSKI }
+
     private final RnLifecycleLookup lookup;
     private final InternalUserRepository internalUsers;
     private final String appUsername;
+    private final Nacin nacin;
 
     public EgopAktKorisnik(RnLifecycleLookup lookup, InternalUserRepository internalUsers,
-                           EgopProperties properties) {
+                           EgopProperties properties,
+                           @Value("${str.egop.akti.korisnik:SLUZBENIK}") Nacin nacin) {
         this.lookup = lookup;
         this.internalUsers = internalUsers;
         this.appUsername = properties.qualifiedAppUsername();
+        this.nacin = nacin;
+        if (nacin == Nacin.APLIKACIJSKI) {
+            log.warn("egop_akti_korisnik=APLIKACIJSKI — svi akti nakon dodjele urudžbiraju se pod {},"
+                    + " i akti službenika; urbroj nije službenikov", appUsername);
+        }
     }
 
     /** Korisnik za sve eGOP pozive koji stvaraju predmet, pismeno i dokument akta. */
     public String za(EgopPismenoEntity akt) {
+        if (nacin == Nacin.APLIKACIJSKI) {
+            return appUsername;
+        }
         Optional<String> actor = actor(akt);
         if (actor.isEmpty() || !actor.get().startsWith(INTERNAL_PREFIX)) {
             return appUsername;
