@@ -7,14 +7,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
+import java.util.Set;
 
 /**
- * Stupac „Verificiran" na „Mojim registracijskim brojevima": je li objekt uz RB danas verificiran
- * u eTurizmu, po istom pravilu kao popis objekata
+ * Stupac „Verificiran" na „Mojim registracijskim brojevima" i na registru RB-ova: je li objekt uz
+ * RB danas verificiran u eTurizmu, po istom pravilu kao popis objekata
  * ({@link StrFacilityRepository#findObjectVerification}).
  *
  * <p>RB novog objekta (bez eTurizam {@code facilityId}) nije verificiran — takvog objekta u
@@ -31,6 +35,8 @@ public class RnFacilityVerification {
 
     private static final Logger log = LoggerFactory.getLogger(RnFacilityVerification.class);
 
+    static final int CHUNK_SIZE = 5_000;
+
     private final StrFacilityRepository facilityRepository;
 
     public RnFacilityVerification(StrFacilityRepository facilityRepository) {
@@ -38,30 +44,63 @@ public class RnFacilityVerification {
     }
 
     public List<LessorRnSummaryDto> withFacilityVerified(List<LessorRnSummaryDto> rows) {
-        List<Long> ids = rows.stream()
-                .map(row -> parseId(row.facilityId()))
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        Map<Long, Boolean> verified;
+        Set<String> verified;
         try {
-            verified = ids.isEmpty()
-                    ? Map.of()
-                    : facilityRepository.findObjectVerification(ids).stream()
-                            .collect(Collectors.toMap(FacilityVerificationRow::getFacilityId,
-                                    row -> Boolean.TRUE.equals(row.getVerified()),
-                                    (a, b) -> a && b));
+            verified = verifiedFacilityIds(rows.stream().map(LessorRnSummaryDto::facilityId).toList());
         } catch (DataAccessException e) {
-            log.warn("rn_facility_verification failed facilities={} error={}",
-                    ids.size(), e.getClass().getSimpleName());
             return rows;
         }
         return rows.stream()
-                .map(row -> {
-                    Long id = parseId(row.facilityId());
-                    return row.withFacilityVerified(id != null && verified.getOrDefault(id, false));
-                })
+                .map(row -> row.withFacilityVerified(
+                        row.facilityId() != null && verified.contains(row.facilityId())))
                 .toList();
+    }
+
+    /**
+     * Koji su od zadanih {@code accommodation.facility_id} (sirovih, kakvi stoje u bazi) danas
+     * verificirani; svi ostali — prazni, nebrojčani, nepoznati eTurizmu — nisu. Vraća sirove
+     * vrijednosti, da ih pozivatelj može usporediti s bazom bez ponovnog parsiranja (registar ih
+     * šalje natrag u upit kao filtar „Verificiran").
+     *
+     * <p>eTurizam se pita u komadima od {@value #CHUNK_SIZE}: upit koristi listu dvaput, a
+     * PostgreSQL JDBC prima najviše 32.767 parametara po upitu.
+     *
+     * @throws DataAccessException kad eTurizam nije dostupan — pozivatelj odlučuje vraća li
+     * redove bez stupca ili odbija filtar
+     */
+    public Set<String> verifiedFacilityIds(Collection<String> facilityIds) {
+        Map<Long, List<String>> rawById = new LinkedHashMap<>();
+        for (String raw : facilityIds) {
+            Long id = parseId(raw);
+            if (id != null) {
+                rawById.computeIfAbsent(id, k -> new ArrayList<>()).add(raw);
+            }
+        }
+        if (rawById.isEmpty()) {
+            return Set.of();
+        }
+        List<Long> ids = List.copyOf(rawById.keySet());
+        Map<Long, Boolean> verified = new HashMap<>();
+        try {
+            for (int from = 0; from < ids.size(); from += CHUNK_SIZE) {
+                List<Long> chunk = ids.subList(from, Math.min(from + CHUNK_SIZE, ids.size()));
+                for (FacilityVerificationRow row : facilityRepository.findObjectVerification(chunk)) {
+                    verified.merge(row.getFacilityId(), Boolean.TRUE.equals(row.getVerified()),
+                            Boolean::logicalAnd);
+                }
+            }
+        } catch (DataAccessException e) {
+            log.warn("rn_facility_verification failed facilities={} error={}",
+                    ids.size(), e.getClass().getSimpleName());
+            throw e;
+        }
+        Set<String> result = new HashSet<>();
+        rawById.forEach((id, raws) -> {
+            if (verified.getOrDefault(id, false)) {
+                result.addAll(raws);
+            }
+        });
+        return result;
     }
 
     /** {@code accommodation.facility_id} je tekst; nebrojčan ili prazan znači „nema objekta". */

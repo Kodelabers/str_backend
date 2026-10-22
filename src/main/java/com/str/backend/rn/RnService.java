@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,6 +37,12 @@ public class RnService {
     private static final int MAX_RN_ATTEMPTS = 5;
     /** Deset godina — dovoljno za svaki stvarni rok, a drži datum unutar raspona DB tipa `date`. */
     private static final int MAX_DEADLINE_WINDOW_DAYS = 3650;
+    /**
+     * Lista za {@code :verifiedIds} kad filtra „Verificiran" nema: uvjet je tada istinit bez
+     * obzira na listu, pa vrijednost nije važna, ali Hibernate ne smije dobiti praznu kolekciju
+     * za {@code IN}.
+     */
+    private static final Set<String> UNUSED_FACILITY_IDS = Set.of("");
 
     // Maps str.county.name → EGOP organization ID used in RN generation
     private static final Map<String, Integer> COUNTY_EGOP_ORG_IDS = Map.ofEntries(
@@ -206,40 +213,76 @@ public class RnService {
                 List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN));
     }
 
-    /** STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging. */
+    /**
+     * STR wireframe §12 / §13: public registry of active or invalid RNs with filters + paging.
+     *
+     * <p>{@code verifiedFacilityIds} je skup verificiranih eTurizam objekata za filtar
+     * „Verificiran" ({@link RnRegistrySearch}), nikad null; zanemaruje se kad je
+     * {@code filter.verified()} null.
+     * Stupac {@code facilityVerified} ovdje ostaje prazan — dopunjuje ga {@link RnRegistrySearch}.
+     */
     @Transactional(readOnly = true)
-    public Page<RnSummaryDto> searchRegistry(RnRegistryView view, String q, String county, String municipality,
-                                             Long typeId, boolean foreignOnly, String rb, String city,
-                                             String street, String name, String lessor,
-                                             Integer deadlineWithinDays, Pageable pageable) {
-        String[] t = SearchTokens.slots(q);
-        return repository.searchRegistry(view.statuses(),
+    public Page<RnSummaryDto> searchRegistry(RnRegistryFilter filter, Set<String> verifiedFacilityIds,
+                                             Pageable pageable) {
+        if (Boolean.TRUE.equals(filter.verified()) && verifiedFacilityIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        String[] t = SearchTokens.slots(filter.q());
+        String verifiedMode = verifiedMode(filter.verified(), verifiedFacilityIds);
+        return repository.searchRegistry(filter.view().statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
-                Strings.blankToNull(county), Strings.blankToNull(municipality), typeId,
-                foreignOnly ? "true" : null,
-                Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
-                Strings.blankToNull(name), Strings.blankToNull(lessor),
-                deadlineBefore(deadlineWithinDays),
+                Strings.blankToNull(filter.county()), Strings.blankToNull(filter.municipality()),
+                filter.typeId(),
+                filter.foreignOnly() ? "true" : null,
+                Strings.blankToNull(filter.rb()), Strings.blankToNull(filter.city()),
+                Strings.blankToNull(filter.street()), Strings.blankToNull(filter.name()),
+                Strings.blankToNull(filter.lessor()),
+                deadlineBefore(filter.deadlineWithinDays()),
+                filter.decision() == null ? null : filter.decision().name(),
+                verifiedMode,
+                verifiedMode == null ? UNUSED_FACILITY_IDS : verifiedFacilityIds,
                 pageable);
     }
 
-    /** STR wireframe §12 / §13: export of registry rows matching filters (max 50 000). */
+    /**
+     * STR wireframe §12 / §13: export of registry rows matching filters. Vraća najviše
+     * {@code maxRows + 1} redaka, da pozivatelj prepozna prekoračenje bez brojanja.
+     */
     @Transactional(readOnly = true)
-    public List<RnSummaryDto> searchRegistryForExport(RnRegistryView view, String q, String county,
-                                                      String municipality, Long typeId, boolean foreignOnly,
-                                                      String rb, String city, String street,
-                                                      String name, String lessor,
-                                                      Integer deadlineWithinDays) {
-        String[] t = SearchTokens.slots(q);
-        Page<RnSummaryDto> page = repository.searchRegistry(view.statuses(),
+    public List<RnSummaryDto> searchRegistryForExport(RnRegistryFilter filter, Set<String> verifiedFacilityIds,
+                                                      int maxRows) {
+        return searchRegistry(filter, verifiedFacilityIds, PageRequest.of(0, maxRows + 1)).getContent();
+    }
+
+    /**
+     * eTurizam objekti RB-ova koje registar s ovim filtrima prikazuje, bez filtra „Verificiran" —
+     * njihovu verifikaciju {@link RnRegistrySearch} pita eTurizam.
+     */
+    @Transactional(readOnly = true)
+    public List<String> registryFacilityIds(RnRegistryFilter filter) {
+        String[] t = SearchTokens.slots(filter.q());
+        return repository.findRegistryFacilityIds(filter.view().statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
-                Strings.blankToNull(county), Strings.blankToNull(municipality), typeId,
-                foreignOnly ? "true" : null,
-                Strings.blankToNull(rb), Strings.blankToNull(city), Strings.blankToNull(street),
-                Strings.blankToNull(name), Strings.blankToNull(lessor),
-                deadlineBefore(deadlineWithinDays),
-                PageRequest.of(0, 50_001));
-        return page.getContent();
+                Strings.blankToNull(filter.county()), Strings.blankToNull(filter.municipality()),
+                filter.typeId(),
+                filter.foreignOnly() ? "true" : null,
+                Strings.blankToNull(filter.rb()), Strings.blankToNull(filter.city()),
+                Strings.blankToNull(filter.street()), Strings.blankToNull(filter.name()),
+                Strings.blankToNull(filter.lessor()),
+                deadlineBefore(filter.deadlineWithinDays()),
+                filter.decision() == null ? null : filter.decision().name());
+    }
+
+    /**
+     * Način filtra „Verificiran" za {@link RnRepository#RN_VERIFIED_FILTER}. Bez ijednog
+     * verificiranog objekta „Ne" ne odsijeca ništa, pa filtra ni nema (prazan {@code IN ()} se ne
+     * šalje); „Da" je tada prazan rezultat i ne dolazi do ovdje.
+     */
+    private static String verifiedMode(Boolean verified, Set<String> verifiedFacilityIds) {
+        if (verified == null || verifiedFacilityIds.isEmpty()) {
+            return null;
+        }
+        return verified ? "IN" : "NOT_IN";
     }
 
     /**

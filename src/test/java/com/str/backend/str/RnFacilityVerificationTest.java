@@ -9,16 +9,22 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.LongStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-/** Stupac „Verificiran" na „Mojim registracijskim brojevima" (NIAS). */
+/** Stupac „Verificiran" na „Mojim registracijskim brojevima" (NIAS) i na registru RB-ova. */
 class RnFacilityVerificationTest {
 
     private final StrFacilityRepository facilityRepository = mock(StrFacilityRepository.class);
@@ -84,6 +90,45 @@ class RnFacilityVerificationTest {
         String json = mapper.writeValueAsString(summary("HR1", "10").withFacilityVerified(true));
 
         assertThat(json).contains("\"facilityVerified\":true").doesNotContain("facilityId");
+    }
+
+    /** Registar šalje skup natrag u upit, pa vraća vrijednosti kakve stoje u bazi, ne parsirane. */
+    @Test
+    void verifiedFacilityIds_returnsRawValuesOfVerifiedObjectsOnly() {
+        when(facilityRepository.findObjectVerification(any())).thenReturn(List.of(
+                row(10L, true), row(11L, false)));
+
+        Set<String> result = verification.verifiedFacilityIds(List.of("10", " 10", "11", "12", "abc", ""));
+
+        assertThat(result).containsExactlyInAnyOrder("10", " 10");
+        verify(facilityRepository).findObjectVerification(List.of(10L, 11L, 12L));
+    }
+
+    /** Upit koristi listu dvaput, a JDBC prima najviše 32.767 parametara — pita se u komadima. */
+    @Test
+    void verifiedFacilityIds_queriesETurizamInChunks() {
+        int count = RnFacilityVerification.CHUNK_SIZE * 2 + 1;
+        List<String> ids = LongStream.rangeClosed(1, count).mapToObj(String::valueOf).toList();
+        when(facilityRepository.findObjectVerification(any())).thenAnswer(inv -> {
+            Collection<Long> chunk = inv.getArgument(0);
+            return chunk.stream().map(id -> row(id, true)).toList();
+        });
+
+        Set<String> result = verification.verifiedFacilityIds(ids);
+
+        assertThat(result).hasSize(count);
+        verify(facilityRepository, times(3)).findObjectVerification(
+                argThat(chunk -> chunk.size() <= RnFacilityVerification.CHUNK_SIZE));
+    }
+
+    /** Za razliku od popisa iznajmljivača, pozivatelj sam odlučuje što s kvarom (filtar registra → 503). */
+    @Test
+    void verifiedFacilityIds_propagatesETurizamFailure() {
+        when(facilityRepository.findObjectVerification(any()))
+                .thenThrow(new DataAccessResourceFailureException("str nedostupan"));
+
+        assertThatThrownBy(() -> verification.verifiedFacilityIds(List.of("10")))
+                .isInstanceOf(DataAccessResourceFailureException.class);
     }
 
     private static LessorRnSummaryDto summary(String rn, String facilityId) {

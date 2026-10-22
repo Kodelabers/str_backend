@@ -184,6 +184,59 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
         long getCount();
     }
 
+    /*
+     * Rješenje o kategorizaciji uz RB — jedno pravilo za „Moje registracijske brojeve" i registar.
+     * Mjerodavno je potvrđeno, pa predano, pa odbijeno. Aktivno (predano ili potvrđeno) može biti
+     * najviše jedno po RB-u (changeset 126), pa redoslijed daje jednoznačan status bez oslanjanja
+     * na vrijeme uploada. Rješenje se traži samo uz RB novog objekta (bez eTurizam facilityId)
+     * koji nije opozvan ni povučen — isto pravilo kao
+     * CategorizationDecisionService.UPLOAD_ALLOWED_RN_STATUSES.
+     */
+
+    String DECISION_VERIFIED_EXISTS =
+            "EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn" +
+            " AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED)";
+
+    String DECISION_SUBMITTED_EXISTS =
+            "EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn" +
+            " AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED)";
+
+    String DECISION_REJECTED_EXISTS =
+            "EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn" +
+            " AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.REJECTED)";
+
+    String DECISION_REQUIRED_CONDITION =
+            "(a.facilityId IS NULL OR TRIM(a.facilityId) = '')" +
+            " AND r.status NOT IN (com.str.backend.domain.RnStatus.REVOKED," +
+            " com.str.backend.domain.RnStatus.WITHDRAWN)";
+
+    /** {@code boolean}: traži li RB rješenje o kategorizaciji. */
+    String CATEGORIZATION_REQUIRED =
+            "CASE WHEN " + DECISION_REQUIRED_CONDITION + " THEN true ELSE false END";
+
+    /** {@code CategorizationDecisionStatus}: status mjerodavnog rješenja ili {@code NULL} kad ga nema. */
+    String CATEGORIZATION_STATUS =
+            "CASE" +
+            " WHEN " + DECISION_VERIFIED_EXISTS +
+            " THEN com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED" +
+            " WHEN " + DECISION_SUBMITTED_EXISTS +
+            " THEN com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED" +
+            " WHEN " + DECISION_REJECTED_EXISTS +
+            " THEN com.str.backend.categorization.CategorizationDecisionStatus.REJECTED" +
+            " ELSE NULL END";
+
+    /**
+     * Ono što stupac prikazuje, kao ime {@link RegistryDecisionFilter} — filtar registra. Isto kao
+     * FE {@code shownDecisionStatus}: status rješenja kad postoji, inače NONE ili NOT_REQUIRED.
+     */
+    String CATEGORIZATION_SHOWN =
+            "CASE" +
+            " WHEN " + DECISION_VERIFIED_EXISTS + " THEN 'VERIFIED'" +
+            " WHEN " + DECISION_SUBMITTED_EXISTS + " THEN 'SUBMITTED'" +
+            " WHEN " + DECISION_REJECTED_EXISTS + " THEN 'REJECTED'" +
+            " WHEN " + DECISION_REQUIRED_CONDITION + " THEN 'NONE'" +
+            " ELSE 'NOT_REQUIRED' END";
+
     // --- Registry megasearch (token-AND) building blocks. Shared between data + count queries so
     // the WHERE clause cannot drift between them. @Query accepts constant string concatenation.
 
@@ -228,7 +281,21 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             // zaključuje iz usporedbe `r.suspensionDeadline <= :deadlineBefore`, pa Hibernate veže
             // null kao DATE. Ne vraćati CAST.
             " AND (:deadlineBefore IS NULL OR (r.suspensionDeadline IS NOT NULL" +
-            "      AND r.suspensionDeadline <= :deadlineBefore))";
+            "      AND r.suspensionDeadline <= :deadlineBefore))" +
+            " AND (CAST(:decision AS string) IS NULL OR " + CATEGORIZATION_SHOWN + " = CAST(:decision AS string))";
+
+    /**
+     * Filtar „Verificiran". Verifikacija se ne čita iz str_rn nego iz eTurizma, pa skup
+     * verificiranih objekata dolazi izvana ({@link RnRegistrySearch}): {@code :verifiedIds} su
+     * sirovi {@code accommodation.facility_id} kakvi stoje u bazi. {@code IN} = verificirani;
+     * {@code NOT_IN} = svi ostali, uključujući RB novog objekta (bez facilityId). Kad je
+     * {@code :verifiedMode} NULL, lista se ne koristi, ali mora biti neprazna (v. {@link RnService}).
+     */
+    String RN_VERIFIED_FILTER =
+            " AND (CAST(:verifiedMode AS string) IS NULL" +
+            "      OR (CAST(:verifiedMode AS string) = 'IN' AND a.facilityId IN :verifiedIds)" +
+            "      OR (CAST(:verifiedMode AS string) = 'NOT_IN'" +
+            "          AND (a.facilityId IS NULL OR a.facilityId NOT IN :verifiedIds)))";
 
     String RN_FROM =
             " FROM RnEntity r" +
@@ -243,9 +310,10 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " r.rn, r.status, r.issueDate, r.validFrom, r.validTo, r.suspensionDeadline,"
             + " a.accommodationId, a.county, a.city, a.street, a.streetNumber,"
             + " a.name, t.name,"
-            + " l.lessorId, l.firstName, l.lastName, l.legalEntityName)"
-            + RN_FROM + RN_TOKENS + RN_FILTERS,
-            countQuery = "SELECT COUNT(r)" + RN_FROM + RN_TOKENS + RN_FILTERS)
+            + " l.lessorId, l.firstName, l.lastName, l.legalEntityName,"
+            + " a.facilityId, " + CATEGORIZATION_REQUIRED + ", " + CATEGORIZATION_STATUS + ")"
+            + RN_FROM + RN_TOKENS + RN_FILTERS + RN_VERIFIED_FILTER,
+            countQuery = "SELECT COUNT(r)" + RN_FROM + RN_TOKENS + RN_FILTERS + RN_VERIFIED_FILTER)
     Page<RnSummaryDto> searchRegistry(
             @Param("statuses") List<RnStatus> statuses,
             @Param("tok0") String tok0, @Param("tok1") String tok1, @Param("tok2") String tok2,
@@ -262,7 +330,35 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("name") String name,
             @Param("lessor") String lessor,
             @Param("deadlineBefore") LocalDate deadlineBefore,
+            @Param("decision") String decision,
+            @Param("verifiedMode") String verifiedMode,
+            @Param("verifiedIds") Collection<String> verifiedIds,
             Pageable pageable);
+
+    /**
+     * eTurizam objekti RB-ova koje registar s ovim filtrima prikazuje (bez filtra „Verificiran") —
+     * prvi korak tog filtra: njihova se verifikacija pita eTurizam ({@link RnRegistrySearch}).
+     */
+    @Transactional(readOnly = true)
+    @Query("SELECT DISTINCT a.facilityId" + RN_FROM + RN_TOKENS + RN_FILTERS
+            + " AND a.facilityId IS NOT NULL")
+    List<String> findRegistryFacilityIds(
+            @Param("statuses") List<RnStatus> statuses,
+            @Param("tok0") String tok0, @Param("tok1") String tok1, @Param("tok2") String tok2,
+            @Param("tok3") String tok3, @Param("tok4") String tok4, @Param("tok5") String tok5,
+            @Param("tok6") String tok6, @Param("tok7") String tok7, @Param("tok8") String tok8,
+            @Param("tok9") String tok9,
+            @Param("county") String county,
+            @Param("municipality") String municipality,
+            @Param("typeId") Long typeId,
+            @Param("foreignOnly") String foreignOnly,
+            @Param("rb") String rb,
+            @Param("city") String city,
+            @Param("street") String street,
+            @Param("name") String name,
+            @Param("lessor") String lessor,
+            @Param("deadlineBefore") LocalDate deadlineBefore,
+            @Param("decision") String decision);
 
     @Transactional(readOnly = true)
     @Query("""
@@ -345,41 +441,22 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
      *  (each NIAS registration creates a new LessorEntity snapshot), so the
      *  "Moji registracijski brojevi" view for NIAS users matches by OIB.
      *
-     *  <p>Stanje rješenja o kategorizaciji: mjerodavno je potvrđeno, pa predano, pa odbijeno.
-     *  Aktivno (predano ili potvrđeno) može biti najviše jedno po RB-u (changeset 126), pa
-     *  redoslijed daje jednoznačan status bez oslanjanja na vrijeme uploada. */
+     *  <p>Stanje rješenja o kategorizaciji: {@link #CATEGORIZATION_STATUS}, isto kao na registru. */
     @Transactional(readOnly = true)
-    @Query("""
-            SELECT new com.str.backend.lessor.LessorRnSummaryDto(
-                r.rn, r.status, r.issueDate,
-                a.name, a.street, a.streetNumber, a.city,
-                t.name,
-                CASE WHEN (a.facilityId IS NULL OR TRIM(a.facilityId) = '')
-                          AND r.status NOT IN (com.str.backend.domain.RnStatus.REVOKED,
-                                               com.str.backend.domain.RnStatus.WITHDRAWN)
-                    THEN true ELSE false END,
-                CASE
-                    WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
-                                 AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED)
-                        THEN com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED
-                    WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
-                                 AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED)
-                        THEN com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED
-                    WHEN EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn
-                                 AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.REJECTED)
-                        THEN com.str.backend.categorization.CategorizationDecisionStatus.REJECTED
-                    ELSE NULL
-                END,
-                a.facilityId
-            )
-            FROM RnEntity r
-            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
-            LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
-            JOIN SubmissionEntity s ON s.submissionId = r.submissionId
-            JOIN LessorEntity l ON l.lessorId = s.lessorId
-            WHERE l.lessorOib = :oib
-            ORDER BY r.issueDate DESC
-            """)
+    @Query("SELECT new com.str.backend.lessor.LessorRnSummaryDto("
+            + " r.rn, r.status, r.issueDate,"
+            + " a.name, a.street, a.streetNumber, a.city,"
+            + " t.name,"
+            + " " + CATEGORIZATION_REQUIRED + ","
+            + " " + CATEGORIZATION_STATUS + ","
+            + " a.facilityId)"
+            + " FROM RnEntity r"
+            + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
+            + " LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId"
+            + " JOIN SubmissionEntity s ON s.submissionId = r.submissionId"
+            + " JOIN LessorEntity l ON l.lessorId = s.lessorId"
+            + " WHERE l.lessorOib = :oib"
+            + " ORDER BY r.issueDate DESC")
     List<LessorRnSummaryDto> findByLessorOib(@Param("oib") String oib);
 
     /** Duplicate-location check: is there a still-standing (ACTIVE, SUSPENSION_PROPOSED or
