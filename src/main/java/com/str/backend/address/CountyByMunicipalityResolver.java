@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * Izvodi županiju iz naziva grada/općine preko DGU registra
@@ -17,7 +18,7 @@ import java.util.Optional;
  * županija objekta, pa je usporedba izravna.
  *
  * <p>Usporedba je po nazivu, neosjetljiva na velika/mala slova (OIB sustav piše verzalom, DGU
- * naslovno), uz odbačen prefiks „Grad"/„Općina". Naziv koji pogađa općine u <b>više</b> županija
+ * naslovno), i bez prefiksa „Grad"/„Općina" i s njim. Naziv koji pogađa općine u <b>više</b> županija
  * ne daje ništa — pogrešna županija bila bi gora od prazne, jer bi tiho promijenila status domaćina.
  */
 @Component
@@ -39,8 +40,13 @@ public class CountyByMunicipalityResolver {
         if (municipalityName == null || municipalityName.isBlank()) {
             return Optional.empty();
         }
-        List<Integer> counties = municipalityRepository.findByNameIgnoreCase(stripPrefix(municipalityName))
-                .stream()
+        // I naziv bez prefiksa i puni naziv: DGU većinu piše bez „Grad"/„Općina" (OIB „GRAD SPLIT"
+        // → „Split"), ali ne sve — Zagreb je „Grad Zagreb" (CDU, 22.10.2026.), pa bi samo
+        // „ZAGREB" ostao bez županije, a sjedište tvrtke iz Zagreba bez adrese.
+        String trimmed = municipalityName.trim().replaceAll("\\s+", " ");
+        List<Integer> counties = Stream.of(stripPrefix(trimmed), trimmed)
+                .distinct()
+                .flatMap(name -> municipalityRepository.findByNameIgnoreCase(name).stream())
                 .map(MunicipalityEntity::getZuRb)
                 .distinct()
                 .toList();

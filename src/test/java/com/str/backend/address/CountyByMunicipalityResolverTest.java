@@ -32,6 +32,15 @@ class CountyByMunicipalityResolverTest {
         assertThat(resolver.countyOf("GRAD SPLIT")).contains("Splitsko-dalmatinska županija");
     }
 
+    /** DGU Zagreb vodi s prefiksom („Grad Zagreb", CDU 22.10.2026.), pa bez prefiksa ne pogađa ništa. */
+    @Test
+    void resolvesCounty_whenRegistryKeepsThePrefix() {
+        when(municipalities.findByNameIgnoreCase("GRAD ZAGREB")).thenReturn(List.of(municipality(21)));
+        when(counties.findFirstByZuRb(21)).thenReturn(Optional.of(county("Grad Zagreb")));
+
+        assertThat(resolver.countyOf("GRAD ZAGREB")).contains("Grad Zagreb");
+    }
+
     /** Pogrešna županija bila bi gora od prazne — tiho bi promijenila status domaćina. */
     @Test
     void ambiguousName_givesNothing() {

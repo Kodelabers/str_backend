@@ -92,6 +92,9 @@ public class SubjectProfileService {
         // Županija je potrebna za GO-1 (status domaćina). OIB sustav je ne vraća, pa se izvodi
         // iz općine; str.subject je daje izravno.
         String county = subject == null ? null : countyOf(subject.county(), subject.municipality());
+        if (subject != null && !completeAddress(subject.street(), subject.place(), county)) {
+            logIncompleteAddress("person", subject.street(), subject.place(), subject.municipality(), county);
+        }
         if (subject == null || !completeAddress(subject.street(), subject.place(), county)) {
             return new SubjectProfile(oib, firstName, lastName, nameSource,
                     subject == null ? null : subject.legalEntityName(),
@@ -170,6 +173,9 @@ public class SubjectProfileService {
         String county = company == null ? null : countyOf(company.county(), company.municipality());
         // MBS i sjedište su neovisni: OIB sustav može vratiti naziv i MBS bez adrese sjedišta.
         boolean seat = company != null && completeAddress(company.street(), company.place(), county);
+        if (company != null && !seat) {
+            logIncompleteAddress("company", company.street(), company.place(), company.municipality(), county);
+        }
         return new LegalEntityProfile(
                 legalOib,
                 legalName,
@@ -296,6 +302,17 @@ public class SubjectProfileService {
      */
     private static boolean completeAddress(String street, String place, String county) {
         return known(street) && known(place) && known(county);
+    }
+
+    /**
+     * Registar je vratio adresu, ali nepotpunu, pa se odbacuje i korisnik je upisuje sam. Bez ovoga
+     * se to vidi samo kao prazna forma. Samo koja polja postoje, bez vrijednosti (osobni podaci).
+     */
+    private static void logIncompleteAddress(String lookup, String street, String place, String municipality,
+                                             String county) {
+        log.info("registry_address_incomplete lookup={} street={} place={} municipality={} county={}{}",
+                lookup, known(street), known(place), known(municipality), known(county),
+                known(municipality) && !known(county) ? " — županija se iz općine nije mogla odrediti" : "");
     }
 
     private static SubjectProfile withAddress(SubjectProfile p, EnteredAddress a) {
