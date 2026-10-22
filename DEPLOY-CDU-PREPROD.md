@@ -205,9 +205,10 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 ## A4. Naručitelj / MINTS
 
 17. ~~Čemu okolina služi?~~ **Odgovoreno: ponaša se kao CDU testna okolina** —
-    `EGOP_MOCK_FILING_PREFIX=`, `RN_DOCUMENTS_ZAHTJEV_VISIBLE=false`,
-    `APP_CADASTRAL_ENABLED=true`, captcha uključena. Ostaje otvoreno samo jesu li u bazi pravi
-    podaci iznajmljivača (A1/8).
+    `EGOP_MOCK_FILING_PREFIX=`, `APP_CADASTRAL_ENABLED=true`, captcha uključena. Ostaje otvoreno
+    samo jesu li u bazi pravi podaci iznajmljivača (A1/8). Zahtjev se od 22.10.2026. prikazuje u
+    popisu dokumenata po RB-u kao i na CDU testu: ako `.env.cdupreprod` na kutiji još ima
+    `RN_DOCUMENTS_ZAHTJEV_VISIBLE=false`, ukloni ga.
 18. Tko su testeri i **treba li im interni pristup**? Uloge se razrješavaju po OIB-u iz baze — na
     okolini koja se resetira to znači da popis mora biti dio reset skripte.
 19. Ostaje li CDU test gore paralelno? (Pretpostavka: da.)

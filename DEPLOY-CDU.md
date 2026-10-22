@@ -173,8 +173,11 @@ postavljena vrijednost i pregazi default iz `application.properties`. Iznimka su
 dalje nose „[nije konfigurirano]".
 
 Postavke koje CDU drži u `application-cdu.properties` (ne treba ih u `.env.cdu`, ali je dobro
-znati da postoje): `str.rn.documents.zahtjev-visible=false`, prazan `str.egop.mock.filing-prefix`
-i `app.cadastral.enabled=true`.
+znati da postoje): prazan `str.egop.mock.filing-prefix` i `app.cadastral.enabled=true`.
+
+**Zahtjev se od 22.10.2026. prikazuje u popisu dokumenata po RB-u** (uz dodjelu i sve akte
+životnog ciklusa) — `str.rn.documents.zahtjev-visible=false` je maknut iz profila. Ako `.env.cdu`
+na kutiji još ima `RN_DOCUMENTS_ZAHTJEV_VISIBLE=false`, ukloni ga, inače zahtjev ostaje skriven.
 
 ### Serverski compose mora propustiti nove ključeve
 
