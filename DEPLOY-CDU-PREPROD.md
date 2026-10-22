@@ -375,9 +375,11 @@ postavljaju.
 
 ### B5a.1 Što treba od MINT-a prije paljenja
 
-1. IP za `egopeaieduc.mint.hr` → `EGOP_HOST_IP`. Ime **nije u DNS-u** (MINT, 22.10.2026.), pa
-   ga ni `ping` ni `getent` ne razrješavaju — IP daje MINT. Ping ionako nije mjerodavan (ICMP može
-   biti zatvoren i kad TCP radi); provjera je TCP iz kontejnera (B5a.3).
+1. ✅ IP za `egopeaieduc.mint.hr` je **`192.168.30.80`** → `EGOP_HOST_IP`. Javni DNS ga ne zna, ali
+   interni DNS kutije da (`getent hosts egopeaieduc.mint.hr`; CNAME `egopeduc.mint.hr`). Iz
+   kontejnera 22.10.2026.: TCP 80 i 443 prolaze, `GET /ServicePismeno.asmx?wsdl` vraća `401`
+   (NTLM) — tunel i eGOP rade. `EGOP_HOST_IP` mora biti postavljen i kad DNS radi: prazan veže
+   ime na `127.0.0.1`, što nadjačava DNS.
 2. ✅ Potvrđeno 22.10.2026.: **isti NTLM korisnik i lozinka kao na CDU testu** (iz `.env.cdu`),
    aplikacijski korisnik `strservis4` bez domene (`EGOP_APP_DOMAIN=` prazno), http je dopušten.
 3. Postoje li sva četiri servisa (MDM, Pismeno, Predmet, Subjekt) i vrste pod našim nazivima.
@@ -394,7 +396,7 @@ postavljaju.
 ```
 EGOP_ENABLED=true
 EGOP_BASE_URL=http://egopeaieduc.mint.hr
-EGOP_HOST_IP=<IP>
+EGOP_HOST_IP=192.168.30.80
 EGOP_USERNAME=<isto kao u .env.cdu>
 EGOP_PASSWORD=<isto kao u .env.cdu>
 EGOP_APP_DOMAIN=
