@@ -3,6 +3,7 @@ package com.str.backend.rn;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnDetailExtras;
 import com.str.backend.rn.dto.RnPublicView;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.springframework.data.domain.Page;
@@ -285,6 +286,23 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             WHERE r.rn = :rn
             """)
     Optional<RnDetailDto> findDetail(@Param("rn") String rn);
+
+    /** Dopuna {@link #findDetail} za prikaz detalja RB-a; isti lessor (snapshot iz submissiona). */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.str.backend.rn.dto.RnDetailExtras(
+                a.offering, a.offerType,
+                l.contactName, l.phoneNumber, l.mobileNumber,
+                l.street, l.streetNumber, l.place, l.county, c.name
+            )
+            FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            LEFT JOIN LessorEntity l ON l.lessorId =
+                (SELECT s.lessorId FROM SubmissionEntity s WHERE s.submissionId = r.submissionId)
+            LEFT JOIN CountryEntity c ON c.id = l.countryOfResidenceId
+            WHERE r.rn = :rn
+            """)
+    Optional<RnDetailExtras> findDetailExtras(@Param("rn") String rn);
 
     /** STR-1.4-001: advertise-safe public projection for a single RN (no lessor identity). */
     @Transactional(readOnly = true)

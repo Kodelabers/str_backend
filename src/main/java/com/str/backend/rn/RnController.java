@@ -9,7 +9,7 @@ import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.ResourceNotFoundException;
-import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnDetailResponse;
 import com.str.backend.rn.dto.RnDocumentDto;
 import com.str.backend.rn.dto.RnResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
@@ -111,12 +111,13 @@ public class RnController {
 
     /**
      * STR wireframe §12 / §13: full detail of a single RN (accommodation + lessor). Službenik s
-     * rolom vidi svaki RB, iznajmljivač samo svoj (tuđi → 404), kao i kod akata.
+     * rolom vidi svaki RB, iznajmljivač samo svoj (tuđi → 404), kao i kod akata. Uz to nosi
+     * ponudu, namjenu te kontakt i adresu (prebivalište ili sjedište) iznajmljivača.
      */
     @GetMapping("/{rn}/detail")
-    public RnDetailDto detail(@PathVariable String rn, Authentication authentication) {
+    public RnDetailResponse detail(@PathVariable String rn, Authentication authentication) {
         requireAccess(rn, authentication);
-        return service.detail(rn);
+        return service.detailView(rn);
     }
 
     @GetMapping("/{rn}")

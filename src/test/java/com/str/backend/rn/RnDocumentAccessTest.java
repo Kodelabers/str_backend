@@ -8,7 +8,13 @@ import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasOibResolver;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
+import com.str.backend.domain.OfferType;
+import com.str.backend.domain.Offering;
+import com.str.backend.domain.RnStatus;
 import com.str.backend.lessor.LessorEntity;
+import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnDetailExtras;
+import com.str.backend.rn.dto.RnDetailResponse;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
@@ -38,6 +44,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -166,7 +173,7 @@ class RnDocumentAccessTest {
     void detail_unauthenticated_returns401() throws Exception {
         mvc.perform(get("/api/rn/{rn}/detail", RN)).andExpect(status().isUnauthorized());
 
-        verify(service, never()).detail(any());
+        verify(service, never()).detailView(any());
     }
 
     @Test
@@ -177,7 +184,39 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isOk());
 
-        verify(service).detail(RN);
+        verify(service).detailView(RN);
+    }
+
+    /** FE čita sva polja s vrha objekta — i postojeća i nova iz koraka 3, 4 i 5 obrasca. */
+    @Test
+    void detail_owner_returnsFlatJson() throws Exception {
+        UUID lessorId = UUID.randomUUID();
+        when(rnRepository.isOwnedByLessor(RN, lessorId)).thenReturn(true);
+        RnDetailDto detail = new RnDetailDto(RN, RnStatus.ACTIVE, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, "Apartman Ana", null, 4, null,
+                lessorId, "Ana", "Anić", null, "ana@example.com", LESSOR_OIB,
+                false, null, null, null,
+                null, null, null, null, null);
+        RnDetailExtras extras = new RnDetailExtras(Offering.PART, OfferType.SECONDARY_RESIDENCE,
+                "Ana Anić", "01234567", "0911234567",
+                "Ilica", "1", "Zagreb", "Grad Zagreb", "Hrvatska");
+        when(service.detailView(RN)).thenReturn(RnDetailResponse.of(detail, extras));
+
+        mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(principalAuth(lessorId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rn").value(RN))
+                .andExpect(jsonPath("$.lessorOib").value(LESSOR_OIB))
+                .andExpect(jsonPath("$.accommodationName").value("Apartman Ana"))
+                .andExpect(jsonPath("$.offering").value("PART"))
+                .andExpect(jsonPath("$.offerType").value("SECONDARY_RESIDENCE"))
+                .andExpect(jsonPath("$.lessorContactName").value("Ana Anić"))
+                .andExpect(jsonPath("$.lessorPhone").value("01234567"))
+                .andExpect(jsonPath("$.lessorMobile").value("0911234567"))
+                .andExpect(jsonPath("$.lessorStreet").value("Ilica"))
+                .andExpect(jsonPath("$.lessorCountryOfResidenceName").value("Hrvatska"))
+                .andExpect(jsonPath("$.lessorAddressKind").value("RESIDENCE"))
+                .andExpect(jsonPath("$.detail").doesNotExist())
+                .andExpect(jsonPath("$.extras").doesNotExist());
     }
 
     @Test
@@ -188,7 +227,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isNotFound());
 
-        verify(service, never()).detail(any());
+        verify(service, never()).detailView(any());
     }
 
     /** Lokalni mock NIAS-a nema prijave — rolu daje mock OIB, pa službenik prolazi i bez nje. */
@@ -198,7 +237,7 @@ class RnDocumentAccessTest {
 
         mvc.perform(get("/api/rn/{rn}/detail", RN)).andExpect(status().isOk());
 
-        verify(service).detail(RN);
+        verify(service).detailView(RN);
     }
 
     @Test
@@ -249,7 +288,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(lessor)))
                 .andExpect(status().isNotFound());
 
-        verify(service, never()).detail(any());
+        verify(service, never()).detailView(any());
     }
 
     @Test
@@ -291,7 +330,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(official())))
                 .andExpect(status().isNotFound());
 
-        verify(service, never()).detail(any());
+        verify(service, never()).detailView(any());
     }
 
     private static final String OFFICIAL_OIB = "12345678903";
