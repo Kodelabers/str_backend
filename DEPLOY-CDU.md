@@ -466,6 +466,8 @@ docker logs str-backend-cdu 2>&1 | grep -E "oib_registry|shared_session_cookie|n
 | `nias_login_redirect return_to=false` | prijava je završila na `success-redirect-url`. FE nije poslao `returnTo`, ili ga je poslao, a u sesijskom načinu se izgubio na ACS-u |
 | `nias_return_to_rejected length=N` | FE je poslao put koji nije prošao provjeru (apsolutni URL, `//`, ne-ASCII…) |
 | `shared_session_cookie_missing reason=nema_sesije` | poziv OIB sustavu otišao je bez sesije, pa slijedi 302 i fallback |
+| `shared_session_serial_version_tolerated class=… stream=570 local=620` | STR je pročitao prijavu koju je u našu sesiju upisao servis na Spring Securityju 5.7 (str-internal-api, Boot 2.7). To je očekivano i ispravno (`SharedSessionSerializationConfig`). Svaka klasa se javi samo jednom |
+| `oib_registry_error … status=500 … HTTP Status 500` (Tomcatova HTML stranica) | servis ne može učitati sesiju koju je napisao STR. Ako je uzrok razlika u verzijama Spring Securityja, kod njih treba isti bean `springSessionConversionService` |
 | `oib_registry_lookup kind=FO status=200` | servis je prepoznao sesiju |
 | `oib_registry_fallback reason=not_found` | OIB sustav osobu ne zna; ime i adresa dolaze iz `str.subject*` (kao prije) |
 | `oib_registry_fallback reason=unavailable` | OIB sustav nije odgovorio ili je vratio 302/5xx; korisnik dobiva podatke iz `str.subject*`. Uzrok je u retku `oib_registry_lookup` prije toga |

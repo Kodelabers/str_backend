@@ -51,6 +51,25 @@ class OibRegistryResponseMapperTest {
         assertThat(s.source()).isEqualTo(SubjectDataSource.OIB_REGISTAR);
     }
 
+    /**
+     * Stvarni odgovor test okoline za {@code FO/12312312316} (22.10.2026., izvorno XML iz APIS-a):
+     * puni se FB. Šifra općine ({@code sifraOpcine} = DGU {@code jls_mb}) nosi se uz naziv, jer se po
+     * njoj županija izvodi egzaktno.
+     */
+    @Test
+    void mapsVariantFb_withMunicipalityCode() throws IOException {
+        RegistrySubject s = OibRegistryResponseMapper.toSubject(OIB, fixture("fizicka-osoba-fb.json")).orElseThrow();
+
+        assertThat(s.firstName()).isEqualTo("PERO");
+        assertThat(s.street()).isEqualTo("SJENJAK");
+        assertThat(s.streetNumber()).isEqualTo("19");
+        assertThat(s.place()).isEqualTo("OSIJEK");
+        assertThat(s.postalCode()).isEqualTo("31000");
+        assertThat(s.municipality()).isEqualTo("OSIJEK");
+        assertThat(s.municipalityCode()).isEqualTo("03123");
+        assertThat(s.county()).isNull();
+    }
+
     /** FE nosi ime bez adrese, FH adresu bez imena — spajaju se, ne uzima se samo prva varijanta. */
     @Test
     void combinesNameAndAddress_fromDifferentVariants() throws IOException {
@@ -123,6 +142,7 @@ class OibRegistryResponseMapperTest {
         assertThat(e.place()).isEqualTo("ZAGREB");
         assertThat(e.postalCode()).isEqualTo("10000");
         assertThat(e.municipality()).isEqualTo("GRAD ZAGREB");
+        assertThat(e.municipalityCode()).isEqualTo("01333");
         assertThat(e.county()).isNull();
         assertThat(e.source()).isEqualTo(SubjectDataSource.OIB_REGISTAR);
     }

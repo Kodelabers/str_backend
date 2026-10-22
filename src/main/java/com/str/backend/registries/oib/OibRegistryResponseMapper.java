@@ -22,8 +22,8 @@ import java.util.function.Predicate;
  * prve koja ima {@code adresaPrebivalista}. Redoslijed ide od najpotpunije varijante.
  *
  * <p><b>Što shema nema:</b> kontakt (e-mail, telefon) i županiju. Kontakt korisnik upisuje na
- * formi; županija se izvodi iz {@code opcina} ({@code lessor.SubjectProfileService}), jer o njoj
- * ovisi GO-1 (status domaćina).
+ * formi; županija se izvodi iz {@code sifraOpcine} (= DGU {@code jls_mb}), a bez nje iz naziva
+ * {@code opcina} ({@code lessor.SubjectProfileService}), jer o njoj ovisi GO-1 (status domaćina).
  *
  * <p><b>Greške.</b> {@code greske.imaGresaka=true} bez podataka o osobi tretira se kao kvar
  * registra (503), jer šifre grešaka još nisu poznate — među njima je vjerojatno i „OIB ne
@@ -76,6 +76,7 @@ final class OibRegistryResponseMapper {
                 a == null ? null : text(a, "naselje"),
                 a == null ? null : text(a, "brojPoste"),
                 a == null ? null : text(a, "opcina"),
+                a == null ? null : text(a, "sifraOpcine"),
                 null,
                 SubjectDataSource.OIB_REGISTAR));
     }
@@ -114,6 +115,7 @@ final class OibRegistryResponseMapper {
                 a == null ? null : text(a, "naselje"),
                 a == null ? null : text(a, "brojPoste"),
                 a == null ? null : text(a, "opcina"),
+                a == null ? null : text(a, "sifraOpcine"),
                 null,
                 SubjectDataSource.OIB_REGISTAR));
     }
