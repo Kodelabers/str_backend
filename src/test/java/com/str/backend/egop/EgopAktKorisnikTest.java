@@ -35,8 +35,7 @@ class EgopAktKorisnikTest {
     void setUp() {
         lookup = mock(RnLifecycleLookup.class);
         internalUsers = mock(InternalUserRepository.class);
-        korisnik = new EgopAktKorisnik(lookup, internalUsers, new EgopProperties(true, "u", "p", "", APP,
-                null, null, "https://egopeaitest.mint.hr", null, null, null, null));
+        korisnik = korisnik(EgopAktKorisnik.Nacin.SLUZBENIK);
         logId = UUID.randomUUID();
         akt = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, logId.toString(),
                 "Obavijest o povlačenju registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "pdf".getBytes());
@@ -83,6 +82,21 @@ class EgopAktKorisnikTest {
         when(lookup.findEvent(logId)).thenReturn(Optional.empty());
 
         assertThat(korisnik.za(akt)).isEqualTo(APP);
+    }
+
+    /** 22.10.2026.: prekidač šalje i akt službenika pod aplikacijskim korisnikom, bez čitanja baze. */
+    @Test
+    void aplikacijskiNacin_officialUsesAppUser() {
+        korisnik = korisnik(EgopAktKorisnik.Nacin.APLIKACIJSKI);
+        actor("INTERNAL:12345678903");
+
+        assertThat(korisnik.za(akt)).isEqualTo(APP);
+        verify(internalUsers, never()).findExternalUsername(any());
+    }
+
+    private EgopAktKorisnik korisnik(EgopAktKorisnik.Nacin nacin) {
+        return new EgopAktKorisnik(lookup, internalUsers, new EgopProperties(true, "u", "p", "", APP,
+                null, null, "https://egopeaitest.mint.hr", null, null, null, null), nacin);
     }
 
     private void actor(String actor) {

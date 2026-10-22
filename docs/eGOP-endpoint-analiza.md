@@ -1994,6 +1994,14 @@ MINT je s InfoDomom dopunio plan klasifikacijskih oznaka:
   ostane prazna.
 - Službenik bez `external_username`: akt ide pod aplikacijskim korisnikom uz ERROR
   `egop_akt_korisnik_fallback` (urbroj tada nije službenikov).
+- **Nadležna jedinica i korisnik službenika (22.10.2026.).** Popis jedinica dolazi iz
+  `DohvatiUstrojKorisnika` za aplikacijskog korisnika, koji na testu vidi cijelo stablo ispod
+  uprave 649. Službenik (`opet`) vidi samo svoju jedinicu, 624 „Služba za upravno pravne, pravne
+  poslove i upravni nadzor". S jedinicom 597 „Sektor za pravne poslove" njegov `KreirajPredmet2`
+  pada („Odabranu ustrojstvenu jedinicu nije moguće postaviti kao nadležnu za ovaj predmet"), a
+  isti poziv pod `strservis4` prolazi. Dva izlaza bez diranja sheme `str`: `EGOP_NAZIV_USTROJ` na
+  jedinicu koju vide oba korisnika (624), ili `EGOP_AKTI_KORISNIK=APLIKACIJSKI`, koji sve akte šalje
+  pod aplikacijskim korisnikom (akti tada ne nose urbroj službenika).
 - Otprema u KP i dohvat statusa poruke idu pod istim korisnikom pod kojim je pismeno urudžbirano
   (odluka 21.10.2026.) — akt službenika je u predmetu za koji je on nadležan.
 - Ako eGOP otpremnicu već ima (`DatumVrijemeKreiranja`), ponovni pokušaj je ne šalje drugi put,
