@@ -56,11 +56,16 @@ services:
       # MORA pratiti VITE_CAPTCHA_ENABLED kod frontenda: razidu li se, okolina je neupotrebljiva
       # (samo BE ugašen => forma traži riješenu captchu; samo FE ugašen => svaki formular 422).
       APP_CAPTCHA_ENABLED: "true"
-      # eGOP: ugašen odlukom. false => EgopConfig, EgopClientImpl, EgopCodebooks i EgopRetryJob se
-      # uopće ne instanciraju; aktivan je EgopClientMock. To NE znači da se ništa ne urudžbira —
-      # RnIssuedListener i RnLifecycleFilingListener nisu vezani na ovaj prekidač, pa mock upisuje
-      # KLASU/URBROJ (bez prefiksa, vidi application-cdupreprod.properties).
-      EGOP_ENABLED: "false"
+      # eGOP (EGOP_ENABLED i ostalo) NIJE ovdje nego u .env.cdupreprod: od 22.10.2026. se pali
+      # prema eGOP predprodukciji (egopeaieduc.mint.hr). Ugašen (false) => aktivan je
+      # EgopClientMock, koji i dalje upisuje KLASU/URBROJ (bez prefiksa).
+    # eGOP predprodukcija nema javni DNS, a dohvatljiva je samo iz Dockera, kroz tunel s ove kutije
+    # (mail MINT-a, 22.10.2026.). Ime se zato razrješava ovdje, na IP iz EGOP_HOST_IP u
+    # .env.cdupreprod (compose ga čita jer se pokreće s --env-file). HTTPS mora ići preko imena, ne
+    # IP-a (certifikat). Bez EGOP_HOST_IP ime pokazuje na 127.0.0.1: eGOP poziv tada pada odmah,
+    # a ostatak okoline radi normalno.
+    extra_hosts:
+      - "egopeaieduc.mint.hr:${EGOP_HOST_IP:-127.0.0.1}"
     volumes:
       # NIAS certifikat CN=e-Turizam (politika od 10/2026). Direktorij je na kutiji postavljen
       # izvan našeg deploya i montira se na ISTU putanju, pa je putanja u .env-u i u

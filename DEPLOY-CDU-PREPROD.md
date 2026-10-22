@@ -115,7 +115,7 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 | HTTPS | da (gateway) | **da (gateway)** | ne (plain HTTP) |
 | Captcha | uključena | **uključena** (ima HTTPS) | ugašena (nema HTTPS) |
 | NIAS | `niastst.fina.hr`, demo cert | **`nias.gov.hr`, produkcijski cert** | `nias.gov.hr`, prod cert |
-| eGOP | ugašen | **ugašen** | ugašen |
+| eGOP | eGOP test `egopeaitest.mint.hr` + KP | **eGOP predprodukcija `egopeaieduc.mint.hr` + KP (§B5a)** | ugašen |
 | E-pošta | `servmail.ssc.gov.hr`, stvarnim primateljima | **isto kao CDU test**: uključena, bez redirecta (§B5) | InfoDom SMTP |
 | Profil | `cdu` | **`cdupreprod`** | `preprod` |
 | Build | lokalno + `scp` (nema mvn/npm/DockerHub) | **lokalno + `scp`** (maven/npm blokirani) | build-on-box |
@@ -317,7 +317,7 @@ ALTCHA traži sigurni kontekst (Web Crypto), a okolina je iza HTTPS-a. Oba preki
 zajedno** — razidu li se, okolina je neupotrebljiva. `CAPTCHA_HMAC_KEY` je obavezan;
 `AltchaService` odbija i prazan ključ i ugrađeni default, pa backend bez njega ne starta.
 
-## B5. E-pošta kao na CDU testu, eGOP ugašen
+## B5. E-pošta kao na CDU testu
 
 **E-pošta (od 10/2026): uključena, stvarnim primateljima — kao na CDU testu.** Relay je isti kao
 na CDU testu i kao kod InfoDomovog `str2` stacka na ovoj kutiji: `servmail.ssc.gov.hr:25`, interni
@@ -356,8 +356,164 @@ redirect_to=- — POZOR: poruke stvarno izlaze`. Ovdje je to **očekivano**. Pi�
 `enabled=false … (LoggingEmailService, ništa ne izlazi)`, `APP_MAIL_ENABLED=true` nije primijenjen
 (`.env` + `up -d`, ne `restart`).
 
-**eGOP: ugašen** (`EGOP_ENABLED=false`). Ugašen eGOP **ne znači** da se ništa ne urudžbira:
-`EgopClientMock` i dalje dodjeljuje KLASU/URBROJ, ovdje bez `MOCK-` prefiksa.
+## B5a. eGOP predprodukcija i otprema u KP (od 22.10.2026.)
+
+Do 22.10.2026. eGOP je ovdje bio ugašen. Sada se, kao na CDU testu, urudžbira i otprema u
+korisnički pretinac — ali prema **eGOP predprodukciji** MINT-a, ne prema eGOP testu:
+
+| | CDU test | ova okolina |
+| :--- | :--- | :--- |
+| Adresa | `https://egopeaitest.mint.hr` | `http://egopeaieduc.mint.hr` (privremeno), cilj `https://…` |
+| DNS | javni | **nema** — `extra_hosts` u `docker-compose.cdupreprod.yml`, IP u `EGOP_HOST_IP` |
+| Dohvat | s kutije | **samo iz Dockera**, kroz tunel CDU predprodukcija ↔ eGOP predprodukcija |
+| HTTPS | javni certifikat | certifikat vrijedi samo za ime (ne IP); povjerenje JDK-a **neprovjereno** |
+| Korisnici | `strservis4`, službenici po `external_username` | **od MINT-a** — vlastiti korisnici predprodukcije |
+
+Vrste predmeta (334-06/10, 334-06/11) i vrste pismena razrješavaju se po **nazivu**, pa moraju
+na predprodukciji postojati pod istim nazivima kao na testu. Šifre (`EGOP_SIFRA_*`) se NE
+postavljaju.
+
+**Naučeno na CDU testu 22.10.2026. — vrijedi i ovdje dok se ne dokaže drukčije:**
+
+| Problem na testu | Postavka ovdje |
+| :--- | :--- |
+| `strservis4` ne vidi „MINISTARSTVO TURIZMA" (default) — „nema unos za nadležna org. jedinica" | `EGOP_NAZIV_USTROJ=Sektor za pravne poslove` |
+| Službenik ne smije otvoriti predmet 334-06/11 — „Odabranu ustrojstvenu jedinicu nije moguće postaviti kao nadležnu…", i s 597 i s 624 | `EGOP_AKTI_KORISNIK=APLIKACIJSKI` (svi akti pod `strservis4`, bez urbroja službenika) |
+| MINT-ovih vrsta pismena nema u `DohvatiVrstePismenaActive` za `strservis4` | `STR_EGOP_VRSTE_NAZIVI_PISMENA_ZAHTJEV=Zahtjev`, `STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest`, `EGOP_SIFRE_PRIVREMENE=true` |
+| Višerječni ključ iz env-a (`…_PISMENA_PRIJEDLOG_SUSPENZIJE`) se ne veže — Spring ga čita kao `prijedlog.suspenzije` | ne koristiti; skalarni fallback gore pokriva sve vrste osim zahtjeva |
+
+S tim postavkama otvaranje oba predmeta, pismena i otprema u KP prošli su na testu 22.10.2026.
+(obavijest o dodjeli i obavijest o povlačenju `SENT`).
+
+### B5a.1 Što treba od MINT-a prije paljenja
+
+1. ✅ IP za `egopeaieduc.mint.hr` je **`192.168.30.80`** → `EGOP_HOST_IP`. Javni DNS ga ne zna, ali
+   interni DNS kutije da (`getent hosts egopeaieduc.mint.hr`; CNAME `egopeduc.mint.hr`). Iz
+   kontejnera 22.10.2026.: TCP 80 i 443 prolaze, `GET /ServicePismeno.asmx?wsdl` vraća `401`
+   (NTLM) — tunel i eGOP rade. `EGOP_HOST_IP` mora biti postavljen i kad DNS radi: prazan veže
+   ime na `127.0.0.1`, što nadjačava DNS.
+2. ✅ Potvrđeno 22.10.2026.: **isti NTLM korisnik i lozinka kao na CDU testu** (iz `.env.cdu`),
+   aplikacijski korisnik `strservis4` bez domene (`EGOP_APP_DOMAIN=` prazno), http je dopušten.
+3. Postoje li sva četiri servisa (MDM, Pismeno, Predmet, Subjekt) i vrste pod našim nazivima.
+4. **Kamo predprodukcija otprema u KP.** Ova okolina je na produkcijskom NIAS-u i stvarnim OIB-ima:
+   ako eGOP predprodukcija dostavlja u pravi e-Građani pretinac, poruke dobivaju stvarni ljudi.
+   Do potvrde za testiranje koristiti vlastiti OIB, ili `EGOP_KP_ENABLED=false`.
+5. eGOP korisnici službenika — upisuju se u `str.application_user.external_username` (bez domene);
+   bez toga akt službenika ide pod aplikacijskim korisnikom, uz ERROR `egop_akt_korisnik_fallback`.
+   Bitno tek uz `EGOP_AKTI_KORISNIK=SLUZBENIK`; uz `APLIKACIJSKI` se ne čita. Prije prelaska na
+   `SLUZBENIK` MINT mora dati službeniku pravo otvaranja predmeta 334-06/11 (vidi tablicu gore).
+6. Jesu li MINT-ove vrste pismena na predprodukciji u `DohvatiVrstePismenaActive` za `strservis4`.
+   Dok nisu, pismena idu pod općenitim „Zahtjev"/„Obavijest" (`egop_vrsta_privremena=true`).
+
+### B5a.2 Paljenje
+
+`.env.cdupreprod` (cijeli blok i objašnjenja su u `.env.cdupreprod.example`):
+
+```
+EGOP_ENABLED=true
+EGOP_BASE_URL=http://egopeaieduc.mint.hr
+EGOP_HOST_IP=192.168.30.80
+EGOP_USERNAME=<isto kao u .env.cdu>
+EGOP_PASSWORD=<isto kao u .env.cdu>
+EGOP_APP_DOMAIN=
+EGOP_APP_USERNAME=strservis4
+EGOP_RJESAVATELJ=
+EGOP_CODEBOOKS_FAIL_FAST=false
+EGOP_CODEBOOKS_LOG_CONTENTS=true
+EGOP_TRACE_SOAP=false
+EGOP_AKTI_BEZ_SIFRE=
+EGOP_NAZIV_USTROJ=Sektor za pravne poslove
+EGOP_AKTI_KORISNIK=APLIKACIJSKI
+STR_EGOP_VRSTE_NAZIVI_PISMENA_ZAHTJEV=Zahtjev
+STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest
+EGOP_SIFRE_PRIVREMENE=true
+EGOP_MOCK_FILING_PREFIX=
+EGOP_KP_ENABLED=true
+```
+
+`EGOP_AKTI_KORISNIK` postoji od PR-a #139 — jar mora biti s `develop`-a od 22.10.2026. ili novijeg.
+
+Compose datoteka mora biti iz `develop`-a s `extra_hosts` (od 22.10.2026.) — inače se ime ne
+razrješava. Podizanje kao §C9 korak 5 (`up -d --build`; nakon promjene samo `.env`-a dovoljan je
+`up -d`, **ne** `restart`).
+
+### B5a.3 Provjera iz kontejnera
+
+```powershell
+ssh cdu-preprod "docker exec str-backend-cdupreprod getent hosts egopeaieduc.mint.hr"
+```
+Mora ispisati IP iz `EGOP_HOST_IP`. `127.0.0.1` znači da `EGOP_HOST_IP` nije postavljen.
+
+```powershell
+ssh cdu-preprod "docker exec str-backend-cdupreprod timeout 5 bash -c '</dev/tcp/egopeaieduc.mint.hr/80' && echo HTTP_OK || echo NEDOHVATLJIV"
+```
+`NEDOHVATLJIV` → tunel ne radi (javiti MINT-u); provjera s hosta nije mjerodavna, tunel je za Docker.
+
+Startup log:
+
+```powershell
+ssh cdu-preprod "docker logs str-backend-cdupreprod 2>&1 | grep -E 'Loaded eGOP|egop_codebook|egop_vrste_config|egop_kp_disabled' | tail -20"
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `Loaded eGOP … with N entries` (vrste subjekata, ustroj, vrste predmeta, vrste pismena) | veza, NTLM i korisnik rade |
+| `egop_codebook_load_failed … 401` | krivi `EGOP_USERNAME`/`EGOP_PASSWORD` |
+| `egop_codebook_load_failed … Connection refused` / `UnknownHost` | `EGOP_HOST_IP` ili tunel |
+| `egop_codebook_load_failed … Navedeni korisnik ne postoji` | `EGOP_APP_USERNAME` / `EGOP_APP_DOMAIN` |
+| `egop_kp_disabled reason=egop_disabled` | `EGOP_ENABLED` nije `true` |
+| `egop_akti_korisnik=APLIKACIJSKI` (WARN) | prekidač je učitan — akti idu pod `strservis4` |
+
+Uz `EGOP_CODEBOOKS_LOG_CONTENTS=true` u logu su i svi unosi (`egop_codebook_entry`): potraži
+„Dodjela registracijskog STR broja", „Suspenzija, povlačenje i reaktiviranje…", ustrojstvenu
+jedinicu iz `EGOP_NAZIV_USTROJ` (`CODEBOOK_USTROJ`) i vrste pismena iz `StrDocumentType`
+(egopVrstaNaziv), odnosno „Zahtjev" i „Obavijest". Zatim `EGOP_CODEBOOKS_LOG_CONTENTS=false` +
+`up -d`.
+
+```powershell
+ssh cdu-preprod "docker logs str-backend-cdupreprod 2>&1 | grep egop_codebook_entry | grep -iE 'STR broja|pravne poslove|registracijskog broja|naziv=.(Zahtjev|Obavijest).$'"
+```
+
+Greške pri prvoj urudžbi (`egop_dispatch_failed` / `egop_akt_failed`):
+
+| Poruka | Uzrok |
+| :--- | :--- |
+| `nema unos za nadležna org. jedinica '…'` | `EGOP_NAZIV_USTROJ` nije u ustroju `strservis4` — uzeti naziv iz `CODEBOOK_USTROJ` |
+| `Odabranu ustrojstvenu jedinicu nije moguće postaviti kao nadležnu…` | akt ide pod službenikom — `EGOP_AKTI_KORISNIK=APLIKACIJSKI` |
+| `nema unos za vrstu pismena '…', a nije zadana ni šifra ni fallback` | fali `STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK` ili „Obavijest" nije u šifrarniku |
+
+### B5a.4 Smoke test
+
+`str_rn` se svake noći briše (§C3), pa smoke test ide **nakon** jutarnjeg reseta. Izdati RB s
+testnim/vlastitim OIB-om, prijedlog suspenzije pa obustava, opoziv; zatim:
+
+```sql
+SELECT p.vrsta_pismena_naziv, p.smjer, p.jop, p.ur_broj, s.egop_klasa, s.egop_akti_klasa,
+       o.status AS kp_status, o.error
+FROM str_rn.egop_pismeno p
+JOIN str_rn.submission s ON s.submission_id = p.submission_id
+LEFT JOIN str_rn.egop_kp_otprema o ON o.pismeno_id = p.id
+ORDER BY p.created_at;
+```
+
+Očekivano: zahtjev i opoziv `ULAZNO` bez otpreme; ostala pismena `IZLAZNO`, otprema `SENT`;
+klasa registracije počinje s `334-06/10`, klasa akata s `334-06/11`.
+
+### B5a.5 Povratak (bez rebuilda)
+
+`EGOP_ENABLED=false` u `.env.cdupreprod` + `up -d`. Aktivan je `EgopClientMock` — KLASA/URBROJ se
+i dalje dodjeljuju (bez `MOCK-` prefiksa), ništa ne odlazi MINT-u, ostatak okoline radi normalno.
+
+### B5a.6 Prelazak na HTTPS
+
+1. Lanac certifikata iz kontejnera (`keytool` je u JRE imageu):
+   ```powershell
+   ssh cdu-preprod "docker exec str-backend-cdupreprod keytool -printcert -sslserver egopeaieduc.mint.hr:443"
+   ```
+2. `EGOP_BASE_URL=https://egopeaieduc.mint.hr` + `up -d`, pa log iz B5a.3.
+3. `PKIX path building failed` u `egop_codebook_load_failed` → JDK `cacerts` ne vjeruje MINT-ovom
+   CA-u. Ne dirati globalni truststore (o njemu ovise NIAS i OIB sustav); CA se dodaje samo eGOP
+   klijentu, kao kod e-Ovlaštenja (`cacerts` + PEM) — mala izmjena koda. Do tada vratiti `http://`.
 
 ## B6. Kako privatni repozitoriji dolaze na kutiju
 
@@ -879,6 +1035,24 @@ ssh cdu-preprod "rm -rf ~/str-rn/str_frontend/build/*"
 ```powershell
 scp -r $FE\build\* cdu-preprod:~/str-rn/str_frontend/build/
 ```
+
+Repo na kutiji (**samo ako su se mijenjali** `docker-compose.cdupreprod.yml`, `Dockerfile.artifact`,
+`tools/cdupreprod-*` ili `.env.cdupreprod.example`; provjera lokalno:
+`git -C $BE diff --stat <zadnji-deployani-sha> origin/develop -- docker-compose.cdupreprod.yml Dockerfile.artifact tools .env.cdupreprod.example`).
+Jar i build se ne nose kroz git, ali compose da: bez novog compose-a npr. eGOP nema `extra_hosts`
+(od 22.10.2026.). Bundle se radi lokalno prije VPN-a, isto kao u §C10.2b:
+
+```powershell
+git -C $BE fetch origin; git -C $BE bundle create C:\Users\MladenHangi\be-upd.bundle origin/develop
+```
+```powershell
+scp C:\Users\MladenHangi\be-upd.bundle cdu-preprod:~/
+```
+```powershell
+ssh cdu-preprod "git -C ~/str-rn/str_backend fetch ~/be-upd.bundle origin/develop:refs/remotes/upd/develop && git -C ~/str-rn/str_backend checkout --detach upd/develop && git -C ~/str-rn/str_backend log -1 --format='%h %cs %s'"
+```
+
+Zadnji ispisani commit je novi „zadnji deployani sha" za sljedeći redeploy.
 
 Dvije stvari koje ovdje štede sat vremena:
 
