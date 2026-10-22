@@ -65,6 +65,7 @@ class RnDocumentControllerTest {
     @MockBean private RnRepository rnRepository;
     // RnController od /api/rn/export/* endpointa ovisi i o exportu; slice ga mora imati.
     @MockBean private com.str.backend.statistics.StatisticsExportService exportService;
+    @MockBean private RnRegistrySearch registrySearch;
 
     @Test
     void document_returnsPdf() throws Exception {

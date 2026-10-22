@@ -60,12 +60,14 @@ public class RnController {
     private final StatisticsExportService exportService;
     private final EffectiveOibResolver effectiveOibResolver;
     private final InternalAccessService internalAccess;
+    private final RnRegistrySearch registrySearch;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
                         RnDocumentsService documentsService, RnRepository rnRepository,
                         StatisticsExportService exportService, EffectiveOibResolver effectiveOibResolver,
-                        InternalAccessService internalAccess) {
+                        InternalAccessService internalAccess, RnRegistrySearch registrySearch) {
         this.service = service;
+        this.registrySearch = registrySearch;
         this.mapper = mapper;
         this.documentService = documentService;
         this.documentsService = documentsService;
@@ -89,6 +91,10 @@ public class RnController {
      * očitovanje ističe u narednih x dana. Namjerno je filtar ovdje, a ne zaseban pregled —
      * ovaj endpoint već nosi ostale filtre, paging, sortiranje i tri izvoza. Uobičajena
      * kombinacija je {@code ?view=SUSPENSION_PROPOSED&deadlineWithinDays=7}.
+     *
+     * <p>{@code decision} i {@code verified} filtriraju stupce „Rješenje o kategorizaciji" i
+     * „Verificiran" (isto pravilo kao „Moji registracijski brojevi"). Filtar „Verificiran" pita
+     * eTurizam; kad on nije dostupan, odgovor je 503 ({@link RnRegistrySearch}).
      */
     @GetMapping
     public Page<RnSummaryDto> registry(
@@ -104,9 +110,12 @@ public class RnController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
             @RequestParam(required = false) Integer deadlineWithinDays,
+            @RequestParam(required = false) RegistryDecisionFilter decision,
+            @RequestParam(required = false) Boolean verified,
             @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.searchRegistry(view, q, county, municipality, typeId, foreignOnly, rb, city,
-                street, name, lessor, deadlineWithinDays, pageable);
+        return registrySearch.search(new RnRegistryFilter(view, q, county, municipality, typeId,
+                foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified),
+                pageable);
     }
 
     /**
@@ -259,10 +268,12 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
-            @RequestParam(required = false) Integer deadlineWithinDays) {
-        byte[] xlsx = exportService.generateRegistryXlsx(
+            @RequestParam(required = false) Integer deadlineWithinDays,
+            @RequestParam(required = false) RegistryDecisionFilter decision,
+            @RequestParam(required = false) Boolean verified) {
+        byte[] xlsx = exportService.generateRegistryXlsx(new RnRegistryFilter(
                 view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays);
+                deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE,
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -284,10 +295,12 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
-            @RequestParam(required = false) Integer deadlineWithinDays) {
-        byte[] csv = exportService.generateRegistryCsv(
+            @RequestParam(required = false) Integer deadlineWithinDays,
+            @RequestParam(required = false) RegistryDecisionFilter decision,
+            @RequestParam(required = false) Boolean verified) {
+        byte[] csv = exportService.generateRegistryCsv(new RnRegistryFilter(
                 view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays);
+                deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"registar-rb.csv\"")
@@ -308,10 +321,12 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
-            @RequestParam(required = false) Integer deadlineWithinDays) {
-        byte[] pdf = exportService.generateRegistryPdf(
+            @RequestParam(required = false) Integer deadlineWithinDays,
+            @RequestParam(required = false) RegistryDecisionFilter decision,
+            @RequestParam(required = false) Boolean verified) {
+        byte[] pdf = exportService.generateRegistryPdf(new RnRegistryFilter(
                 view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays);
+                deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"registar-rb.pdf\"")

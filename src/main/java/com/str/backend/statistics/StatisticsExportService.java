@@ -9,11 +9,12 @@ import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
+import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.pdf.PdfFonts;
-import com.str.backend.rn.RnRegistryView;
-import com.str.backend.rn.RnService;
+import com.str.backend.rn.RnRegistryFilter;
+import com.str.backend.rn.RnRegistrySearch;
 import com.str.backend.rn.dto.RnSummaryDto;
 import com.str.backend.statistics.StatisticsRepository.DetailRowProjection;
 import com.str.backend.statistics.dto.StrResponse;
@@ -90,16 +91,16 @@ public class StatisticsExportService {
     private final StatisticsService    statisticsService;
     private final StatisticsRepository statisticsRepository;
     private final PlatformActivityQuery platformActivityQuery;
-    private final RnService            rnService;
+    private final RnRegistrySearch     rnRegistrySearch;
 
     public StatisticsExportService(StatisticsService statisticsService,
                                    StatisticsRepository statisticsRepository,
                                    PlatformActivityQuery platformActivityQuery,
-                                   RnService rnService) {
+                                   RnRegistrySearch rnRegistrySearch) {
         this.statisticsService     = statisticsService;
         this.statisticsRepository  = statisticsRepository;
         this.platformActivityQuery = platformActivityQuery;
-        this.rnService             = rnService;
+        this.rnRegistrySearch      = rnRegistrySearch;
     }
 
     // ── PDF ──────────────────────────────────────────────────────────────────
@@ -261,31 +262,21 @@ public class StatisticsExportService {
     private static final String[] RN_HEADERS = {
             "Registracijski broj", "Status", "Datum izdavanja", "Vrijedi od", "Vrijedi do",
             "Rok za očitovanje",
-            "Naziv objekta", "Vrsta objekta", "Iznajmljivač", "Ulica i kbr.", "Grad/naselje", "Županija"
+            "Naziv objekta", "Vrsta objekta", "Iznajmljivač", "Ulica i kbr.", "Grad/naselje", "Županija",
+            "Verificiran", "Rješenje o kategorizaciji"
     };
 
-    private List<RnSummaryDto> fetchRegistryForExport(RnRegistryView view, String q, String county,
-                                                      String municipality, Long typeId,
-                                                      boolean foreignOnly, String rb, String city,
-                                                      String street, String name, String lessor,
-                                                      Integer deadlineWithinDays) {
-        List<RnSummaryDto> rows = rnService.searchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays);
-        if (rows.size() > MAX_EXPORT_ROWS) {
-            throw new BusinessException("error.export.too.many.rows");
-        }
-        return rows;
+    /*
+     * Izvozi registra namjerno nemaju @Transactional: stupac „Verificiran" pita eTurizam, a greška
+     * unutar transakcije označila bi je rollback-only (v. RnRegistrySearch). Upiti imaju svoje.
+     */
+
+    private List<RnSummaryDto> fetchRegistryForExport(RnRegistryFilter filter) {
+        return rnRegistrySearch.searchForExport(filter, MAX_EXPORT_ROWS);
     }
 
-    @Transactional(readOnly = true)
-    public byte[] generateRegistryXlsx(RnRegistryView view, String q, String county, String municipality,
-                                       Long typeId, boolean foreignOnly, String rb, String city,
-                                       String street, String name, String lessor,
-                                      Integer deadlineWithinDays) {
-        List<RnSummaryDto> rows = fetchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays);
+    public byte[] generateRegistryXlsx(RnRegistryFilter filter) {
+        List<RnSummaryDto> rows = fetchRegistryForExport(filter);
         SXSSFWorkbook wb = new SXSSFWorkbook(SXSSF_WINDOW_ROWS);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("Registar RB");
@@ -314,6 +305,8 @@ public class StatisticsExportService {
                 row.createCell(9).setCellValue(rnAddress(r));
                 row.createCell(10).setCellValue(nullToEmpty(r.city()));
                 row.createCell(11).setCellValue(nullToEmpty(r.county()));
+                row.createCell(12).setCellValue(rnVerifiedLabel(r));
+                row.createCell(13).setCellValue(rnDecisionLabel(r));
             }
             wb.write(baos);
             return baos.toByteArray();
@@ -324,14 +317,8 @@ public class StatisticsExportService {
         }
     }
 
-    @Transactional(readOnly = true)
-    public byte[] generateRegistryCsv(RnRegistryView view, String q, String county, String municipality,
-                                      Long typeId, boolean foreignOnly, String rb, String city,
-                                      String street, String name, String lessor,
-                                      Integer deadlineWithinDays) {
-        List<RnSummaryDto> rows = fetchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays);
+    public byte[] generateRegistryCsv(RnRegistryFilter filter) {
+        List<RnSummaryDto> rows = fetchRegistryForExport(filter);
         ByteArrayOutputStream baos = new ByteArrayOutputStream(CSV_INITIAL_BUFFER_BYTES);
         try (Writer out = new BufferedWriter(new OutputStreamWriter(baos, StandardCharsets.UTF_8))) {
             out.write('\uFEFF'); // BOM for Excel-compatible UTF-8
@@ -349,7 +336,9 @@ public class StatisticsExportService {
                 out.write(csvEscape(rnLessorLabel(r)));                             out.write(',');
                 out.write(csvEscape(rnAddress(r)));                                 out.write(',');
                 out.write(csvEscape(r.city()));                                     out.write(',');
-                out.write(csvEscape(r.county()));
+                out.write(csvEscape(r.county()));                                   out.write(',');
+                out.write(csvEscape(rnVerifiedLabel(r)));                           out.write(',');
+                out.write(csvEscape(rnDecisionLabel(r)));
                 out.write("\r\n");
             }
         } catch (IOException e) {
@@ -358,14 +347,8 @@ public class StatisticsExportService {
         return baos.toByteArray();
     }
 
-    @Transactional(readOnly = true)
-    public byte[] generateRegistryPdf(RnRegistryView view, String q, String county, String municipality,
-                                      Long typeId, boolean foreignOnly, String rb, String city,
-                                      String street, String name, String lessor,
-                                      Integer deadlineWithinDays) {
-        List<RnSummaryDto> rows = fetchRegistryForExport(
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays);
+    public byte[] generateRegistryPdf(RnRegistryFilter filter) {
+        List<RnSummaryDto> rows = fetchRegistryForExport(filter);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4.rotate(), 28, 28, 36, 28);
             PdfWriter.getInstance(doc, baos);
@@ -378,7 +361,7 @@ public class StatisticsExportService {
             dateP.setSpacingAfter(14);
             doc.add(dateP);
 
-            float[] widths = {3f, 2f, 2f, 2f, 2f, 2f, 3.5f, 2.5f, 3f, 3f, 2.5f, 3f};
+            float[] widths = {3f, 2f, 2f, 2f, 2f, 2f, 3.5f, 2.5f, 3f, 3f, 2.5f, 3f, 1.8f, 2.4f};
             PdfPTable table = new PdfPTable(widths);
             table.setWidthPercentage(100);
             for (String h : RN_HEADERS) table.addCell(thCell(h));
@@ -395,6 +378,8 @@ public class StatisticsExportService {
                 table.addCell(tdCell(rnAddress(r)));
                 table.addCell(tdCell(nullToEmpty(r.city())));
                 table.addCell(tdCell(nullToEmpty(r.county())));
+                table.addCell(tdCell(rnVerifiedLabel(r)));
+                table.addCell(tdCell(rnDecisionLabel(r)));
             }
             doc.add(table);
             doc.close();
@@ -410,6 +395,26 @@ public class StatisticsExportService {
         String parts = ((r.lessorFirstName() != null ? r.lessorFirstName() : "") + " "
                 + (r.lessorLastName() != null ? r.lessorLastName() : "")).trim();
         return parts.isEmpty() ? "-" : parts;
+    }
+
+    /** Stupac „Verificiran" kao na ekranu: „-" kad eTurizam nije bio dostupan. */
+    private static String rnVerifiedLabel(RnSummaryDto r) {
+        if (r.facilityVerified() == null) return "-";
+        return r.facilityVerified() ? "Da" : "Ne";
+    }
+
+    /**
+     * Stupac „Rješenje o kategorizaciji" kao na ekranu (FE {@code shownDecisionStatus}): status
+     * rješenja kad postoji, „Nije predano" uz RB koji ga traži, inače „-".
+     */
+    private static String rnDecisionLabel(RnSummaryDto r) {
+        CategorizationDecisionStatus status = r.categorizationStatus();
+        if (status == null) return r.categorizationRequired() ? "Nije predano" : "-";
+        return switch (status) {
+            case SUBMITTED -> "Predano, u obradi";
+            case VERIFIED -> "Prihvaćeno";
+            case REJECTED -> "Odbijeno";
+        };
     }
 
     private static String rnAddress(RnSummaryDto r) {

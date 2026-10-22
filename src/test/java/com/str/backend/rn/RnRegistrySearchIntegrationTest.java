@@ -3,6 +3,9 @@ package com.str.backend.rn;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.categorization.CategorizationDecisionEntity;
+import com.str.backend.categorization.CategorizationDecisionEntity.CategorizationDecisionMetadata;
+import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.domain.RnStatus;
@@ -12,22 +15,31 @@ import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.str.RnFacilityVerification;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -46,6 +58,9 @@ class RnRegistrySearchIntegrationTest {
 
     /** Endpoint je back-office; ovdje se testira pretraga, ne autorizacija (v. BackOfficeSecurityTest). */
     @MockBean private InternalAccessService internalAccess;
+    /** eTurizam (str.*) — verifikacija objekta; H2 nema njegove podatke. */
+    @MockBean private RnFacilityVerification facilityVerification;
+    @Autowired private CategorizationDecisionRepository decisionRepository;
     @Autowired private RnRepository rnRepository;
     @Autowired private AccommodationRepository accommodationRepository;
     @Autowired private SubmissionRepository submissionRepository;
@@ -57,6 +72,7 @@ class RnRegistrySearchIntegrationTest {
     @BeforeEach
     void seed() {
         when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        decisionRepository.deleteAll();
         rnRepository.deleteAll();
         accommodationRepository.deleteAll();
         submissionRepository.deleteAll();
@@ -307,5 +323,194 @@ class RnRegistrySearchIntegrationTest {
         mvc.perform(get("/api/rn").param("view", "SUSPENSION_PROPOSED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(2));
+    }
+
+    // --- Stupci „Rješenje o kategorizaciji" i „Verificiran" (pravilo kao „Moji RB") ---
+
+    private void setFacility(String rn, String facilityId) {
+        AccommodationEntity acc = accommodationRepository
+                .findById(rnRepository.findById(rn).orElseThrow().getAccommodationId()).orElseThrow();
+        acc.setFacilityId(facilityId);
+        accommodationRepository.save(acc);
+    }
+
+    private CategorizationDecisionEntity decision(String rn) {
+        return decisionRepository.save(CategorizationDecisionEntity.create("99999999990", rn,
+                "rjesenje.pdf", "application/pdf", new byte[]{1, 2, 3},
+                new CategorizationDecisionMetadata(null, null, null, null, null, null, null)));
+    }
+
+    /**
+     * A: novi objekt, predano rješenje. B: objekt iz eTurizma bez rješenja. C: novi objekt bez
+     * rješenja. D: novi objekt, potvrđeno. E: novi objekt, odbijeno. F: novi objekt bez rješenja,
+     * povučen — konačan broj rješenje ne traži.
+     */
+    private void seedDecisions() {
+        seedRn("HR00000004", null, "Grad Zagreb", "Zagreb", "Vlaška", "1", "Stan D");
+        seedRn("HR00000005", null, "Grad Zagreb", "Zagreb", "Vlaška", "2", "Stan E");
+        seedRn("HR00000006", null, "Grad Zagreb", "Zagreb", "Vlaška", "3", "Stan F");
+        RnEntity f = rnRepository.findById("HR00000006").orElseThrow();
+        f.applyStatus(RnStatus.WITHDRAWN);
+        rnRepository.save(f);
+        setFacility("HR00000002", "153049");
+
+        decision("HR00000001");
+        CategorizationDecisionEntity verified = decision("HR00000004");
+        verified.verify("sluzbenik");
+        decisionRepository.save(verified);
+        CategorizationDecisionEntity rejected = decision("HR00000005");
+        rejected.reject("sluzbenik");
+        decisionRepository.save(rejected);
+    }
+
+    @Test
+    void decisionColumn_followsTheLessorListRule() throws Exception {
+        seedDecisions();
+
+        mvc.perform(get("/api/rn").param("view", "ALL").param("rb", "HR0000000")
+                        .param("sort", "rn,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(6))
+                .andExpect(jsonPath("$.content[0].categorizationStatus").value("SUBMITTED"))
+                .andExpect(jsonPath("$.content[0].categorizationRequired").value(true))
+                .andExpect(jsonPath("$.content[1].categorizationStatus").doesNotExist())
+                .andExpect(jsonPath("$.content[1].categorizationRequired").value(false))
+                .andExpect(jsonPath("$.content[2].categorizationRequired").value(true))
+                .andExpect(jsonPath("$.content[3].categorizationStatus").value("VERIFIED"))
+                .andExpect(jsonPath("$.content[4].categorizationStatus").value("REJECTED"))
+                .andExpect(jsonPath("$.content[5].categorizationRequired").value(false))
+                // facilityId služi samo izračunu stupca „Verificiran"
+                .andExpect(jsonPath("$.content[1].facilityId").doesNotExist());
+    }
+
+    @Test
+    void decisionFilter_eachValueSelectsWhatTheColumnShows() throws Exception {
+        seedDecisions();
+
+        assertOnly(get("/api/rn").param("view", "ALL").param("decision", "SUBMITTED"), "HR00000001");
+        assertOnly(get("/api/rn").param("view", "ALL").param("decision", "VERIFIED"), "HR00000004");
+        assertOnly(get("/api/rn").param("view", "ALL").param("decision", "REJECTED"), "HR00000005");
+        assertOnly(get("/api/rn").param("view", "ALL").param("decision", "NONE"), "HR00000003");
+        mvc.perform(get("/api/rn").param("view", "ALL").param("decision", "NOT_REQUIRED")
+                        .param("sort", "rn,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000002"))
+                .andExpect(jsonPath("$.content[1].rn").value("HR00000006"));
+    }
+
+    @Test
+    void decisionFilter_unknownValueIs400() throws Exception {
+        mvc.perform(get("/api/rn").param("decision", "NEPOSTOJECI"))
+                .andExpect(status().isBadRequest());
+    }
+
+    private void assertOnly(MockHttpServletRequestBuilder req, String rn) throws Exception {
+        mvc.perform(req)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value(rn));
+    }
+
+    @Test
+    void verifiedColumn_comesFromETurizam_newObjectIsNotVerified() throws Exception {
+        setFacility("HR00000002", "153049");
+        when(facilityVerification.verifiedFacilityIds(any())).thenReturn(Set.of("153049"));
+
+        mvc.perform(get("/api/rn").param("sort", "rn,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].facilityVerified").value(false))
+                .andExpect(jsonPath("$.content[1].facilityVerified").value(true))
+                .andExpect(jsonPath("$.content[2].facilityVerified").value(false));
+    }
+
+    /** Kvar eTurizma ne ruši registar: stupac je prazan, frontend prikazuje „-". */
+    @Test
+    void verifiedColumn_eTurizamDown_isNullButRegistryLoads() throws Exception {
+        setFacility("HR00000002", "153049");
+        when(facilityVerification.verifiedFacilityIds(any()))
+                .thenThrow(new DataAccessResourceFailureException("str nedostupan"));
+
+        mvc.perform(get("/api/rn"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.content[0].facilityVerified").doesNotExist());
+    }
+
+    @Test
+    void verifiedFilter_pagesOverTheWholeRegistry() throws Exception {
+        setFacility("HR00000002", "153049");
+        setFacility("HR00000003", "200");
+        when(facilityVerification.verifiedFacilityIds(any())).thenReturn(Set.of("153049"));
+
+        mvc.perform(get("/api/rn").param("verified", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000002"))
+                .andExpect(jsonPath("$.content[0].facilityVerified").value(true));
+
+        // „Ne" su i neverificirani eTurizam objekt i novi objekt bez facilityId.
+        mvc.perform(get("/api/rn").param("verified", "false").param("sort", "rn,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000001"))
+                .andExpect(jsonPath("$.content[1].rn").value("HR00000003"))
+                .andExpect(jsonPath("$.content[1].facilityVerified").value(false));
+
+        // Pita se samo za objekte koje ostali filtri propuštaju.
+        verify(facilityVerification, atLeastOnce()).verifiedFacilityIds(
+                argThat(ids -> ids.containsAll(List.of("153049", "200")) && ids.size() == 2));
+    }
+
+    @Test
+    void verifiedFilter_withoutAnyVerifiedObject() throws Exception {
+        setFacility("HR00000002", "153049");
+        when(facilityVerification.verifiedFacilityIds(any())).thenReturn(Set.of());
+
+        mvc.perform(get("/api/rn").param("verified", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/rn").param("verified", "false"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3));
+    }
+
+    /** Filtar se ne smije tiho preskočiti: bez eTurizma ne zna se što bi propustio. */
+    @Test
+    void verifiedFilter_eTurizamDown_is503() throws Exception {
+        setFacility("HR00000002", "153049");
+        when(facilityVerification.verifiedFacilityIds(any()))
+                .thenThrow(new DataAccessResourceFailureException("str nedostupan"));
+
+        mvc.perform(get("/api/rn").param("verified", "true"))
+                .andExpect(status().isServiceUnavailable());
+    }
+
+    @Test
+    void verifiedAndDecisionFilters_combine() throws Exception {
+        seedDecisions();
+        when(facilityVerification.verifiedFacilityIds(any())).thenReturn(Set.of("153049"));
+
+        assertOnly(get("/api/rn").param("view", "ALL").param("verified", "true")
+                .param("decision", "NOT_REQUIRED"), "HR00000002");
+        mvc.perform(get("/api/rn").param("view", "ALL").param("verified", "true")
+                        .param("decision", "NONE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void csvExport_carriesBothColumnsAndFilters() throws Exception {
+        seedDecisions();
+        when(facilityVerification.verifiedFacilityIds(any())).thenReturn(Set.of("153049"));
+
+        String csv = mvc.perform(get("/api/rn/export/csv").param("decision", "NONE"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        String[] lines = csv.split("\r\n");
+        assertThat(lines[0]).endsWith("Županija,Verificiran,Rješenje o kategorizaciji");
+        assertThat(lines).hasSize(2);
+        assertThat(lines[1]).startsWith("HR00000003,").endsWith(",Ne,Nije predano");
     }
 }

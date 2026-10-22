@@ -35,7 +35,7 @@ class PlatformActivitiesExportTest {
         query = mock(PlatformActivityQuery.class);
         service = new StatisticsExportService(
                 mock(StatisticsService.class), mock(StatisticsRepository.class), query,
-                mock(com.str.backend.rn.RnService.class));
+                mock(com.str.backend.rn.RnRegistrySearch.class));
 
         PlatformActivityRowDto row = new PlatformActivityRowDto(
                 "id1", "HR120001000000000001", "Ivan Ivić", "Korzo 2", "Rijeka",

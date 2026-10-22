@@ -40,6 +40,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -79,6 +80,7 @@ class RnDocumentAccessTest {
     @MockBean UserDetailsService userDetailsService;
     // RnController od /api/rn/export/* endpointa ovisi i o exportu; slice ga mora imati.
     @MockBean com.str.backend.statistics.StatisticsExportService exportService;
+    @MockBean RnRegistrySearch registrySearch;
 
     @Test
     void document_unauthenticated_returns401_andRendersNothing() throws Exception {
@@ -164,9 +166,14 @@ class RnDocumentAccessTest {
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/rn").with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isForbidden());
+        // Izvoz nosi imena i adrese svih iznajmljivača, uz filtre stupaca ili bez njih.
+        mvc.perform(get("/api/rn/export/csv").param("verified", "true").param("decision", "NONE")
+                        .with(authentication(principalAuth(lessorId))))
+                .andExpect(status().isForbidden());
 
         verify(service, never()).withdraw(any(), any(), any());
         verify(service, never()).suspend(any(), any(), any(), any(), any());
+        verifyNoInteractions(registrySearch, exportService);
     }
 
     @Test
