@@ -22,8 +22,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Sastavlja popis svih dokumenata vezanih uz registracijski broj, za prikaz „Moji
- * registracijski brojevi". Spaja tri izvora u jedinstven popis:
+ * Sastavlja popis svih dokumenata vezanih uz registracijski broj, za sekciju „Dokumenti" na
+ * detalju RB-a ({@code /registar/{rn}}). Spaja tri izvora u jedinstven popis:
  *
  * <ol>
  *   <li><b>Zahtjev</b> — pohranjen na {@code submission.pdf_content} (ako postoji);</li>
@@ -31,15 +31,19 @@ import java.util.UUID;
  *       činjenici bez promjenjivih polja, pa je re-render vjerodostojan; urudžbene oznake
  *       dolaze iz {@link #dodjelaFiling} pa PDF nosi isti URBROJ kao verzija poslana eGOP-u);</li>
  *   <li><b>Akti životnog ciklusa</b> — {@code egop_pismeno} retci vezani uz RB, s već
- *       pohranjenim (vjerodostojnim) PDF-om.</li>
+ *       pohranjenim (vjerodostojnim) PDF-om: obavijesti o prijedlogu suspenzije, obustavi
+ *       postupka suspenzije, suspenziji, reaktivaciji, povlačenju i opozivu. Zapisuje ih
+ *       {@code RnLifecycleFilingListener} pri svakom prijelazu koji
+ *       {@link StrDocumentType#forTransition} mapira na akt, i kad je eGOP ugašen.</li>
  * </ol>
  *
  * <p>Servis samo čita i sastavlja podatke; sam render i download rade endpointi na
  * {@code RnController}.
  *
- * <p><b>{@code str.rn.documents.zahtjev-visible}</b> (default {@code true}) izbacuje zahtjev iz
- * popisa. Naručitelj traži da se nakon izdavanja RB-a prikaže samo jedna obavijest — ona o
- * dodjeli. Zastavica je <b>isključivo za popis</b>: podnesak i dalje postoji, nosi urudžbeni
+ * <p><b>{@code str.rn.documents.zahtjev-visible}</b> (default {@code true}, na svim okolinama)
+ * s {@code false} izbacuje zahtjev iz popisa. CDU i preprod su ga do 22.10.2026. skrivali po
+ * zahtjevu naručitelja; sada popis nosi sva ulazna i izlazna pismena. Zastavica je
+ * <b>isključivo za popis</b>: podnesak i dalje postoji, nosi urudžbeni
  * broj 1, ostaje pohranjen na {@code submission.pdf_content} i dohvatljiv na
  * {@code GET /api/rn/{rn}/documents/zahtjev} te na
  * {@code GET /api/generateRegistrationNumber/{submissionId}/pdf}. Ne pretvarati je u 404 —

@@ -2,6 +2,8 @@ package com.str.backend.rn;
 
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
+import com.str.backend.domain.RnStatus;
+import com.str.backend.domain.RnTrigger;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -14,8 +16,11 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +52,7 @@ class RnDocumentsServiceTest {
         submissionId = UUID.randomUUID();
     }
 
-    /** Varijanta s ugašenim prikazom podneska — kakva vozi na predprodukciji. */
+    /** Varijanta s ugašenim prikazom podneska ({@code str.rn.documents.zahtjev-visible=false}). */
     private RnDocumentsService serviceWithoutZahtjev() {
         return new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, false);
     }
@@ -138,6 +143,49 @@ class RnDocumentsServiceTest {
                 .isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + prijedlog.getId());
         assertThat(docs.get(3).naziv())
                 .isEqualTo("Obavijest o obustavi postupka suspenzije registracijskog broja");
+    }
+
+    /**
+     * Sekcija „Dokumenti" na detalju RB-a mora nositi svaki akt koji nastaje iz prijelaza
+     * statusa. Vrste se izvode iz {@link StrDocumentType#forTransition}, pa nova vrsta akta
+     * automatski ulazi u provjeru; popis šest obavijesti brani da neka ne ispadne iz mapiranja.
+     */
+    @Test
+    void listForRn_allLifecycleNotices_listedAfterZahtjevAndDodjela() {
+        stubRn(submissionId, LocalDate.now().minusDays(2));
+        stubSubmission("pdf".getBytes(), Instant.now().minus(3, ChronoUnit.DAYS));
+        Set<StrDocumentType> lifecycleTypes = new LinkedHashSet<>();
+        for (RnStatus to : RnStatus.values()) {
+            for (RnTrigger trigger : RnTrigger.values()) {
+                StrDocumentType.forTransition(to, trigger).ifPresent(lifecycleTypes::add);
+            }
+        }
+        assertThat(lifecycleTypes).containsExactlyInAnyOrder(
+                StrDocumentType.PRIJEDLOG_SUSPENZIJE, StrDocumentType.OBUSTAVA_SUSPENZIJE,
+                StrDocumentType.SUSPENZIJA, StrDocumentType.REAKTIVACIJA,
+                StrDocumentType.POVLACENJE, StrDocumentType.OPOZIV);
+
+        List<EgopPismenoEntity> akti = new ArrayList<>();
+        for (StrDocumentType type : lifecycleTypes) {
+            akti.add(EgopPismenoEntity.forAct(submissionId, RN, "log-" + type.slug(),
+                    type.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.valueOf(type.smjer().name()),
+                    new byte[]{1}));
+        }
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN)).thenReturn(akti);
+
+        List<RnDocumentDto> docs = service.listForRn(RN);
+
+        List<String> expectedSlugs = new ArrayList<>(List.of("zahtjev", "dodjela"));
+        lifecycleTypes.forEach(t -> expectedSlugs.add(t.slug()));
+        assertThat(docs).extracting(RnDocumentDto::slug).containsExactlyElementsOf(expectedSlugs);
+        for (int i = 0; i < akti.size(); i++) {
+            EgopPismenoEntity akt = akti.get(i);
+            RnDocumentDto doc = docs.get(i + 2);
+            assertThat(doc.id()).isEqualTo(akt.getId());
+            assertThat(doc.naziv()).isEqualTo(akt.getVrstaPismenaNaziv());
+            assertThat(doc.smjer()).isEqualTo(akt.getSmjer().name());
+            assertThat(doc.href()).isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + akt.getId());
+        }
     }
 
     @Test
