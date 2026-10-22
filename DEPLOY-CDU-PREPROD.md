@@ -373,6 +373,18 @@ Vrste predmeta (334-06/10, 334-06/11) i vrste pismena razrješavaju se po **nazi
 na predprodukciji postojati pod istim nazivima kao na testu. Šifre (`EGOP_SIFRA_*`) se NE
 postavljaju.
 
+**Naučeno na CDU testu 22.10.2026. — vrijedi i ovdje dok se ne dokaže drukčije:**
+
+| Problem na testu | Postavka ovdje |
+| :--- | :--- |
+| `strservis4` ne vidi „MINISTARSTVO TURIZMA" (default) — „nema unos za nadležna org. jedinica" | `EGOP_NAZIV_USTROJ=Sektor za pravne poslove` |
+| Službenik ne smije otvoriti predmet 334-06/11 — „Odabranu ustrojstvenu jedinicu nije moguće postaviti kao nadležnu…", i s 597 i s 624 | `EGOP_AKTI_KORISNIK=APLIKACIJSKI` (svi akti pod `strservis4`, bez urbroja službenika) |
+| MINT-ovih vrsta pismena nema u `DohvatiVrstePismenaActive` za `strservis4` | `STR_EGOP_VRSTE_NAZIVI_PISMENA_ZAHTJEV=Zahtjev`, `STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest`, `EGOP_SIFRE_PRIVREMENE=true` |
+| Višerječni ključ iz env-a (`…_PISMENA_PRIJEDLOG_SUSPENZIJE`) se ne veže — Spring ga čita kao `prijedlog.suspenzije` | ne koristiti; skalarni fallback gore pokriva sve vrste osim zahtjeva |
+
+S tim postavkama otvaranje oba predmeta, pismena i otprema u KP prošli su na testu 22.10.2026.
+(obavijest o dodjeli i obavijest o povlačenju `SENT`).
+
 ### B5a.1 Što treba od MINT-a prije paljenja
 
 1. ✅ IP za `egopeaieduc.mint.hr` je **`192.168.30.80`** → `EGOP_HOST_IP`. Javni DNS ga ne zna, ali
@@ -388,6 +400,10 @@ postavljaju.
    Do potvrde za testiranje koristiti vlastiti OIB, ili `EGOP_KP_ENABLED=false`.
 5. eGOP korisnici službenika — upisuju se u `str.application_user.external_username` (bez domene);
    bez toga akt službenika ide pod aplikacijskim korisnikom, uz ERROR `egop_akt_korisnik_fallback`.
+   Bitno tek uz `EGOP_AKTI_KORISNIK=SLUZBENIK`; uz `APLIKACIJSKI` se ne čita. Prije prelaska na
+   `SLUZBENIK` MINT mora dati službeniku pravo otvaranja predmeta 334-06/11 (vidi tablicu gore).
+6. Jesu li MINT-ove vrste pismena na predprodukciji u `DohvatiVrstePismenaActive` za `strservis4`.
+   Dok nisu, pismena idu pod općenitim „Zahtjev"/„Obavijest" (`egop_vrsta_privremena=true`).
 
 ### B5a.2 Paljenje
 
@@ -404,10 +420,18 @@ EGOP_APP_USERNAME=strservis4
 EGOP_RJESAVATELJ=
 EGOP_CODEBOOKS_FAIL_FAST=false
 EGOP_CODEBOOKS_LOG_CONTENTS=true
+EGOP_TRACE_SOAP=false
 EGOP_AKTI_BEZ_SIFRE=
-EGOP_SIFRE_PRIVREMENE=false
+EGOP_NAZIV_USTROJ=Sektor za pravne poslove
+EGOP_AKTI_KORISNIK=APLIKACIJSKI
+STR_EGOP_VRSTE_NAZIVI_PISMENA_ZAHTJEV=Zahtjev
+STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest
+EGOP_SIFRE_PRIVREMENE=true
+EGOP_MOCK_FILING_PREFIX=
 EGOP_KP_ENABLED=true
 ```
+
+`EGOP_AKTI_KORISNIK` postoji od PR-a #139 — jar mora biti s `develop`-a od 22.10.2026. ili novijeg.
 
 Compose datoteka mora biti iz `develop`-a s `extra_hosts` (od 22.10.2026.) — inače se ime ne
 razrješava. Podizanje kao §C9 korak 5 (`up -d --build`; nakon promjene samo `.env`-a dovoljan je
@@ -438,10 +462,25 @@ ssh cdu-preprod "docker logs str-backend-cdupreprod 2>&1 | grep -E 'Loaded eGOP|
 | `egop_codebook_load_failed … Connection refused` / `UnknownHost` | `EGOP_HOST_IP` ili tunel |
 | `egop_codebook_load_failed … Navedeni korisnik ne postoji` | `EGOP_APP_USERNAME` / `EGOP_APP_DOMAIN` |
 | `egop_kp_disabled reason=egop_disabled` | `EGOP_ENABLED` nije `true` |
+| `egop_akti_korisnik=APLIKACIJSKI` (WARN) | prekidač je učitan — akti idu pod `strservis4` |
 
 Uz `EGOP_CODEBOOKS_LOG_CONTENTS=true` u logu su i svi unosi (`egop_codebook_entry`): potraži
-„Dodjela registracijskog STR broja", „Suspenzija, povlačenje i reaktiviranje…" i vrste pismena
-iz `StrDocumentType` (egopVrstaNaziv). Zatim `EGOP_CODEBOOKS_LOG_CONTENTS=false` + `up -d`.
+„Dodjela registracijskog STR broja", „Suspenzija, povlačenje i reaktiviranje…", ustrojstvenu
+jedinicu iz `EGOP_NAZIV_USTROJ` (`CODEBOOK_USTROJ`) i vrste pismena iz `StrDocumentType`
+(egopVrstaNaziv), odnosno „Zahtjev" i „Obavijest". Zatim `EGOP_CODEBOOKS_LOG_CONTENTS=false` +
+`up -d`.
+
+```powershell
+ssh cdu-preprod "docker logs str-backend-cdupreprod 2>&1 | grep egop_codebook_entry | grep -iE 'STR broja|pravne poslove|registracijskog broja|naziv=.(Zahtjev|Obavijest).$'"
+```
+
+Greške pri prvoj urudžbi (`egop_dispatch_failed` / `egop_akt_failed`):
+
+| Poruka | Uzrok |
+| :--- | :--- |
+| `nema unos za nadležna org. jedinica '…'` | `EGOP_NAZIV_USTROJ` nije u ustroju `strservis4` — uzeti naziv iz `CODEBOOK_USTROJ` |
+| `Odabranu ustrojstvenu jedinicu nije moguće postaviti kao nadležnu…` | akt ide pod službenikom — `EGOP_AKTI_KORISNIK=APLIKACIJSKI` |
+| `nema unos za vrstu pismena '…', a nije zadana ni šifra ni fallback` | fali `STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK` ili „Obavijest" nije u šifrarniku |
 
 ### B5a.4 Smoke test
 
@@ -996,6 +1035,24 @@ ssh cdu-preprod "rm -rf ~/str-rn/str_frontend/build/*"
 ```powershell
 scp -r $FE\build\* cdu-preprod:~/str-rn/str_frontend/build/
 ```
+
+Repo na kutiji (**samo ako su se mijenjali** `docker-compose.cdupreprod.yml`, `Dockerfile.artifact`,
+`tools/cdupreprod-*` ili `.env.cdupreprod.example`; provjera lokalno:
+`git -C $BE diff --stat <zadnji-deployani-sha> origin/develop -- docker-compose.cdupreprod.yml Dockerfile.artifact tools .env.cdupreprod.example`).
+Jar i build se ne nose kroz git, ali compose da: bez novog compose-a npr. eGOP nema `extra_hosts`
+(od 22.10.2026.). Bundle se radi lokalno prije VPN-a, isto kao u §C10.2b:
+
+```powershell
+git -C $BE fetch origin; git -C $BE bundle create C:\Users\MladenHangi\be-upd.bundle origin/develop
+```
+```powershell
+scp C:\Users\MladenHangi\be-upd.bundle cdu-preprod:~/
+```
+```powershell
+ssh cdu-preprod "git -C ~/str-rn/str_backend fetch ~/be-upd.bundle origin/develop:refs/remotes/upd/develop && git -C ~/str-rn/str_backend checkout --detach upd/develop && git -C ~/str-rn/str_backend log -1 --format='%h %cs %s'"
+```
+
+Zadnji ispisani commit je novi „zadnji deployani sha" za sljedeći redeploy.
 
 Dvije stvari koje ovdje štede sat vremena:
 
