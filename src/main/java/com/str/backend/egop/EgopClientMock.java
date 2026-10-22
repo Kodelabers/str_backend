@@ -112,14 +112,16 @@ class EgopClientMock implements EgopClient {
     /**
      * Nazivi dolaze iz {@link StrDocumentType} da se mock ne raziđe sa stvarnim vrstama —
      * ranije je ovdje stajao ručni popis, pa je promjena naziva na jednom mjestu tiho
-     * razbijala razrješavanje šifre na drugom. Šifre su izmišljene (mock).
+     * razbijala razrješavanje šifre na drugom. Mock glumi eGOP, pa vodi nazive iz eGOP
+     * šifrarnika ({@link StrDocumentType#egopVrstaNaziv()}), ne naše kanonske. Šifre su
+     * izmišljene (mock).
      */
     @Override
     public Map<String, String> getVrstePismena() {
         Map<String, String> vrste = new LinkedHashMap<>();
         int sifra = 101;
         for (StrDocumentType type : StrDocumentType.values()) {
-            vrste.put(type.vrstaPismenaNaziv(), String.valueOf(sifra++));
+            vrste.put(type.egopVrstaNaziv(), String.valueOf(sifra++));
         }
         return Map.copyOf(vrste);
     }

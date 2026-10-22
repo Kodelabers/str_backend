@@ -54,7 +54,7 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | :--- | :--- | :--- | :--- | :--- |
 | `zahtjev` | Zahtjev za registracijski broj | ulazno | čl. 71. — vlastiti generator | registracija |
 | `dodjela` | Obavijest o dodjeli registracijskog broja | izlazno | uvod, izreka | registracija |
-| `opoziv` | Obavijest o opozivu registracijskog broja | izlazno | uvod, izreka | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
+| `opoziv` | Obavijest o opozivu registracijskog broja | **ulazno** (PDF je akt tijela) | uvod, izreka | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
 | `prijedlog-suspenzije` | Obavijest o prijedlogu suspenzije registracijskog broja | izlazno | + obrazloženje; **rok u izreci** | `RnService.suspend` |
 | `suspenzija` | Obavijest o suspenziji registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `SuspensionDeadlineJob` (istek roka) |
 | `obustava-suspenzije` | Obavijest o obustavi postupka suspenzije registracijskog broja | izlazno | kao `opoziv` | `RnService.revokeProposal` |
@@ -68,11 +68,16 @@ izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku
 `SUSPENDED` i šalje `suspenzija`. Ispravi li stranka nedostatak, `revokeProposal` vraća RB u
 `ACTIVE` uz `obustava-suspenzije`.
 
-`reaktivacija` i `obustava-suspenzije` **nisu među 7 vrsta pismena** iz InfoDomovog maila i
-nemaju šifru u eGOP šifrarniku (obje su nastale uz dvofaznu suspenziju, koje u trenutku dogovora
-nije bilo). Predlošci i okidači postoje; urudžbiranje je iza `str.egop.akti-bez-sifre` (vidi §6),
-ali se akt **svejedno zapisuje i vidi u popisu dokumenata RB-a**, a obavijest e-poštom ide
-neovisno o tome. `ZupTemplateLoaderTest` drži taj popis u šahu.
+Smjer je onaj koji je propisao MINT (22.10.2026.). Samo izlazna pismena idu u korisnički pretinac.
+**`opoziv` je ulazno pismeno** (radnju pokreće stranka), pa ne ide u KP, ali dokument ostaje akt
+tijela s grbom, potpisom i ePečatom: zaglavlje i pečat ovise o `StrDocumentType.aktTijela()`, ne o
+smjeru. Mail o opozivu zato nema klauzulu o dostavi.
+
+`reaktivacija` i `obustava-suspenzije` nisu bile među 7 vrsta pismena iz InfoDomovog maila (obje
+su nastale uz dvofaznu suspenziju). MINT ih je unio 22.10.2026., pa se urudžbiraju i otpremaju u
+KP kao ostale obavijesti. Reaktivacija je u eGOP šifrarniku „Obavijest o reaktiviranju…", a
+zahtjev „Zahtjev za dodjelu…" (`StrDocumentType.egopVrstaNaziv()`); naš naziv na pismenu ostaje.
+`ZupTemplateLoaderTest` drži popis naziva iz šifrarnika u šahu.
 
 `zahtjev-promjene-podataka` nastaje kad iznajmljivač pri izdavanju RB-a za **verificirani** objekt iz
 eTurizma označi da podaci iz registra nisu točni ili nisu potpuni (neverificirani objekt claim vraća
@@ -310,8 +315,8 @@ postojeće opozive i njihove zapise u `registration_number_log` preveo u `REVOKE
 pa i ponovno slanje zaostale obavijesti (`MailRetryJob`) bira isti akt kao i prije.
 
 Akt se prilaže kao **preslika**. Pad rendera akta ne sprječava mail — status je već promijenjen.
-Mail ide i za vrste bez šifre u eGOP šifrarniku (`reaktivacija`, `obustava-suspenzije`), jer
-blokadna lista `str.egop.akti-bez-sifre` zaustavlja samo urudžbiranje, ne i obavijest.
+Mail ide i za vrste na blokadnoj listi `str.egop.akti-bez-sifre`, jer ona zaustavlja samo
+urudžbiranje, ne i obavijest.
 
 ---
 
@@ -357,7 +362,7 @@ Za produkciju ostaje `false`.
 Uz to, jedan ključ iz `str.egop.*` bloka dira izravno akte:
 
 ```properties
-str.egop.akti-bez-sifre=${EGOP_AKTI_BEZ_SIFRE:reaktivacija,prijedlog-suspenzije,obustava-suspenzije}
+str.egop.akti-bez-sifre=${EGOP_AKTI_BEZ_SIFRE:}
 ```
 
 Slugovi vrsta pismena koje eGOP šifrarnik (još) nema. Takav se akt **renderira, zapisuje u
@@ -372,6 +377,7 @@ zajednički za listener (preskače slanje) i `EgopRetryJob` (izuzima te akte iz 
 
 Slug se miče s popisa čim InfoDom potvrdi šifru, bez izmjene koda; zaostali akti se tada
 urudžbiraju pri prvom sljedećem prolasku retry joba. Prazna vrijednost znači da se urudžbira sve.
+Od 22.10.2026. popis je prazan i u defaultu i na CDU-u: MINT je unio sve vrste pismena.
 
 **Uputa o pravnom lijeku je property, ne dio predloška.** Pravna narav postupka nije potvrđena
 (vidi otvoreno pitanje 1), a po čl. 111. pogrešna uputa ide na štetu tijela — ovako je pravna
@@ -450,7 +456,8 @@ dira bazu. Novi listener mora čitati (`RnDetailDto`, akt), pa mu vlastita trans
 
 ## 10. Kako dodati novi akt
 
-1. Konstanta u `StrDocumentType` — slug, naziv iz eGOP šifrarnika, smjer, naslov, obvezne sekcije.
+1. Konstanta u `StrDocumentType` — slug, naš naziv, smjer u eGOP-u, je li akt tijela, naziv iz eGOP
+   šifrarnika (ako se razlikuje od našeg), naslov, obvezne sekcije.
 2. `src/main/resources/documents/hr/<slug>.txt` sa svim obveznim sekcijama.
 3. Ako treba novi placeholder — dodati ga u `ZupContextFactory` **i** u tablicu iz §4.
 4. Ako akt nastaje iz prijelaza statusa: grana u `StrDocumentType.forTransition` (jedno mjesto
@@ -458,7 +465,8 @@ dira bazu. Novi listener mora čitati (`RnDetailDto`, akt), pa mu vlastita trans
    `documents/mail/<slug>.html`, i `case` u `RnLifecycleEmailListener.mailTemplateFor`
    (switch je iscrpan, pa build padne ako se zaboravi).
 5. Ako vrsta nema potvrđenu šifru u eGOP šifrarniku — slug na `str.egop.akti-bez-sifre` i u
-   popis u `ZupTemplateLoaderTest.typesOutsideAgreedCodebookSet_areKnownAndUnfiled`.
+   popis u `ZupTemplateLoaderTest.typesOutsideEgopCodebook_areKnownAndUnfiled`; inače njen eGOP
+   naziv u `documentTypes_matchEgopCodebookNames`, a smjer u `StrDocumentTypeTest`.
 6. Novi `RnStatus`/`RnTrigger` traži i natpise u `documents/hr/labels.properties` — bez njih
    render puca u `AFTER_COMMIT` listeneru, nakon što je status već promijenjen
    (`DocumentLabelsTest` to hvata).

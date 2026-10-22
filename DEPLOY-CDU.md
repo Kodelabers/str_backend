@@ -157,7 +157,8 @@ STR_EPECAT_ENABLED=false
 STR_DOCUMENTS_RELOAD=false
 
 # --- eGOP ---
-EGOP_AKTI_BEZ_SIFRE=reaktivacija,prijedlog-suspenzije,obustava-suspenzije
+# Prazno od 22.10.2026. (MINT je unio sve vrste pismena) — sve se urudžbira.
+EGOP_AKTI_BEZ_SIFRE=
 
 # --- obavijesti e-poštom (relay servmail.ssc.gov.hr:25 i pošiljatelj su default u application-cdu.properties) ---
 APP_MAIL_ENABLED=true

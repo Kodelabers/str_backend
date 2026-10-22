@@ -79,6 +79,24 @@ class EgopVrstaResolverTest {
         assertThat(vrsta.privremena()).isFalse();
     }
 
+    /**
+     * eGOP šifrarnik zahtjev i reaktivaciju vodi pod drugim nazivom od našeg kanonskog
+     * (MINT, 22.10.2026.) — razrješava se po eGOP nazivu, a kanonski naziv ostaje ključ.
+     */
+    @Test
+    void vrstaSDrugimNazivomUEgopu_razrjesavaSePoEgopNazivu() throws Exception {
+        when(client.getVrstePismena()).thenReturn(Map.of(
+                ZAHTJEV, "999",
+                "Zahtjev za dodjelu registracijskog broja", "201",
+                "Obavijest o reaktiviranju registracijskog broja", "207"));
+        EgopVrstaResolver resolver = new EgopVrstaResolver(client,
+                props(sifre(Map.of(), null, false), nazivi(Map.of(), null)));
+
+        assertThat(resolver.vrstaPismena(ZAHTJEV)).isEqualTo(new EgopVrstaResolver.Vrsta("201", false));
+        assertThat(resolver.vrstaPismena(StrDocumentType.REAKTIVACIJA.vrstaPismenaNaziv()))
+                .isEqualTo(new EgopVrstaResolver.Vrsta("207", false));
+    }
+
     @Test
     void fallbackPokrivaVrsteKojihSifrarnikNema() throws Exception {
         when(client.getVrstePismena()).thenReturn(Map.of("Dopis", "3", "Obavijest", "57"));

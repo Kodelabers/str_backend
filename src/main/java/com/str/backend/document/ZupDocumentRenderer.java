@@ -223,11 +223,12 @@ public class ZupDocumentRenderer {
     }
 
     /**
-     * Izlazni akt izdaje tijelo; ulazno pismeno (podnesak stranke) piše stranka. O tome ovisi
-     * zaglavlje s grbom, tko potpisuje i smije li se na dokument staviti pečat tijela.
+     * Akt izdaje tijelo, podnesak piše stranka. O tome ovisi zaglavlje s grbom, tko potpisuje i
+     * smije li se na dokument staviti pečat tijela. Ne smjer pismena: opoziv je u eGOP-u ulazno
+     * pismeno, a dokument je akt tijela.
      */
     private static boolean aktTijela(ZupTemplate template) {
-        return template.type().smjer() == StrDocumentType.Smjer.IZLAZNO;
+        return template.type().aktTijela();
     }
 
     private static Paragraph zaglavljeRedak(String tekst, float razmakPrije) {

@@ -370,6 +370,9 @@ public class EgopFilingService {
      * {@code KreirajIzlaznoPismeno}: {@code KreirajPismeno2} smjer ne prima, a eGOP ga ne izvodi
      * pouzdano iz vrste — na MINT-ovom testu je obavijest pod vrstom „Obavijest" postala ulazna i
      * otprema u KP je odbijena (21.10.2026.).
+     *
+     * <p>Ulazna su zahtjev, opoziv i prigovor (MINT, 22.10.2026.); ostale obavijesti su izlazne.
+     * Smjer dolazi iz {@link StrDocumentType#smjer()} preko {@code egop_pismeno.smjer}.
      */
     private Kreirano kreirajPismeno(int uredskaGodina, int rbrPredmeta, String vrstaNaziv,
                                     EgopPismenoEntity.Smjer smjer, Integer subjektOznaka, String subjektOib,
@@ -384,8 +387,10 @@ public class EgopFilingService {
             request.setNazivPismena(vrstaNaziv);
             request.setDatumNastanka(EgopDates.toXml(LocalDateTime.now()));
             PismenoInfo pismeno = egopClient.kreirajIzlaznoPismeno(request);
-            log.debug("egop_izlazno_pismeno jop={} urbroj={} ui={}", pismeno.getJop(), pismeno.getUrBroj(),
-                    pismeno.getUI());
+            // INFO: smjer koji je eGOP stvarno upisao — jedini trag da je pismeno izlazno, a o tome
+            // ovisi otprema u KP.
+            log.info("egop_izlazno_pismeno vrsta='{}' jop={} urbroj={} ui={}", vrstaNaziv, pismeno.getJop(),
+                    pismeno.getUrBroj(), pismeno.getUI());
             return new Kreirano(pismeno.getJop(), pismeno.getUrBroj(), vrsta);
         }
         KreirajPismeno2 request = new KreirajPismeno2();

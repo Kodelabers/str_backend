@@ -46,7 +46,7 @@ public class SmtpEmailService implements EmailService {
             // Privitak je akt (obavijest o dodjeli), pa poruka nosi klauzulu o dostavi e-poštom.
             return sendWithAttachment(mail.to(), MailTemplate.RB_IZDAN_DOSTAVA,
                     Map.of("ime", nn(mail.ime()), "rn", nn(mail.rn())),
-                    "dodjela-" + mail.rn() + ".pdf", mail.pdf(), true);
+                    "dodjela-" + mail.rn() + ".pdf", mail.pdf(), Dostava.EPOSTA);
         }
         return send(mail.to(), MailTemplate.RB_IZDAN,
                 Map.of("ime", nn(mail.ime()), "rn", nn(mail.rn()), "objekt", nn(mail.objekt())));
@@ -62,27 +62,27 @@ public class SmtpEmailService implements EmailService {
         values.put("rok", nn(mail.rok()));
 
         if (mail.pdf() == null || mail.pdf().length == 0) {
-            return send(mail.to(), mail.template(), values, mail.dostavaMailom());
+            return send(mail.to(), mail.template(), values, mail.dostava());
         }
         return sendWithAttachment(mail.to(), mail.template(), values,
                 mail.template().slug() + "-" + mail.rn() + ".pdf", mail.pdf(),
-                mail.dostavaMailom());
+                mail.dostava());
     }
 
     private boolean send(String to, MailTemplate template, Map<String, String> values) {
-        return send(to, template, values, false);
+        return send(to, template, values, Dostava.PRETINAC);
     }
 
     /** @return je li poruka predana SMTP poslužitelju; greška se bilježi, ne propagira. */
     private boolean send(String to, MailTemplate template, Map<String, String> values,
-                         boolean dostavaMailom) {
+                         Dostava dostava) {
         String subject = templates.subject(template, values);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
             helper.setFrom(properties.from());
             String recipient = address(helper, to, subject);
-            helper.setText(templates.body(template, values, dostavaMailom), true);
+            helper.setText(templates.body(template, values, dostava), true);
             mailSender.send(message);
             log.info("Sent email to {} with subject '{}'", recipient, subject);
             return true;
@@ -96,20 +96,20 @@ public class SmtpEmailService implements EmailService {
 
     private boolean sendWithAttachment(String to, MailTemplate template, Map<String, String> values,
                                        String attachmentName, byte[] attachment) {
-        return sendWithAttachment(to, template, values, attachmentName, attachment, false);
+        return sendWithAttachment(to, template, values, attachmentName, attachment, Dostava.PRETINAC);
     }
 
     /** @return je li poruka predana SMTP poslužitelju; greška se bilježi, ne propagira. */
     private boolean sendWithAttachment(String to, MailTemplate template, Map<String, String> values,
                                        String attachmentName, byte[] attachment,
-                                       boolean dostavaMailom) {
+                                       Dostava dostava) {
         String subject = templates.subject(template, values);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
             helper.setFrom(properties.from());
             String recipient = address(helper, to, subject);
-            helper.setText(templates.body(template, values, dostavaMailom), true);
+            helper.setText(templates.body(template, values, dostava), true);
             if (attachment != null && attachment.length > 0) {
                 helper.addAttachment(attachmentName, new ByteArrayResource(attachment));
             }

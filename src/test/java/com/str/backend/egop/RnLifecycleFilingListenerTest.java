@@ -94,14 +94,20 @@ class RnLifecycleFilingListenerTest {
                 .isEqualTo("Obavijest o obustavi postupka suspenzije registracijskog broja");
     }
 
-    /** Opoziv iznajmljivača ima vlastiti status (REVOKED) i vlastiti akt. */
+    /**
+     * Opoziv iznajmljivača ima vlastiti status (REVOKED) i vlastiti akt, koji je u eGOP-u
+     * ulazno pismeno (MINT, 22.10.2026.) — KP otpremu za njega odbija sam
+     * {@link EgopKpOtpremaService}, jer zapisuje samo izlazna.
+     */
     @Test
     void revocation_byLessor_filesRevocationAct() {
         listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
                 RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), null));
 
-        assertThat(capturedAkt().getVrstaPismenaNaziv())
-                .isEqualTo("Obavijest o opozivu registracijskog broja");
+        EgopPismenoEntity akt = capturedAkt();
+        assertThat(akt.getVrstaPismenaNaziv()).isEqualTo("Obavijest o opozivu registracijskog broja");
+        assertThat(akt.getSmjer()).isEqualTo(EgopPismenoEntity.Smjer.ULAZNO);
+        verify(dispatcher).dispatch(akt.getId());
     }
 
     /** NIAS je produkcijski put prijave, pa je ovo u praksi najčešći opoziv. */

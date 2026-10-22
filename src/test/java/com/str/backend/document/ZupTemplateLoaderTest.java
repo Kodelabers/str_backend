@@ -105,7 +105,7 @@ class ZupTemplateLoaderTest {
 
     static java.util.stream.Stream<StrDocumentType> obavijesti() {
         return StrDocumentType.templateBackedTypes().stream()
-                .filter(t -> t.smjer() == StrDocumentType.Smjer.IZLAZNO);
+                .filter(StrDocumentType::aktTijela);
     }
 
     /**
@@ -144,47 +144,47 @@ class ZupTemplateLoaderTest {
     }
 
     /**
-     * Sedam vrsta pismena iz InfoDomovog maila (22.07.2026.) mora se poklapati sa šifrarnikom
-     * znak za znak — po nazivu se razrješava šifra.
+     * Nazivi vrsta pismena u eGOP šifrarniku (MINT, 22.10.2026.) — po njima se razrješava šifra,
+     * pa se moraju poklapati sa šifrarnikom (do normalizacije razmaka, velikih slova i dijakritika).
      */
     @Test
     void documentTypes_matchEgopCodebookNames() {
         assertThat(StrDocumentType.values())
-                .extracting(StrDocumentType::vrstaPismenaNaziv)
+                .extracting(StrDocumentType::egopVrstaNaziv)
                 .contains(
-                        "Zahtjev za registracijski broj",
+                        "Zahtjev za dodjelu registracijskog broja",
                         "Obavijest o dodjeli registracijskog broja",
                         "Obavijest o opozivu registracijskog broja",
                         "Obavijest o prijedlogu suspenzije registracijskog broja",
+                        "Obavijest o obustavi postupka suspenzije registracijskog broja",
                         "Obavijest o suspenziji registracijskog broja",
+                        "Obavijest o reaktiviranju registracijskog broja",
                         "Obavijest o povlačenju registracijskog broja",
                         "Prigovor na prijedlog suspenzije");
     }
 
     /**
-     * Tipovi izvan 7 dogovorenih iz maila 22.07.2026. Oba su nastala iz dvofazne suspenzije,
-     * koje u trenutku dogovora nije bilo, i nemaju šifru u eGOP šifrarniku — zato su po
-     * defaultu na {@code str.egop.akti-bez-sifre}. Kad InfoDom potvrdi šifru, naziv seli u
-     * popis gore i miče se odavde.
+     * Jedini tip bez vrste u eGOP šifrarniku: zahtjev za promjenu podataka vodi se u eTurizmu i
+     * nikad se ne urudžbira ({@code EgopAktiBezSifre.UVIJEK_BEZ_SIFRE}).
      *
-     * <p>Popis, a ne broj tipova: novi tip mora natjerati autora da svjesno odluči je li u
-     * dogovorenom skupu, a ne samo da podigne brojku.
+     * <p>Popis, a ne broj tipova: novi tip mora natjerati autora da svjesno odluči ima li vrstu
+     * u eGOP šifrarniku, a ne samo da podigne brojku.
      */
     @Test
-    void typesOutsideAgreedCodebookSet_areKnownAndUnfiled() {
-        Set<String> dogovoreni = Set.of(
-                "Zahtjev za registracijski broj",
+    void typesOutsideEgopCodebook_areKnownAndUnfiled() {
+        Set<String> uSifrarniku = Set.of(
+                "Zahtjev za dodjelu registracijskog broja",
                 "Obavijest o dodjeli registracijskog broja",
                 "Obavijest o opozivu registracijskog broja",
                 "Obavijest o prijedlogu suspenzije registracijskog broja",
+                "Obavijest o obustavi postupka suspenzije registracijskog broja",
                 "Obavijest o suspenziji registracijskog broja",
+                "Obavijest o reaktiviranju registracijskog broja",
                 "Obavijest o povlačenju registracijskog broja",
                 "Prigovor na prijedlog suspenzije");
 
         assertThat(StrDocumentType.values())
-                .filteredOn(t -> !dogovoreni.contains(t.vrstaPismenaNaziv()))
-                .containsExactlyInAnyOrder(
-                        StrDocumentType.REAKTIVACIJA, StrDocumentType.OBUSTAVA_SUSPENZIJE,
-                        StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA);
+                .filteredOn(t -> !uSifrarniku.contains(t.egopVrstaNaziv()))
+                .containsExactly(StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA);
     }
 }

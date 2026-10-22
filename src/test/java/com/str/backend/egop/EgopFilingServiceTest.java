@@ -1,6 +1,7 @@
 package com.str.backend.egop;
 
 import com.str.backend.document.FilingReference;
+import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.EgopSyncStatus;
 import com.str.backend.egop.exception.EgopBadRequestException;
 import com.str.backend.lessor.LessorEntity;
@@ -63,8 +64,9 @@ class EgopFilingServiceTest {
         when(egopClient.getVrstePredmeta()).thenReturn(Map.of("Izdavanje Registracijskog broja", "9282",
                 "Suspenzija, povlačenje i reaktiviranje dodjela registracijskog STR broja", "9283"));
         when(egopClient.getUstroj()).thenReturn(Map.of("MINISTARSTVO TURIZMA", 559));
+        // Nazivi kako ih vodi eGOP šifrarnik (MINT, 22.10.2026.) — zahtjev je ondje „…za dodjelu…".
         when(egopClient.getVrstePismena()).thenReturn(Map.of(
-                "Zahtjev za registracijski broj", "101",
+                "Zahtjev za dodjelu registracijskog broja", "101",
                 "Obavijest o dodjeli registracijskog broja", "102"));
 
         service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, properties("MINT", "str-svc"),
@@ -458,6 +460,34 @@ class EgopFilingServiceTest {
         ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
         verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
         assertEquals("snimak", new String(dokument.getValue().getAttachment()));
+    }
+
+    /**
+     * Opoziv je ulazno pismeno (MINT, 22.10.2026.): ide kroz KreirajPismeno2 sa subjektom
+     * (iznajmljivač), u predmet akata, nikad kroz KreirajIzlaznoPismeno.
+     */
+    @Test
+    void fileAct_revocation_isFiledAsIncomingWithSubject() throws Exception {
+        lessor.assignEgopSubjekt(42);
+        submission.applyEgopAktiPredmet(2026, 77, "334-06/11-26/77");
+        PredmetInfo postoji = new PredmetInfo();
+        postoji.setOperationSucceeded(true);
+        when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
+        when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o opozivu registracijskog broja", "105"));
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1006, "529-06/26-6"));
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-6",
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.ULAZNO, "snimak".getBytes());
+
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
+
+        ArgumentCaptor<KreirajPismeno2> request = ArgumentCaptor.forClass(KreirajPismeno2.class);
+        verify(egopClient).kreirajPismeno2(request.capture());
+        assertEquals(77, request.getValue().getRbrSpisa());
+        assertEquals("105", request.getValue().getVrstaPismena());
+        assertEquals(42, request.getValue().getSubjektOznaka());
+        assertEquals("12345678901", request.getValue().getSubjektOIB());
+        verify(egopClient, never()).kreirajIzlaznoPismeno(any());
     }
 
     /** Svi kasniji akti istog RB-a idu u već otvoren predmet akata. */
