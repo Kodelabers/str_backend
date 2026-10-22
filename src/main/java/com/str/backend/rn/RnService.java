@@ -12,6 +12,8 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.rn.dto.RnDetailExtras;
+import com.str.backend.rn.dto.RnDetailResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -269,6 +271,18 @@ public class RnService {
     public RnDetailDto detail(String rn) {
         return repository.findDetail(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
+    }
+
+    /**
+     * Detalj RB-a za prikaz (/registar/{RB}): {@link #detail} plus ponuda, namjena, kontakt i
+     * adresa iznajmljivača. Akti i mailovi i dalje idu kroz {@link #detail}.
+     */
+    @Transactional(readOnly = true)
+    public RnDetailResponse detailView(String rn) {
+        RnDetailDto detail = detail(rn);
+        RnDetailExtras extras = repository.findDetailExtras(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
+        return RnDetailResponse.of(detail, extras);
     }
 
     /**

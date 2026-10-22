@@ -107,8 +107,8 @@ public class ZupContextFactory {
         ctx.put("stranka.oib", optional(d.lessorOib()));
         ctx.put("stranka.identifikator", identifikator(d.lessorOib()));
         ctx.put("stranka.zastupnik", zastupnik(d));
-        // Adresa prebivališta nije na RnDetailDto (i namjerno se ne dodaje — taj DTO ide i na
-        // /api/rn/{rn}). Puni je StrDocumentService kroz putStrankaAdresa; ovdje su defaulti.
+        // Adresa prebivališta nije na RnDetailDto (ekran detalja je dobiva kroz RnDetailExtras).
+        // Puni je StrDocumentService kroz putStrankaAdresa; ovdje su defaulti.
         ctx.put("stranka.adresa", "");
         ctx.put("stranka.mjesto", optional(d.legalEntityCity()));
         // LessorEntity nema poštanski broj (poznata rupa, §15.2 eGOP analize). Prazan ključ je

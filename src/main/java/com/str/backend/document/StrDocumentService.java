@@ -160,9 +160,9 @@ public class StrDocumentService {
     }
 
     /**
-     * Adresa prebivališta iznajmljivača nije na {@link RnDetailDto} i tamo se namjerno ne
-     * dodaje — taj DTO se vraća i na {@code GET /api/rn/{rn}}, pa bi to proširilo izloženost
-     * osobnih podataka izvan akta.
+     * Adresa prebivališta iznajmljivača nije na {@link RnDetailDto}: taj DTO puni akte i
+     * mailove, a ekran detalja RB-a adresu dobiva odvojeno ({@code RnDetailExtras}, samo
+     * vlasniku i službeniku s rolom).
      */
     private void dopuniAdresu(Map<String, String> ctx, RnDetailDto detail) {
         if (detail.lessorId() == null) {
