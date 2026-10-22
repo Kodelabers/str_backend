@@ -375,9 +375,11 @@ postavljaju.
 
 ### B5a.1 Što treba od MINT-a prije paljenja
 
-1. IP za `egopeaieduc.mint.hr` → `EGOP_HOST_IP`.
-2. NTLM korisnik i lozinka (`EGOP_USERNAME`/`EGOP_PASSWORD`), aplikacijski korisnik
-   (`EGOP_APP_USERNAME`, s domenom ili bez → `EGOP_APP_DOMAIN`), rješavatelj ako ga traže.
+1. IP za `egopeaieduc.mint.hr` → `EGOP_HOST_IP`. Ime **nije u DNS-u** (MINT, 22.10.2026.), pa
+   ga ni `ping` ni `getent` ne razrješavaju — IP daje MINT. Ping ionako nije mjerodavan (ICMP može
+   biti zatvoren i kad TCP radi); provjera je TCP iz kontejnera (B5a.3).
+2. ✅ Potvrđeno 22.10.2026.: **isti NTLM korisnik i lozinka kao na CDU testu** (iz `.env.cdu`),
+   aplikacijski korisnik `strservis4` bez domene (`EGOP_APP_DOMAIN=` prazno), http je dopušten.
 3. Postoje li sva četiri servisa (MDM, Pismeno, Predmet, Subjekt) i vrste pod našim nazivima.
 4. **Kamo predprodukcija otprema u KP.** Ova okolina je na produkcijskom NIAS-u i stvarnim OIB-ima:
    ako eGOP predprodukcija dostavlja u pravi e-Građani pretinac, poruke dobivaju stvarni ljudi.
@@ -393,10 +395,10 @@ postavljaju.
 EGOP_ENABLED=true
 EGOP_BASE_URL=http://egopeaieduc.mint.hr
 EGOP_HOST_IP=<IP>
-EGOP_USERNAME=<…>
-EGOP_PASSWORD=<…>
+EGOP_USERNAME=<isto kao u .env.cdu>
+EGOP_PASSWORD=<isto kao u .env.cdu>
 EGOP_APP_DOMAIN=
-EGOP_APP_USERNAME=<…>
+EGOP_APP_USERNAME=strservis4
 EGOP_RJESAVATELJ=
 EGOP_CODEBOOKS_FAIL_FAST=false
 EGOP_CODEBOOKS_LOG_CONTENTS=true
