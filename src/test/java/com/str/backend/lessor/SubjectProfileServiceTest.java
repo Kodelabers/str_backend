@@ -198,6 +198,31 @@ class SubjectProfileServiceTest {
                 "OSIJEK", null, SubjectDataSource.OIB_REGISTAR);
     }
 
+    /**
+     * Šifra općine iz OIB sustava ima prednost pred nazivom: s njom se sjedište i prebivalište
+     * popune i kad DGU naziv piše drukčije (CDU 22.10.2026.: „GRAD ZAGREB" nije pogađao ništa).
+     */
+    @Test
+    void loadLegal_countyFromMunicipalityCode_beforeName() {
+        when(legalRegistry.findLegalEntity(LEGAL_OIB)).thenReturn(Optional.of(new RegistryLegalEntity(LEGAL_OIB,
+                "PERINA TESTNA FIRMA D.O.O", null, "ULICA CVIJETE ZUZORIĆ", "3", "ZAGREB", "10000", "GRAD ZAGREB",
+                "01333", null, SubjectDataSource.OIB_REGISTAR)));
+        when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
+        when(legalRegistry.findPerson(NIAS_OIB)).thenReturn(Optional.of(new RegistrySubject(NIAS_OIB, "PERO",
+                "PERIĆ", null, "SJENJAK", "19", "OSIJEK", "31000", "OSIJEK", "03123", null,
+                SubjectDataSource.OIB_REGISTAR)));
+        when(countyResolver.countyOfMunicipalityCode("01333")).thenReturn(Optional.of("Grad Zagreb"));
+        when(countyResolver.countyOfMunicipalityCode("03123")).thenReturn(Optional.of("Osječko-baranjska"));
+
+        LegalEntityProfile p = service.loadLegal(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat");
+
+        assertThat(p.county()).isEqualTo("Grad Zagreb");
+        assertThat(p.street()).isEqualTo("ULICA CVIJETE ZUZORIĆ");
+        assertThat(p.seatSource()).isEqualTo(SubjectDataSource.OIB_REGISTAR);
+        assertThat(p.representative().county()).isEqualTo("Osječko-baranjska");
+        verify(countyResolver, never()).countyOf(any());
+    }
+
     /** Svih šest podataka iz uredbe osim kontakta (on je iz str.document_contact, v. NiasController). */
     @Test
     void loadLegal_seatAndMbsFromRegistry_representativeNameAndAddressFromRegistry() {

@@ -1,0 +1,45 @@
+{
+  "zaglavlje": {
+    "vrstaZahtjeva": "05",
+    "sifraRegTijela": "022",
+    "sifraNadleznogTijela": "999",
+    "idPoruke": "6bebfa2a-01f8-4a7d-9a75-ec18dceb2333",
+    "korId": "c0431833-a07b-4c4d-9666-9695d25ce8a7",
+    "user": "00000000001",
+    "sifraServisa": "s025",
+    "sifraMetode": "m001"
+  },
+  "fizickaOsoba": {
+    "dohvatiFA": null,
+    "dohvatiFB": {
+      "oib": "12312312316",
+      "datumIVrijemeDodjeleOIBa": "2019-02-20T09:03:08",
+      "promjenaVrijediOd": "2021-05-31",
+      "oibstatus": "01",
+      "ime": "PERO",
+      "prezime": "PERIĆ",
+      "datumRodjenja": "2019-02-19",
+      "spol": "M",
+      "adresaPrebivalista": {
+        "ulica": "SJENJAK",
+        "kucniBroj": "19",
+        "kucniBrojDodatak": null,
+        "brojPoste": "31000",
+        "sifraNaselja": "045691",
+        "naselje": "OSIJEK",
+        "sifraOpcine": "03123",
+        "opcina": "OSIJEK",
+        "drzava": "Hrvatska",
+        "sifraDrzave": "191",
+        "statusAdrese": "01",
+        "datumPromjeneStatusaAdrese": "2021-05-31",
+        "sifraUlice": "0456910284"
+      }
+    },
+    "dohvatiFC": null
+  },
+  "greske": {
+    "imaGresaka": false,
+    "greska": []
+  }
+}

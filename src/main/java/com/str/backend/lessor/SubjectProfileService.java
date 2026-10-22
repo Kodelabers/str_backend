@@ -91,7 +91,8 @@ public class SubjectProfileService {
         SubjectDataSource nameSource = niasHasName ? SubjectDataSource.NIAS : subject == null ? null : subject.source();
         // Županija je potrebna za GO-1 (status domaćina). OIB sustav je ne vraća, pa se izvodi
         // iz općine; str.subject je daje izravno.
-        String county = subject == null ? null : countyOf(subject.county(), subject.municipality());
+        String county = subject == null ? null
+                : countyOf(subject.county(), subject.municipalityCode(), subject.municipality());
         if (subject != null && !completeAddress(subject.street(), subject.place(), county)) {
             logIncompleteAddress("person", subject.street(), subject.place(), subject.municipality(), county);
         }
@@ -170,7 +171,8 @@ public class SubjectProfileService {
                                         String niasOib, String niasFirstName, String niasLastName) {
         RegistryLegalEntity company =
                 quietly("company", () -> legalEntityRegistry.findLegalEntity(legalOib)).orElse(null);
-        String county = company == null ? null : countyOf(company.county(), company.municipality());
+        String county = company == null ? null
+                : countyOf(company.county(), company.municipalityCode(), company.municipality());
         // MBS i sjedište su neovisni: OIB sustav može vratiti naziv i MBS bez adrese sjedišta.
         boolean seat = company != null && completeAddress(company.street(), company.place(), county);
         if (company != null && !seat) {
@@ -234,7 +236,7 @@ public class SubjectProfileService {
                 hasAddress ? person.place() : null,
                 hasAddress ? person.postalCode() : null,
                 hasAddress ? person.municipality() : null,
-                hasAddress ? countyOf(person.county(), person.municipality()) : null,
+                hasAddress ? countyOf(person.county(), person.municipalityCode(), person.municipality()) : null,
                 hasAddress ? person.source() : null);
     }
 
@@ -372,8 +374,14 @@ public class SubjectProfileService {
         return address.isEmpty() ? null : address;
     }
 
-    private String countyOf(String county, String municipality) {
-        return known(county) ? county : countyResolver.countyOf(municipality).orElse(null);
+    /** Županija iz izvora, inače iz šifre općine (egzaktno), inače iz naziva općine. */
+    private String countyOf(String county, String municipalityCode, String municipality) {
+        if (known(county)) {
+            return county;
+        }
+        return countyResolver.countyOfMunicipalityCode(municipalityCode)
+                .or(() -> countyResolver.countyOf(municipality))
+                .orElse(null);
     }
 
     /** Nedostupan OIB sustav → podatak nepoznat. U log ide samo što se tražilo, bez OIB-a. */

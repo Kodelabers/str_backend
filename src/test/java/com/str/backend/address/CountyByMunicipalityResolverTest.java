@@ -41,6 +41,30 @@ class CountyByMunicipalityResolverTest {
         assertThat(resolver.countyOf("GRAD ZAGREB")).contains("Grad Zagreb");
     }
 
+    /** Šifra iz OIB sustava ({@code sifraOpcine}) je {@code jls_mb}: egzaktno, bez usporedbe naziva. */
+    @Test
+    void resolvesCounty_byMunicipalityCode() {
+        when(municipalities.findByJlsMb("01333")).thenReturn(List.of(municipality(21)));
+        when(counties.findFirstByZuRb(21)).thenReturn(Optional.of(county("Grad Zagreb")));
+
+        assertThat(resolver.countyOfMunicipalityCode("01333")).contains("Grad Zagreb");
+        assertThat(resolver.countyOfMunicipalityCode(" 1333 ")).contains("Grad Zagreb");   // nadopuna na 5 znamenki
+        verify(municipalities, never()).findByNameIgnoreCase(anyString());
+    }
+
+    @Test
+    void invalidOrUnknownCode_givesNothing() {
+        when(municipalities.findByJlsMb(anyString())).thenReturn(List.of());
+
+        assertThat(resolver.countyOfMunicipalityCode("99999")).isEmpty();
+        assertThat(resolver.countyOfMunicipalityCode("01333x")).isEmpty();
+        assertThat(resolver.countyOfMunicipalityCode("123456")).isEmpty();
+        assertThat(resolver.countyOfMunicipalityCode(" ")).isEmpty();
+        assertThat(resolver.countyOfMunicipalityCode(null)).isEmpty();
+        verify(municipalities).findByJlsMb("99999");
+        verify(counties, never()).findFirstByZuRb(anyInt());
+    }
+
     /** Pogrešna županija bila bi gora od prazne — tiho bi promijenila status domaćina. */
     @Test
     void ambiguousName_givesNothing() {
