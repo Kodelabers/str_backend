@@ -19,6 +19,7 @@ import com.str.backend.pdf.SubmissionPdfGenerator;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.FacilityRooms;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -60,6 +61,7 @@ class EgopRegistrationDispatcherTest {
     private EgopFilingService egopFilingService;
     private EmailService emailService;
     private MailRetryStore mailRetryStore;
+    private FacilityRooms facilityRooms;
     private EgopRegistrationDispatcher dispatcher;
 
     private SubmissionEntity submission;
@@ -79,11 +81,13 @@ class EgopRegistrationDispatcherTest {
         egopFilingService = mock(EgopFilingService.class);
         emailService = mock(EmailService.class);
         mailRetryStore = mock(MailRetryStore.class);
+        facilityRooms = mock(FacilityRooms.class);
+        when(facilityRooms.forFacility(any())).thenReturn(Optional.empty());
         EgopRetryPolicy retryPolicy =
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2));
         dispatcher = new EgopRegistrationDispatcher(store, accommodationRepository,
                 lessorRepository, rnRepository, accommodationTypeRepository, pdfGenerator,
-                documentService, egopFilingService, retryPolicy, emailService, mailRetryStore);
+                documentService, egopFilingService, retryPolicy, emailService, mailRetryStore, facilityRooms);
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
         submission = SubmissionEntity.create(null, lessor.getLessorId(), null, null, null, null);
@@ -376,7 +380,7 @@ class EgopRegistrationDispatcherTest {
 
         assertNull(prilozeno.get(), "izlaznom pismenu ne smije biti priložen nikakav dokument");
         assertEquals(EgopSyncStatus.FAILED, submission.getEgopSyncStatus());
-        verify(pdfGenerator, never()).generate(argThat(ctx -> ctx != null && ctx.filingNumber() != null));
+        verify(pdfGenerator, never()).generate(argThat(ctx -> ctx != null && ctx.filing() != null));
     }
 
     /** Backoff se mora upisati, inače retry job odmah ponovo napada isti submission. */

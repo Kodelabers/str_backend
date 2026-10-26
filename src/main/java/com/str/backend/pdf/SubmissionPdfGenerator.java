@@ -12,7 +12,9 @@ import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.document.DocumentProperties;
+import com.str.backend.document.FilingReference;
 import com.str.backend.lessor.LessorEntity;
+import com.str.backend.str.FacilityRooms.Rooms;
 import org.springframework.stereotype.Component;
 
 import java.awt.Color;
@@ -70,7 +72,7 @@ public class SubmissionPdfGenerator {
      */
     public byte[] generate(SubmissionPdfContext ctx) {
         LessorEntity lessor = ctx.lessor();
-        String filingNumber = ctx.filingNumber();
+        FilingReference filing = ctx.filing();
         String registrationNumber = ctx.registrationNumber();
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -92,8 +94,12 @@ public class SubmissionPdfGenerator {
             addInnerRow(podnesak, "Vrsta podneska",
                     "Zahtjev za registraciju smještajne jedinice kratkoročnog najma");
             addInnerRow(podnesak, "Datum zaprimanja podneska", ZonedDateTime.now(ZoneId.of("Europe/Zagreb")).format(DT));
-            if (filingNumber != null) {
-                addInnerRow(podnesak, "Urudžbeni broj", filingNumber);
+            // KLASA (predmet) i URBROJ (pismeno) u zasebnim retcima, kao u zaglavlju obavijesti.
+            if (filing != null && !isBlank(filing.klasa())) {
+                addInnerRow(podnesak, "KLASA", filing.klasa());
+            }
+            if (filing != null && !isBlank(filing.urBroj())) {
+                addInnerRow(podnesak, "URBROJ", filing.urBroj());
             }
             if (registrationNumber != null) {
                 addInnerRow(podnesak, "Registracijski broj", registrationNumber);
@@ -154,7 +160,7 @@ public class SubmissionPdfGenerator {
             addGroupRow(main, "OBJEKTI", objektiTop);
 
             addGroupRow(main, "VRSTA BROJ I\nKAPACITET OBJEKATA\nZA SMJEŠTAJ",
-                    buildKapacitetTable(ctx.accommodationName(), ctx.maxGuests(), ctx.typeName()));
+                    buildKapacitetTable(ctx));
 
             addGroupRow(main, "OSTALI SADRŽAJI", singleValueTable("označeno"));
 
@@ -286,13 +292,18 @@ public class SubmissionPdfGenerator {
      * Tablica kapaciteta. Od stavke 2 kapacitet je jedan podatak — maksimalan broj gostiju,
      * zbroj kreveta i pomoćnih kreveta — pa obrazac više nema zasebne stupce za krevete i
      * pomoćne krevete. Iz zahtjeva se ta podjela ionako ne može rekonstruirati.
+     *
+     * <p>Kategorija i sobe po vrsti dolaze iz eTurizma i postoje samo za postojeći objekt; novi
+     * objekt ih na obrascu ne prijavljuje, pa ti stupci ostaju prazni.
      */
-    private PdfPTable buildKapacitetTable(String reqName, Integer maxGuests, String typeName) {
+    private PdfPTable buildKapacitetTable(SubmissionPdfContext ctx) {
         PdfPTable t = new PdfPTable(new float[]{3.2f, 2.2f, 1.5f, 1.7f, 1.2f});
         t.setWidthPercentage(100);
-        // Nepoznat kapacitet (postojeći objekt kojem ga eTurizam ne zna) ostaje prazan, kao i
+        // Nepoznat podatak (postojeći objekt kojem ga eTurizam ne zna) ostaje prazan, kao i
         // ostali neupisani podaci na podnesku — ne „null" ni 0.
-        String kapacitet = maxGuests != null ? String.valueOf(maxGuests) : "";
+        String kapacitet = text(ctx.maxGuests());
+        Rooms rooms = ctx.rooms();
+        String brojSoba = rooms == null ? "" : text(rooms.ukupno());
 
         // header row
         addKapacitetHeader(t, "Vrsta objekta");
@@ -302,8 +313,8 @@ public class SubmissionPdfGenerator {
         addKapacitetHeader(t, "Broj soba");
 
         // data row — no vertical separators between cells
-        String[] dataValues = {typeName != null ? typeName : "", safe(reqName), "",
-                kapacitet, ""};
+        String[] dataValues = {safe(ctx.typeName()), safe(ctx.accommodationName()), safe(ctx.category()),
+                kapacitet, brojSoba};
         for (int i = 0; i < dataValues.length; i++) {
             PdfPCell c = new PdfPCell(new Phrase(dataValues[i], FNT_VALUE));
             int border = PdfPCell.TOP;
@@ -318,9 +329,9 @@ public class SubmissionPdfGenerator {
         }
 
         // room-type sub-rows
-        addTipSobeRow(t, "Jednokrevetne sobe");
-        addTipSobeRow(t, "Dvokrevetne sobe");
-        addTipSobeRow(t, "Trokrevetne sobe");
+        addTipSobeRow(t, "Jednokrevetne sobe", rooms == null ? "" : text(rooms.jednokrevetne()));
+        addTipSobeRow(t, "Dvokrevetne sobe", rooms == null ? "" : text(rooms.dvokrevetne()));
+        addTipSobeRow(t, "Trokrevetne sobe", rooms == null ? "" : text(rooms.trokrevetne()));
 
         // UKUPNO row
         PdfPCell ukupnoLabel = new PdfPCell(new Phrase("UKUPNO", FNT_SECTION));
@@ -331,7 +342,7 @@ public class SubmissionPdfGenerator {
         ukupnoLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
         pad(ukupnoLabel, 3);
         t.addCell(ukupnoLabel);
-        String[] ukupnoValues = {"1", "", kapacitet, ""};
+        String[] ukupnoValues = {"1", "", kapacitet, brojSoba};
         for (int i = 0; i < ukupnoValues.length - 1; i++) {
             PdfPCell c = new PdfPCell(new Phrase(ukupnoValues[i], FNT_VALUE));
             c.setBorder(PdfPCell.BOTTOM);
@@ -378,7 +389,8 @@ public class SubmissionPdfGenerator {
         t.addCell(c);
     }
 
-    private void addTipSobeRow(PdfPTable t, String label) {
+    /** Redak vrste sobe; broj soba te vrste stoji u stupcu „Broj soba". */
+    private void addTipSobeRow(PdfPTable t, String label, String count) {
         PdfPCell lc = new PdfPCell(new Phrase(label, FNT_LABEL));
         lc.setBorder(PdfPCell.BOX);
         lc.setBorderColor(BLUE);
@@ -394,8 +406,9 @@ public class SubmissionPdfGenerator {
             t.addCell(c);
         }
         // last cell closes the right edge only
-        PdfPCell last = new PdfPCell(new Phrase("", FNT_VALUE));
+        PdfPCell last = new PdfPCell(new Phrase(count, FNT_VALUE));
         last.setBorder(PdfPCell.RIGHT);
+        last.setHorizontalAlignment(Element.ALIGN_CENTER);
         last.setBorderColor(BLUE);
         pad(last, 3);
         t.addCell(last);
@@ -491,6 +504,15 @@ public class SubmissionPdfGenerator {
 
     private static String safe(String s) {
         return s == null ? "" : s;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
+    }
+
+    /** Broj za ćeliju tablice; nepoznat ostaje prazan. */
+    private static String text(Integer value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     private static String joinNonBlank(String separator, String... parts) {

@@ -514,6 +514,30 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
             """, nativeQuery = true)
     Optional<FacilityOwnershipRow> findOwnership(@Param("facilityId") long facilityId);
 
+    /** Sobe jedinice po vrsti — broj jednakih smještajnih sadržaja; {@code null} kad ih nema. */
+    interface FacilityRoomsRow {
+        Integer getJednokrevetne();
+        Integer getDvokrevetne();
+        Integer getTrokrevetne();
+    }
+
+    /**
+     * Sobe jedinice iz smještajnih sadržaja ({@code facility_content.quantity} je broj jednakih
+     * sadržaja, npr. 10 trokrevetnih soba), samo aktivni retci — kao {@link #KREVETI_JEDINICE}.
+     * Jedinica vrste „Soba" kapacitet drži u {@code facility_capacity}, pa ovdje soba nema.
+     */
+    @Query(value = """
+            SELECT sum(CASE WHEN ce.code = 'CT_JEDNO_SOBA' THEN c.quantity END) AS jednokrevetne,
+                   sum(CASE WHEN ce.code = 'CT_DVO_SOBA'   THEN c.quantity END) AS dvokrevetne,
+                   sum(CASE WHEN ce.code = 'CT_TRO_SOBA'   THEN c.quantity END) AS trokrevetne
+              FROM str.facility_content c
+              JOIN str.codebook_element ce ON ce.id = c.type_id
+             WHERE c.facility_id = :facilityId
+               AND c.active = true
+               AND ce.code IN ('CT_JEDNO_SOBA', 'CT_DVO_SOBA', 'CT_TRO_SOBA')
+            """, nativeQuery = true)
+    FacilityRoomsRow findRooms(@Param("facilityId") long facilityId);
+
     interface FacilityVerificationRow {
         Long getFacilityId();
         Boolean getVerified();

@@ -16,6 +16,7 @@ import com.str.backend.pdf.SubmissionPdfContext;
 import com.str.backend.pdf.SubmissionPdfGenerator;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.FacilityRooms;
 import com.str.backend.request.SubmissionEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +64,7 @@ public class EgopRegistrationDispatcher {
     private final EgopRetryPolicy retryPolicy;
     private final EmailService emailService;
     private final MailRetryStore mailRetryStore;
+    private final FacilityRooms facilityRooms;
 
     public EgopRegistrationDispatcher(EgopFilingStore store,
                                       AccommodationRepository accommodationRepository,
@@ -74,7 +76,8 @@ public class EgopRegistrationDispatcher {
                                       EgopFilingService egopFilingService,
                                       EgopRetryPolicy retryPolicy,
                                       EmailService emailService,
-                                      MailRetryStore mailRetryStore) {
+                                      MailRetryStore mailRetryStore,
+                                      FacilityRooms facilityRooms) {
         this.store = store;
         this.accommodationRepository = accommodationRepository;
         this.lessorRepository = lessorRepository;
@@ -86,6 +89,7 @@ public class EgopRegistrationDispatcher {
         this.retryPolicy = retryPolicy;
         this.emailService = emailService;
         this.mailRetryStore = mailRetryStore;
+        this.facilityRooms = facilityRooms;
     }
 
     /** Sve što dispatch rekonstruira iz baze po {@code submissionId}. */
@@ -166,8 +170,11 @@ public class EgopRegistrationDispatcher {
     }
 
     private SubmissionPdfContext pdfContext(Predmet predmet) {
-        return SubmissionPdfContext.of(predmet.accommodation(), predmet.lessor(),
-                resolveTypeName(predmet.accommodation().getAccommodationTypeId()),
+        AccommodationEntity accommodation = predmet.accommodation();
+        // Sobe zna samo eTurizam, i to za postojeći objekt; novi ih na obrascu ne prijavljuje.
+        return SubmissionPdfContext.of(accommodation, predmet.lessor(),
+                resolveTypeName(accommodation.getAccommodationTypeId()),
+                facilityRooms.forFacility(accommodation.getFacilityId()).orElse(null),
                 predmet.rn().getRn(), null);
     }
 
@@ -255,7 +262,7 @@ public class EgopRegistrationDispatcher {
 
     private byte[] renderPdfSafe(SubmissionPdfContext pdfContext, String rn, UUID submissionId) {
         try {
-            return pdfGenerator.generate(pdfContext.withoutFilingNumber());
+            return pdfGenerator.generate(pdfContext.withoutFiling());
         } catch (RuntimeException e) {
             log.error("egop_dispatch_pdf_failed submission={} rn={}: {}", submissionId, rn, e.getMessage(), e);
             return null;
@@ -290,8 +297,7 @@ public class EgopRegistrationDispatcher {
 
         @Override
         public byte[] zahtjev(FilingReference filing) {
-            return pdfGenerator.generate(
-                    pdfContext.withFilingNumber(EgopFilingService.formatFilingNumber(filing)));
+            return pdfGenerator.generate(pdfContext.withFiling(filing));
         }
 
         /**

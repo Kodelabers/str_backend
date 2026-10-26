@@ -34,7 +34,7 @@ class SubmissionPdfLegalEntityTest {
                 "Ilica", "1", 4, 4, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, false, true);
 
         byte[] pdf = new SubmissionPdfGenerator(PROPS).generate(
-                SubmissionPdfContext.of(accommodation, lessor, "Apartman", "HR120001000000000123", null));
+                SubmissionPdfContext.of(accommodation, lessor, "Apartman", null, "HR120001000000000123", null));
 
         String text = textOf(pdf);
         assertThat(text).contains("TESTNA TVRTKA d.o.o.").contains("Pravna osoba");
