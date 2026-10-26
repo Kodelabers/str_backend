@@ -331,7 +331,8 @@ public class NiasController {
             @Valid @ModelAttribute CategorizationDecisionRequest req,
             Authentication authentication,
             @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
-        return categorizationDecisionService.upload(ownerOibForChange(authentication, actingSubjectHeader), req);
+        return categorizationDecisionService.upload(
+                RnOwner.byOib(ownerOibForChange(authentication, actingSubjectHeader)), req);
     }
 
     /** STR-1.3-001: NIAS user revokes (opoziv) their own RN → REVOKED. Vlasništvo se provjerava

@@ -412,21 +412,21 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     Optional<RnPublicView> findPublicView(@Param("rn") String rn);
 
+    /** Non-EU popis. Stanje rješenja o kategorizaciji kao na NIAS popisu ({@link #findByLessorOib}). */
     @Transactional(readOnly = true)
-    @Query("""
-            SELECT new com.str.backend.lessor.LessorRnSummaryDto(
-                r.rn, r.status, r.issueDate,
-                a.name, a.street, a.streetNumber, a.city,
-                t.name
-            )
-            FROM RnEntity r
-            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
-            LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
-            WHERE r.submissionId IN (
-                SELECT s.submissionId FROM SubmissionEntity s WHERE s.lessorId = :lessorId
-            )
-            ORDER BY r.issueDate DESC
-            """)
+    @Query("SELECT new com.str.backend.lessor.LessorRnSummaryDto("
+            + " r.rn, r.status, r.issueDate,"
+            + " a.name, a.street, a.streetNumber, a.city,"
+            + " t.name,"
+            + " " + CATEGORIZATION_REQUIRED + ","
+            + " " + CATEGORIZATION_STATUS + ","
+            + " a.facilityId)"
+            + " FROM RnEntity r"
+            + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
+            + " LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId"
+            + " WHERE r.submissionId IN ("
+            + " SELECT s.submissionId FROM SubmissionEntity s WHERE s.lessorId = :lessorId)"
+            + " ORDER BY r.issueDate DESC")
     List<LessorRnSummaryDto> findByLessorId(@Param("lessorId") UUID lessorId);
 
     /**

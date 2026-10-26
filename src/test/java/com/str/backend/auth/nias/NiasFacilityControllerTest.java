@@ -678,7 +678,7 @@ class NiasFacilityControllerTest {
     void acceptsScannedDecision() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         UUID decisionId = UUID.randomUUID();
-        when(categorizationDecisionService.upload(eq(OIB), any()))
+        when(categorizationDecisionService.upload(eq(RnOwner.byOib(OIB)), any()))
                 .thenReturn(new CategorizationDecisionResponse(decisionId, DECISION_RN,
                         CategorizationDecisionStatus.SUBMITTED, "rjesenje.pdf", 12, Instant.now()));
 
@@ -705,7 +705,7 @@ class NiasFacilityControllerTest {
     @Test
     void rejectsScannedDecision_whenFileTooLarge() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(categorizationDecisionService.upload(eq(OIB), any()))
+        when(categorizationDecisionService.upload(eq(RnOwner.byOib(OIB)), any()))
                 .thenThrow(new MaxUploadSizeExceededException(10 * 1024 * 1024));
 
         mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()).param("registrationNumber", DECISION_RN))
@@ -735,7 +735,7 @@ class NiasFacilityControllerTest {
     @Test
     void scannedDecision_conflict_is409WithCode() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(categorizationDecisionService.upload(eq(OIB), any())).thenThrow(new ConflictException(
+        when(categorizationDecisionService.upload(eq(RnOwner.byOib(OIB)), any())).thenThrow(new ConflictException(
                 "error.categorization.alreadySubmitted", "CATEGORIZATION_ALREADY_SUBMITTED"));
 
         mvc.perform(multipart("/api/nias/categorization-decisions").file(pdf()).param("registrationNumber", DECISION_RN))

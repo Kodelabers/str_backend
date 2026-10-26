@@ -3,6 +3,7 @@ package com.str.backend.lessor;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.captcha.AltchaService;
+import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -59,6 +60,7 @@ class LessorControllerReissueTest {
     @MockBean LessorRnActionService rnActionService;
     @MockBean AltchaService altchaService;
     @MockBean ReissueService reissueService;
+    @MockBean CategorizationDecisionService categorizationDecisionService;
 
     @Test
     void prefill_returnsFormShape_forOwnLessor() throws Exception {

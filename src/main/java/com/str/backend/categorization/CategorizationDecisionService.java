@@ -9,6 +9,7 @@ import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.registration.RnOwner;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.StrFacilityRepository;
@@ -41,7 +42,8 @@ public class CategorizationDecisionService {
     /**
      * Statusi RB-a uz koje se rješenje smije predati. Suspendiran i predložen za suspenziju
      * su namjerno tu: predaja rješenja upravo je odgovor na suspenziju zbog nepotpune
-     * dokumentacije. Povučen RB je konačan i rješenje uz njega nema svrhu.
+     * dokumentacije. Povučen RB je konačan i rješenje uz njega nema svrhu. Uz prijedlog
+     * suspenzije rješenje smije i objekt iz eTurizma (v. {@link #upload}).
      */
     public static final Set<RnStatus> UPLOAD_ALLOWED_RN_STATUSES =
             EnumSet.of(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED);
@@ -69,19 +71,22 @@ public class CategorizationDecisionService {
     }
 
     /**
-     * Predaja rješenja uz RB vlasnika {@code oib}. Rješenje traži RB novog objekta. Objekt iz
-     * eTurizma (smještaj s {@code facilityId}) kategorizaciju već ima, pa se uz njegov RB
-     * rješenje ne predaje — osim kad je objekt neverificiran (migriran iz starog sustava, podaci
-     * nisu provjereni): tada ga iznajmljivač smije priložiti, neobavezno.
+     * Predaja rješenja uz RB vlasnika {@code owner} — NIAS po OIB-u, non-EU po {@code lessorId}.
+     * Rješenje traži RB novog objekta. Objekt iz eTurizma (smještaj s {@code facilityId})
+     * kategorizaciju već ima, pa se uz njegov RB rješenje ne predaje — osim kad je objekt
+     * neverificiran (migriran iz starog sustava, podaci nisu provjereni): tada ga iznajmljivač
+     * smije priložiti, neobavezno — ili kad je RB predložen za suspenziju: iznajmljivač se na
+     * prijedlog očituje rješenjem, za bilo koji objekt (primjedba klijenta, 26.10.2026.).
      *
      * <p>Redoslijed provjera: prvo vlasništvo (404 i za nepostojeći i za tuđi RB, da se ne
-     * otkriva postoji li), zatim smisao predaje (409), a tek onda datoteka (400).
+     * otkriva postoji li), zatim smisao predaje (409; status prije objekta, jer o statusu ovisi
+     * smije li objekt iz eTurizma), a tek onda datoteka (400).
      */
     @Transactional
-    public CategorizationDecisionResponse upload(String oib, CategorizationDecisionRequest req) {
+    public CategorizationDecisionResponse upload(RnOwner owner, CategorizationDecisionRequest req) {
         String rn = trimToNull(req.getRegistrationNumber());
         // Ista poruka za nepostojeći i tuđi RB — ključ, ne ulaz korisnika — da se ne otkriva postoji li.
-        if (rn == null || !rnRepository.isOwnedByOib(rn, oib)) {
+        if (rn == null || !isOwned(rn, owner)) {
             throw new ResourceNotFoundException("error.rn.notFound");
         }
         RnEntity rnEntity = rnRepository.findById(rn)
@@ -89,12 +94,13 @@ public class CategorizationDecisionService {
         AccommodationEntity accommodation = accommodationRepository.findById(rnEntity.getAccommodationId())
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
 
-        String facilityId = trimToNull(accommodation.getFacilityId());
-        if (facilityId != null && !isUnverifiedFacility(facilityId)) {
-            throw new ConflictException("error.categorization.notRequired", "CATEGORIZATION_NOT_REQUIRED");
-        }
         if (!UPLOAD_ALLOWED_RN_STATUSES.contains(rnEntity.getStatus())) {
             throw new ConflictException("error.categorization.rnStatus", "CATEGORIZATION_RN_STATUS");
+        }
+        String facilityId = trimToNull(accommodation.getFacilityId());
+        if (rnEntity.getStatus() != RnStatus.SUSPENSION_PROPOSED
+                && facilityId != null && !isUnverifiedFacility(facilityId)) {
+            throw new ConflictException("error.categorization.notRequired", "CATEGORIZATION_NOT_REQUIRED");
         }
         if (repository.existsByRnAndStatusIn(rn, ACTIVE_DECISION_STATUSES)) {
             throw new ConflictException("error.categorization.alreadySubmitted", "CATEGORIZATION_ALREADY_SUBMITTED");
@@ -107,11 +113,20 @@ public class CategorizationDecisionService {
         byte[] content = readBytes(file);
         String contentType = detectContentType(content);
 
-        CategorizationDecisionEntity entity = CategorizationDecisionEntity.create(
-                oib, rn, safeFileName(file.getOriginalFilename()), contentType, content,
-                metadataOf(accommodation));
+        String fileName = safeFileName(file.getOriginalFilename());
+        CategorizationDecisionMetadata metadata = metadataOf(accommodation);
+        CategorizationDecisionEntity entity = owner.oib() != null
+                ? CategorizationDecisionEntity.create(owner.oib(), rn, fileName, contentType, content, metadata)
+                : CategorizationDecisionEntity.createForLessor(owner.lessorId(), rn, fileName, contentType,
+                        content, metadata);
 
         return CategorizationDecisionResponse.of(saveActive(entity));
+    }
+
+    private boolean isOwned(String rn, RnOwner owner) {
+        return owner.oib() != null
+                ? rnRepository.isOwnedByOib(rn, owner.oib())
+                : rnRepository.isOwnedByLessor(rn, owner.lessorId());
     }
 
     /**
