@@ -22,7 +22,6 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
@@ -99,18 +98,40 @@ class LessorRnSummaryCategorizationIntegrationTest {
         assertThat(byRn.get("HR00000015").categorizationStatus()).isNull();
     }
 
-    /** Non-EU popis stanje rješenja ne računa — konstruktor s osam argumenata daje zadane vrijednosti. */
+    /**
+     * Non-EU popis računa stanje rješenja kao NIAS popis — non-EU iznajmljivač rješenje predaje
+     * naknadno s popisa, pa gumb ovisi o istim poljima.
+     */
     @Test
-    void nonEuSummary_defaultsCategorizationFields() {
-        List<LessorRnSummaryDto> rows = rnRepository.findByLessorId(
-                lessorRepository.findAll().stream()
-                        .filter(l -> OIB.equals(l.getLessorOib()))
-                        .findFirst().orElseThrow().getLessorId());
+    void nonEuSummary_carriesCategorizationFieldsLikeNias() {
+        Map<String, LessorRnSummaryDto> byRn = rnRepository.findByLessorId(ownLessorId()).stream()
+                .collect(Collectors.toMap(LessorRnSummaryDto::rn, Function.identity()));
 
-        assertThat(rows).isNotEmpty().allSatisfy(r -> {
-            assertThat(r.categorizationRequired()).isFalse();
-            assertThat(r.categorizationStatus()).isNull();
-        });
+        assertThat(byRn.get("HR00000011").categorizationRequired()).isTrue();
+        assertThat(byRn.get("HR00000011").categorizationStatus()).isNull();
+        assertThat(byRn.get("HR00000012").categorizationStatus()).isEqualTo(CategorizationDecisionStatus.SUBMITTED);
+        assertThat(byRn.get("HR00000014").categorizationStatus()).isEqualTo(CategorizationDecisionStatus.REJECTED);
+        assertThat(byRn.get("HR00000015").categorizationRequired()).isFalse();
+        assertThat(byRn.get("HR00000017").categorizationRequired()).isFalse();
+    }
+
+    /** Rješenje non-EU iznajmljivača (bez OIB-a, po {@code lessorId}) sprema se i vidi na popisu. */
+    @Test
+    void nonEuDecision_byLessorId_isPersistedAndShown() {
+        UUID own = ownLessorId();
+        decisionRepository.save(CategorizationDecisionEntity.createForLessor(own, "HR00000011", "rjesenje.pdf",
+                "application/pdf", new byte[]{1, 2, 3},
+                new CategorizationDecisionMetadata(null, null, null, null, null, null, null)));
+
+        LessorRnSummaryDto row = rnRepository.findByLessorId(own).stream()
+                .filter(r -> r.rn().equals("HR00000011")).findFirst().orElseThrow();
+        assertThat(row.categorizationStatus()).isEqualTo(CategorizationDecisionStatus.SUBMITTED);
+    }
+
+    private UUID ownLessorId() {
+        return lessorRepository.findAll().stream()
+                .filter(l -> OIB.equals(l.getLessorOib()))
+                .findFirst().orElseThrow().getLessorId();
     }
 
     private UUID lessor(String oib) {

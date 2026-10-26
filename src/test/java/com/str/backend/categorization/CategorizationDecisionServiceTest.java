@@ -8,6 +8,7 @@ import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.registration.RnOwner;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.StrFacilityRepository;
@@ -39,6 +40,8 @@ import static org.mockito.Mockito.when;
 class CategorizationDecisionServiceTest {
 
     private static final String OIB = "99999999990";
+    private static final RnOwner OWNER = RnOwner.byOib(OIB);
+    private static final UUID LESSOR_ID = UUID.fromString("0f6c2c9e-6a43-4d8f-9b0d-6a1f3b1b7c55");
     private static final String RN = "HR120001000000000123";
     private static final UUID ACCOMMODATION_ID = UUID.randomUUID();
     private static final byte[] PDF = "%PDF-1.7\n...".getBytes(StandardCharsets.US_ASCII);
@@ -116,7 +119,7 @@ class CategorizationDecisionServiceTest {
         when(rnRepository.isOwnedByOib(RN, OIB)).thenReturn(false);
 
         // Poruka je ključ, ne ulaz korisnika — ista za tuđi i nepostojeći RB.
-        assertThatThrownBy(() -> service.upload(OIB, request(file("rjesenje.pdf", "application/pdf", PDF))))
+        assertThatThrownBy(() -> service.upload(OWNER, request(file("rjesenje.pdf", "application/pdf", PDF))))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("error.rn.notFound");
         verify(repository, never()).saveAndFlush(any());
@@ -127,7 +130,7 @@ class CategorizationDecisionServiceTest {
         CategorizationDecisionRequest req = request(file("rjesenje.pdf", "application/pdf", PDF));
         req.setRegistrationNumber("   ");
 
-        assertThatThrownBy(() -> service.upload(OIB, req)).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> service.upload(OWNER, req)).isInstanceOf(ResourceNotFoundException.class);
         verify(repository, never()).saveAndFlush(any());
     }
 
@@ -184,7 +187,7 @@ class CategorizationDecisionServiceTest {
         when(accommodation.getFacilityId()).thenReturn("153049");
         facilityVerified(153049L, false);
 
-        assertThatThrownBy(() -> service.upload(OIB, request(file("rjesenje.pdf", "application/pdf", PDF))))
+        assertThatThrownBy(() -> service.upload(OWNER, request(file("rjesenje.pdf", "application/pdf", PDF))))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(facilityRepository, never()).findOwnership(anyLong());
     }
@@ -219,6 +222,63 @@ class CategorizationDecisionServiceTest {
         assertThat(capture(request(file("rjesenje.pdf", "application/pdf", PDF))).getRn()).isEqualTo(RN);
     }
 
+    /**
+     * Na prijedlog suspenzije iznajmljivač se očituje rješenjem i za verificiran objekt iz
+     * eTurizma (primjedba 26.10.2026.); izvan prijedloga takav objekt i dalje ne predaje.
+     */
+    @Test
+    void verifiedETurizamFacility_acceptedOnlyWhileProposedForSuspension() {
+        when(accommodation.getFacilityId()).thenReturn("153049");
+        facilityVerified(153049L, true);
+
+        when(rn.getStatus()).thenReturn(RnStatus.ACTIVE);
+        assertConflict("CATEGORIZATION_NOT_REQUIRED");
+        when(rn.getStatus()).thenReturn(RnStatus.SUSPENDED);
+        assertConflict("CATEGORIZATION_NOT_REQUIRED");
+
+        when(rn.getStatus()).thenReturn(RnStatus.SUSPENSION_PROPOSED);
+        CategorizationDecisionEntity saved = capture(request(file("rjesenje.pdf", "application/pdf", PDF)));
+        assertThat(saved.getRn()).isEqualTo(RN);
+        assertThat(saved.getStatus()).isEqualTo(CategorizationDecisionStatus.SUBMITTED);
+    }
+
+    /** I uz prijedlog suspenzije vrijedi jedno predano ili potvrđeno rješenje po RB-u. */
+    @Test
+    void proposedForSuspension_stillRejectsSecondActiveDecision() {
+        when(accommodation.getFacilityId()).thenReturn("153049");
+        when(rn.getStatus()).thenReturn(RnStatus.SUSPENSION_PROPOSED);
+        when(repository.existsByRnAndStatusIn(eq(RN), anyCollection())).thenReturn(true);
+
+        assertConflict("CATEGORIZATION_ALREADY_SUBMITTED");
+    }
+
+    /** Non-EU iznajmljivač nema OIB — vlasništvo i zapis idu po {@code lessorId}. */
+    @Test
+    void nonEuLessor_ownershipAndRecordByLessorId() {
+        when(rnRepository.isOwnedByLessor(RN, LESSOR_ID)).thenReturn(true);
+        when(repository.saveAndFlush(any(CategorizationDecisionEntity.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        service.upload(RnOwner.byLessor(LESSOR_ID), request(file("rjesenje.pdf", "application/pdf", PDF)));
+
+        ArgumentCaptor<CategorizationDecisionEntity> captor = ArgumentCaptor.forClass(CategorizationDecisionEntity.class);
+        verify(repository).saveAndFlush(captor.capture());
+        assertThat(captor.getValue().getLessorId()).isEqualTo(LESSOR_ID);
+        assertThat(captor.getValue().getLessorOib()).isNull();
+        verify(rnRepository, never()).isOwnedByOib(any(), any());
+    }
+
+    @Test
+    void nonEuLessor_foreignRnIs404() {
+        when(rnRepository.isOwnedByLessor(RN, LESSOR_ID)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.upload(RnOwner.byLessor(LESSOR_ID),
+                request(file("rjesenje.pdf", "application/pdf", PDF))))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("error.rn.notFound");
+        verify(repository, never()).saveAndFlush(any());
+    }
+
     /** Jedno aktivno rješenje po RB-u; odbijeno ne blokira (upit gleda samo SUBMITTED i VERIFIED). */
     @Test
     void rejects_whenActiveDecisionAlreadyExists() {
@@ -238,7 +298,7 @@ class CategorizationDecisionServiceTest {
         MockMultipartFile fake = file("virus.pdf", "application/pdf",
                 "MZ\u0090not really a pdf".getBytes(StandardCharsets.ISO_8859_1));
 
-        assertThatThrownBy(() -> service.upload(OIB, request(fake)))
+        assertThatThrownBy(() -> service.upload(OWNER, request(fake)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.categorization.file.type");
         verify(repository, never()).saveAndFlush(any());
@@ -246,11 +306,11 @@ class CategorizationDecisionServiceTest {
 
     @Test
     void rejects_whenFileMissingOrEmpty() {
-        assertThatThrownBy(() -> service.upload(OIB, request(null)))
+        assertThatThrownBy(() -> service.upload(OWNER, request(null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.categorization.file.empty");
 
-        assertThatThrownBy(() -> service.upload(OIB, request(file("prazno.pdf", "application/pdf", new byte[0]))))
+        assertThatThrownBy(() -> service.upload(OWNER, request(file("prazno.pdf", "application/pdf", new byte[0]))))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.categorization.file.empty");
     }
@@ -274,7 +334,7 @@ class CategorizationDecisionServiceTest {
                 "dup", new ConstraintViolationException("dup", new SQLException("dup", "23505"),
                         CategorizationDecisionService.ACTIVE_DECISION_INDEX)));
 
-        assertThatThrownBy(() -> service.upload(OIB, request(file("rjesenje.pdf", "application/pdf", PDF))))
+        assertThatThrownBy(() -> service.upload(OWNER, request(file("rjesenje.pdf", "application/pdf", PDF))))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("CATEGORIZATION_ALREADY_SUBMITTED"));
     }
@@ -286,7 +346,7 @@ class CategorizationDecisionServiceTest {
                         "fk_categorization_decision_rn"));
         when(repository.saveAndFlush(any(CategorizationDecisionEntity.class))).thenThrow(fk);
 
-        assertThatThrownBy(() -> service.upload(OIB, request(file("rjesenje.pdf", "application/pdf", PDF))))
+        assertThatThrownBy(() -> service.upload(OWNER, request(file("rjesenje.pdf", "application/pdf", PDF))))
                 .isSameAs(fk);
     }
 
@@ -300,7 +360,7 @@ class CategorizationDecisionServiceTest {
     }
 
     private void assertConflict(String code) {
-        assertThatThrownBy(() -> service.upload(OIB, request(file("rjesenje.pdf", "application/pdf", PDF))))
+        assertThatThrownBy(() -> service.upload(OWNER, request(file("rjesenje.pdf", "application/pdf", PDF))))
                 .isInstanceOfSatisfying(ConflictException.class, e -> assertThat(e.getCode()).isEqualTo(code));
         verify(repository, never()).saveAndFlush(any());
     }
@@ -308,7 +368,7 @@ class CategorizationDecisionServiceTest {
     private CategorizationDecisionEntity capture(CategorizationDecisionRequest req) {
         when(repository.saveAndFlush(any(CategorizationDecisionEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
-        service.upload(OIB, req);
+        service.upload(OWNER, req);
 
         ArgumentCaptor<CategorizationDecisionEntity> captor = ArgumentCaptor.forClass(CategorizationDecisionEntity.class);
         verify(repository, atLeastOnce()).saveAndFlush(captor.capture());

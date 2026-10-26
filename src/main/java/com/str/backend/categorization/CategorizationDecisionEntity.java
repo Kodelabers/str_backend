@@ -15,6 +15,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -35,8 +36,16 @@ public class CategorizationDecisionEntity {
     @Column(name = "decision_id", updatable = false, nullable = false)
     private UUID decisionId;
 
-    @Column(name = "lessor_oib", updatable = false, nullable = false, length = 11)
+    /** OIB vlasnika (NIAS predaja); {@code null} kad je predao non-EU iznajmljivač ({@link #lessorId}). */
+    @Column(name = "lessor_oib", updatable = false, length = 11)
     private String lessorOib;
+
+    /**
+     * Non-EU iznajmljivač koji je predao rješenje (changeset 143) — nema OIB, a njegov
+     * {@code lessorId} je stabilan. {@code null} za NIAS predaju. Barem jedno od dvoje je zadano.
+     */
+    @Column(name = "lessor_id", updatable = false)
+    private UUID lessorId;
 
     @Column(name = "object_name", updatable = false, length = 255)
     private String objectName;
@@ -106,9 +115,32 @@ public class CategorizationDecisionEntity {
                                                       String contentType,
                                                       byte[] fileContent,
                                                       CategorizationDecisionMetadata metadata) {
+        return create(Objects.requireNonNull(lessorOib, "lessorOib"), null, rn, fileName, contentType,
+                fileContent, metadata);
+    }
+
+    /** Predaja non-EU iznajmljivača — vlasnik je {@code lessorId}, OIB-a nema. */
+    public static CategorizationDecisionEntity createForLessor(UUID lessorId,
+                                                               String rn,
+                                                               String fileName,
+                                                               String contentType,
+                                                               byte[] fileContent,
+                                                               CategorizationDecisionMetadata metadata) {
+        return create(null, Objects.requireNonNull(lessorId, "lessorId"), rn, fileName, contentType,
+                fileContent, metadata);
+    }
+
+    private static CategorizationDecisionEntity create(String lessorOib,
+                                                       UUID lessorId,
+                                                       String rn,
+                                                       String fileName,
+                                                       String contentType,
+                                                       byte[] fileContent,
+                                                       CategorizationDecisionMetadata metadata) {
         CategorizationDecisionEntity e = new CategorizationDecisionEntity();
         e.decisionId = UUID.randomUUID();
         e.lessorOib = lessorOib;
+        e.lessorId = lessorId;
         e.rn = rn;
         e.fileName = fileName;
         e.contentType = contentType;
@@ -147,6 +179,7 @@ public class CategorizationDecisionEntity {
         CategorizationDecisionEntity e = new CategorizationDecisionEntity();
         e.decisionId = UUID.randomUUID();
         e.lessorOib = source.lessorOib;
+        e.lessorId = source.lessorId;
         e.rn = newRn;
         e.fileName = source.fileName;
         e.contentType = source.contentType;

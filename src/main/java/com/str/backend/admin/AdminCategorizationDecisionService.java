@@ -7,14 +7,20 @@ import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.lessor.LessorEntity;
+import com.str.backend.lessor.LessorRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Interni pregled skeniranih rješenja o kategorizaciji za nadležno tijelo. Radi isključivo nad
@@ -32,13 +38,16 @@ public class AdminCategorizationDecisionService {
     private final CategorizationDecisionRepository repository;
     private final AdminAuditService auditService;
     private final InternalAccessService internalAccess;
+    private final LessorRepository lessorRepository;
 
     public AdminCategorizationDecisionService(CategorizationDecisionRepository repository,
                                               AdminAuditService auditService,
-                                              InternalAccessService internalAccess) {
+                                              InternalAccessService internalAccess,
+                                              LessorRepository lessorRepository) {
         this.repository = repository;
         this.auditService = auditService;
         this.internalAccess = internalAccess;
+        this.lessorRepository = lessorRepository;
     }
 
     /**
@@ -50,10 +59,12 @@ public class AdminCategorizationDecisionService {
         Page<CategorizationDecisionEntity> page = status != null
                 ? repository.findForReviewByStatus(status, pageable)
                 : repository.findForReview(pageable);
-        // Jedan upit za imena svih službenika na stranici, ne po retku.
+        // Jedan upit za imena svih službenika na stranici, ne po retku; isto za porezne brojeve.
         Map<String, String> names = internalAccess.displayNames(
                 page.getContent().stream().map(CategorizationDecisionEntity::getVerifiedBy).toList());
-        return page.map(e -> CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy())));
+        Map<UUID, String> taxNumbers = taxNumbers(page.getContent());
+        return page.map(e -> CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy()),
+                taxNumbers.get(e.getLessorId())));
     }
 
     @Transactional(readOnly = true)
@@ -61,7 +72,26 @@ public class AdminCategorizationDecisionService {
         CategorizationDecisionEntity e = findOrThrow(id);
         Map<String, String> names = internalAccess.displayNames(
                 e.getVerifiedBy() == null ? List.of() : List.of(e.getVerifiedBy()));
-        return CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy()));
+        return CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy()),
+                taxNumbers(List.of(e)).get(e.getLessorId()));
+    }
+
+    /**
+     * Strani porezni broj non-EU iznajmljivača po {@code lessorId} — on nema OIB, pa se u stupcu
+     * „OIB iznajmljivača" prikazuje porezni broj. NIAS zapisi nemaju {@code lessorId}.
+     */
+    private Map<UUID, String> taxNumbers(List<CategorizationDecisionEntity> decisions) {
+        Set<UUID> ids = decisions.stream()
+                .map(CategorizationDecisionEntity::getLessorId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        // Ne Map.of(): NIAS zapisi traže po null ključu, a nepromjenjiva mapa tada baca NPE.
+        if (ids.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return lessorRepository.findAllById(ids).stream()
+                .filter(l -> l.getTaxNumber() != null)
+                .collect(Collectors.toMap(LessorEntity::getLessorId, LessorEntity::getTaxNumber));
     }
 
     @Transactional(readOnly = true)

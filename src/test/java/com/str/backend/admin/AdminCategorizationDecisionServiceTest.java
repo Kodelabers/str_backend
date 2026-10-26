@@ -9,6 +9,8 @@ import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
 import com.str.backend.exception.IllegalStatusTransitionException;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.lessor.LessorEntity;
+import com.str.backend.lessor.LessorRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -39,8 +41,9 @@ class AdminCategorizationDecisionServiceTest {
     private final CategorizationDecisionRepository repository = mock(CategorizationDecisionRepository.class);
     private final AdminAuditService auditService = mock(AdminAuditService.class);
     private final InternalAccessService internalAccess = mock(InternalAccessService.class);
+    private final LessorRepository lessorRepository = mock(LessorRepository.class);
     private final AdminCategorizationDecisionService service =
-            new AdminCategorizationDecisionService(repository, auditService, internalAccess);
+            new AdminCategorizationDecisionService(repository, auditService, internalAccess, lessorRepository);
 
     @Test
     void list_byStatus_mapsToDto() {
@@ -57,6 +60,28 @@ class AdminCategorizationDecisionServiceTest {
                     assertThat(dto.status()).isEqualTo(CategorizationDecisionStatus.SUBMITTED);
                     assertThat(dto.lessorOib()).isEqualTo(OIB);
                 });
+    }
+
+    /** Non-EU iznajmljivač nema OIB — u redu se vidi njegov strani porezni broj. */
+    @Test
+    void list_nonEuDecision_carriesTaxNumber() {
+        Pageable pageable = PageRequest.of(0, 20);
+        UUID lessorId = UUID.randomUUID();
+        CategorizationDecisionEntity nonEu = CategorizationDecisionEntity.createForLessor(lessorId, "HR00000011",
+                "rjesenje.pdf", "application/pdf", PDF,
+                new CategorizationDecisionMetadata(null, null, null, null, null, null, null));
+        LessorEntity lessor = mock(LessorEntity.class);
+        when(lessor.getLessorId()).thenReturn(lessorId);
+        when(lessor.getTaxNumber()).thenReturn("DE123456789");
+        when(lessorRepository.findAllById(any())).thenReturn(List.of(lessor));
+        when(repository.findForReview(pageable)).thenReturn(new PageImpl<>(List.of(nonEu, submitted()), pageable, 2));
+
+        List<CategorizationDecisionAdminDto> rows = service.list(null, pageable).getContent();
+
+        assertThat(rows.get(0).lessorOib()).isNull();
+        assertThat(rows.get(0).lessorTaxNumber()).isEqualTo("DE123456789");
+        assertThat(rows.get(1).lessorOib()).isEqualTo(OIB);
+        assertThat(rows.get(1).lessorTaxNumber()).isNull();
     }
 
     @Test

@@ -4,6 +4,9 @@ import com.str.backend.address.CountryEntity;
 import com.str.backend.address.CountryRepository;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.captcha.AltchaService;
+import com.str.backend.categorization.CategorizationDecisionRequest;
+import com.str.backend.categorization.CategorizationDecisionResponse;
+import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
@@ -43,6 +46,7 @@ public class LessorController {
     private final LessorRnActionService rnActionService;
     private final AltchaService altchaService;
     private final ReissueService reissueService;
+    private final CategorizationDecisionService categorizationDecisionService;
 
     public LessorController(LessorRegistrationService registrationService,
                             LessorRepository lessorRepository,
@@ -51,7 +55,8 @@ public class LessorController {
                             RnRepository rnRepository,
                             LessorRnActionService rnActionService,
                             AltchaService altchaService,
-                            ReissueService reissueService) {
+                            ReissueService reissueService,
+                            CategorizationDecisionService categorizationDecisionService) {
         this.registrationService = registrationService;
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
@@ -60,6 +65,7 @@ public class LessorController {
         this.rnActionService = rnActionService;
         this.altchaService = altchaService;
         this.reissueService = reissueService;
+        this.categorizationDecisionService = categorizationDecisionService;
     }
 
     @PostMapping(value = "/registerLessor", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -127,6 +133,23 @@ public class LessorController {
     @GetMapping("/lessor/registrations/{rn}/ponovni-zahtjev")
     public ReissuePrefillResponse reissuePrefill(@PathVariable String rn, Authentication authentication) {
         return reissueService.prefill(rn, RnOwner.byLessor(extractLessorId(authentication)));
+    }
+
+    /**
+     * Naknadna predaja rješenja o kategorizaciji non-EU iznajmljivača — isto kao NIAS
+     * {@code POST /api/nias/categorization-decisions}, a vlasnik je {@code lessorId} iz prijave.
+     * RB je u putanji; što se u tijelu pošalje kao {@code registrationNumber}, ne vrijedi.
+     */
+    @PostMapping(value = "/lessor/registrations/{rn}/categorization-decision",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public CategorizationDecisionResponse uploadCategorizationDecision(
+            @PathVariable String rn,
+            @ModelAttribute CategorizationDecisionRequest req,
+            Authentication authentication) {
+        UUID lessorId = extractLessorId(authentication);
+        req.setRegistrationNumber(rn);
+        return categorizationDecisionService.upload(RnOwner.byLessor(lessorId), req);
     }
 
     /** STR-1.3-001: lessor revokes (opoziv) their own RN → REVOKED. Owner-only. */

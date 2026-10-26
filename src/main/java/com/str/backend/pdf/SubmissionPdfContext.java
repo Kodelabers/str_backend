@@ -1,7 +1,9 @@
 package com.str.backend.pdf;
 
 import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.document.FilingReference;
 import com.str.backend.lessor.LessorEntity;
+import com.str.backend.str.FacilityRooms.Rooms;
 
 /**
  * Podaci za PDF zahtjeva. Zamjenjuje raniji potpis od jedanaest pozicijskih parametara, u
@@ -11,7 +13,11 @@ import com.str.backend.lessor.LessorEntity;
  * @param maxGuests          maksimalan broj gostiju (kreveti + pomoćni kreveti) — obrazac ga
  *                           od stavke 2 prikazuje kao jedan podatak, bez podjele na krevete;
  *                           {@code null} za postojeći eTurizam objekt kojem ga eTurizam ne zna
- * @param filingNumber       KLASA + URBROJ; {@code null} dok zahtjev nije urudžbiran
+ * @param category           tražena kategorija; za postojeći objekt kategorija preuzeta iz
+ *                           eTurizma, {@code null} kad je ne znamo
+ * @param rooms              sobe po vrsti iz eTurizma; {@code null} za novi objekt i kad ih
+ *                           eTurizam ne zna (v. {@code FacilityRooms})
+ * @param filing             KLASA i URBROJ ulaznog pismena; {@code null} dok zahtjev nije urudžbiran
  * @param registrationNumber uvijek postoji — PDF se generira nakon dodjele RB-a
  */
 public record SubmissionPdfContext(
@@ -22,14 +28,16 @@ public record SubmissionPdfContext(
         String cityName,
         Integer maxGuests,
         String typeName,
+        String category,
+        Rooms rooms,
         LessorEntity lessor,
-        String filingNumber,
+        FilingReference filing,
         String registrationNumber
 ) {
 
     public static SubmissionPdfContext of(AccommodationEntity accommodation, LessorEntity lessor,
-                                          String typeName, String registrationNumber,
-                                          String filingNumber) {
+                                          String typeName, Rooms rooms, String registrationNumber,
+                                          FilingReference filing) {
         return new SubmissionPdfContext(
                 accommodation.getName(),
                 accommodation.getStreet(),
@@ -38,19 +46,26 @@ public record SubmissionPdfContext(
                 accommodation.getCity(),
                 accommodation.getMaxGuests(),
                 typeName,
+                category(accommodation),
+                rooms,
                 lessor,
-                filingNumber,
+                filing,
                 registrationNumber);
     }
 
-    /** Isti zahtjev, ali bez urudžbenog broja — kad urudžbiranje nije prošlo. */
-    public SubmissionPdfContext withoutFilingNumber() {
-        return new SubmissionPdfContext(accommodationName, street, streetNumber, postalCode,
-                cityName, maxGuests, typeName, lessor, null, registrationNumber);
+    /** Tražena kategorija ima prednost; postojeći objekt nosi kategoriju preuzetu iz eTurizma. */
+    private static String category(AccommodationEntity accommodation) {
+        String requested = accommodation.getRequestedCategory();
+        return requested != null && !requested.isBlank() ? requested : accommodation.getCategory();
     }
 
-    public SubmissionPdfContext withFilingNumber(String value) {
+    /** Isti zahtjev, ali bez urudžbenih oznaka — kad urudžbiranje nije prošlo. */
+    public SubmissionPdfContext withoutFiling() {
+        return withFiling(null);
+    }
+
+    public SubmissionPdfContext withFiling(FilingReference value) {
         return new SubmissionPdfContext(accommodationName, street, streetNumber, postalCode,
-                cityName, maxGuests, typeName, lessor, value, registrationNumber);
+                cityName, maxGuests, typeName, category, rooms, lessor, value, registrationNumber);
     }
 }

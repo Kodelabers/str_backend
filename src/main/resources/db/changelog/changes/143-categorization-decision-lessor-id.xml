@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Rješenje o kategorizaciji predaje i non-EU iznajmljivač (prijava korisničkim imenom i
+        lozinkom), koji nema OIB. Njegovo rješenje veže se na lessor_id, koji je za non-EU
+        račun stabilan; NIAS rješenja i dalje idu po OIB-u (lessor_id NIAS-a je snapshot po
+        predaji). Svaki zapis ima barem jedno od dvoje.
+    -->
+    <changeSet id="143-categorization-decision-lessor-id" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="categorization_decision">
+            <column name="lessor_id" type="UUID"
+                    remarks="Non-EU iznajmljivač koji je predao rješenje; NULL za NIAS predaju (ide po OIB-u)">
+                <constraints nullable="true"
+                             foreignKeyName="fk_categorization_decision_lessor"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="lessor"
+                             referencedColumnNames="lessor_id"/>
+            </column>
+        </addColumn>
+
+        <dropNotNullConstraint schemaName="str_rn" tableName="categorization_decision"
+                               columnName="lessor_oib" columnDataType="VARCHAR(11)"/>
+
+        <sql>
+            ALTER TABLE str_rn.categorization_decision
+                ADD CONSTRAINT ck_categorization_decision_lessor
+                CHECK (lessor_oib IS NOT NULL OR lessor_id IS NOT NULL);
+        </sql>
+
+        <createIndex schemaName="str_rn" tableName="categorization_decision"
+                     indexName="idx_categorization_decision_lessor_id">
+            <column name="lessor_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex schemaName="str_rn" tableName="categorization_decision"
+                       indexName="idx_categorization_decision_lessor_id"/>
+            <sql>ALTER TABLE str_rn.categorization_decision DROP CONSTRAINT IF EXISTS ck_categorization_decision_lessor;</sql>
+            <addNotNullConstraint schemaName="str_rn" tableName="categorization_decision"
+                                  columnName="lessor_oib" columnDataType="VARCHAR(11)"/>
+            <dropColumn schemaName="str_rn" tableName="categorization_decision" columnName="lessor_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

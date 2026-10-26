@@ -15,6 +15,7 @@ import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.dto.RnDetailDto;
+import com.str.backend.str.FacilityRooms;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -121,7 +122,8 @@ class AktPreviewGenerator {
         when(accommodation.getMaxBeds()).thenReturn(4);
 
         byte[] pdf = generator.generate(SubmissionPdfContext.of(accommodation, lessor(),
-                "Apartman", RN, "KLASA: 334-01/26-01/55, URBROJ: 529-06/26-1"));
+                "Apartman", new FacilityRooms.Rooms(null, 2, null), RN,
+                new FilingReference("334-01/26-01/55", "529-06/26-1")));
         Files.write(OUT.resolve("zahtjev.pdf"), pdf);
     }
 

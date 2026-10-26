@@ -809,6 +809,40 @@ class StrFacilityListingQueryTest {
         assertThat(FacilityClaimVerifier.maxGuests(repository.findOwnership(10L).orElseThrow())).isEqualTo(6);
     }
 
+    /**
+     * Sobe po vrsti za tablicu kapaciteta na zahtjevu: broj jednakih sadržaja, samo aktivni retci;
+     * sadržaj koji nije soba (igralište) se ne broji.
+     */
+    @Test
+    void findsRoomsByType_fromActiveContents() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Vila Lucija", SLUZBENIK, "2024-01-01 10:00:00");
+        content(500, 10, 1046, 10, true);
+        content(501, 10, 1045, 2, false);  // stara verzija sadržaja
+        content(502, 10, 1045, 1, true);
+        content(503, 10, 1047, 1, true);   // igralište
+
+        StrFacilityRepository.FacilityRoomsRow rooms = repository.findRooms(10L);
+
+        assertThat(rooms.getJednokrevetne()).isNull();
+        assertThat(rooms.getDvokrevetne()).isEqualTo(1);
+        assertThat(rooms.getTrokrevetne()).isEqualTo(10);
+    }
+
+    /** Jedinica bez soba u sadržajima: jedan redak s praznim vrijednostima, ne iznimka. */
+    @Test
+    void findsNoRooms_forUnitWithoutContents() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+        capacity(100, 10, 1040, 2);
+
+        StrFacilityRepository.FacilityRoomsRow rooms = repository.findRooms(10L);
+
+        assertThat(rooms.getJednokrevetne()).isNull();
+        assertThat(rooms.getDvokrevetne()).isNull();
+        assertThat(rooms.getTrokrevetne()).isNull();
+    }
+
     /** Svaka izmjena u eTurizmu ostavi stari redak neaktivnim — ne smije ući u zbroj. */
     @Test
     void ignoresInactiveContentAndContentCapacityRows() {

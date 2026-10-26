@@ -10,10 +10,14 @@ import java.util.UUID;
  *
  * <p>{@code sourceDecisionId} je zadan kad je rješenje preneseno s povučenog RB-a na novi RB istog
  * objekta (ponovni zahtjev nakon opoziva, T15); izvorni zapis ostaje uz povučeni RB.
+ *
+ * <p>{@code lessorTaxNumber} je strani porezni broj non-EU iznajmljivača koji je predao rješenje
+ * (on nema OIB, pa je {@code lessorOib} tada {@code null}); za NIAS predaju je {@code null}.
  */
 public record CategorizationDecisionAdminDto(
         UUID decisionId,
         String lessorOib,
+        String lessorTaxNumber,
         String registrationNumber,
         String objectName,
         String accommodationTypeCode,
@@ -34,10 +38,12 @@ public record CategorizationDecisionAdminDto(
 ) {
 
     /** {@code verifiedBy} je prikaz aktera (ime službenika), ne sirovi zapis iz baze. */
-    public static CategorizationDecisionAdminDto of(CategorizationDecisionEntity e, String verifiedBy) {
+    public static CategorizationDecisionAdminDto of(CategorizationDecisionEntity e, String verifiedBy,
+                                                    String lessorTaxNumber) {
         return new CategorizationDecisionAdminDto(
                 e.getDecisionId(),
                 e.getLessorOib(),
+                lessorTaxNumber,
                 e.getRn(),
                 e.getObjectName(),
                 e.getAccommodationTypeCode(),
