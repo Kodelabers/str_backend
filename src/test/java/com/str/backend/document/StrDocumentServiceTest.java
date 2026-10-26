@@ -279,6 +279,26 @@ class StrDocumentServiceTest {
     }
 
     /**
+     * Naziv tijela iz env-a upisan malim slovom (CDU, 18.09.2026.) ne smije otvoriti uvod akta
+     * malim slovom; zaglavlje ga i dalje piše velikim slovima.
+     */
+    @Test
+    void uvod_pocinjeVelikimSlovom_iKadJeNazivUKonfiguracijiMalim() throws IOException {
+        DocumentProperties malimSlovom = new DocumentProperties(
+                new DocumentProperties.Tijelo("ministarstvo turizma i sporta", "12345678901",
+                        "Prisavlje 14", "Zagreb", "Uprava za turizam",
+                        "članka 6. Uredbe (EU) 2024/1028"),
+                PROPERTIES.potpisnik(), PROPERTIES.epecat(), PROPERTIES.uputa(), false);
+        when(rnRepository.findDetail(RN)).thenReturn(Optional.of(detail(RnStatus.SUSPENSION_PROPOSED)));
+
+        String text = textOf(service(malimSlovom).render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "razlog"));
+
+        assertThat(text).contains("Ministarstvo turizma i sporta, OIB: 12345678901");
+        assertThat(text).doesNotContain("ministarstvo turizma i sporta");
+        assertThat(text).contains("REPUBLIKA HRVATSKA MINISTARSTVO TURIZMA I SPORTA");
+    }
+
+    /**
      * Svaka obavijest tijela ima istu strukturu kao dodjela: bez adresata, bez naslova izreke,
      * priloga i dostavne liste, i bez uredskog uvodnog nabrajanja predmeta.
      */

@@ -36,7 +36,29 @@ public record DocumentProperties(
             String ustrojstvenaJedinica,
             /** Čl. 98. st. 2 — propis koji tijelu daje nadležnost, citira se u uvodu. */
             String propisNadleznosti
-    ) {}
+    ) {
+
+        /**
+         * Naziv otvara rečenicu uvoda svakog akta („Ministarstvo …, OIB: …") i stoji kao adresat
+         * zahtjeva, pa uvijek počinje velikim slovom — i kad je env upisan malim (CDU,
+         * 18.09.2026.). Ostatak naziva ostaje kako je upisan.
+         */
+        public Tijelo {
+            naziv = velikoPocetno(naziv);
+        }
+
+        private static String velikoPocetno(String naziv) {
+            if (naziv == null || naziv.isBlank()) {
+                return naziv;
+            }
+            String s = naziv.strip();
+            int prvi = s.codePointAt(0);
+            return new StringBuilder(s.length())
+                    .appendCodePoint(Character.toUpperCase(prvi))
+                    .append(s, Character.charCount(prvi), s.length())
+                    .toString();
+        }
+    }
 
     public record Potpisnik(String ime, String funkcija) {}
 

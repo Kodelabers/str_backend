@@ -136,13 +136,13 @@ public class StartupDiagnostics {
                                 + " url_provjere=" + popunjeno(env.getProperty("str.documents.epecat.url-provjere")) + ")"
                         : " — blok e-pečata se ne ispisuje");
 
-        // Naziv tijela otvara rečenicu uvoda („<naziv>, OIB: …, na temelju …, izdaje"), pa malim
-        // početnim slovom akt počinje malim slovom. Zaglavlje i potpis ga pišu velikim slovima
-        // sami, zato se greška ne vidi na njima.
+        // Naziv tijela otvara rečenicu uvoda („<naziv>, OIB: …, na temelju …, izdaje"). Akti ga
+        // ispravljaju sami (DocumentProperties.Tijelo), ali env ostaje neuredan i drugdje bi se
+        // mogao čitati izravno — zato se i dalje prijavljuje.
         if (tijeloNaziv != null && !tijeloNaziv.isBlank()
-                && !Character.isUpperCase(tijeloNaziv.codePointAt(0))) {
-            log.warn("startup_documents_naziv_pocinje_malim_slovom naziv={} — uvod svakog akta"
-                    + " počinje tim nazivom kao rečenicom; ispravi STR_TIJELO_NAZIV", tijeloNaziv);
+                && !Character.isUpperCase(tijeloNaziv.strip().codePointAt(0))) {
+            log.warn("startup_documents_naziv_pocinje_malim_slovom naziv={} — u aktima se početno"
+                    + " slovo ispravlja automatski; ispravi STR_TIJELO_NAZIV", tijeloNaziv);
         }
 
         log.info("startup_web frontend_base={} cors={}",
