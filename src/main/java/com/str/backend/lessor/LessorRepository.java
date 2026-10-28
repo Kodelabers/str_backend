@@ -3,6 +3,7 @@ package com.str.backend.lessor;
 import com.str.backend.admin.dto.PendingRegistrationSummaryDto;
 import com.str.backend.domain.LessorApplicationStatus;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -11,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -31,6 +34,42 @@ public interface LessorRepository extends JpaRepository<LessorEntity, UUID> {
      *  Vraća najnoviji snapshot ako postoji više zapisa s istim OIB-om. */
     @Transactional(readOnly = true)
     Optional<LessorEntity> findFirstByLessorOibOrderByCreatedAtDesc(String lessorOib);
+
+    /**
+     * Snapshot iznajmljivača sa zadnjeg RB-a izdanog vlasniku {@code oib}, za predpopunu kontakta.
+     * Prednost ima RB istog objekta — povučeni RB ponovnog zahtjeva ({@code rn}) ili zadnji RB
+     * eTurizam objekta ({@code facilityId}); bez njega zadnji RB uopće. Oba su samo redoslijed:
+     * tuđi RB ili objekt ne prolazi uvjet vlasnika, pa ne daju ništa.
+     *
+     * <p>Opozvan ili povučen RB nosi kontakt koji je korisnik zadnji upisao, ali samo do isteka
+     * retencije (čl. 5. st. 5): {@code validTo} mora biti na ili nakon {@code retentionCutoff}, isti
+     * rok kao za ponovni zahtjev ({@code ReissueService#eligibility}). Bez {@code validTo} rok se ne
+     * zna, pa se takav RB ne koristi.
+     *
+     * <p>Tvrtka je izostavljena: njezin snapshot nosi kontakt tadašnjeg zastupnika, koji je danas
+     * možda više ne zastupa (isto pravilo kao predpopuna ponovnog zahtjeva, {@code ReissueService}).
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT l FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            JOIN SubmissionEntity s ON s.submissionId = r.submissionId
+            JOIN LessorEntity l ON l.lessorId = s.lessorId
+            WHERE l.lessorOib = :oib AND l.legalEntityOwner = false
+              AND (r.status NOT IN (com.str.backend.domain.RnStatus.REVOKED,
+                                    com.str.backend.domain.RnStatus.WITHDRAWN)
+                   OR r.validTo >= :retentionCutoff)
+            ORDER BY CASE WHEN r.rn = :rn OR a.facilityId = :facilityId THEN 0 ELSE 1 END,
+                     r.createdAt DESC, r.rn DESC
+            """)
+    List<LessorEntity> findRbSnapshots(@Param("oib") String oib, @Param("facilityId") String facilityId,
+                                       @Param("rn") String rn, @Param("retentionCutoff") LocalDate retentionCutoff,
+                                       Pageable pageable);
+
+    default Optional<LessorEntity> findLatestRbSnapshot(String oib, String facilityId, String rn,
+                                                        LocalDate retentionCutoff) {
+        return findRbSnapshots(oib, facilityId, rn, retentionCutoff, PageRequest.of(0, 1)).stream().findFirst();
+    }
 
     // --- Pending-registration megasearch (token-AND) building blocks. Shared between data + count
     // queries so the WHERE clause cannot drift between them. @Query accepts constant concatenation.

@@ -24,7 +24,6 @@ import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
 import com.str.backend.str.RnFacilityVerification;
-import com.str.backend.str.StrSubjectRepository;
 import com.str.backend.rn.RnRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -68,7 +67,7 @@ public class NiasController {
     private final ActingSubjectGuard actingSubjectGuard;
     private final NavigationBarService navigationBarService;
     private final ChangeRequestFilingService changeRequestFilingService;
-    private final StrSubjectRepository strSubjectRepository;
+    private final SubjectContactResolver subjectContactResolver;
     private final RnFacilityVerification rnFacilityVerification;
     private final ReissueService reissueService;
 
@@ -87,7 +86,7 @@ public class NiasController {
                           ActingSubjectGuard actingSubjectGuard,
                           NavigationBarService navigationBarService,
                           ChangeRequestFilingService changeRequestFilingService,
-                          StrSubjectRepository strSubjectRepository,
+                          SubjectContactResolver subjectContactResolver,
                           RnFacilityVerification rnFacilityVerification,
                           ReissueService reissueService) {
         this.oibResolver = oibResolver;
@@ -105,7 +104,7 @@ public class NiasController {
         this.actingSubjectGuard = actingSubjectGuard;
         this.navigationBarService = navigationBarService;
         this.changeRequestFilingService = changeRequestFilingService;
-        this.strSubjectRepository = strSubjectRepository;
+        this.subjectContactResolver = subjectContactResolver;
         this.rnFacilityVerification = rnFacilityVerification;
         this.reissueService = reissueService;
     }
@@ -202,9 +201,15 @@ public class NiasController {
      * koji je to zastupnik i kontakt iz eTurizma — isto kao pri izdavanju RB-a
      * ({@link SubjectProfileService#resolveLegalLessor}). Nedostupan OIB sustav ovdje nije 503:
      * podaci tada izostaju, a RB se svejedno može izdati.
+     *
+     * <p>Kontakt je predpopuna ({@link SubjectContactResolver}). {@code facilityId} i
+     * {@code prethodniRb} (objekt na obrascu) daju prednost RB-u istog objekta; samo su redoslijed
+     * unutar RB-ova osobe iz sesije, pa tuđa vrijednost ne otkriva ništa. U ime tvrtke se ne koriste.
      */
     @GetMapping("/subject")
-    public SubjectProfileResponse subject(Authentication authentication) {
+    public SubjectProfileResponse subject(Authentication authentication,
+                                          @RequestParam(required = false) String facilityId,
+                                          @RequestParam(required = false) String prethodniRb) {
         NiasIdentity identity = personIdentity(authentication);
         Optional<ActingSubject> acting = effectiveOibResolver.actingSubject(authentication);
         if (acting.isPresent()) {
@@ -212,11 +217,11 @@ public class NiasController {
             LegalEntityProfile company = subjectProfileService.loadLegal(s.legalOib(), s.legalName(),
                     s.representativeOib(), s.representativeFirstName(), s.representativeLastName());
             return SubjectProfileResponse.ofLegalEntity(s, company,
-                    strSubjectRepository.findDocumentContactByOib(s.legalOib()).orElse(null));
+                    subjectContactResolver.forLegalEntity(s.legalOib()));
         }
         SubjectProfile profile = subjectProfileService.load(identity.oib(), identity.firstName(), identity.lastName());
         return SubjectProfileResponse.of(profile,
-                strSubjectRepository.findDocumentContactByOib(identity.oib()).orElse(null));
+                subjectContactResolver.forPerson(identity.oib(), facilityId, prethodniRb));
     }
 
     /**
@@ -281,6 +286,10 @@ public class NiasController {
                 lessor.getLastName(),
                 lessor.getEmail(),
                 lessor.getMobileNumber(),
+                // Telefon i kontakt osobu treba samo non-EU obrazac; snapshot tvrtke ih nosi od
+                // tadašnjeg zastupnika, pa se ovdje ne vraćaju.
+                null,
+                null,
                 lessor.getTaxNumber(),
                 countryName,
                 lessor.getApplicationStatus(),

@@ -11,6 +11,12 @@ public record LessorProfileDto(
         String lastName,
         String email,
         String mobileNumber,
+        /**
+         * Telefon i kontakt osoba koje je non-EU iznajmljivač zadnji upisao uz zahtjev za RB —
+         * obrazac njima predpopunjava kontakt. NIAS profil ({@code /api/nias/profile}) ih ne vraća.
+         */
+        String phoneNumber,
+        String contactName,
         String taxNumber,
         String countryName,
         LessorApplicationStatus applicationStatus,

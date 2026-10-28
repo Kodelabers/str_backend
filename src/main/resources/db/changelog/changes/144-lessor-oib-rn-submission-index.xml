@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Kontakt sa zadnjeg RB-a za obrazac (LessorRepository.findRbSnapshots) ide od OIB-a
+        vlasnika preko submissiona do RB-a, pri svakom otvaranju obrasca. NIAS iznajmljivač ima
+        snapshot po predaji, pa lessor raste s brojem RB-ova; isti put već koriste provjera
+        vlasništva (isOwnedByOib) i „Moji RB-ovi”. submission.lessor_id ima indeks (003).
+    -->
+    <changeSet id="144-lessor-oib-rn-submission-index" author="str-backend">
+        <createIndex schemaName="str_rn" tableName="lessor" indexName="idx_lessor_oib">
+            <column name="lessor_oib"/>
+        </createIndex>
+
+        <createIndex schemaName="str_rn" tableName="registration_number" indexName="idx_rn_submission">
+            <column name="submission_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropIndex schemaName="str_rn" tableName="registration_number" indexName="idx_rn_submission"/>
+            <dropIndex schemaName="str_rn" tableName="lessor" indexName="idx_lessor_oib"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
