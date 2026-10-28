@@ -20,6 +20,9 @@ import com.str.backend.lessor.LessorWithdrawRequest;
 import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.objection.SuspensionObjectionRequest;
+import com.str.backend.objection.SuspensionObjectionResponse;
+import com.str.backend.objection.SuspensionObjectionService;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
@@ -61,6 +64,7 @@ public class NiasController {
     private final SessionIdentityResolver identityResolver;
     private final NiasFacilityService facilityService;
     private final CategorizationDecisionService categorizationDecisionService;
+    private final SuspensionObjectionService suspensionObjectionService;
     private final SubjectProfileService subjectProfileService;
     private final EffectiveOibResolver effectiveOibResolver;
     private final ActingSubjectService actingSubjectService;
@@ -80,6 +84,7 @@ public class NiasController {
                           SessionIdentityResolver identityResolver,
                           NiasFacilityService facilityService,
                           CategorizationDecisionService categorizationDecisionService,
+                          SuspensionObjectionService suspensionObjectionService,
                           SubjectProfileService subjectProfileService,
                           EffectiveOibResolver effectiveOibResolver,
                           ActingSubjectService actingSubjectService,
@@ -98,6 +103,7 @@ public class NiasController {
         this.identityResolver = identityResolver;
         this.facilityService = facilityService;
         this.categorizationDecisionService = categorizationDecisionService;
+        this.suspensionObjectionService = suspensionObjectionService;
         this.subjectProfileService = subjectProfileService;
         this.effectiveOibResolver = effectiveOibResolver;
         this.actingSubjectService = actingSubjectService;
@@ -342,6 +348,21 @@ public class NiasController {
             @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
         return categorizationDecisionService.upload(
                 RnOwner.byOib(ownerOibForChange(authentication, actingSubjectHeader)), req);
+    }
+
+    /**
+     * Prigovor na prijedlog suspenzije ili na suspenziju RB-a — dokument (PDF ili Word) koji čeka
+     * službenika na detalju RB-a. Vlasnik je kao kod rješenja ({@link #ownerOibForChange}); predaju
+     * bilježi osoba koja je prigovor fizički predala, i kad djeluje u ime tvrtke.
+     */
+    @PostMapping(value = "/suspension-objections", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public SuspensionObjectionResponse submitSuspensionObjection(
+            @Valid @ModelAttribute SuspensionObjectionRequest req,
+            Authentication authentication,
+            @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
+        RnOwner owner = RnOwner.byOib(ownerOibForChange(authentication, actingSubjectHeader));
+        return suspensionObjectionService.submit(owner, "NIAS:" + personOib(authentication), req);
     }
 
     /** STR-1.3-001: NIAS user revokes (opoziv) their own RN → REVOKED. Vlasništvo se provjerava

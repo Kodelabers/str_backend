@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Prigovor iznajmljivača na prijedlog suspenzije ili na suspenziju RB-a. Iznajmljivač
+        predaje dokument (PDF ili Word), a službenik ga na detalju RB-a uvažava (RB se vraća u
+        ACTIVE) ili ne uvažava. Isto kao rješenje o kategorizaciji: zapis živi samo ovdje, ne
+        ide u egop_pismeno ni u eGOP.
+
+        Vlasnik je NIAS iznajmljivač po OIB-u ili non-EU iznajmljivač po lessor_id (uz snimku
+        emaila u trenutku predaje) — barem jedno od dvoje je zadano, kao u categorization_decision.
+        Neobrađen (SUBMITTED) prigovor po RB-u smije biti najviše jedan.
+    -->
+    <changeSet id="145-suspension-objection" author="str-backend">
+        <createTable schemaName="str_rn" tableName="suspension_objection"
+                     remarks="Prigovori iznajmljivača na prijedlog suspenzije / suspenziju RB-a">
+            <column name="objection_id" type="UUID" remarks="PK">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="rn" type="VARCHAR(20)" remarks="RB na koji se prigovor odnosi">
+                <constraints nullable="false"
+                             foreignKeyName="fk_suspension_objection_rn"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="registration_number"
+                             referencedColumnNames="rn"/>
+            </column>
+
+            <column name="lessor_oib" type="VARCHAR(11)"
+                    remarks="OIB vlasnika za NIAS predaju (OIB tvrtke kad se radi u ime tvrtke); NULL za non-EU"/>
+            <column name="lessor_id" type="UUID" remarks="Non-EU iznajmljivač koji je predao prigovor; NULL za NIAS">
+                <constraints nullable="true"
+                             foreignKeyName="fk_suspension_objection_lessor"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="lessor"
+                             referencedColumnNames="lessor_id"/>
+            </column>
+            <column name="lessor_email" type="VARCHAR(255)" remarks="Email non-EU iznajmljivača u trenutku predaje"/>
+            <column name="submitted_by" type="VARCHAR(128)"
+                    remarks="Tko je fizički predao: NIAS:&lt;oib osobe&gt; ili LESSOR:&lt;lessor_id&gt;">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="rn_status" type="VARCHAR(32)"
+                    remarks="Status RB-a pri predaji: SUSPENSION_PROPOSED ili SUSPENDED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rn_log_id" type="UUID"
+                    remarks="Zapis prijelaza RB-a u status na koji se prigovara (akt koji se pobija)">
+                <constraints nullable="true"
+                             foreignKeyName="fk_suspension_objection_rn_log"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="registration_number_log"
+                             referencedColumnNames="log_id"/>
+            </column>
+
+            <column name="file_name" type="VARCHAR(255)" remarks="Originalni naziv uploadane datoteke">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content_type" type="VARCHAR(100)" remarks="MIME tip potvrđen magic-byteovima, ne header klijenta">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_size" type="BIGINT" remarks="Veličina u bajtovima">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_content" type="BYTEA" remarks="Dokument prigovora (PDF/DOC/DOCX, do 10 MB)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="status" type="VARCHAR(16)" defaultValue="SUBMITTED"
+                    remarks="SUBMITTED → ACCEPTED / REJECTED (službenik) ili CLOSED (RB napustio prijedlog/suspenziju)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="submitted_at" type="TIMESTAMPTZ" remarks="Trenutak predaje">
+                <constraints nullable="false"/>
+            </column>
+            <column name="resolved_by" type="VARCHAR(255)" remarks="Službenik (INTERNAL:&lt;oib&gt;) ili SYSTEM kod zatvaranja"/>
+            <column name="resolved_at" type="TIMESTAMPTZ" remarks="Trenutak odluke ili zatvaranja"/>
+            <column name="resolution_note" type="VARCHAR(1000)" remarks="Opcionalno obrazloženje službenika"/>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str_rn.suspension_objection
+                ADD CONSTRAINT ck_suspension_objection_lessor
+                CHECK (lessor_oib IS NOT NULL OR lessor_id IS NOT NULL);
+            ALTER TABLE str_rn.suspension_objection
+                ADD CONSTRAINT ck_suspension_objection_status
+                CHECK (status IN ('SUBMITTED', 'ACCEPTED', 'REJECTED', 'CLOSED'));
+            CREATE UNIQUE INDEX uq_suspension_objection_rn_submitted
+                ON str_rn.suspension_objection (rn)
+                WHERE status = 'SUBMITTED';
+        </sql>
+
+        <createIndex schemaName="str_rn" tableName="suspension_objection"
+                     indexName="idx_suspension_objection_rn">
+            <column name="rn"/>
+            <column name="submitted_at"/>
+        </createIndex>
+        <createIndex schemaName="str_rn" tableName="suspension_objection"
+                     indexName="idx_suspension_objection_oib">
+            <column name="lessor_oib"/>
+        </createIndex>
+        <createIndex schemaName="str_rn" tableName="suspension_objection"
+                     indexName="idx_suspension_objection_lessor_id">
+            <column name="lessor_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="suspension_objection"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

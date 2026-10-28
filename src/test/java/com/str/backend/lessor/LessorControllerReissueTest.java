@@ -10,6 +10,7 @@ import com.str.backend.domain.Offering;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.objection.SuspensionObjectionService;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
@@ -61,6 +62,7 @@ class LessorControllerReissueTest {
     @MockBean AltchaService altchaService;
     @MockBean ReissueService reissueService;
     @MockBean CategorizationDecisionService categorizationDecisionService;
+    @MockBean SuspensionObjectionService suspensionObjectionService;
 
     @Test
     void prefill_returnsFormShape_forOwnLessor() throws Exception {

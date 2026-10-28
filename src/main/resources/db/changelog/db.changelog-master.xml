@@ -262,4 +262,7 @@
     <!-- Kontakt sa zadnjeg RB-a za obrazac: indeksi na putu OIB → submission → RB. -->
     <include file="db/changelog/changes/144-lessor-oib-rn-submission-index.xml"/>
 
+    <!-- Prigovor iznajmljivača na prijedlog suspenzije / suspenziju RB-a. -->
+    <include file="db/changelog/changes/145-suspension-objection.xml"/>
+
 </databaseChangeLog>

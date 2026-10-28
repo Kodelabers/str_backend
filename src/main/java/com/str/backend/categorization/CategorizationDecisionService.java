@@ -3,6 +3,7 @@ package com.str.backend.categorization;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.categorization.CategorizationDecisionEntity.CategorizationDecisionMetadata;
+import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ConflictException;
@@ -230,21 +231,8 @@ public class CategorizationDecisionService {
         }
     }
 
-    /**
-     * Klijent može poslati i putanju u {@code filename}; zadržava se samo naziv datoteke.
-     * Nizovnim operacijama, ne {@code Paths}: naziv poput {@code "/"} ili s NUL znakom ondje
-     * baca iznimku i predaja bi pala s 500.
-     */
     static String safeFileName(String originalFilename) {
-        String name = trimToNull(originalFilename);
-        if (name != null) {
-            name = name.replace("\0", "");
-            name = trimToNull(name.substring(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1));
-        }
-        if (name == null) {
-            return "rjesenje";
-        }
-        return name.length() > 255 ? name.substring(name.length() - 255) : name;
+        return Strings.safeFileName(originalFilename, "rjesenje");
     }
 
     private static String joinNonBlank(String delimiter, String... parts) {

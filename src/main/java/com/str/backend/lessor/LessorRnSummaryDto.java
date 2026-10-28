@@ -3,6 +3,7 @@ package com.str.backend.lessor;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.domain.RnStatus;
+import com.str.backend.objection.SuspensionObjectionStatus;
 
 import java.time.LocalDate;
 
@@ -16,6 +17,10 @@ import java.time.LocalDate;
  * nema — postoji i uz RB neverificiranog eTurizam objekta kad je rješenje (neobavezno) predano.
  * Oba popisa (NIAS i non-EU) ih računaju jednako; non-EU iznajmljivač rješenje predaje naknadno,
  * s popisa ({@code POST /api/lessor/registrations/{rn}/categorization-decision}).
+ *
+ * <p>{@code objectionStatus} je status zadnjeg prigovora na prijedlog suspenzije / suspenziju uz
+ * RB ili {@code null} kad ga nema ({@code RnRepository.OBJECTION_STATUS}). Dok je prigovor predan
+ * ({@code SUBMITTED}), novi se ne može predati. Računaju ga oba popisa.
  *
  * <p>{@code facilityVerified} je stupac „Verificiran": je li objekt uz RB danas verificiran u
  * eTurizmu ({@code str.RnFacilityVerification}); RB novog objekta je {@code false}, a
@@ -39,6 +44,7 @@ public record LessorRnSummaryDto(
         String accommodationTypeName,
         boolean categorizationRequired,
         CategorizationDecisionStatus categorizationStatus,
+        SuspensionObjectionStatus objectionStatus,
         @JsonIgnore String facilityId,
         Boolean facilityVerified,
         LocalDate ponovniZahtjevDo
@@ -50,9 +56,11 @@ public record LessorRnSummaryDto(
                               String city, String accommodationTypeName,
                               boolean categorizationRequired,
                               CategorizationDecisionStatus categorizationStatus,
+                              SuspensionObjectionStatus objectionStatus,
                               String facilityId) {
         this(rn, status, issueDate, accommodationName, street, streetNumber, city,
-                accommodationTypeName, categorizationRequired, categorizationStatus, facilityId, null, null);
+                accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus, facilityId,
+                null, null);
     }
 
     /** Za upite koji stanje rješenja ne računaju (non-EU popis). */
@@ -60,18 +68,18 @@ public record LessorRnSummaryDto(
                               String accommodationName, String street, String streetNumber,
                               String city, String accommodationTypeName) {
         this(rn, status, issueDate, accommodationName, street, streetNumber, city,
-                accommodationTypeName, false, null, null, null, null);
+                accommodationTypeName, false, null, null, null, null, null);
     }
 
     public LessorRnSummaryDto withFacilityVerified(boolean verified) {
         return new LessorRnSummaryDto(rn, status, issueDate, accommodationName, street, streetNumber,
-                city, accommodationTypeName, categorizationRequired, categorizationStatus, facilityId,
-                verified, ponovniZahtjevDo);
+                city, accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus,
+                facilityId, verified, ponovniZahtjevDo);
     }
 
     public LessorRnSummaryDto withPonovniZahtjevDo(LocalDate until) {
         return new LessorRnSummaryDto(rn, status, issueDate, accommodationName, street, streetNumber,
-                city, accommodationTypeName, categorizationRequired, categorizationStatus, facilityId,
-                facilityVerified, until);
+                city, accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus,
+                facilityId, facilityVerified, until);
     }
 }

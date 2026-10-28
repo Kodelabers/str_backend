@@ -7,6 +7,9 @@ import com.str.backend.captcha.AltchaService;
 import com.str.backend.categorization.CategorizationDecisionRequest;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
+import com.str.backend.objection.SuspensionObjectionRequest;
+import com.str.backend.objection.SuspensionObjectionResponse;
+import com.str.backend.objection.SuspensionObjectionService;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
@@ -47,6 +50,7 @@ public class LessorController {
     private final AltchaService altchaService;
     private final ReissueService reissueService;
     private final CategorizationDecisionService categorizationDecisionService;
+    private final SuspensionObjectionService suspensionObjectionService;
 
     public LessorController(LessorRegistrationService registrationService,
                             LessorRepository lessorRepository,
@@ -56,7 +60,8 @@ public class LessorController {
                             LessorRnActionService rnActionService,
                             AltchaService altchaService,
                             ReissueService reissueService,
-                            CategorizationDecisionService categorizationDecisionService) {
+                            CategorizationDecisionService categorizationDecisionService,
+                            SuspensionObjectionService suspensionObjectionService) {
         this.registrationService = registrationService;
         this.lessorRepository = lessorRepository;
         this.lessorDocumentRepository = lessorDocumentRepository;
@@ -66,6 +71,7 @@ public class LessorController {
         this.altchaService = altchaService;
         this.reissueService = reissueService;
         this.categorizationDecisionService = categorizationDecisionService;
+        this.suspensionObjectionService = suspensionObjectionService;
     }
 
     @PostMapping(value = "/registerLessor", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -152,6 +158,23 @@ public class LessorController {
         UUID lessorId = extractLessorId(authentication);
         req.setRegistrationNumber(rn);
         return categorizationDecisionService.upload(RnOwner.byLessor(lessorId), req);
+    }
+
+    /**
+     * Prigovor non-EU iznajmljivača na prijedlog suspenzije ili na suspenziju — isto kao NIAS
+     * {@code POST /api/nias/suspension-objections}, a vlasnik je {@code lessorId} iz prijave.
+     * RB je u putanji; što se u tijelu pošalje kao {@code registrationNumber}, ne vrijedi.
+     */
+    @PostMapping(value = "/lessor/registrations/{rn}/suspension-objection",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public SuspensionObjectionResponse submitSuspensionObjection(
+            @PathVariable String rn,
+            @ModelAttribute SuspensionObjectionRequest req,
+            Authentication authentication) {
+        UUID lessorId = extractLessorId(authentication);
+        req.setRegistrationNumber(rn);
+        return suspensionObjectionService.submit(RnOwner.byLessor(lessorId), "LESSOR:" + lessorId, req);
     }
 
     /** STR-1.3-001: lessor revokes (opoziv) their own RN → REVOKED. Owner-only. */

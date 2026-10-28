@@ -227,6 +227,16 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " ELSE NULL END";
 
     /**
+     * {@code SuspensionObjectionStatus}: status zadnjeg prigovora na prijedlog suspenzije /
+     * suspenziju uz RB ili {@code NULL} kad ga nema. Neobrađen je najviše jedan (changeset 145),
+     * a dva prigovora istog RB-a ne dijele trenutak predaje.
+     */
+    String OBJECTION_STATUS =
+            "(SELECT o.status FROM SuspensionObjectionEntity o WHERE o.rn = r.rn" +
+            " AND o.submittedAt = (SELECT MAX(o2.submittedAt) FROM SuspensionObjectionEntity o2" +
+            " WHERE o2.rn = r.rn))";
+
+    /**
      * Ono što stupac prikazuje, kao ime {@link RegistryDecisionFilter} — filtar registra. Isto kao
      * FE {@code shownDecisionStatus}: status rješenja kad postoji, inače NONE ili NOT_REQUIRED.
      */
@@ -420,6 +430,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " t.name,"
             + " " + CATEGORIZATION_REQUIRED + ","
             + " " + CATEGORIZATION_STATUS + ","
+            + " " + OBJECTION_STATUS + ","
             + " a.facilityId)"
             + " FROM RnEntity r"
             + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
@@ -467,6 +478,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " t.name,"
             + " " + CATEGORIZATION_REQUIRED + ","
             + " " + CATEGORIZATION_STATUS + ","
+            + " " + OBJECTION_STATUS + ","
             + " a.facilityId)"
             + " FROM RnEntity r"
             + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
