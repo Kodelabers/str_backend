@@ -3,7 +3,6 @@ package com.str.backend.auth.nias;
 import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
-import com.str.backend.str.StrSubjectRepository.DocumentContactRow;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -20,13 +19,9 @@ class SubjectProfileResponseTest {
     private static final ActingSubject ACTING = new ActingSubject("45645645646", "PERINA TESTNA FIRMA D.O.O",
             List.of("Direktor"), "70000000004", "Ana", "Horvat", Instant.parse("2026-10-08T10:00:00Z"));
 
-    private static DocumentContactRow contact() {
-        return new DocumentContactRow() {
-            public String getName() { return "Recepcija"; }
-            public String getPhone() { return "012345678"; }
-            public String getMobile() { return "0911234567"; }
-            public String getEmail() { return "info@firma.hr"; }
-        };
+    private static SubjectContact contact() {
+        return new SubjectContact("0911234567", "012345678", "Recepcija", "info@firma.hr",
+                SubjectContact.Source.DOKUMENT);
     }
 
     private static LegalEntityProfile profile() {
@@ -55,17 +50,19 @@ class SubjectProfileResponseTest {
         assertThat(r.kontaktTelefon()).isEqualTo("012345678");                        // 5
         assertThat(r.kontaktMobitel()).isEqualTo("0911234567");
         assertThat(r.kontaktEmail()).isEqualTo("info@firma.hr");                      // 6
+        assertThat(r.kontaktIzvor()).isEqualTo(SubjectContact.Source.DOKUMENT);
     }
 
     /** Zastupnik s dokumenta nije nužno NIAS osoba; funkcije i provjera ostaju njezine. */
     @Test
     void legalEntity_representativeIsOne_niasPersonStaysInVerification() {
-        SubjectProfileResponse r = SubjectProfileResponse.ofLegalEntity(ACTING, profile(), null);
+        SubjectProfileResponse r = SubjectProfileResponse.ofLegalEntity(ACTING, profile(), SubjectContact.NONE);
 
         assertThat(r.oib()).isEqualTo("11111111119");
         assertThat(r.pravnaOsoba().zastupnikOib()).isEqualTo("70000000004");
         assertThat(r.pravnaOsoba().izvor()).isEqualTo("E_OVLASTENJA");
         assertThat(r.kontaktEmail()).isNull();
+        assertThat(r.kontaktIzvor()).isNull();
     }
 
     /** Odabir tvrtke ({@code /acting-subject}) ne dohvaća sjedište. */

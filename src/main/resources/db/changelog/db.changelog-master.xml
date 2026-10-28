@@ -259,4 +259,7 @@
     <!-- Rješenje o kategorizaciji predaje i non-EU iznajmljivač: lessor_id, lessor_oib nullable. -->
     <include file="db/changelog/changes/143-categorization-decision-lessor-id.xml"/>
 
+    <!-- Kontakt sa zadnjeg RB-a za obrazac: indeksi na putu OIB → submission → RB. -->
+    <include file="db/changelog/changes/144-lessor-oib-rn-submission-index.xml"/>
+
 </databaseChangeLog>

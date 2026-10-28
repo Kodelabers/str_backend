@@ -108,6 +108,8 @@ public class LessorController {
                 lessor.getLastName(),
                 lessor.getEmail(),
                 lessor.getMobileNumber(),
+                lessor.getPhoneNumber(),
+                lessor.getContactName(),
                 lessor.getTaxNumber(),
                 countryName,
                 lessor.getApplicationStatus(),

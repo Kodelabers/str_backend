@@ -29,7 +29,8 @@ import java.util.List;
  * zapis ({@code RETENTION_DUE}); <b>ništa ne briše</b>. Time se opseg potvrđuje bez rizika.
  *
  * <p><b>TODO faza 2 (nakon poslovne/pravne potvrde opsega):</b> stvarno brisanje/anonimizacija
- * osobnih podataka (npr. {@code submission.pdf_content}, dokumenti iznajmljivača) + potvrda o
+ * osobnih podataka (npr. {@code submission.pdf_content}, dokumenti iznajmljivača, kontakt na snapshotu
+ * iznajmljivača — {@code lessor.email/mobile_number/phone_number/contact_name}) + potvrda o
  * brisanju u KP (BX1). Opseg brisanja je otvoreno pitanje i namjerno NIJE implementiran ovdje.
  * Napomena: detekcija preskače opozvane RB-ove s {@code valid_to = NULL} (moguće u legacy/mock
  * podacima) — prije faze 2 napraviti backfill {@code valid_to} iz revizijskog loga povlačenja.

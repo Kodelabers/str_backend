@@ -6,6 +6,7 @@ import com.str.backend.auth.SessionIdentityResolver;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.categorization.CategorizationDecisionStatus;
+import com.str.backend.config.ApplicationConfig;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.egop.ChangeRequestFilingService;
 import com.str.backend.exception.ConflictException;
@@ -67,7 +68,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@link NiasOibResolver} — kad on ne razriješi OIB, oba puta moraju vratiti 401 i ne dirati servis.
  */
 @ActiveProfiles("test")
-@Import({EffectiveOibResolver.class, ActingSubjectGuard.class})
+@Import({EffectiveOibResolver.class, ActingSubjectGuard.class, SubjectContactResolver.class, ApplicationConfig.class})
 @WebMvcTest(NiasController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class NiasFacilityControllerTest {
@@ -462,6 +463,7 @@ class NiasFacilityControllerTest {
         LessorEntity lessor = LessorEntity.create("Pero", "Perić", "Ilica", "1", "Zagreb", "Grad Zagreb", null);
         lessor.setLessorOib(OIB);
         lessor.applyCountryOfResidence(191);
+        lessor.applyContact("pero@example.hr", "Pero Perić", "012345678", "0911234567");
         when(lessorRepository.findFirstByLessorOibOrderByCreatedAtDesc(OIB)).thenReturn(Optional.of(lessor));
         CountryEntity croatia = mock(CountryEntity.class);
         when(croatia.getName()).thenReturn("Hrvatska");
@@ -470,7 +472,10 @@ class NiasFacilityControllerTest {
         mvc.perform(get("/api/nias/profile"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.firstName").value("Pero"))
-                .andExpect(jsonPath("$.countryName").value("Hrvatska"));
+                .andExpect(jsonPath("$.countryName").value("Hrvatska"))
+                // Telefon i kontakt osoba su samo za non-EU obrazac; u ime tvrtke bi bili tuđi.
+                .andExpect(jsonPath("$.phoneNumber").doesNotExist())
+                .andExpect(jsonPath("$.contactName").doesNotExist());
     }
 
     // ── pismeno „Zahtjev za promjenu podataka" ──────────────────────────────
@@ -564,10 +569,13 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.pravnaOsoba.ulica").value("ULICA CVIJETE ZUZORIĆ"))
                 .andExpect(jsonPath("$.pravnaOsoba.adresaIzvor").value("OIB_REGISTAR"))
                 .andExpect(jsonPath("$.kontaktTelefon").value("012345678"))
-                .andExpect(jsonPath("$.kontaktEmail").value("info@firma.hr"));
+                .andExpect(jsonPath("$.kontaktEmail").value("info@firma.hr"))
+                .andExpect(jsonPath("$.kontaktIzvor").value("DOKUMENT"));
 
         verify(subjectProfileService, never()).load(any(), any(), any());
         verify(strSubjectRepository, never()).findDocumentContactByOib(OIB);
+        // Snapshot tvrtke nosi kontakt tadašnjeg zastupnika — RB-ovi se u ime tvrtke ni ne traže.
+        verify(lessorRepository, never()).findLatestRbSnapshot(any(), any(), any(), any());
     }
 
     private static StrSubjectRepository.DocumentContactRow contact() {
@@ -592,6 +600,33 @@ class NiasFacilityControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.kontaktEmail").value("info@firma.hr"))
                 .andExpect(jsonPath("$.kontaktMobitel").value("0911234567"));
+    }
+
+    /**
+     * Kontakt sa zadnjeg RB-a ima prednost pred dokumentom iz eTurizma i uzima se cijeli; objekt s
+     * obrasca ({@code facilityId}, {@code prethodniRb}) ide u upit kao prednost RB-a istog objekta.
+     */
+    @Test
+    void subjectProfile_contactFromLatestRb_winsOverDocument() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(subjectProfileService.load(OIB, null, null)).thenReturn(new SubjectProfile(
+                OIB, "Test", "Korisnik", SubjectDataSource.STR_SUBJEKT, null,
+                "Ilica", "1", "Zagreb", "10000", "Zagreb", "Grad Zagreb", SubjectDataSource.STR_SUBJEKT));
+        LessorEntity snapshot = LessorEntity.create("Test", "Korisnik", "Ilica", "1", "Zagreb", "Grad Zagreb", null);
+        snapshot.applyContact("rb@example.hr", null, null, "0987654321");
+        when(lessorRepository.findLatestRbSnapshot(eq(OIB), eq("F-77"), eq("HR12345678"), any())).thenReturn(Optional.of(snapshot));
+        when(strSubjectRepository.findDocumentContactByOib(OIB)).thenReturn(Optional.of(contact()));
+
+        mvc.perform(get("/api/nias/subject").param("facilityId", "F-77").param("prethodniRb", "HR12345678"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.kontaktIzvor").value("RB"))
+                .andExpect(jsonPath("$.kontaktEmail").value("rb@example.hr"))
+                .andExpect(jsonPath("$.kontaktMobitel").value("0987654321"))
+                // prazno na RB-u ostaje prazno — dokument ga ne dopunjava
+                .andExpect(jsonPath("$.kontaktTelefon").doesNotExist())
+                .andExpect(jsonPath("$.kontaktOsoba").doesNotExist());
+
+        verify(strSubjectRepository, never()).findDocumentContactByOib(any());
     }
 
     /** Stavka 2: sva polja podnositelja vidljiva, s izvorom po grupi. */
