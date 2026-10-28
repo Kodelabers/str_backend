@@ -133,7 +133,7 @@ class RnFacilityVerificationTest {
 
     private static LessorRnSummaryDto summary(String rn, String facilityId) {
         return new LessorRnSummaryDto(rn, RnStatus.ACTIVE, LocalDate.of(2026, 10, 7),
-                "Apartman", "Ilica", "1", "Zagreb", "Apartman", false, null, facilityId);
+                "Apartman", "Ilica", "1", "Zagreb", "Apartman", false, null, null, facilityId);
     }
 
     private static FacilityVerificationRow row(Long facilityId, Boolean verified) {

@@ -8,6 +8,7 @@ import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.exception.ConflictException;
+import com.str.backend.objection.SuspensionObjectionService;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.rn.RnRepository;
@@ -63,6 +64,7 @@ class LessorControllerCategorizationDecisionTest {
     @MockBean AltchaService altchaService;
     @MockBean ReissueService reissueService;
     @MockBean CategorizationDecisionService categorizationDecisionService;
+    @MockBean SuspensionObjectionService suspensionObjectionService;
 
     @Test
     void upload_ownLessor_rnFromPath() throws Exception {

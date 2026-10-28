@@ -19,6 +19,7 @@ import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.objection.SuspensionObjectionService;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
@@ -84,6 +85,7 @@ class NiasFacilityControllerTest {
     @MockBean NiasOibResolver oibResolver;
     @MockBean NiasFacilityService facilityService;
     @MockBean CategorizationDecisionService categorizationDecisionService;
+    @MockBean SuspensionObjectionService suspensionObjectionService;
     @MockBean RnRepository rnRepository;
     @MockBean LessorRepository lessorRepository;
     @MockBean LessorDocumentRepository lessorDocumentRepository;
@@ -210,7 +212,7 @@ class NiasFacilityControllerTest {
     void registrations_carryFacilityVerified_withoutFacilityId() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         LessorRnSummaryDto row = new LessorRnSummaryDto("HR120001000000000123", RnStatus.ACTIVE,
-                LocalDate.of(2026, 10, 7), "Apartman", "Riva", "1", "Split", "Apartman", false, null, "153049");
+                LocalDate.of(2026, 10, 7), "Apartman", "Riva", "1", "Split", "Apartman", false, null, null, "153049");
         when(rnRepository.findByLessorOib(OIB)).thenReturn(List.of(row));
         when(rnFacilityVerification.withFacilityVerified(List.of(row))).thenReturn(List.of(row.withFacilityVerified(true)));
         when(reissueService.withReissueDeadlines(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -229,7 +231,7 @@ class NiasFacilityControllerTest {
     void registrations_carryPonovniZahtjevDo() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         LessorRnSummaryDto row = new LessorRnSummaryDto("HR120001000000000123", RnStatus.WITHDRAWN,
-                LocalDate.of(2026, 1, 7), "Apartman", "Riva", "1", "Split", "Apartman", false, null, null);
+                LocalDate.of(2026, 1, 7), "Apartman", "Riva", "1", "Split", "Apartman", false, null, null, null);
         when(rnRepository.findByLessorOib(OIB)).thenReturn(List.of(row));
         when(rnFacilityVerification.withFacilityVerified(List.of(row))).thenReturn(List.of(row));
         when(reissueService.withReissueDeadlines(List.of(row)))
