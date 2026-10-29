@@ -268,4 +268,7 @@
     <!-- Mock interne organizacije službenika (str): opseg podataka po županiji. Samo local. -->
     <include file="db/changelog/changes/146-str-internal-organization-local.xml"/>
 
+    <!-- Kvalificirani e-pečat izlaznih akata (STR eSeal API): ključ, GUID, kontrolni broj, razina. -->
+    <include file="db/changelog/changes/147-egop-pismeno-eseal.xml"/>
+
 </databaseChangeLog>

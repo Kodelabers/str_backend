@@ -4,6 +4,10 @@ import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.EgopSyncStatus;
 import com.str.backend.egop.exception.EgopBadRequestException;
+import com.str.backend.egop.exception.EgopSealingException;
+import com.str.backend.eseal.EsealException;
+import com.str.backend.eseal.EsealHttpClient;
+import com.str.backend.eseal.PdfSealer;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.request.SubmissionEntity;
 import hr.infodom.egov.pismeno.DokumentInfo;
@@ -21,12 +25,16 @@ import hr.infodom.egov.subjekt.SubjektInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +53,7 @@ class EgopFilingServiceTest {
     private EgopClient egopClient;
     private EgopFilingStore store;
     private EgopKpOtpremaService kpOtprema;
+    private PdfSealer sealer;
     private EgopFilingService service;
 
     private SubmissionEntity submission;
@@ -55,6 +64,7 @@ class EgopFilingServiceTest {
         egopClient = mock(EgopClient.class);
         store = mock(EgopFilingStore.class);
         kpOtprema = mock(EgopKpOtpremaService.class);
+        sealer = mock(PdfSealer.class);
         when(store.readSubjektOznaka(any())).thenReturn(Optional.empty());
         when(store.storeSubjektOznaka(any(), anyInt())).thenAnswer(inv -> inv.getArgument(1));
         when(store.findPismeno(any(), anyString(), anyString())).thenReturn(Optional.empty());
@@ -69,7 +79,7 @@ class EgopFilingServiceTest {
                 "Zahtjev za dodjelu registracijskog broja", "101",
                 "Obavijest o dodjeli registracijskog broja", "102"));
 
-        service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, properties("MINT", "str-svc"),
+        service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, sealer, properties("MINT", "str-svc"),
                 "", "NP");
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
@@ -206,7 +216,7 @@ class EgopFilingServiceTest {
 
     @Test
     void fileRegistration_usesConfiguredRjesavateljWhenSet() throws Exception {
-        service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, properties("MINT", "str-svc"),
+        service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, sealer, properties("MINT", "str-svc"),
                 "MINT\\ivan.ivic", "NP");
         givenSubjektAndPredmetCreated();
 
@@ -565,6 +575,265 @@ class EgopFilingServiceTest {
                 return pdf;
             }
         };
+    }
+
+    // --- kvalificirani e-pečat izlaznih akata ---------------------------------------
+
+    private static final byte[] PECACENI = "%PDF-pecaceni".getBytes();
+    private static final UUID GUID = UUID.fromString("3f2b8c1e-0d4a-4e57-9a61-2c7d5b9e8f10");
+
+    private void givenSealing() {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(store.freezeForSealing(any(), any(), anyString())).thenAnswer(
+                inv -> new EgopFilingStore.SealRequest("kljuc-0000000001", inv.getArgument(1)));
+        when(store.applySeal(any(), any(), any(), any(), any(), any())).thenReturn(true);
+        when(sealer.seal(any(), anyString(), any())).thenReturn(new EsealHttpClient.Sealed(
+                PECACENI, GUID, "ABCD-EFGH-JKMN", "B-LT", "sha-256=:x:", "1.0.0", false));
+    }
+
+    private EgopPismenoEntity givenAktSuspenzije() throws Exception {
+        lessor.assignEgopSubjekt(42);
+        submission.applyEgopPredmet(2026, 55, "334-01/26-01/55");
+        submission.applyEgopAktiPredmet(2026, 77, "334-06/11-26/77");
+        PredmetInfo postoji = new PredmetInfo();
+        postoji.setOperationSucceeded(true);
+        when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
+        when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o suspenziji registracijskog broja", "103"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1003, "529-06/26-3"));
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        return EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-1",
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
+    }
+
+    /**
+     * Pečatira se konačni dokument (s klasom i urbrojem), pod spremljenim ključem, a u eGOP i KP ide
+     * pečaćeni — nepečaćeni se sprema prije poziva da ga retry može poslati nepromijenjenog.
+     */
+    @Test
+    void fileAct_sealingEnabled_attachesSealedDocumentAndSendsKp() throws Exception {
+        givenSealing();
+        EgopPismenoEntity akt = givenAktSuspenzije();
+        byte[] konacni = "konacni".getBytes();
+
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.of(konacni));
+
+        verify(sealer).seal(konacni, "kljuc-0000000001", "529-06/26-3");
+        ArgumentCaptor<KreirajDokumentZaPismeno> dok = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dok.capture());
+        assertArrayEquals(PECACENI, dok.getValue().getAttachment());
+        verify(store).applySeal(akt.getId(), PECACENI, GUID, "ABCD-EFGH-JKMN", "B-LT", "sha-256=:x:");
+        assertTrue(akt.isSealed());
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(store, sealer, egopClient, kpOtprema);
+        order.verify(store).replacePdf(akt.getId(), konacni);
+        order.verify(store).freezeForSealing(eq(akt.getId()), eq(konacni), anyString());
+        order.verify(sealer).seal(any(), anyString(), any());
+        order.verify(egopClient).kreirajDokumentZaPismeno(any());
+        order.verify(kpOtprema).otpremi(akt.getId());
+    }
+
+    /** Bez pečata akt ne smije ni u eGOP ni u KP; razlog ostaje u poruci za sync_error. */
+    @Test
+    void fileAct_sealingFails_doesNotAttachOrSend() throws Exception {
+        givenSealing();
+        when(sealer.seal(any(), anyString(), any())).thenThrow(
+                new EsealException(422, "PDF_NOT_PDFA", "trace-1", false, null));
+        EgopPismenoEntity akt = givenAktSuspenzije();
+
+        EgopSealingException e = assertThrows(EgopSealingException.class,
+                () -> service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty()));
+
+        assertTrue(e.getMessage().contains("PDF_NOT_PDFA"));
+        assertTrue(e.getMessage().contains("trace-1"));
+        verify(egopClient, never()).kreirajDokumentZaPismeno(any());
+        verify(kpOtprema, never()).otpremi(any());
+        assertFalse(akt.isSealed());
+        assertFalse(akt.isDocumentAttached());
+    }
+
+    /** Retry nakon pečata, a prije prilaganja: nema novog rendera ni drugog pečatiranja. */
+    @Test
+    void fileAct_alreadySealed_attachesStoredSealWithoutRerender() throws Exception {
+        givenSealing();
+        EgopPismenoEntity akt = givenAktSuspenzije();
+        akt.applyPismeno(1003, "529-06/26-3", "103", false);
+        akt.applySeal(PECACENI, GUID, "ABCD-EFGH-JKMN", "B-LT", "sha-256=:x:");
+
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> {
+            throw new AssertionError("pečaćeni akt se ne smije renderirati ponovo");
+        });
+
+        verify(sealer, never()).seal(any(), anyString(), any());
+        ArgumentCaptor<KreirajDokumentZaPismeno> dok = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dok.capture());
+        assertArrayEquals(PECACENI, dok.getValue().getAttachment());
+        verify(kpOtprema).otpremi(akt.getId());
+    }
+
+    @Test
+    void fileAct_sealingDisabled_attachesDocumentAsBefore() throws Exception {
+        EgopPismenoEntity akt = givenAktSuspenzije();
+
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
+
+        verify(sealer, never()).seal(any(), anyString(), any());
+        ArgumentCaptor<KreirajDokumentZaPismeno> dok = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dok.capture());
+        assertArrayEquals("snimak".getBytes(), dok.getValue().getAttachment());
+    }
+
+    /** Pečatira se samo obavijest o dodjeli; zahtjev je podnesak stranke i ide kakav jest. */
+    @Test
+    void fileRegistration_sealingEnabled_sealsOnlyOutgoingNotice() throws Exception {
+        givenSubjektAndPredmetCreated();
+        givenSealing();
+        byte[] zahtjev = "zahtjev".getBytes();
+        byte[] dodjela = "dodjela".getBytes();
+
+        service.fileRegistration(submission, lessor, new EgopDocumentSupplier() {
+            @Override
+            public byte[] zahtjev(FilingReference filing) {
+                return zahtjev;
+            }
+
+            @Override
+            public byte[] obavijestODodjeli(FilingReference filing) {
+                return dodjela;
+            }
+        });
+
+        verify(sealer, times(1)).seal(dodjela, "kljuc-0000000001", "529-06/26-2");
+        ArgumentCaptor<KreirajDokumentZaPismeno> dok = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient, times(2)).kreirajDokumentZaPismeno(dok.capture());
+        assertArrayEquals(zahtjev, dok.getAllValues().get(0).getAttachment());
+        assertArrayEquals(PECACENI, dok.getAllValues().get(1).getAttachment());
+    }
+
+    /**
+     * Retry registracije nakon pada pečatiranja šalje spremljenu obavijest, ne novi render — servis
+     * bi drugačije bajtove pod istim ključem odbio s IDEMPOTENCY_KEY_REUSED.
+     */
+    @Test
+    void fileRegistration_retryAfterSealFailure_sealsStoredNotice() throws Exception {
+        givenSubjektAndPredmetCreated();
+        givenSealing();
+        EgopPismenoEntity izlazno = EgopPismenoEntity.create(submission.getSubmissionId(),
+                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
+                1002, "529-06/26-2", "102", false);
+        byte[] spremljena = "spremljena-dodjela".getBytes();
+        izlazno.replacePdf(spremljena);
+        ReflectionTestUtils.setField(izlazno, "sealIdempotencyKey", "kljuc-0000000001");
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.DODJELA.vrstaPismenaNaziv(),
+                EgopPismenoEntity.ACT_REF_REGISTRACIJA)).thenReturn(Optional.of(izlazno));
+
+        service.fileRegistration(submission, lessor, new EgopDocumentSupplier() {
+            @Override
+            public byte[] zahtjev(FilingReference filing) {
+                return "zahtjev".getBytes();
+            }
+
+            @Override
+            public byte[] obavijestODodjeli(FilingReference filing) {
+                throw new AssertionError("spremljena obavijest se ne renderira ponovo");
+            }
+        });
+
+        verify(sealer).seal(spremljena, "kljuc-0000000001", "529-06/26-2");
+        verify(store, never()).freezeForSealing(any(), any(), anyString());
+    }
+
+    /**
+     * Nakon konačnog odbijanja ključ je obrisan, pa retry renderira obavijest iznova (npr. sada kao
+     * PDF/A) i zamrzava je pod novim ključem — spremljeni stari bajtovi se ne šalju.
+     */
+    @Test
+    void fileRegistration_afterRejection_rendersNoticeAgain() throws Exception {
+        givenSubjektAndPredmetCreated();
+        givenSealing();
+        EgopPismenoEntity izlazno = EgopPismenoEntity.create(submission.getSubmissionId(),
+                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
+                1002, "529-06/26-2", "102", false);
+        izlazno.replacePdf("stara-dodjela".getBytes());
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.DODJELA.vrstaPismenaNaziv(),
+                EgopPismenoEntity.ACT_REF_REGISTRACIJA)).thenReturn(Optional.of(izlazno));
+        byte[] nova = "nova-dodjela".getBytes();
+
+        service.fileRegistration(submission, lessor, new EgopDocumentSupplier() {
+            @Override
+            public byte[] zahtjev(FilingReference filing) {
+                return "zahtjev".getBytes();
+            }
+
+            @Override
+            public byte[] obavijestODodjeli(FilingReference filing) {
+                return nova;
+            }
+        });
+
+        verify(store).freezeForSealing(eq(izlazno.getId()), eq(nova), anyString());
+        verify(sealer).seal(nova, "kljuc-0000000001", "529-06/26-2");
+    }
+
+    /**
+     * Retry akta koji je poslan na pečatiranje, a odgovor nije stigao (timeout): ne renderira se
+     * ponovo i ide isti par bajtovi + ključ — servis tada vraća pečat iz prvog poziva.
+     */
+    @Test
+    void fileAct_frozenButUnsealed_resendsSameBytesUnderSameKey() throws Exception {
+        givenSealing();
+        EgopPismenoEntity akt = givenAktSuspenzije();
+        akt.applyPismeno(1003, "529-06/26-3", "103", false);
+        akt.replacePdf("zamrznuti".getBytes());
+        ReflectionTestUtils.setField(akt, "sealIdempotencyKey", "kljuc-iz-prvog-poziva");
+
+        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> {
+            throw new AssertionError("zamrznuti akt se ne smije renderirati ponovo");
+        });
+
+        verify(sealer).seal("zamrznuti".getBytes(), "kljuc-iz-prvog-poziva", "529-06/26-3");
+        verify(store, never()).freezeForSealing(any(), any(), anyString());
+        verify(store, never()).replacePdf(any(), any());
+    }
+
+    /** Konačno odbijanje (4xx, retryable=false): pečata nema, ključ se briše za novi pokušaj. */
+    @Test
+    void fileAct_nonRetryableRejection_clearsKeyForNextAttempt() throws Exception {
+        givenSealing();
+        when(sealer.seal(any(), anyString(), any())).thenThrow(
+                new EsealException(422, "PDF_NOT_PDFA", "trace-1", false, null));
+        EgopPismenoEntity akt = givenAktSuspenzije();
+
+        assertThrows(EgopSealingException.class,
+                () -> service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty()));
+
+        verify(store).clearSealKey(akt.getId(), "kljuc-0000000001");
+    }
+
+    /** Timeout ili 503: servis je možda pečatirao — ključ i bajtovi ostaju za replay. */
+    @Test
+    void fileAct_retryableFailure_keepsKey() throws Exception {
+        givenSealing();
+        when(sealer.seal(any(), anyString(), any())).thenThrow(
+                new EsealException(0, "TRANSPORT", null, true, "SocketTimeoutException"));
+        EgopPismenoEntity akt = givenAktSuspenzije();
+
+        assertThrows(EgopSealingException.class,
+                () -> service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty()));
+
+        verify(store, never()).clearSealKey(any(), any());
+    }
+
+    /** Paralelni tok je akt već priložio: ovaj ga ne prilaže drugi put. */
+    @Test
+    void fileAct_attachedMeanwhileByParallelFlow_doesNotAttachAgain() throws Exception {
+        givenSealing();
+        when(store.applySeal(any(), any(), any(), any(), any(), any())).thenReturn(false);
+        EgopPismenoEntity akt = givenAktSuspenzije();
+
+        assertThrows(EgopSealingException.class,
+                () -> service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty()));
+
+        verify(egopClient, never()).kreirajDokumentZaPismeno(any());
+        verify(kpOtprema, never()).otpremi(any());
     }
 
 }

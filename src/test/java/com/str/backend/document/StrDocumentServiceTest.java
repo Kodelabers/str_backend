@@ -51,14 +51,14 @@ class StrDocumentServiceTest {
             new DocumentProperties.Potpisnik("Ivana Ivić", "Voditeljica postupka"),
             new DocumentProperties.Epecat(false, null, null, null, null),
             Map.of("suspenzija", "može se pokrenuti upravni spor u roku od 30 dana."),
-            false);
+            false, false);
 
     private static final DocumentProperties PROPERTIES_S_PECATOM = new DocumentProperties(
             PROPERTIES.tijelo(), PROPERTIES.potpisnik(),
             new DocumentProperties.Epecat(true, "CN=Fina RDC 2020,O=Financijska agencija,C=HR",
                     "CN=KVALIFICIRANI ELEKTRONIČKI PEČAT MINISTARSTVA TURIZMA I SPORTA",
                     "SHA256withRSA", "https://provjera.example.hr/"),
-            PROPERTIES.uputa(), false);
+            PROPERTIES.uputa(), false, false);
 
     static Set<StrDocumentType> templateBackedTypes() {
         return StrDocumentType.templateBackedTypes();
@@ -222,6 +222,42 @@ class StrDocumentServiceTest {
         assertThat(text).doesNotContain("Voditeljica postupka");
     }
 
+    /**
+     * PDF/A-1b: PDF 1.4, sRGB output intent i XMP s oznakom razine. Bez toga eSeal može odbiti akt
+     * s PDF_NOT_PDFA. Ovo provjerava oznake, ne punu sukladnost — nju potvrđuje validator ili servis.
+     */
+    @ParameterizedTest
+    @MethodSource("aktiTijela")
+    void pdfa_marksDocumentAsPdfA1b(StrDocumentType type) throws IOException {
+        DocumentProperties pdfa = new DocumentProperties(PROPERTIES.tijelo(), PROPERTIES.potpisnik(),
+                PROPERTIES.epecat(), PROPERTIES.uputa(), false, true);
+
+        byte[] pdf = service(pdfa).render(type, RN, "razlog");
+
+        assertThat(new String(pdf, 0, 8, java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("%PDF-1.4");
+        PdfReader reader = new PdfReader(pdf);
+        try {
+            assertThat(reader.getCatalog().getAsArray(PdfName.OUTPUTINTENTS)).isNotNull();
+            String xmp = new String(reader.getMetadata(), java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(xmp).contains("pdfaid:part").contains("1");
+            assertThat(xmp).containsPattern("pdfaid:conformance[^A-Za-z]*B");
+        } finally {
+            reader.close();
+        }
+    }
+
+    @Test
+    void withoutPdfa_documentIsUnchanged() throws IOException {
+        byte[] pdf = service.render(StrDocumentType.SUSPENZIJA, RN, "razlog");
+
+        PdfReader reader = new PdfReader(pdf);
+        try {
+            assertThat(reader.getCatalog().getAsArray(PdfName.OUTPUTINTENTS)).isNull();
+        } finally {
+            reader.close();
+        }
+    }
+
     /** Blok po uzoru na Poreznu upravu: podaci o pečatu, broj zapisa, QR i tekst provjere. */
     @Test
     void act_printsSealBlock_whenSealIsEnabled() throws IOException {
@@ -245,7 +281,7 @@ class StrDocumentServiceTest {
     void sealBlock_withoutCertificateConfig_showsVisibleMarker() throws IOException {
         DocumentProperties bezCertifikata = new DocumentProperties(PROPERTIES.tijelo(),
                 PROPERTIES.potpisnik(), new DocumentProperties.Epecat(true, null, null, null, null),
-                PROPERTIES.uputa(), false);
+                PROPERTIES.uputa(), false, false);
 
         String text = textOf(service(bezCertifikata).render(StrDocumentType.DODJELA, RN, null));
 
@@ -288,7 +324,7 @@ class StrDocumentServiceTest {
                 new DocumentProperties.Tijelo("ministarstvo turizma i sporta", "12345678901",
                         "Prisavlje 14", "Zagreb", "Uprava za turizam",
                         "članka 6. Uredbe (EU) 2024/1028"),
-                PROPERTIES.potpisnik(), PROPERTIES.epecat(), PROPERTIES.uputa(), false);
+                PROPERTIES.potpisnik(), PROPERTIES.epecat(), PROPERTIES.uputa(), false, false);
         when(rnRepository.findDetail(RN)).thenReturn(Optional.of(detail(RnStatus.SUSPENSION_PROPOSED)));
 
         String text = textOf(service(malimSlovom).render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "razlog"));
@@ -501,7 +537,7 @@ class StrDocumentServiceTest {
         DocumentProperties bezUrla = new DocumentProperties(PROPERTIES.tijelo(),
                 PROPERTIES.potpisnik(),
                 new DocumentProperties.Epecat(true, "CN=Fina RDC 2020", "CN=PEČAT", null, null),
-                PROPERTIES.uputa(), false);
+                PROPERTIES.uputa(), false, false);
 
         byte[] pdf = service(bezUrla).render(StrDocumentType.DODJELA, RN, null);
 

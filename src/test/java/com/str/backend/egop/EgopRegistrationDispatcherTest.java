@@ -20,6 +20,7 @@ import com.str.backend.request.SubmissionEntity;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.FacilityRooms;
+import com.str.backend.eseal.PdfSealer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +31,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,6 +64,7 @@ class EgopRegistrationDispatcherTest {
     private EmailService emailService;
     private MailRetryStore mailRetryStore;
     private FacilityRooms facilityRooms;
+    private PdfSealer sealer;
     private EgopRegistrationDispatcher dispatcher;
 
     private SubmissionEntity submission;
@@ -82,12 +85,14 @@ class EgopRegistrationDispatcherTest {
         emailService = mock(EmailService.class);
         mailRetryStore = mock(MailRetryStore.class);
         facilityRooms = mock(FacilityRooms.class);
+        sealer = mock(PdfSealer.class);
         when(facilityRooms.forFacility(any())).thenReturn(Optional.empty());
         EgopRetryPolicy retryPolicy =
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2));
         dispatcher = new EgopRegistrationDispatcher(store, accommodationRepository,
                 lessorRepository, rnRepository, accommodationTypeRepository, pdfGenerator,
-                documentService, egopFilingService, retryPolicy, emailService, mailRetryStore, facilityRooms);
+                documentService, egopFilingService, retryPolicy, emailService, mailRetryStore, facilityRooms,
+                sealer);
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
         submission = SubmissionEntity.create(null, lessor.getLessorId(), null, null, null, null);
@@ -176,6 +181,48 @@ class EgopRegistrationDispatcherTest {
         assertArrayEquals("dodjela-urbroj".getBytes(), mail.pdf());
         verify(documentService, never()).render(any(), anyString(), any());
         verify(store).markRnEmailSent(submission.getSubmissionId());
+    }
+
+    /**
+     * Uz eSeal non-EU iznajmljivač dobiva pečaćenu obavijest iz izlaznog pismena — ne render iz
+     * urudžbiranja, koji je nastao prije pečata.
+     */
+    @Test
+    void dispatch_nonEuLessor_sealingEnabled_emailsSealedStoredNotice() throws Exception {
+        when(sealer.isEnabled()).thenReturn(true);
+        EgopPismenoEntity izlazno = EgopPismenoEntity.create(submission.getSubmissionId(),
+                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, 1002,
+                "2181-26-2", "102", false);
+        izlazno.applySeal("%PDF-pecaceni".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.DODJELA.vrstaPismenaNaziv(),
+                EgopPismenoEntity.ACT_REF_REGISTRACIJA)).thenReturn(Optional.of(izlazno));
+        FilingReference filing = new FilingReference("UP/I-334-01/26-01/1", "2181-26-2");
+        when(documentService.render(eq(StrDocumentType.DODJELA), anyString(), isNull(), eq(filing)))
+                .thenReturn("nepecaceni-render".getBytes());
+        when(egopFilingService.fileRegistration(any(), any(), any())).thenAnswer(inv -> {
+            EgopDocumentSupplier documents = inv.getArgument(2);
+            documents.obavijestODodjeli(filing);
+            return new EgopFilingService.FilingResult("KLASA: x, URBROJ: y", "zahtjev".getBytes());
+        });
+
+        dispatcher.dispatch(submission.getSubmissionId());
+
+        assertArrayEquals("%PDF-pecaceni".getBytes(), sentMail().pdf());
+    }
+
+    /** Pečata još nema (pad pečatiranja): dostava čeka u redu ponovnog slanja, ne ide nepečaćena. */
+    @Test
+    void dispatch_nonEuLessor_sealingEnabled_notSealed_defersEmail() throws Exception {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(egopFilingService.fileRegistration(any(), any(), any()))
+                .thenThrow(new EgopBadRequestException("eseal status=422 error_code=PDF_NOT_PDFA"));
+
+        dispatcher.dispatch(submission.getSubmissionId());
+
+        verify(emailService, never()).sendRnIssuedNotification(any());
+        verify(mailRetryStore).recordFailure(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId(),
+                "not_sealed");
+        verify(store, never()).markRnEmailSent(any());
     }
 
     /** Urudžbiranje nije stiglo do izlaznog pismena — akt se renderira bez URBROJ-a i ipak šalje. */

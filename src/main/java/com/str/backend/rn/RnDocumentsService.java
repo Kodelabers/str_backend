@@ -137,6 +137,23 @@ public class RnDocumentsService {
     }
 
     /**
+     * Pečaćena obavijest o dodjeli, kad postoji — ista koja je priložena u eGOP i otpremljena u KP.
+     * Bez nje se obavijest renderira na zahtjev (eSeal ugašen, ili pečat još nije stigao).
+     */
+    @Transactional(readOnly = true)
+    public Optional<byte[]> sealedDodjela(String rn) {
+        RnEntity entity = rnRepository.findById(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
+        if (entity.getSubmissionId() == null) {
+            return Optional.empty();
+        }
+        return egopPismenoRepository.findBySubmissionIdAndVrstaPismenaNazivAndActRef(entity.getSubmissionId(),
+                        StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.ACT_REF_REGISTRACIJA)
+                .filter(EgopPismenoEntity::isSealed)
+                .map(EgopPismenoEntity::getPdfContent);
+    }
+
+    /**
      * Urudžbene oznake obavijesti o dodjeli — KLASA s predmeta, URBROJ i JOP s izlaznog
      * pismena registracije (isti brojevi kao na verziji poslanoj eGOP-u). Kad urudžbiranje nije
      * (uspješno) provedeno, URBROJ i JOP ostaju prazni i akt se renderira samo s KLASOM.

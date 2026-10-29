@@ -5,6 +5,9 @@ import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.egop.EgopPismenoEntity;
+import com.str.backend.egop.EgopPismenoRepository;
+import com.str.backend.eseal.PdfSealer;
 import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.event.RnLifecycleEvent;
@@ -31,6 +34,8 @@ class RnLifecycleEmailListenerTest {
     private StrDocumentService documentService;
     private EmailService emailService;
     private MailRetryStore retryStore;
+    private PdfSealer sealer;
+    private EgopPismenoRepository pismenoRepository;
     private RnLifecycleEmailListener listener;
 
     @BeforeEach
@@ -39,8 +44,10 @@ class RnLifecycleEmailListenerTest {
         documentService = mock(StrDocumentService.class);
         emailService = mock(EmailService.class);
         retryStore = mock(MailRetryStore.class);
+        sealer = mock(PdfSealer.class);
+        pismenoRepository = mock(EgopPismenoRepository.class);
         listener = new RnLifecycleEmailListener(lookup, documentService,
-                new DocumentLabels(), emailService, retryStore);
+                new DocumentLabels(), emailService, retryStore, sealer, pismenoRepository);
 
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com")));
         when(documentService.render(any(), any(), any())).thenReturn("pdf".getBytes());
@@ -281,6 +288,51 @@ class RnLifecycleEmailListenerTest {
 
         verify(emailService, never()).sendRnLifecycleNotification(any());
         verify(retryStore).abandon(MailRetryEntity.Kind.RN_LIFECYCLE, logId, "missing_log");
+    }
+
+    /** Non-EU uz eSeal: mail je dostava, pa nosi pečaćeni akt iz eGOP toka, ne novi render. */
+    @Test
+    void nonEu_sealingEnabled_attachesSealedAct() {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                null, null);
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, event.logId().toString(),
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
+        akt.applySeal("%PDF-pecaceni".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
+        when(pismenoRepository.findFirstByRnAndActRef(RN, event.logId().toString())).thenReturn(Optional.of(akt));
+
+        listener.onLifecycleChange(event);
+
+        assertThat(captured().pdf()).isEqualTo("%PDF-pecaceni".getBytes());
+        verify(documentService, never()).render(any(), any(), any());
+    }
+
+    /** Pečat još nije stigao: dostava čeka u redu ponovnog slanja umjesto da ode nepečaćena. */
+    @Test
+    void nonEu_sealingEnabled_notSealedYet_defersMail() {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                null, null);
+        when(pismenoRepository.findFirstByRnAndActRef(RN, event.logId().toString())).thenReturn(Optional.empty());
+
+        listener.onLifecycleChange(event);
+
+        verify(emailService, never()).sendRnLifecycleNotification(any());
+        verify(retryStore).recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "not_sealed");
+    }
+
+    /** Iznajmljivač s OIB-om akt prima u pretinac; mail i dalje nosi presliku kao dosad. */
+    @Test
+    void withOib_sealingEnabled_keepsCopyAttachment() {
+        when(sealer.isEnabled()).thenReturn(true);
+
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
+                RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
+
+        assertThat(captured().pdf()).isEqualTo("pdf".getBytes());
+        verify(pismenoRepository, never()).findFirstByRnAndActRef(any(), any());
     }
 
     private RnLifecycleMail captured() {

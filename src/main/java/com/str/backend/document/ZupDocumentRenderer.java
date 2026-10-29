@@ -22,6 +22,8 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.awt.Color;
+import java.awt.color.ColorSpace;
+import java.awt.color.ICC_Profile;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -128,8 +130,15 @@ public class ZupDocumentRenderer {
             Document doc = new Document(PageSize.A4,
                     MARGINA_LIJEVO, MARGINA_DESNO, MARGINA_GORE, MARGINA_DOLJE);
             PdfWriter writer = PdfWriter.getInstance(doc, out);
+            if (properties.pdfa()) {
+                pdfaPrijeOtvaranja(doc, writer, template);
+            }
             writer.setPageEvent(new Podnozje(ctx.getOrDefault("akt.klasa", "")));
             doc.open();
+            if (properties.pdfa()) {
+                writer.setOutputIntents("Custom", "", "http://www.color.org", "sRGB IEC61966-2.1",
+                        ICC_Profile.getInstance(ColorSpace.CS_sRGB));
+            }
 
             // Prolaz kroz values() umjesto niza ručnih poziva: nova sekcija u ZupSection time
             // automatski dobiva svoje mjesto na papiru. S ručnim popisom bi se dodala u enum,
@@ -161,12 +170,32 @@ public class ZupDocumentRenderer {
             zavrsniBlok.setSpacingBefore(ZupSection.POTPISNIK.spacingBefore());
             doc.add(zavrsniBlok);
 
+            if (properties.pdfa()) {
+                // XMP se gradi iz info rječnika, pa ide na kraju, kad su naslov i autor postavljeni.
+                writer.createXmpMetadata();
+            }
             doc.close();
             return out.toByteArray();
         } catch (DocumentException | IOException e) {
             throw new DocumentTemplateException(
                     "Neuspješan render akta " + template.type() + " (" + template.origin() + ")", e);
         }
+    }
+
+    /**
+     * PDF/A-1b (ISO 19005-1): PDF 1.4, svi fontovi ugrađeni, boje vezane uz sRGB output intent i XMP
+     * s oznakom razine. U tom načinu OpenPDF sam odbija neugrađeni font ili prozirnost, pa akt koji
+     * ne bi bio PDF/A pada na renderu umjesto na pečatiranju.
+     */
+    private void pdfaPrijeOtvaranja(Document doc, PdfWriter writer, ZupTemplate template) {
+        writer.setPdfVersion(PdfWriter.VERSION_1_4);
+        writer.setPDFXConformance(PdfWriter.PDFA1B);
+        doc.addTitle(template.type().vrstaPismenaNaziv());
+        String tijelo = properties.tijelo().naziv();
+        if (tijelo != null && !tijelo.isBlank()) {
+            doc.addAuthor(tijelo);
+        }
+        doc.addCreator("STR");
     }
 
     /**

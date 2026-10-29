@@ -2,6 +2,7 @@ package com.str.backend.egop;
 
 import com.str.backend.domain.EgopSyncStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,4 +87,25 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
                                    @Param("notAfter") Instant notAfter,
                                    @Param("notBefore") Instant notBefore,
                                    @Param("now") Instant now);
+
+    /**
+     * Zamrzava dokument za pečatiranje: bajtovi i ključ upisuju se zajedno, i samo ako akt ključ još
+     * nema. Inline slanje i retry job (ili druga instanca) koji se preklope tako šalju iste bajtove
+     * pod istim ključem — inače bi servis drugi zahtjev odbio s IDEMPOTENCY_KEY_REUSED.
+     */
+    @Modifying
+    @Query("UPDATE EgopPismenoEntity p SET p.pdfContent = :pdf, p.sealIdempotencyKey = :key, p.updatedAt = :now"
+            + " WHERE p.id = :id AND p.sealIdempotencyKey IS NULL AND p.documentAttached = false")
+    int freezeForSealing(@Param("id") UUID id, @Param("pdf") byte[] pdf, @Param("key") String key,
+                         @Param("now") Instant now);
+
+    /** Odmrzava nepečaćeni akt nakon konačnog odbijanja — sljedeći pokušaj ide s novim dokumentom i ključem. */
+    @Modifying
+    @Query("UPDATE EgopPismenoEntity p SET p.sealIdempotencyKey = NULL, p.updatedAt = :now"
+            + " WHERE p.id = :id AND p.sealIdempotencyKey = :key AND p.sealedAt IS NULL")
+    int clearSealKey(@Param("id") UUID id, @Param("key") String key, @Param("now") Instant now);
+
+    /** Akt životnog ciklusa po prijelazu koji ga je izazvao ({@code act_ref} = {@code log_id}). */
+    @Transactional(readOnly = true)
+    Optional<EgopPismenoEntity> findFirstByRnAndActRef(String rn, String actRef);
 }

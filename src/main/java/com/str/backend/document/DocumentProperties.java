@@ -21,7 +21,13 @@ public record DocumentProperties(
         /** slug vrste akta → tekst upute; vidi {@link #uputaZa(StrDocumentType)}. */
         Map<String, String> uputa,
         /** Razvojna pogodnost: čita predloške pri svakom renderu umjesto iz cachea. */
-        boolean reload
+        boolean reload,
+        /**
+         * Akti tijela izlaze kao PDF/A-1b (ISO 19005): sRGB output intent i XMP oznaka razine.
+         * eSeal servis može odbiti PDF koji nije PDF/A ({@code PDF_NOT_PDFA}), a pečat na PDF/A
+         * ulazu ostavlja dokument prikladnim za arhivu. Prekidač dok se ne potvrdi što servis traži.
+         */
+        boolean pdfa
 ) {
 
     private static final String DEFAULT_UPUTA =
@@ -67,9 +73,10 @@ public record DocumentProperties(
      * <b>samo</b> kvalificiranim elektroničkim pečatom. Dok pečata nema, blok e-pečata se ne
      * ispisuje — tvrdnja o ovjeri na nepečaćenom PDF-u bila bi neistinita izjava na aktu.
      *
-     * <p>Podaci o certifikatu su zasad konfiguracija, jer pečatiranje još ne postoji. Kad dođe
-     * FINA certifikat, čitat će se iz njega, a {@code urlProvjere} vodi na portal za provjeru
-     * izvornika (broj zapisa + kontrolni broj), koji je dio iste faze.
+     * <p>Ovo je samo vizualni blok; pečat stavlja eSeal servis ({@code str.eseal.*}). Podaci o
+     * certifikatu su zasad konfiguracija, a broj zapisa i kontrolni broj u bloku nisu oni koje
+     * servis vrati ({@code Document-Guid}, {@code Control-Number}) — zato blok ostaje ugašen dok se
+     * ne odluči tko ih ispisuje (docs/ESEAL-SPREMNOST.md).
      */
     public record Epecat(
             boolean enabled,

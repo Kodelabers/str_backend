@@ -35,6 +35,83 @@ class EgopAktPersistenceTest {
     @Autowired
     private SubmissionRepository submissionRepository;
 
+    @Autowired
+    private EgopFilingStore filingStore;
+
+    /** Prvi tok zamrzava svoje bajtove i ključ; drugi dobiva taj isti par, a ne svoj. */
+    @Test
+    void freezeForSealing_secondCallerGetsFirstCallersKeyAndBytes() {
+        EgopPismenoEntity akt = pismenoRepository.saveAndFlush(akt(submission(), UUID.randomUUID().toString()));
+
+        EgopFilingStore.SealRequest prvi = filingStore.freezeForSealing(akt.getId(), "prvi".getBytes(), "kljuc-prvi-000001");
+        EgopFilingStore.SealRequest drugi = filingStore.freezeForSealing(akt.getId(), "drugi".getBytes(), "kljuc-drugi-00001");
+
+        assertThat(prvi.key()).isEqualTo("kljuc-prvi-000001");
+        assertThat(drugi.key()).isEqualTo("kljuc-prvi-000001");
+        assertThat(drugi.pdf()).isEqualTo("prvi".getBytes());
+        assertThat(pismenoRepository.findById(akt.getId()).orElseThrow().getPdfContent()).isEqualTo("prvi".getBytes());
+    }
+
+    /** Brisanje ključa samo za ključ s kojim je zahtjev odbijen, i nikad nakon pečata. */
+    @Test
+    void clearSealKey_onlyForSameKeyAndUnsealed() {
+        EgopPismenoEntity akt = pismenoRepository.saveAndFlush(akt(submission(), UUID.randomUUID().toString()));
+        filingStore.freezeForSealing(akt.getId(), "pdf".getBytes(), "kljuc-0000000001");
+
+        filingStore.clearSealKey(akt.getId(), "neki-drugi-kljuc");
+        assertThat(pismenoRepository.findById(akt.getId()).orElseThrow().isSealFrozen()).isTrue();
+
+        filingStore.applySeal(akt.getId(), "%PDF-pecat".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT",
+                "sha-256=:x:");
+        filingStore.clearSealKey(akt.getId(), "kljuc-0000000001");
+        EgopPismenoEntity pecaceni = pismenoRepository.findById(akt.getId()).orElseThrow();
+        assertThat(pecaceni.isSealFrozen()).isTrue();
+        assertThat(pecaceni.isSealed()).isTrue();
+        assertThat(pecaceni.getPdfContent()).isEqualTo("%PDF-pecat".getBytes());
+    }
+
+    @Test
+    void clearSealKey_unsealed_allowsNewFreeze() {
+        EgopPismenoEntity akt = pismenoRepository.saveAndFlush(akt(submission(), UUID.randomUUID().toString()));
+        filingStore.freezeForSealing(akt.getId(), "stari".getBytes(), "kljuc-stari-00001");
+
+        filingStore.clearSealKey(akt.getId(), "kljuc-stari-00001");
+        EgopFilingStore.SealRequest novi = filingStore.freezeForSealing(akt.getId(), "novi".getBytes(), "kljuc-novi-000001");
+
+        assertThat(novi.key()).isEqualTo("kljuc-novi-000001");
+        assertThat(novi.pdf()).isEqualTo("novi".getBytes());
+    }
+
+    /** Zakašnjeli pad paralelnog toka ne smije dovršeni (SYNCED) akt vratiti na FAILED. */
+    @Test
+    void markAktFailed_onSyncedAct_isNoOp() {
+        EgopPismenoEntity akt = akt(submission(), UUID.randomUUID().toString());
+        akt.applyPismeno(1, "urbroj", "103", false);
+        akt.markDocumentAttached();
+        pismenoRepository.saveAndFlush(akt);
+
+        filingStore.markAktFailed(akt.getId(), "kasni pad", Instant.now());
+
+        EgopPismenoEntity nakon = pismenoRepository.findById(akt.getId()).orElseThrow();
+        assertThat(nakon.getStatus()).isEqualTo(EgopSyncStatus.SYNCED);
+        assertThat(nakon.getSyncError()).isNull();
+    }
+
+    /** Pečat koji stigne nakon što je drugi tok akt priložio ne dira priloženi dokument. */
+    @Test
+    void applySeal_afterAttach_isNoOp() {
+        EgopPismenoEntity akt = akt(submission(), UUID.randomUUID().toString());
+        akt.applyPismeno(1, "urbroj", "103", false);
+        akt.markDocumentAttached();
+        pismenoRepository.saveAndFlush(akt);
+
+        boolean applied = filingStore.applySeal(akt.getId(), "%PDF-pecat".getBytes(), UUID.randomUUID(),
+                "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
+
+        assertThat(applied).isFalse();
+        assertThat(pismenoRepository.findById(akt.getId()).orElseThrow().isSealed()).isFalse();
+    }
+
     /**
      * Ciklus suspenzija → reaktivacija → suspenzija daje dvije obavijesti iste vrste nad istim
      * submissionom. Pod ključem iz changeseta 053 drugi upis bi pao.

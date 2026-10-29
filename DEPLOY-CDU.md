@@ -480,6 +480,74 @@ docker logs str-backend-cdu 2>&1 | grep -E "oib_registry|shared_session_cookie|n
 
 Zatim provjeriti da `GET /api/nias/me` i dalje vraća 200, tj. da njihov servis nije zamijenio sesiju.
 
+### 8d. eSeal — kvalificirani e-pečat izlaznih akata
+
+Detalji i otvorena pitanja pružatelju: `docs/ESEAL-SPREMNOST.md`. Prvi deploy je **namjerno
+dijagnostički**: pali se na CDU-u da se vidi što servis kaže na naše akte.
+
+**1. Mreža i ključ s kutije i iz kontejnera** (prije paljenja):
+
+```bash
+cd /home/vviskov/str-rn/str_backend && set -a && . ./.env.cdu && set +a   # ESEAL_* u ljusku
+curl -sS --max-time 20 -X POST "$ESEAL_BASE_URL/api/v1/seals/pdf" -H "X-API-Key: $ESEAL_API_KEY"
+# iz kontejnera (ako slika nema curl, dovoljna je provjera s kutije):
+docker exec str-backend-cdu sh -c 'curl -sS --max-time 20 -X POST "$ESEAL_BASE_URL/api/v1/seals/pdf" -H "X-API-Key: $ESEAL_API_KEY"'
+```
+
+Očekivano: `400` s `"errorCode":"IDEMPOTENCY_KEY_MISSING"` — ruta, TLS i ključ rade (`401` = ključ;
+vješanje = firewall; TLS greška = CA lanac servisa nije u JDK truststoreu).
+
+**2. `.env.cdu`:**
+
+```bash
+ESEAL_ENABLED=true
+ESEAL_BASE_URL=<base url>
+ESEAL_API_KEY=<ključ>
+ESEAL_PROJECT=<eseal.project>
+STR_DOCUMENTS_PDFA=false      # prvi prolaz bez PDF/A, drugi s true (bez rebuilda, samo korak 7)
+```
+
+**3. Nakon `up`:**
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "startup_eseal|eseal base="
+```
+
+Očekivano: `startup_eseal enabled=true … api_key=postavljen … pdfa=false` i `eseal base=… project=…`.
+Uz `enabled=true` bez URL-a, ključa ili projekta backend namjerno ne krene (poruka navodi što fali).
+
+**4. Okidači:** nova registracija (obavijest o dodjeli) i radnja nad RB-om (prijedlog suspenzije,
+povlačenje…). Pečatiraju se samo izlazni akti; zahtjev, opoziv i prigovor stranke ne.
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "eseal_seal|eseal_pismeno|not_sealed" | tail -20
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `eseal_seal ishod=ok status=201 … seal_level=B-LT` | akt pečatiran; isti PDF ide u eGOP i KP |
+| `ishod=greska status=422 error_code=PDF_NOT_PDFA` | servis traži PDF/A → ponoviti sa `STR_DOCUMENTS_PDFA=true` |
+| `error_code=PDF_NO_SEAL_SPACE` / `PDF_POLICY_VIOLATION` / `PDF_UNSUPPORTED_FEATURE` | servis nešto traži od PDF-a što specifikacija ne opisuje — `trace_id` i akt poslati pružatelju |
+| `status=401` / `403 PROJECT_NOT_ALLOWED` | ključ ili `ESEAL_PROJECT` |
+| `ishod=transport_error … cause=…` | mreža, TLS ili timeout (90 s) |
+| `error_code=DIGEST_MISMATCH` / `RESPONSE_INVALID` | odgovor nije prihvaćen kao pečaćeni PDF |
+| `eseal_pismeno_failed … novi_kljuc=true` | konačno odbijanje: sljedeći pokušaj renderira akt iznova pod novim ključem |
+| `egop_email_deferred` / `rn_lifecycle_mail_deferred reason=not_sealed` | non-EU dostava mailom čeka pečat (MailRetryJob, 5 min) |
+
+Isto stoji i u bazi:
+
+```sql
+SELECT vrsta_pismena_naziv, ur_broj, status, sync_error, seal_level, sealed_at, seal_document_guid
+FROM str_rn.egop_pismeno ORDER BY created_at DESC LIMIT 10
+```
+
+**5. Pečat u PDF-u:** obavijest o dodjeli ili akt životnog ciklusa otvoriti iz popisa dokumenata RB-a
+i u Adobe Readeru pogledati panel potpisa. Dok pečata nema, portal pokazuje nepečaćenu verziju.
+
+**Na CDU-u eGOP je mock i nema `EgopRetryJob`:** pali pečat se ne ponavlja sam; urudžba te
+registracije ostaje nedovršena (RB je izdan i valjan). Za novi pokušaj — nova radnja. Gašenje:
+`ESEAL_ENABLED=false`, korak 7.
+
 ## 9. Iz browsera
 
 ```

@@ -160,7 +160,7 @@ class ZupContextFactoryTest {
         DocumentProperties.Epecat bezUrla =
                 new DocumentProperties.Epecat(true, "CN=Fina RDC 2020", "CN=PEČAT", null, null);
         Map<String, String> ctx = new ZupContextFactory(
-                new DocumentProperties(TIJELO, null, bezUrla, Map.of(), false), labels)
+                new DocumentProperties(TIJELO, null, bezUrla, Map.of(), false, false), labels)
                 .forRn(StrDocumentType.DODJELA, detail(LocalDate.of(2026, 9, 9)), null,
                         FilingReference.NONE);
 
@@ -175,7 +175,7 @@ class ZupContextFactoryTest {
                         "https://provjera.example.hr/")
                 : new DocumentProperties.Epecat(false, null, null, null, null);
         return new ZupContextFactory(
-                new DocumentProperties(TIJELO, null, epecat, Map.of(), false), labels);
+                new DocumentProperties(TIJELO, null, epecat, Map.of(), false, false), labels);
     }
 
     private static final java.util.Locale HR_LOCALE = java.util.Locale.forLanguageTag("hr");
