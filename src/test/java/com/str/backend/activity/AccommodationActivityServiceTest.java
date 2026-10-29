@@ -76,7 +76,7 @@ class AccommodationActivityServiceTest {
         LocalDate to = LocalDate.of(2026, 3, 31);
         when(repository.search(42L, "HR120001000000000001", from, to)).thenReturn(List.of());
 
-        List<AccommodationActivityEntity> result = service.search(42L, "HR120001000000000001", from, to);
+        List<AccommodationActivityEntity> result = service.search(42L, "HR120001000000000001", from, to, null);
 
         assertThat(result).isEmpty();
         verify(repository).search(42L, "HR120001000000000001", from, to);
@@ -86,9 +86,21 @@ class AccommodationActivityServiceTest {
     void search_withNullParams_delegatesToRepository() {
         when(repository.search(null, null, null, null)).thenReturn(List.of());
 
-        service.search(null, null, null, null);
+        service.search(null, null, null, null, null);
 
         verify(repository).search(null, null, null, null);
+    }
+
+    /** Opseg županijskog službenika ide u zaseban upit; upit za cijelu RH se ne poziva. */
+    @Test
+    void search_withScope_usesCountyQuery() {
+        List<String> scope = List.of("Splitsko-dalmatinska županija");
+        when(repository.searchInCounties(42L, null, null, null, scope)).thenReturn(List.of());
+
+        service.search(42L, null, null, null, scope);
+
+        verify(repository).searchInCounties(42L, null, null, null, scope);
+        verify(repository, never()).search(any(), any(), any(), any());
     }
 
     @Test

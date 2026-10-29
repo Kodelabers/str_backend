@@ -90,6 +90,6 @@ class RnRegistrySearchTest {
 
     private static RnRegistryFilter filter(Boolean verified) {
         return new RnRegistryFilter(RnRegistryView.ALL, null, null, null, null, false, null, null,
-                null, null, null, null, null, verified);
+                null, null, null, null, null, verified, null);
     }
 }

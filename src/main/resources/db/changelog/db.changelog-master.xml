@@ -265,4 +265,7 @@
     <!-- Prigovor iznajmljivača na prijedlog suspenzije / suspenziju RB-a. -->
     <include file="db/changelog/changes/145-suspension-objection.xml"/>
 
+    <!-- Mock interne organizacije službenika (str): opseg podataka po županiji. Samo local. -->
+    <include file="db/changelog/changes/146-str-internal-organization-local.xml"/>
+
 </databaseChangeLog>

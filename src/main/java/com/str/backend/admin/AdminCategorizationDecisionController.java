@@ -1,5 +1,6 @@
 package com.str.backend.admin;
 
+import com.str.backend.auth.internal.CountyScopeService;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
 import com.str.backend.categorization.CategorizationDecisionStatus;
@@ -38,11 +39,14 @@ public class AdminCategorizationDecisionController {
 
     private final AdminCategorizationDecisionService service;
     private final InternalAccessService internalAccess;
+    private final CountyScopeService countyScope;
 
     public AdminCategorizationDecisionController(AdminCategorizationDecisionService service,
-                                                 InternalAccessService internalAccess) {
+                                                 InternalAccessService internalAccess,
+                                                 CountyScopeService countyScope) {
         this.service = service;
         this.internalAccess = internalAccess;
+        this.countyScope = countyScope;
     }
 
     record ReviewDecisionRequest(@Nullable @Size(max = 1000) String reason) {
@@ -54,18 +58,19 @@ public class AdminCategorizationDecisionController {
     @GetMapping
     public Page<CategorizationDecisionAdminDto> list(
             @RequestParam(required = false) CategorizationDecisionStatus status,
-            @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.list(status, pageable);
+            @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable,
+            Authentication authentication) {
+        return service.list(status, countyScope.accommodationCounties(authentication), pageable);
     }
 
     @GetMapping("/{id}")
-    public CategorizationDecisionAdminDto detail(@PathVariable UUID id) {
-        return service.detail(id);
+    public CategorizationDecisionAdminDto detail(@PathVariable UUID id, Authentication authentication) {
+        return service.detail(id, countyScope.scopeFor(authentication));
     }
 
     @GetMapping("/{id}/file")
-    public ResponseEntity<byte[]> file(@PathVariable UUID id) {
-        CategorizationFileDto f = service.file(id);
+    public ResponseEntity<byte[]> file(@PathVariable UUID id, Authentication authentication) {
+        CategorizationFileDto f = service.file(id, countyScope.scopeFor(authentication));
         // ContentDisposition RFC 5987-enkodira naziv (UTF-8): hrvatski znakovi u imenu skena
         // ostaju čitljivi, a CR/LF/navodnici se sigurno enkodiraju (nema header injectiona).
         ContentDisposition disposition = ContentDisposition.inline()
@@ -80,7 +85,7 @@ public class AdminCategorizationDecisionController {
     /** Akter je službenik iz sesije ({@link InternalAccessService#actorFor}), nikad iz tijela zahtjeva. */
     @PostMapping("/{id}/verify")
     public ResponseEntity<Void> verify(@PathVariable UUID id, Authentication authentication) {
-        service.verify(id, internalAccess.actorFor(authentication).orElse(null));
+        service.verify(id, countyScope.scopeFor(authentication), internalAccess.actorFor(authentication).orElse(null));
         return ResponseEntity.noContent().build();
     }
 
@@ -88,7 +93,7 @@ public class AdminCategorizationDecisionController {
     public ResponseEntity<Void> reject(@PathVariable UUID id,
                                        @RequestBody(required = false) @Valid ReviewDecisionRequest body,
                                        Authentication authentication) {
-        service.reject(id, internalAccess.actorFor(authentication).orElse(null),
+        service.reject(id, countyScope.scopeFor(authentication), internalAccess.actorFor(authentication).orElse(null),
                 body != null ? body.reason() : null);
         return ResponseEntity.noContent().build();
     }

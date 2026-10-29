@@ -1,5 +1,8 @@
 package com.str.backend.statistics;
 
+import com.str.backend.auth.internal.CountyScopeService;
+import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.rn.RnScopeGuard;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,10 +14,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -33,10 +40,12 @@ class PlatformActivitiesExportControllerTest {
     @MockBean private StatisticsService service;
     @MockBean private PlatformActivityQuery platformActivityQuery;
     @MockBean private StatisticsExportService exportService;
+    @MockBean private CountyScopeService countyScope;
+    @MockBean private RnScopeGuard scopeGuard;
 
     @Test
     void xlsx_returnsSpreadsheet() throws Exception {
-        when(exportService.generatePlatformActivitiesXlsx(any())).thenReturn(new byte[]{1});
+        when(exportService.generatePlatformActivitiesXlsx(any(), any())).thenReturn(new byte[]{1});
 
         mvc.perform(get("/api/statistics/platform-activities/xlsx").param("county", "Grad Zagreb"))
                 .andExpect(status().isOk())
@@ -46,7 +55,7 @@ class PlatformActivitiesExportControllerTest {
 
     @Test
     void csv_returnsCsv() throws Exception {
-        when(exportService.generatePlatformActivitiesCsv(any())).thenReturn(new byte[]{1});
+        when(exportService.generatePlatformActivitiesCsv(any(), any())).thenReturn(new byte[]{1});
 
         mvc.perform(get("/api/statistics/platform-activities/csv"))
                 .andExpect(status().isOk())
@@ -125,7 +134,7 @@ class PlatformActivitiesExportControllerTest {
     /** The exports must honour the same criteria as the list, or the file contradicts the screen. */
     @Test
     void csv_passesAnomaliesOnlyToExport() throws Exception {
-        when(exportService.generatePlatformActivitiesCsv(any())).thenReturn(new byte[]{1});
+        when(exportService.generatePlatformActivitiesCsv(any(), any())).thenReturn(new byte[]{1});
 
         mvc.perform(get("/api/statistics/platform-activities/csv")
                         .param("anomaliesOnly", "true")
@@ -134,15 +143,78 @@ class PlatformActivitiesExportControllerTest {
 
         ArgumentCaptor<PlatformActivityFilter> captor =
                 ArgumentCaptor.forClass(PlatformActivityFilter.class);
-        verify(exportService).generatePlatformActivitiesCsv(captor.capture());
+        verify(exportService).generatePlatformActivitiesCsv(captor.capture(), any());
         assertThat(captor.getValue().anomaliesOnly()).isTrue();
         assertThat(captor.getValue().guestCountry()).isEqualTo("Italija");
+    }
+
+    // --- Opseg službenika (županija): popis, izvozi i accordion ---
+
+    private static final List<String> SPLIT_NAMES =
+            List.of("Splitsko-dalmatinska županija", "SPLITSKO-DALMATINSKA ŽUPANIJA");
+
+    /** Popis aktivnosti dobiva nazive županije službenika, uz filtre iz zahtjeva. */
+    @Test
+    void list_countyOfficial_passesScopeCountiesToQuery() throws Exception {
+        when(countyScope.accommodationCounties(any())).thenReturn(SPLIT_NAMES);
+
+        mvc.perform(get("/api/statistics/platform-activities").param("county", "Grad Zagreb")
+                        .param("page", "2").param("size", "50"))
+                .andExpect(status().isOk());
+
+        verify(platformActivityQuery).query(any(PlatformActivityFilter.class), eq(SPLIT_NAMES), eq(2), eq(50));
+    }
+
+    /** Izvozi ne smiju dati više od ekrana — isti opseg ide u xlsx i csv. */
+    @Test
+    void exports_countyOfficial_passScopeCountiesToExport() throws Exception {
+        when(countyScope.accommodationCounties(any())).thenReturn(SPLIT_NAMES);
+        when(exportService.generatePlatformActivitiesXlsx(any(), any())).thenReturn(new byte[]{1});
+        when(exportService.generatePlatformActivitiesCsv(any(), any())).thenReturn(new byte[]{1});
+
+        mvc.perform(get("/api/statistics/platform-activities/xlsx").param("county", "Grad Zagreb"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/statistics/platform-activities/csv").param("county", "Grad Zagreb"))
+                .andExpect(status().isOk());
+
+        verify(exportService).generatePlatformActivitiesXlsx(any(PlatformActivityFilter.class), eq(SPLIT_NAMES));
+        verify(exportService).generatePlatformActivitiesCsv(any(PlatformActivityFilter.class), eq(SPLIT_NAMES));
+    }
+
+    /** Accordion RB-a iz druge županije je 404, kao detalj RB-a — upit se ne izvršava. */
+    @Test
+    void breakdown_rnOutsideScope_returns404_andQueryIsNeverCalled() throws Exception {
+        String rn = "HR010001102030405060";
+        doThrow(new ResourceNotFoundException("rn not found: " + rn))
+                .when(scopeGuard).requireInScope(eq(rn), any());
+
+        mvc.perform(get("/api/statistics/platform-activities/breakdown")
+                        .param("rn", rn)
+                        .param("periodFrom", "2026-01-01")
+                        .param("periodTo", "2026-01-31"))
+                .andExpect(status().isNotFound());
+
+        verify(platformActivityQuery, never()).breakdown(any(), any(), any());
+    }
+
+    @Test
+    void breakdown_rnInScope_reachesQuery() throws Exception {
+        String rn = "HR010001102030405060";
+
+        mvc.perform(get("/api/statistics/platform-activities/breakdown")
+                        .param("rn", rn)
+                        .param("periodFrom", "2026-01-01")
+                        .param("periodTo", "2026-01-31"))
+                .andExpect(status().isOk());
+
+        verify(scopeGuard).requireInScope(eq(rn), any());
+        verify(platformActivityQuery).breakdown(rn, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31));
     }
 
     private PlatformActivityFilter captureListFilter() {
         ArgumentCaptor<PlatformActivityFilter> captor =
                 ArgumentCaptor.forClass(PlatformActivityFilter.class);
-        verify(platformActivityQuery).query(captor.capture(), anyInt(), anyInt());
+        verify(platformActivityQuery).query(captor.capture(), any(), anyInt(), anyInt());
         return captor.getValue();
     }
 }

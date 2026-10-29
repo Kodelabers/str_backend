@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Mock interne organizacije službenika iz eTurizmove sheme 'str' — samo stupci koje čita
+      InternalUserRepository#findOrganization (opseg službenika po županiji). Na dev/cdu/prod
+      tablice već postoje i pune ih eTurizam; ovdje se dodaje samo ono što lokalni mock nema.
+
+      Lanac: application_user.internal_organization_id → internal_organization (type_id →
+      codebook_element IOT_*) → organizational_unit → settlement_jurisdiction → settlement →
+      municipality → county (external_code = rpj_dgu.zupanije.zu_rb).
+
+      Seed: službenik 12345678903 (seed 138) pripada Splitsko-dalmatinskoj županiji, čija jedinica
+      je nadležna za Makarsku (seed 123), pa back-office lokalno vidi samo Split. Za pogled
+      ministarstva: UPDATE str.application_user SET internal_organization_id = 1 WHERE id = 900001.
+
+      Gated context="local".
+    -->
+
+    <changeSet id="146-str-internal-organization" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="internal_organization"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="internal_organization">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN"><constraints nullable="false"/></column>
+            <column name="name" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="type_id" type="BIGINT"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="146-str-settlement-jurisdiction" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="settlement_jurisdiction"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="settlement_jurisdiction">
+            <column name="id" type="BIGINT"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="active" type="BOOLEAN"><constraints nullable="false"/></column>
+            <column name="organizational_unit_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="settlement_id" type="BIGINT"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="146-str-organizational-unit-columns" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="organizational_unit" columnName="internal_organization_id"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="organizational_unit">
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"/>
+            <column name="internal_organization_id" type="BIGINT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="146-str-application-user-organization" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="application_user" columnName="internal_organization_id"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="application_user">
+            <column name="internal_organization_id" type="BIGINT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="146-str-county-external-code" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="county" columnName="external_code"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="county">
+            <column name="external_code" type="VARCHAR(16)"/>
+        </addColumn>
+        <sql>
+            UPDATE str.county SET external_code = '17' WHERE id = 9201;
+            UPDATE str.county SET external_code = '13' WHERE id = 9202;
+        </sql>
+    </changeSet>
+
+    <changeSet id="146-str-internal-organization-seed" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">SELECT COUNT(*) FROM str.codebook_element WHERE code = 'IOT_ZUPANIJA'</sqlCheck>
+        </preConditions>
+        <sql>
+            INSERT INTO str.codebook_element (id, active, code, name) VALUES
+              (570, true, 'IOT_MINTS',    'MINTS'),
+              (571, true, 'IOT_ZUPANIJA', 'Županija'),
+              (572, true, 'IOT_OSTALO',   'Ostalo');
+
+            INSERT INTO str.internal_organization (id, active, name, type_id) VALUES
+              (1,  true, 'Ministarstvo turizma i sporta', 570),
+              (18, true, 'Splitsko-dalmatinska županija', 571);
+
+            INSERT INTO str.organizational_unit (id, active, internal_organization_id) VALUES
+              (9136, true, 18);
+
+            INSERT INTO str.settlement_jurisdiction (id, active, organizational_unit_id, settlement_id) VALUES
+              (9501, true, 9136, 9001);
+
+            UPDATE str.application_user SET internal_organization_id = 18 WHERE id = 900001;
+        </sql>
+        <rollback>
+            <sql>
+                UPDATE str.application_user SET internal_organization_id = NULL WHERE id = 900001;
+                DELETE FROM str.settlement_jurisdiction WHERE id = 9501;
+                DELETE FROM str.organizational_unit WHERE id = 9136;
+                DELETE FROM str.internal_organization WHERE id IN (1, 18);
+                DELETE FROM str.codebook_element WHERE id IN (570, 571, 572);
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

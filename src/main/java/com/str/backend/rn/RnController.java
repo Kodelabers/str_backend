@@ -1,6 +1,7 @@
 package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
+import com.str.backend.auth.internal.CountyScopeService;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.nias.EffectiveOibResolver;
 import com.str.backend.auth.nias.NiasOibExtractor;
@@ -61,12 +62,17 @@ public class RnController {
     private final EffectiveOibResolver effectiveOibResolver;
     private final InternalAccessService internalAccess;
     private final RnRegistrySearch registrySearch;
+    private final CountyScopeService countyScope;
+    private final RnScopeGuard scopeGuard;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
                         RnDocumentsService documentsService, RnRepository rnRepository,
                         StatisticsExportService exportService, EffectiveOibResolver effectiveOibResolver,
-                        InternalAccessService internalAccess, RnRegistrySearch registrySearch) {
+                        InternalAccessService internalAccess, RnRegistrySearch registrySearch,
+                        CountyScopeService countyScope, RnScopeGuard scopeGuard) {
         this.service = service;
+        this.countyScope = countyScope;
+        this.scopeGuard = scopeGuard;
         this.registrySearch = registrySearch;
         this.mapper = mapper;
         this.documentService = documentService;
@@ -77,10 +83,10 @@ public class RnController {
         this.internalAccess = internalAccess;
     }
 
-    /** STR-1.5: display of inactive RNs (SUSPENDED + REVOKED + WITHDRAWN). */
+    /** STR-1.5: display of inactive RNs (SUSPENDED + REVOKED + WITHDRAWN), u opsegu službenika. */
     @GetMapping("/inactive")
-    public List<RnResponse> inactive() {
-        return mapper.toResponseList(service.inactive());
+    public List<RnResponse> inactive(Authentication authentication) {
+        return mapper.toResponseList(service.inactive(countyScope.accommodationCounties(authentication)));
     }
 
     /**
@@ -95,6 +101,9 @@ public class RnController {
      * <p>{@code decision} i {@code verified} filtriraju stupce „Rješenje o kategorizaciji" i
      * „Verificiran" (isto pravilo kao „Moji registracijski brojevi"). Filtar „Verificiran" pita
      * eTurizam; kad on nije dostupan, odgovor je 503 ({@link RnRegistrySearch}).
+     *
+     * <p>Županijski službenik vidi samo svoju županiju ({@link CountyScopeService}); njegov
+     * {@code county} iz zahtjeva se zanemaruje, i u izvozima.
      */
     @GetMapping
     public Page<RnSummaryDto> registry(
@@ -112,8 +121,9 @@ public class RnController {
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
             @RequestParam(required = false) Boolean verified,
-            @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable) {
-        return registrySearch.search(new RnRegistryFilter(view, q, county, municipality, typeId,
+            @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable,
+            Authentication authentication) {
+        return registrySearch.search(filter(authentication, view, q, county, municipality, typeId,
                 foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified),
                 pageable);
     }
@@ -130,13 +140,15 @@ public class RnController {
     }
 
     @GetMapping("/{rn}")
-    public RnResponse get(@PathVariable String rn) {
+    public RnResponse get(@PathVariable String rn, Authentication authentication) {
+        requireInScope(rn, authentication);
         return mapper.toResponse(service.find(rn));
     }
 
     /*
      * Životni ciklus RB-a po službenoj dužnosti — samo uz rolu RN_MANAGEMENT (SecurityConfig).
-     * Akter je službenik iz sesije (INTERNAL:<oib>) i ide u registration_number_log.
+     * Akter je službenik iz sesije (INTERNAL:<oib>) i ide u registration_number_log. RB izvan
+     * opsega službenika (druga županija) je 404, kao nepostojeći.
      */
 
     @PostMapping("/{rn}/suspend")
@@ -146,16 +158,19 @@ public class RnController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate suspensionDeadline,
             @RequestParam(required = false) String note,
             Authentication authentication) {
+        requireInScope(rn, authentication);
         return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline, note, actor(authentication)));
     }
 
     @PostMapping("/{rn}/revoke-proposal")
     public RnResponse revokeProposal(@PathVariable String rn, Authentication authentication) {
+        requireInScope(rn, authentication);
         return mapper.toResponse(service.revokeProposal(rn, actor(authentication)));
     }
 
     @PostMapping("/{rn}/reactivate")
     public RnResponse reactivate(@PathVariable String rn, Authentication authentication) {
+        requireInScope(rn, authentication);
         return mapper.toResponse(service.reactivate(rn, actor(authentication)));
     }
 
@@ -163,6 +178,7 @@ public class RnController {
     public RnResponse withdraw(@PathVariable String rn,
                               @RequestParam(required = false) String reason,
                               Authentication authentication) {
+        requireInScope(rn, authentication);
         return mapper.toResponse(service.withdraw(rn, reason, actor(authentication)));
     }
 
@@ -270,8 +286,9 @@ public class RnController {
             @RequestParam(required = false) String lessor,
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
-            @RequestParam(required = false) Boolean verified) {
-        byte[] xlsx = exportService.generateRegistryXlsx(new RnRegistryFilter(
+            @RequestParam(required = false) Boolean verified,
+            Authentication authentication) {
+        byte[] xlsx = exportService.generateRegistryXlsx(filter(authentication,
                 view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
                 deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
@@ -297,8 +314,9 @@ public class RnController {
             @RequestParam(required = false) String lessor,
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
-            @RequestParam(required = false) Boolean verified) {
-        byte[] csv = exportService.generateRegistryCsv(new RnRegistryFilter(
+            @RequestParam(required = false) Boolean verified,
+            Authentication authentication) {
+        byte[] csv = exportService.generateRegistryCsv(filter(authentication,
                 view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
                 deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
@@ -323,8 +341,9 @@ public class RnController {
             @RequestParam(required = false) String lessor,
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
-            @RequestParam(required = false) Boolean verified) {
-        byte[] pdf = exportService.generateRegistryPdf(new RnRegistryFilter(
+            @RequestParam(required = false) Boolean verified,
+            Authentication authentication) {
+        byte[] pdf = exportService.generateRegistryPdf(filter(authentication,
                 view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
                 deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
@@ -362,12 +381,32 @@ public class RnController {
         }
         // Lokalni mock NIAS-a nema autentikacije — rolu tada daje nias.mock.fixed-oib.
         if (isOfficial(authentication)) {
+            requireInScope(rn, authentication);
             return Pristup.SLUZBENIK;
         }
         if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }
         throw new ResourceNotFoundException("rn not found: " + rn);
+    }
+
+    /** RB iz županije izvan opsega službenika je 404 ({@link RnScopeGuard}). */
+    private void requireInScope(String rn, Authentication authentication) {
+        scopeGuard.requireInScope(rn, authentication);
+    }
+
+    /**
+     * Filtri iz zahtjeva uz opseg službenika. Županija ide kao popis zapisanih oblika naziva
+     * ({@link CountyScopeService#accommodationCounties(Authentication, String)}): ograničen opseg
+     * zamjenjuje {@code county} iz zahtjeva, a bez njega tražena županija pogađa sve oblike naziva.
+     */
+    private RnRegistryFilter filter(Authentication authentication, RnRegistryView view, String q, String county,
+                                    String municipality, Long typeId, boolean foreignOnly, String rb, String city,
+                                    String street, String name, String lessor, Integer deadlineWithinDays,
+                                    RegistryDecisionFilter decision, Boolean verified) {
+        List<String> counties = countyScope.accommodationCounties(authentication, county);
+        return new RnRegistryFilter(view, q, null, municipality, typeId,
+                foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified, counties);
     }
 
     /** Nedostupna shema {@code str} znači „nije službenik" — vlasnik je već prošao gore. */

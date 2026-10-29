@@ -2,6 +2,8 @@ package com.str.backend.rn;
 
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.SecurityConfig;
+import com.str.backend.auth.internal.CountyScope;
+import com.str.backend.auth.internal.CountyScopeService;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.nias.ActingSubjectService;
 import com.str.backend.auth.nias.EffectiveOibResolver;
@@ -15,7 +17,9 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnDetailExtras;
 import com.str.backend.rn.dto.RnDetailResponse;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -32,13 +36,16 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -57,7 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * tko zna registracijski broj mogao povući ime, adresu i OIB iznajmljivača.
  */
 @ActiveProfiles("test")
-@Import({SecurityConfig.class, EffectiveOibResolver.class, NiasOibResolver.class})
+@Import({SecurityConfig.class, EffectiveOibResolver.class, NiasOibResolver.class, RnScopeGuard.class})
 @WebMvcTest(value = RnController.class,
             excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class)
 class RnDocumentAccessTest {
@@ -81,6 +88,16 @@ class RnDocumentAccessTest {
     // RnController od /api/rn/export/* endpointa ovisi i o exportu; slice ga mora imati.
     @MockBean com.str.backend.statistics.StatisticsExportService exportService;
     @MockBean RnRegistrySearch registrySearch;
+    /** Opseg službenika; pravi {@link RnScopeGuard} ga čita. Zadano cijela RH. */
+    @MockBean CountyScopeService countyScope;
+
+    private static final CountyScope SPLIT =
+            CountyScope.county("Splitsko-dalmatinska županija", 17L, 17, "Splitsko-dalmatinska županija");
+
+    @BeforeEach
+    void wholeCountry() {
+        when(countyScope.scopeFor(any())).thenReturn(CountyScope.all(CountyScope.Outcome.NOT_OFFICIAL));
+    }
 
     @Test
     void document_unauthenticated_returns401_andRendersNothing() throws Exception {
@@ -329,6 +346,119 @@ class RnDocumentAccessTest {
 
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(official)))
                 .andExpect(status().isOk());
+    }
+
+    /** Županijski službenik: RB iz druge županije je nepostojeći, i na detalju i u radnji. */
+    @Test
+    void countyOfficial_rnFromOtherCounty_returns404() throws Exception {
+        Authentication official = nias(OFFICIAL_OIB);
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(countyScope.scopeFor(any())).thenReturn(SPLIT);
+        when(rnRepository.findCountyByRn(RN)).thenReturn(Optional.of("Grad Zagreb"));
+
+        mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(official)))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/rn/{rn}/suspend", RN).param("reason", "INSPECTION")
+                        .with(authentication(official)).with(ajax()))
+                .andExpect(status().isNotFound());
+
+        verify(service, never()).detailView(any());
+        verify(service, never()).suspend(any(), any(), any(), any(), any());
+    }
+
+    /** Ista županija zapisana drugačije (bez „županija") i dalje je u opsegu. */
+    @Test
+    void countyOfficial_rnFromOwnCounty_returns200() throws Exception {
+        Authentication official = nias(OFFICIAL_OIB);
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:" + OFFICIAL_OIB));
+        when(countyScope.scopeFor(any())).thenReturn(SPLIT);
+        when(rnRepository.findCountyByRn(RN)).thenReturn(Optional.of("Splitsko-dalmatinska"));
+
+        mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(official)))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/rn/{rn}/suspend", RN).param("reason", "INSPECTION")
+                        .with(authentication(official)).with(ajax()))
+                .andExpect(status().isOk());
+
+        verify(service).detailView(RN);
+        verify(service).suspend(eq(RN), eq(com.str.backend.domain.RnTrigger.INSPECTION), isNull(), isNull(),
+                eq("INTERNAL:" + OFFICIAL_OIB));
+    }
+
+    /** Vlasnik vidi svoj RB bez obzira na opseg — opseg ograničava samo službenika. */
+    @Test
+    void owner_isNotLimitedByCountyScope() throws Exception {
+        Authentication lessor = nias(LESSOR_OIB);
+        when(rnRepository.isOwnedByOib(RN, LESSOR_OIB)).thenReturn(true);
+        when(countyScope.scopeFor(any())).thenReturn(SPLIT);
+        when(rnRepository.findCountyByRn(RN)).thenReturn(Optional.of("Grad Zagreb"));
+
+        mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(lessor)))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * Izvozi registra županijskog službenika: filtar nosi nazive njegove županije iz
+     * {@link CountyScopeService}, a {@code county} iz zahtjeva ne ide u filtar — inače bi
+     * „Grad Zagreb" uz opseg Splita dao prazan izvoz. Zahtjev ide u servis, koji ga ograničenom
+     * službeniku zanemaruje.
+     */
+    @Test
+    void countyOfficial_registryExports_carryScopeCounties_andIgnoreRequestCounty() throws Exception {
+        List<String> splitNames = List.of("Splitsko-dalmatinska županija", "Splitsko-dalmatinska");
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(countyScope.scopeFor(any())).thenReturn(SPLIT);
+        when(countyScope.accommodationCounties(any(), eq("Grad Zagreb"))).thenReturn(splitNames);
+        when(exportService.generateRegistryXlsx(any())).thenReturn(new byte[]{1});
+        when(exportService.generateRegistryCsv(any())).thenReturn(new byte[]{1});
+        when(exportService.generateRegistryPdf(any())).thenReturn(new byte[]{1});
+
+        for (String format : List.of("xlsx", "csv", "pdf")) {
+            mvc.perform(get("/api/rn/export/{format}", format)
+                            .param("county", "Grad Zagreb").param("municipality", "Split")
+                            .with(authentication(official())))
+                    .andExpect(status().isOk());
+        }
+
+        ArgumentCaptor<RnRegistryFilter> xlsx = ArgumentCaptor.forClass(RnRegistryFilter.class);
+        ArgumentCaptor<RnRegistryFilter> csv = ArgumentCaptor.forClass(RnRegistryFilter.class);
+        ArgumentCaptor<RnRegistryFilter> pdf = ArgumentCaptor.forClass(RnRegistryFilter.class);
+        verify(exportService).generateRegistryXlsx(xlsx.capture());
+        verify(exportService).generateRegistryCsv(csv.capture());
+        verify(exportService).generateRegistryPdf(pdf.capture());
+        for (RnRegistryFilter filter : List.of(xlsx.getValue(), csv.getValue(), pdf.getValue())) {
+            assertThat(filter.scopeCounties()).isEqualTo(splitNames);
+            assertThat(filter.county()).isNull();
+            // Ostali filtri iz zahtjeva ostaju.
+            assertThat(filter.municipality()).isEqualTo("Split");
+        }
+    }
+
+    /**
+     * Bez ograničenja (cijela RH) tražena županija dolazi kao popis njezinih zapisanih oblika iz
+     * {@link CountyScopeService}; bez tražene županije popisa nema (cijela RH).
+     */
+    @Test
+    void wholeCountryOfficial_registryExport_requestCountyGoesThroughScopeService() throws Exception {
+        List<String> zagrebNames = List.of("Grad Zagreb", "GRAD ZAGREB");
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(countyScope.accommodationCounties(any(), eq("Grad Zagreb"))).thenReturn(zagrebNames);
+        // Nestubirani mock za List vraća praznu listu, a ne null (= cijela RH).
+        when(countyScope.accommodationCounties(any(), isNull())).thenReturn(null);
+        when(exportService.generateRegistryCsv(any())).thenReturn(new byte[]{1});
+
+        mvc.perform(get("/api/rn/export/csv").param("county", "Grad Zagreb")
+                        .with(authentication(official())))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/rn/export/csv").with(authentication(official())))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<RnRegistryFilter> captor = ArgumentCaptor.forClass(RnRegistryFilter.class);
+        verify(exportService, times(2)).generateRegistryCsv(captor.capture());
+        assertThat(captor.getAllValues().get(0).scopeCounties()).isEqualTo(zagrebNames);
+        assertThat(captor.getAllValues().get(0).county()).isNull();
+        assertThat(captor.getAllValues().get(1).scopeCounties()).isNull();
     }
 
     /** Prijava koja nije ni vlasnik ni službenik više ne prolazi (prije: zadano dopušteno). */

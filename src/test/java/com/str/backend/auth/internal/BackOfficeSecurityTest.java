@@ -6,6 +6,7 @@ import com.str.backend.activity.ActivityMapper;
 import com.str.backend.admin.AdminPendingRegistrationController;
 import com.str.backend.admin.AdminPendingRegistrationService;
 import com.str.backend.auth.SecurityConfig;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
@@ -16,6 +17,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Optional;
@@ -53,6 +55,12 @@ class BackOfficeSecurityTest {
     @MockBean UserDetailsService userDetailsService;
     @MockBean AccommodationActivityService activityService;
     @MockBean ActivityMapper activityMapper;
+    @MockBean CountyScopeService countyScope;
+
+    @BeforeEach
+    void wholeCountry() {
+        when(countyScope.scopeFor(any())).thenReturn(CountyScope.all(CountyScope.Outcome.NOT_OFFICIAL));
+    }
 
     private static TestingAuthenticationToken signedIn() {
         TestingAuthenticationToken auth = new TestingAuthenticationToken("korisnik", null);
@@ -124,7 +132,35 @@ class BackOfficeSecurityTest {
 
         mvc.perform(get("/api/nias/internal-access"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.role").value(RN_MANAGEMENT));
+                .andExpect(jsonPath("$.role").value(RN_MANAGEMENT))
+                .andExpect(jsonPath("$.countyId").doesNotExist());
+    }
+
+    /** Županijski službenik: frontend iz odgovora zaključava filtar županije i prikazuje tijelo. */
+    @Test
+    void internalAccess_countyOfficial_returnsCounty() throws Exception {
+        when(internalAccess.effectiveRole(any())).thenReturn(RN_MANAGEMENT);
+        when(countyScope.scopeFor(any())).thenReturn(CountyScope.county(
+                "Splitsko-dalmatinska županija", 17L, 17, "Splitsko-dalmatinska županija"));
+
+        mvc.perform(get("/api/nias/internal-access"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value(RN_MANAGEMENT))
+                .andExpect(jsonPath("$.subjectName").value("Splitsko-dalmatinska županija"))
+                .andExpect(jsonPath("$.countyId").value(17))
+                .andExpect(jsonPath("$.countyName").value("Splitsko-dalmatinska županija"));
+    }
+
+    /** Opseg se ne utvrđuje za iznajmljivača — bez upita organizacije u shemi str. */
+    @Test
+    void internalAccess_ordinaryUser_doesNotResolveScope() throws Exception {
+        when(internalAccess.effectiveRole(any())).thenReturn(InternalAccessService.USER);
+
+        mvc.perform(get("/api/nias/internal-access"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.countyName").doesNotExist());
+
+        verify(countyScope, never()).scopeFor(any());
     }
 
     @Test
@@ -153,7 +189,7 @@ class BackOfficeSecurityTest {
     void activity_search_unauthenticated_returns401() throws Exception {
         mvc.perform(get("/api/activity")).andExpect(status().isUnauthorized());
 
-        verify(activityService, never()).search(any(), any(), any(), any());
+        verify(activityService, never()).search(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -171,5 +207,46 @@ class BackOfficeSecurityTest {
 
         mvc.perform(get("/api/activity").with(authentication(signedIn())))
                 .andExpect(status().isOk());
+    }
+
+    /** Purge briše aktivnosti svih županija — županijski službenik ga ne smije pokrenuti. */
+    @Test
+    void activity_purge_countyOfficial_returns403() throws Exception {
+        when(internalAccess.hasRole(any(), eq(RN_MANAGEMENT))).thenReturn(true);
+        when(countyScope.scopeFor(any())).thenReturn(CountyScope.county(
+                "Splitsko-dalmatinska županija", 2195100017L, 17, "Splitsko-dalmatinska županija"));
+
+        mvc.perform(delete("/api/activity/purge").with(authentication(signedIn()))
+                        .header("X-Requested-With", "XMLHttpRequest"))
+                .andExpect(status().isForbidden());
+
+        verify(activityService, never()).purgeExpired();
+    }
+
+    @Test
+    void activity_ingest_countyOfficial_returns403() throws Exception {
+        when(internalAccess.hasRole(any(), eq(RN_MANAGEMENT))).thenReturn(true);
+        when(countyScope.scopeFor(any())).thenReturn(CountyScope.county(
+                "Splitsko-dalmatinska županija", 2195100017L, 17, "Splitsko-dalmatinska županija"));
+
+        mvc.perform(post("/api/activity/ingest").with(authentication(signedIn()))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"platformId\":1,\"entries\":[{\"rn\":\"HR00000001\",\"periodFrom\":\"2026-09-01\",\"periodTo\":\"2026-09-30\"}]}"))
+                .andExpect(status().isForbidden());
+
+        verify(activityService, never()).ingest(any());
+    }
+
+    @Test
+    void activity_purge_ministry_returns200() throws Exception {
+        when(internalAccess.hasRole(any(), eq(RN_MANAGEMENT))).thenReturn(true);
+        when(countyScope.scopeFor(any())).thenReturn(CountyScope.ministry("Ministarstvo turizma i sporta"));
+
+        mvc.perform(delete("/api/activity/purge").with(authentication(signedIn()))
+                        .header("X-Requested-With", "XMLHttpRequest"))
+                .andExpect(status().isOk());
+
+        verify(activityService).purgeExpired();
     }
 }

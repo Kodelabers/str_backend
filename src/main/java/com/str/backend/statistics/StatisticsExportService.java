@@ -9,6 +9,7 @@ import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
+import com.str.backend.auth.internal.CountyScope;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
@@ -105,8 +106,9 @@ public class StatisticsExportService {
 
     // ── PDF ──────────────────────────────────────────────────────────────────
 
-    public byte[] generateStrPdf() {
-        StrResponse data = statisticsService.str(null, null);
+    /** @param scope opseg službenika — županijski službenik dobiva samo svoju županiju */
+    public byte[] generateStrPdf(CountyScope scope) {
+        StrResponse data = statisticsService.str(null, null, scope);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             Document doc = new Document(PageSize.A4, 36, 36, 40, 36);
             PdfWriter.getInstance(doc, baos);
@@ -181,9 +183,10 @@ public class StatisticsExportService {
 
     // ── CSV ──────────────────────────────────────────────────────────────────
 
+    /** @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH */
     @Transactional(readOnly = true)
-    public byte[] generateStrCsv() {
-        List<DetailRowProjection> rows = statisticsRepository.findDetailRows(EXPORT_STATUSES);
+    public byte[] generateStrCsv(List<String> scopeCounties) {
+        List<DetailRowProjection> rows = statisticsRepository.findDetailRows(EXPORT_STATUSES, scopeCounties);
         StringBuilder sb = new StringBuilder();
         sb.append('﻿'); // BOM for Excel-compatible UTF-8
         sb.append("Registracijski broj,Naziv objekta,Adresa,Grad/naselje,Županija,")
@@ -208,9 +211,10 @@ public class StatisticsExportService {
 
     // ── Excel ─────────────────────────────────────────────────────────────────
 
+    /** @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH */
     @Transactional(readOnly = true)
-    public byte[] generateStrXlsx() {
-        List<DetailRowProjection> rows = statisticsRepository.findDetailRows(EXPORT_STATUSES);
+    public byte[] generateStrXlsx(List<String> scopeCounties) {
+        List<DetailRowProjection> rows = statisticsRepository.findDetailRows(EXPORT_STATUSES, scopeCounties);
         try (XSSFWorkbook wb = new XSSFWorkbook();
              ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
@@ -431,8 +435,8 @@ public class StatisticsExportService {
     };
 
     @Transactional(readOnly = true)
-    public byte[] generatePlatformActivitiesXlsx(PlatformActivityFilter filter) {
-        List<PlatformActivityRowDto> rows = fetchForExport(filter);
+    public byte[] generatePlatformActivitiesXlsx(PlatformActivityFilter filter, List<String> scopeCounties) {
+        List<PlatformActivityRowDto> rows = fetchForExport(filter, scopeCounties);
         SXSSFWorkbook wb = new SXSSFWorkbook(SXSSF_WINDOW_ROWS);
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
 
@@ -483,8 +487,8 @@ public class StatisticsExportService {
      * the encoded copy alongside it, so the peak was roughly three times the file size.
      */
     @Transactional(readOnly = true)
-    public byte[] generatePlatformActivitiesCsv(PlatformActivityFilter filter) {
-        List<PlatformActivityRowDto> rows = fetchForExport(filter);
+    public byte[] generatePlatformActivitiesCsv(PlatformActivityFilter filter, List<String> scopeCounties) {
+        List<PlatformActivityRowDto> rows = fetchForExport(filter, scopeCounties);
         ByteArrayOutputStream baos = new ByteArrayOutputStream(CSV_INITIAL_BUFFER_BYTES);
         try (Writer out = new BufferedWriter(new OutputStreamWriter(baos, StandardCharsets.UTF_8))) {
             out.write('﻿'); // BOM for Excel-compatible UTF-8
@@ -517,8 +521,8 @@ public class StatisticsExportService {
      * minutes building a workbook and exhaust the heap, and the request would hit a gateway
      * timeout long before finishing.
      */
-    private List<PlatformActivityRowDto> fetchForExport(PlatformActivityFilter filter) {
-        List<PlatformActivityRowDto> rows = platformActivityQuery.queryAll(filter, MAX_EXPORT_ROWS);
+    private List<PlatformActivityRowDto> fetchForExport(PlatformActivityFilter filter, List<String> scopeCounties) {
+        List<PlatformActivityRowDto> rows = platformActivityQuery.queryAll(filter, scopeCounties, MAX_EXPORT_ROWS);
         if (rows.size() > MAX_EXPORT_ROWS) {
             throw new BusinessException("error.export.too.many.rows");
         }

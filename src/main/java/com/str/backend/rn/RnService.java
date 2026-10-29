@@ -45,6 +45,8 @@ public class RnService {
      * za {@code IN}.
      */
     private static final Set<String> UNUSED_FACILITY_IDS = Set.of("");
+    /** Lista za {@code IN :scopeCounties} kad opseg nije ograničen — mora biti neprazna, ne koristi se. */
+    private static final List<String> UNUSED_SCOPE_COUNTIES = List.of("");
 
     // Maps str.county.name → EGOP organization ID used in RN generation
     private static final Map<String, Integer> COUNTY_EGOP_ORG_IDS = Map.ofEntries(
@@ -208,11 +210,15 @@ public class RnService {
      * SUSPENSION_PROPOSED is deliberately absent — the proposal only opens the response deadline
      * and the RN keeps holding until it expires. That work list is {@code view=SUSPENSION_PROPOSED}
      * on the registry endpoint.
+     *
+     * @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH
      */
     @Transactional(readOnly = true)
-    public List<RnEntity> inactive() {
-        return repository.findByStatusInOrderByUpdatedAtDesc(
-                List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN));
+    public List<RnEntity> inactive(List<String> scopeCounties) {
+        List<RnStatus> statuses = List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN);
+        return scopeCounties == null
+                ? repository.findByStatusInOrderByUpdatedAtDesc(statuses)
+                : repository.findByStatusInAndCountyIn(statuses, scopeCounties);
     }
 
     /**
@@ -233,7 +239,10 @@ public class RnService {
         String verifiedMode = verifiedMode(filter.verified(), verifiedFacilityIds);
         return repository.searchRegistry(filter.view().statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
-                Strings.blankToNull(filter.county()), Strings.blankToNull(filter.municipality()),
+                Strings.blankToNull(filter.county()),
+                filter.scopeCounties() == null ? null : "ON",
+                filter.scopeCounties() == null ? UNUSED_SCOPE_COUNTIES : filter.scopeCounties(),
+                Strings.blankToNull(filter.municipality()),
                 filter.typeId(),
                 filter.foreignOnly() ? "true" : null,
                 Strings.blankToNull(filter.rb()), Strings.blankToNull(filter.city()),
@@ -265,7 +274,10 @@ public class RnService {
         String[] t = SearchTokens.slots(filter.q());
         return repository.findRegistryFacilityIds(filter.view().statuses(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
-                Strings.blankToNull(filter.county()), Strings.blankToNull(filter.municipality()),
+                Strings.blankToNull(filter.county()),
+                filter.scopeCounties() == null ? null : "ON",
+                filter.scopeCounties() == null ? UNUSED_SCOPE_COUNTIES : filter.scopeCounties(),
+                Strings.blankToNull(filter.municipality()),
                 filter.typeId(),
                 filter.foreignOnly() ? "true" : null,
                 Strings.blankToNull(filter.rb()), Strings.blankToNull(filter.city()),

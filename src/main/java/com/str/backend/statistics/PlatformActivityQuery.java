@@ -79,6 +79,8 @@ class PlatformActivityQuery {
           + "  AND (:od IS NULL OR aa.period_to >= :od)\n"
           + "  AND (:toDate IS NULL OR aa.period_from <= :toDate)\n"
           + "  AND (:county IS NULL OR a.county = :county)\n"
+          // Opseg službenika (CountyScope): nazivi njegove županije kako su zapisani na smještaju.
+          + "  AND (:scopeMode IS NULL OR a.county IN (:scopeCounties))\n"
           + "  AND (:municipality IS NULL OR a.city = :municipality)\n"
           // 'nevažeći' (INVALID) nije status nego skupina — RnRegistryView.INVALID: suspendirani,
           // opozvani i povučeni. Uspoređivao se s nepostojećim statusom INVALID i vraćao prazno.
@@ -151,8 +153,12 @@ class PlatformActivityQuery {
         this.objectMapper = objectMapper;
     }
 
-    PlatformActivitiesPageDto query(PlatformActivityFilter filter, int page, int size) {
-        MapSqlParameterSource params = buildParams(filter);
+    /**
+     * @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH.
+     *                      Ograničen opseg zamjenjuje {@code county} iz filtra.
+     */
+    PlatformActivitiesPageDto query(PlatformActivityFilter filter, List<String> scopeCounties, int page, int size) {
+        MapSqlParameterSource params = buildParams(filter, scopeCounties);
 
         Long total = jdbc.queryForObject(COUNT_SQL, params, Long.class);
         long totalElements = total == null ? 0 : total;
@@ -187,9 +193,11 @@ class PlatformActivityQuery {
      * is the expensive half. Rows are grouped by registration number × reporting period and the
      * retention window is 18 months, so a few thousand registration numbers already produce tens
      * of thousands of rows.
+     *
+     * @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH
      */
-    List<PlatformActivityRowDto> queryAll(PlatformActivityFilter filter, int limit) {
-        MapSqlParameterSource params = buildParams(filter);
+    List<PlatformActivityRowDto> queryAll(PlatformActivityFilter filter, List<String> scopeCounties, int limit) {
+        MapSqlParameterSource params = buildParams(filter, scopeCounties);
         params.addValue("limit", limit + 1);
         return jdbc.query(BASE_SQL + " LIMIT :limit", params, this::mapRow);
     }
@@ -215,13 +223,16 @@ class PlatformActivityQuery {
         );
     }
 
-    private MapSqlParameterSource buildParams(PlatformActivityFilter f) {
+    private MapSqlParameterSource buildParams(PlatformActivityFilter f, List<String> scopeCounties) {
         String q = f.q();
         MapSqlParameterSource p = new MapSqlParameterSource();
         p.addValue("platformId", f.platformId(), Types.BIGINT);
         p.addValue("od", f.od(), Types.DATE);
         p.addValue("toDate", f.toDate(), Types.DATE);
-        p.addValue("county", Strings.blankToNull(f.county()), Types.VARCHAR);
+        p.addValue("county", scopeCounties != null ? null : Strings.blankToNull(f.county()), Types.VARCHAR);
+        p.addValue("scopeMode", scopeCounties != null ? "ON" : null, Types.VARCHAR);
+        // Lista za IN mora biti neprazna i kad se ne koristi.
+        p.addValue("scopeCounties", scopeCounties != null ? scopeCounties : List.of(""));
         p.addValue("municipality", Strings.blankToNull(f.municipality()), Types.VARCHAR);
         p.addValue("rnStatus", mapToDbStatus(f.status()), Types.VARCHAR);
         p.addValue("invalidStatuses", INVALID_STATUSES);

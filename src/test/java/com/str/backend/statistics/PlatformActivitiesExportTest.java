@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -44,7 +45,7 @@ class PlatformActivitiesExportTest {
                 LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), 10L, 4L,
                 "aktivan", Instant.parse("2026-04-01T10:00:00Z"));
         this.sampleRow = row;
-        when(query.queryAll(any(), anyInt())).thenReturn(List.of(row));
+        when(query.queryAll(any(), any(), anyInt())).thenReturn(List.of(row));
     }
 
     private PlatformActivityRowDto sampleRow;
@@ -57,13 +58,13 @@ class PlatformActivitiesExportTest {
     @Test
     void refusesExportOverTheRowCap() {
         int overCap = StatisticsExportService.MAX_EXPORT_ROWS + 1;
-        when(query.queryAll(any(), anyInt()))
+        when(query.queryAll(any(), any(), anyInt()))
                 .thenReturn(Collections.nCopies(overCap, sampleRow));
 
-        assertThatThrownBy(() -> service.generatePlatformActivitiesXlsx(PlatformActivityFilter.none()))
+        assertThatThrownBy(() -> service.generatePlatformActivitiesXlsx(PlatformActivityFilter.none(), null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.export.too.many.rows");
-        assertThatThrownBy(() -> service.generatePlatformActivitiesCsv(PlatformActivityFilter.none()))
+        assertThatThrownBy(() -> service.generatePlatformActivitiesCsv(PlatformActivityFilter.none(), null))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.export.too.many.rows");
     }
@@ -71,23 +72,23 @@ class PlatformActivitiesExportTest {
     /** Exactly at the cap is still a valid export — the refusal must be strictly above it. */
     @Test
     void allowsExportExactlyAtTheRowCap() {
-        when(query.queryAll(any(), anyInt()))
+        when(query.queryAll(any(), any(), anyInt()))
                 .thenReturn(Collections.nCopies(StatisticsExportService.MAX_EXPORT_ROWS, sampleRow));
 
-        assertThat(service.generatePlatformActivitiesCsv(PlatformActivityFilter.none())).isNotEmpty();
+        assertThat(service.generatePlatformActivitiesCsv(PlatformActivityFilter.none(), null)).isNotEmpty();
     }
 
     /** The cap has to reach the SQL, or the expensive fetch happens regardless. */
     @Test
     void passesTheCapDownToTheQuery() {
-        service.generatePlatformActivitiesCsv(PlatformActivityFilter.none());
+        service.generatePlatformActivitiesCsv(PlatformActivityFilter.none(), null);
 
-        verify(query).queryAll(any(), eq(StatisticsExportService.MAX_EXPORT_ROWS));
+        verify(query).queryAll(any(), isNull(), eq(StatisticsExportService.MAX_EXPORT_ROWS));
     }
 
     @Test
     void csv_containsRowData() {
-        byte[] csv = service.generatePlatformActivitiesCsv(PlatformActivityFilter.none());
+        byte[] csv = service.generatePlatformActivitiesCsv(PlatformActivityFilter.none(), null);
         String text = new String(csv, StandardCharsets.UTF_8);
 
         assertThat(text).contains("HR120001000000000001");
@@ -98,7 +99,7 @@ class PlatformActivitiesExportTest {
 
     @Test
     void xlsx_isNonEmptyZip() {
-        byte[] xlsx = service.generatePlatformActivitiesXlsx(PlatformActivityFilter.none());
+        byte[] xlsx = service.generatePlatformActivitiesXlsx(PlatformActivityFilter.none(), null);
 
         assertThat(xlsx).isNotEmpty();
         // XLSX is a ZIP container — starts with the "PK" local-file-header signature.
