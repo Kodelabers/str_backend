@@ -48,7 +48,7 @@ class EsealHttpClientTest {
     @BeforeEach
     void setUp() {
         RestClient.Builder builder = EsealConfig.configure(RestClient.builder(),
-                new EsealProperties(true, "https://eseal.test", "tajni-kljuc", "STR", null, null));
+                new EsealProperties(true, "https://eseal.test", "tajni-kljuc", "STR", null, null, null));
         server = MockRestServiceServer.bindTo(builder).build();
         client = new EsealHttpClient(builder.build());
     }

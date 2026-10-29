@@ -148,12 +148,14 @@ public class StartupDiagnostics {
         // Bez pečata akti tijela idu u eGOP/KP nepečaćeni — dopušteno samo do produkcije
         // (odluka 19.10.2026.), pa log to mora reći naglas.
         boolean eseal = env.getProperty("str.eseal.enabled", Boolean.class, false);
-        log.info("startup_eseal enabled={} base_url={} project={} api_key={} read_timeout_ms={} pdfa={}{}",
+        log.info("startup_eseal enabled={} base_url={} project={} api_key={} read_timeout_ms={} allow_http={}"
+                        + " pdfa={}{}",
                 eseal,
                 env.getProperty("str.eseal.base-url"),
                 env.getProperty("str.eseal.project"),
                 describeSecret(env.getProperty("str.eseal.api-key"), null),
                 env.getProperty("str.eseal.read-timeout-ms"),
+                env.getProperty("str.eseal.allow-http", Boolean.class, false),
                 env.getProperty("str.documents.pdfa", Boolean.class, false),
                 eseal ? "" : " — izlazni akti idu u eGOP/KP NEPEČAĆENI");
 

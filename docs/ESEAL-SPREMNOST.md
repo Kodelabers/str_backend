@@ -94,7 +94,9 @@ Testovi provjeravaju oznake (verzija, output intent, XMP), ne punu sukladnost �
 ## 4. Iteracija 1 (implementirano)
 
 - **Konfiguracija** `str.eseal.*` ↔ `ESEAL_ENABLED`, `ESEAL_BASE_URL`, `ESEAL_API_KEY`, `ESEAL_PROJECT`,
-  timeouti 5 s / 90 s; fail-fast uz `enabled=true`; `startup_eseal` redak u logu.
+  timeouti 5 s / 90 s; fail-fast uz `enabled=true`; `startup_eseal` redak u logu. `https://` je obvezan;
+  `ESEAL_ALLOW_HTTP=true` ga popušta za internu mrežu (CDU test: servis je na internoj IP adresi samo
+  preko HTTP-a) uz `WARN eseal_insecure_http`. Za produkciju treba `https://` adresa — pitanje pružatelju.
 - **Klijent** `eseal/EsealHttpClient` (samo E1): `byte[]` tijelo s `Content-Length`, `Idempotency-Key` =
   `X-Correlation-ID`, problem+json → `EsealException(status, errorCode, traceId, retryable)`; transport →
   `TRANSPORT`, proxy bez tijela → `HTTP_<status>`.

@@ -26,6 +26,10 @@ public class EsealConfig {
     @ConditionalOnProperty(name = "str.eseal.enabled", havingValue = "true")
     RestClient esealRestClient(EsealProperties properties) {
         properties.requireComplete();
+        if (properties.isInsecureHttp()) {
+            log.warn("eseal_insecure_http base={} — API ključ i akti idu bez TLS-a (str.eseal.allow-http=true);"
+                    + " dopušteno samo na internoj mreži, za produkciju traži https:// adresu", properties.baseUrl());
+        }
         // Ključ se nikad ne logira.
         log.info("eseal base={} project={} connect_timeout_ms={} read_timeout_ms={}",
                 properties.baseUrl(), properties.project(),

@@ -18,6 +18,10 @@ import java.util.Set;
  *
  * <p>Read timeout je 90 s jer servis sam ograničava pečatiranje na 60 s, a specifikacija klijentu
  * traži barem 90 s za E1. Kraći timeout bi prekidao pečatiranja koja servis još uspješno dovršava.
+ *
+ * <p>{@code base-url} mora biti {@code https://}, osim prema vlastitom stroju ili uz izričito
+ * {@code allow-http=true}: uz poziv idu API ključ i akt s osobnim podacima. Na CDU testu servis je na
+ * internoj adresi dostupan samo preko HTTP-a (29.10.2026.) — zato prekidač, a ne tiho popuštanje.
  */
 @ConfigurationProperties("str.eseal")
 public record EsealProperties(
@@ -28,7 +32,9 @@ public record EsealProperties(
         /** Šalje se uvijek u headeru {@code Project}, i kad ga ključ ne bi trebao — eksplicitno je sigurnije. */
         String project,
         Integer connectTimeoutMs,
-        Integer readTimeoutMs
+        Integer readTimeoutMs,
+        /** Dopušta {@code http://} prema hostu koji nije lokalni — samo za internu mrežu, nikad za produkciju. */
+        Boolean allowHttp
 ) {
 
     private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
@@ -42,6 +48,12 @@ public record EsealProperties(
 
     public int effectiveReadTimeoutMs() {
         return readTimeoutMs != null ? readTimeoutMs : DEFAULT_READ_TIMEOUT_MS;
+    }
+
+    /** {@code http://} prema hostu koji nije lokalni stroj — dopušteno samo uz {@code allow-http}. */
+    boolean isInsecureHttp() {
+        URI uri = parse();
+        return "http".equalsIgnoreCase(uri.getScheme()) && !LOOPBACK_HOSTS.contains(uri.getHost());
     }
 
     void requireComplete() {
@@ -60,18 +72,31 @@ public record EsealProperties(
                     + String.join(", ", missing));
         }
         // Uz poziv ide API ključ i cijeli akt s osobnim podacima stranke — preko plain HTTP-a ne
-        // smije, osim prema vlastitom stroju.
-        URI uri;
-        try {
-            uri = new URI(baseUrl.trim());
-        } catch (URISyntaxException e) {
-            throw new IllegalStateException("str.eseal.base-url nije ispravan URL", e);
+        // smije, osim prema vlastitom stroju ili uz izričit allow-http. URL nije tajna, pa poruka
+        // navodi što je stiglo: inače se iz loga ne vidi je li kriva shema, host ili navodnici.
+        URI uri = parse();
+        String scheme = uri.getScheme();
+        if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) {
+            throw new IllegalStateException("str.eseal.base-url mora počinjati s https:// (dobiveno: shema="
+                    + scheme + "; navodnici u .env-u ili nedostaje shema?)");
         }
-        boolean https = "https".equalsIgnoreCase(uri.getScheme());
-        boolean loopback = "http".equalsIgnoreCase(uri.getScheme()) && LOOPBACK_HOSTS.contains(uri.getHost());
-        if (uri.getHost() == null || !(https || loopback)) {
-            throw new IllegalStateException(
-                    "str.eseal.base-url mora biti https:// (uz poziv idu API ključ i akt s osobnim podacima)");
+        if (uri.getHost() == null) {
+            throw new IllegalStateException("str.eseal.base-url: host nije prepoznat (dobiveno: "
+                    + baseUrl.trim() + "; podvlaka u imenu hosta?)");
+        }
+        if (isInsecureHttp() && !Boolean.TRUE.equals(allowHttp)) {
+            throw new IllegalStateException("str.eseal.base-url je http:// prema " + uri.getHost()
+                    + " — mora biti https:// (uz poziv idu API ključ i akt s osobnim podacima). Samo za"
+                    + " internu mrežu: ESEAL_ALLOW_HTTP=true");
+        }
+    }
+
+    private URI parse() {
+        try {
+            return new URI(baseUrl.trim());
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("str.eseal.base-url nije ispravan URL (navodnici u .env-u?): "
+                    + e.getMessage(), e);
         }
     }
 

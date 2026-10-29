@@ -58,6 +58,38 @@ class EsealWiringTest {
                 });
     }
 
+    /** Servis na internoj adresi samo preko HTTP-a (CDU test): uz izričito uključenje starta. */
+    @Test
+    void plainHttpToInternalIp_withAllowHttp_starts() {
+        runner.withPropertyValues("str.eseal.enabled=true", "str.eseal.base-url=http://10.20.30.40:8080",
+                        "str.eseal.api-key=kljuc", "str.eseal.project=STR", "str.eseal.allow-http=true")
+                .run(ctx -> assertThat(ctx).hasNotFailed().hasSingleBean(EsealHttpClient.class));
+    }
+
+    @Test
+    void plainHttpToInternalIp_withoutAllowHttp_namesTheSwitch() {
+        runner.withPropertyValues("str.eseal.enabled=true", "str.eseal.base-url=http://10.20.30.40:8080",
+                        "str.eseal.api-key=kljuc", "str.eseal.project=STR")
+                .run(ctx -> assertThat(ctx).hasFailed().getFailure().rootCause()
+                        .hasMessageContaining("10.20.30.40").hasMessageContaining("ESEAL_ALLOW_HTTP"));
+    }
+
+    /** Navodnici iz .env-a završe u shemi — poruka to mora reći, ne samo „mora biti https". */
+    @Test
+    void quotedBaseUrl_reportsTheScheme() {
+        runner.withPropertyValues("str.eseal.enabled=true", "str.eseal.base-url=\"https://eseal.test\"",
+                        "str.eseal.api-key=kljuc", "str.eseal.project=STR")
+                .run(ctx -> assertThat(ctx).hasFailed().getFailure().hasStackTraceContaining("navodnici"));
+    }
+
+    @Test
+    void underscoreInHost_isReportedAsUnrecognisedHost() {
+        runner.withPropertyValues("str.eseal.enabled=true", "str.eseal.base-url=https://str_eseal:8443",
+                        "str.eseal.api-key=kljuc", "str.eseal.project=STR")
+                .run(ctx -> assertThat(ctx).hasFailed().getFailure().rootCause()
+                        .hasMessageContaining("host nije prepoznat"));
+    }
+
     @Test
     void emptyEnabled_isDisabled() {
         runner.withPropertyValues("str.eseal.enabled=")

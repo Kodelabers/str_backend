@@ -504,8 +504,13 @@ ESEAL_ENABLED=true
 ESEAL_BASE_URL=<base url>
 ESEAL_API_KEY=<ključ>
 ESEAL_PROJECT=<eseal.project>
+ESEAL_ALLOW_HTTP=true         # servis je na CDU-u na internoj IP adresi, samo http:// (29.10.2026.)
 STR_DOCUMENTS_PDFA=false      # prvi prolaz bez PDF/A, drugi s true (bez rebuilda, samo korak 7)
 ```
+
+Bez `ESEAL_ALLOW_HTTP=true` backend uz `http://` adresu ne krene (`str.eseal.base-url je http:// …`).
+Uz njega u logu stoji `WARN eseal_insecure_http` — API ključ i akti idu bez TLS-a, pa to vrijedi samo
+za internu mrežu; za produkciju treba `https://` adresa od pružatelja.
 
 **3. Nakon `up`:**
 
@@ -513,7 +518,7 @@ STR_DOCUMENTS_PDFA=false      # prvi prolaz bez PDF/A, drugi s true (bez rebuild
 docker logs str-backend-cdu 2>&1 | grep -E "startup_eseal|eseal base="
 ```
 
-Očekivano: `startup_eseal enabled=true … api_key=postavljen … pdfa=false` i `eseal base=… project=…`.
+Očekivano: `startup_eseal enabled=true … api_key=postavljen … allow_http=true pdfa=false` i `eseal base=… project=…`.
 Uz `enabled=true` bez URL-a, ključa ili projekta backend namjerno ne krene (poruka navodi što fali).
 
 **4. Okidači:** nova registracija (obavijest o dodjeli) i radnja nad RB-om (prijedlog suspenzije,

@@ -59,7 +59,7 @@ class EsealContentLengthTest {
     void sendsFixedContentLength_notChunked() {
         String base = "http://localhost:" + server.getAddress().getPort();
         EsealHttpClient client = new EsealHttpClient(EsealConfig.configure(RestClient.builder(),
-                new EsealProperties(true, base, "kljuc", "STR", 2_000, 5_000)).build());
+                new EsealProperties(true, base, "kljuc", "STR", 2_000, 5_000, null)).build());
         byte[] pdf = "%PDF-1.4 akt".getBytes();
 
         client.seal(pdf, "0b8f6a7e-2f1c-4c55-9d1e-7a3b2c1d0e9f", null);
