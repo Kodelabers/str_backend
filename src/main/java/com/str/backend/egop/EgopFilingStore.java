@@ -96,6 +96,51 @@ public class EgopFilingStore {
         });
     }
 
+    /** Što ide na pečatiranje: ključ i točno oni bajtovi koji su uz njega zapisani. */
+    public record SealRequest(String key, byte[] pdf) {}
+
+    /**
+     * Zapisuje {@code pdf} i {@code candidateKey} zajedno, ako akt još nema ključ. Ako ga ima
+     * (paralelni tok je bio brži), vraća <b>njegov</b> ključ i <b>njegove</b> bajtove — isti par mora
+     * ići servisu, inače servis zahtjev odbija kao ponovno korišten ključ.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public SealRequest freezeForSealing(UUID pismenoId, byte[] pdf, String candidateKey) {
+        if (egopPismenoRepository.freezeForSealing(pismenoId, pdf, candidateKey, Instant.now()) > 0) {
+            return new SealRequest(candidateKey, pdf);
+        }
+        EgopPismenoEntity current = egopPismenoRepository.findById(pismenoId)
+                .orElseThrow(() -> new IllegalStateException("Pismeno " + pismenoId + " ne postoji"));
+        if (current.getSealIdempotencyKey() == null) {
+            throw new IllegalStateException("Pismeno " + pismenoId + " je već priloženo u eGOP — ne pečatira se");
+        }
+        return new SealRequest(current.getSealIdempotencyKey(), current.getPdfContent());
+    }
+
+    /** Briše ključ nepečaćenog akta, ali samo ako je još onaj s kojim je zahtjev odbijen. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void clearSealKey(UUID pismenoId, String key) {
+        egopPismenoRepository.clearSealKey(pismenoId, key, Instant.now());
+    }
+
+    /**
+     * Pečaćeni dokument zamjenjuje nepečaćeni, uz podatke o pečatu.
+     *
+     * @return {@code false} ako je pismeno u međuvremenu priložio paralelni tok — tada se ne dira
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean applySeal(UUID pismenoId, byte[] sealedPdf, UUID documentGuid, String controlNumber,
+                             String level, String digest) {
+        return egopPismenoRepository.findById(pismenoId)
+                .filter(pismeno -> !pismeno.isDocumentAttached())
+                .map(pismeno -> {
+                    pismeno.applySeal(sealedPdf, documentGuid, controlNumber, level, digest);
+                    egopPismenoRepository.save(pismeno);
+                    return true;
+                })
+                .orElse(false);
+    }
+
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public Optional<EgopPismenoEntity> findPismeno(UUID submissionId, String vrstaNaziv,
                                                    String actRef) {
@@ -150,6 +195,11 @@ public class EgopFilingStore {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int markAktFailed(UUID aktId, String error, Instant nextAttemptAt) {
         return egopPismenoRepository.findById(aktId).map(akt -> {
+            if (akt.isSynced()) {
+                // Paralelni tok (retry job, druga instanca) je akt u međuvremenu dovršio; zakašnjeli
+                // pad drugog toka ne smije ga vratiti na FAILED — KP otprema traži SYNCED.
+                return akt.getSyncAttempts();
+            }
             akt.markFailed(error, nextAttemptAt);
             egopPismenoRepository.save(akt);
             return akt.getSyncAttempts();

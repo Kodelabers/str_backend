@@ -118,6 +118,32 @@ public class EgopPismenoEntity {
     @Column(name = "pdf_content", length = 10_485_760)
     private byte[] pdfContent;
 
+    /**
+     * Ključ kojim se akt šalje eSeal servisu. Upisuje se <b>prije</b> prvog poziva zajedno s bajtovima
+     * ({@code EgopFilingStore#freezeForSealing}): ponovljeni poziv s istim ključem i istim bajtovima
+     * vraća spremljeni pečat umjesto novog. Briše se samo nakon konačnog odbijanja.
+     */
+    @Column(name = "seal_idempotency_key", length = 64)
+    private String sealIdempotencyKey;
+
+    @Column(name = "seal_document_guid")
+    private UUID sealDocumentGuid;
+
+    /** Tajna: s {@link #sealDocumentGuid} otvara dokument na eSeal servisu. Ne logira se. */
+    @Column(name = "seal_control_number", length = 16)
+    private String sealControlNumber;
+
+    /** PAdES razina koju je servis primijenio (B-B, B-T, B-LT, B-LTA). */
+    @Column(name = "seal_level", length = 8)
+    private String sealLevel;
+
+    /** {@code Repr-Digest} pečaćenog PDF-a, {@code sha-256=:<base64>:}. */
+    @Column(name = "seal_digest", length = 80)
+    private String sealDigest;
+
+    @Column(name = "sealed_at")
+    private Instant sealedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -200,8 +226,43 @@ public class EgopPismenoEntity {
         if (documentAttached) {
             throw new IllegalStateException("Dokument pismena " + id + " je već priložen u eGOP");
         }
+        if (isSealFrozen()) {
+            // Pečat vrijedi za točno te bajtove, a zamrznute je paralelni tok poslao pod svojim
+            // ključem — zamjena bi u eGOP poslala nepečaćeni akt ili srušila replay pečata.
+            throw new IllegalStateException("Dokument pismena " + id + " je poslan na pečatiranje");
+        }
         this.pdfContent = pdf;
         this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Pečaćeni PDF zamjenjuje nepečaćeni. Samo prije prilaganja u eGOP — priloženi dokument eGOP
+     * više ne mijenja, pa bi pečaćena verzija ostala samo kod nas.
+     */
+    public void applySeal(byte[] sealedPdf, UUID documentGuid, String controlNumber, String level,
+                          String digest) {
+        if (documentAttached) {
+            throw new IllegalStateException("Dokument pismena " + id + " je već priložen u eGOP");
+        }
+        this.pdfContent = sealedPdf;
+        this.sealDocumentGuid = documentGuid;
+        this.sealControlNumber = controlNumber;
+        this.sealLevel = level;
+        this.sealDigest = digest;
+        this.sealedAt = Instant.now();
+        this.updatedAt = this.sealedAt;
+    }
+
+    public boolean isSealed() {
+        return sealedAt != null;
+    }
+
+    /**
+     * Dokument je poslan na pečatiranje ili pečatiran, pa je zamrznut: ne renderira se ponovo, a retry
+     * šalje iste bajtove pod istim ključem (ili prilaže pečaćene).
+     */
+    public boolean isSealFrozen() {
+        return sealIdempotencyKey != null || sealedAt != null;
     }
 
     public void markSynced() {

@@ -240,8 +240,10 @@ public class RnController {
         byte[] pdf = switch (type) {
             // Zahtjev nema predložak — servira se pohranjeni podnesak sa submissiona.
             case ZAHTJEV -> documentsService.zahtjevPdf(rn);
-            // Dodjela se renderira s pravim URBROJ-em izlaznog pismena (kao verzija u eGOP-u).
-            case DODJELA -> documentService.render(type, rn, razlog, documentsService.dodjelaFiling(rn));
+            // Pečaćena dodjela je original (ista kao u eGOP-u i KP-u); bez nje se renderira s pravim
+            // URBROJ-em izlaznog pismena.
+            case DODJELA -> documentsService.sealedDodjela(rn).orElseGet(() ->
+                    documentService.render(type, rn, razlog, documentsService.dodjelaFiling(rn)));
             default -> documentService.render(type, rn, razlog);
         };
         return ResponseEntity.ok()

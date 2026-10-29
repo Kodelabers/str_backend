@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ZupTemplateLoaderTest {
 
     private static final DocumentProperties PROPERTIES =
-            new DocumentProperties(null, null, null, Map.of(), false);
+            new DocumentProperties(null, null, null, Map.of(), false, false);
 
     private final ZupTemplateLoader loader = loaded();
 

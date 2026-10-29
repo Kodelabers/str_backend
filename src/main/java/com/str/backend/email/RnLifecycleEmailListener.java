@@ -5,6 +5,9 @@ import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.egop.EgopPismenoEntity;
+import com.str.backend.egop.EgopPismenoRepository;
+import com.str.backend.eseal.PdfSealer;
 import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.event.RnLifecycleEvent;
@@ -44,17 +47,23 @@ public class RnLifecycleEmailListener {
     private final DocumentLabels labels;
     private final EmailService emailService;
     private final MailRetryStore retryStore;
+    private final PdfSealer sealer;
+    private final EgopPismenoRepository pismenoRepository;
 
     public RnLifecycleEmailListener(RnLifecycleLookup lookup,
                                     StrDocumentService documentService,
                                     DocumentLabels labels,
                                     EmailService emailService,
-                                    MailRetryStore retryStore) {
+                                    MailRetryStore retryStore,
+                                    PdfSealer sealer,
+                                    EgopPismenoRepository pismenoRepository) {
         this.lookup = lookup;
         this.documentService = documentService;
         this.labels = labels;
         this.emailService = emailService;
         this.retryStore = retryStore;
+        this.sealer = sealer;
+        this.pismenoRepository = pismenoRepository;
     }
 
     /**
@@ -113,6 +122,20 @@ public class RnLifecycleEmailListener {
         }
 
         String razlog = razlog(event);
+        Dostava dostava = dostava(akt.get(), detail);
+        byte[] pdf;
+        if (dostava == Dostava.EPOSTA && sealer.isEnabled()) {
+            // Non-EU iznajmljivaču je mail dostava akta, pa nosi samo pečaćeni — onaj iz eGOP-a. Dok
+            // pečata nema, poruka čeka u redu ponovnog slanja (MailRetryJob), umjesto da ode bez njega.
+            pdf = pecaceniAkt(event).orElse(null);
+            if (pdf == null) {
+                log.warn("rn_lifecycle_mail_deferred reason=not_sealed rn={} template={}", event.rn(), template);
+                retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "not_sealed");
+                return;
+            }
+        } else {
+            pdf = aktPdf(akt.get(), event.rn(), razlog);
+        }
         boolean sent = emailService.sendRnLifecycleNotification(new RnLifecycleMail(
                 template,
                 detail.lessorEmail(),
@@ -121,13 +144,20 @@ public class RnLifecycleEmailListener {
                 objekt(detail),
                 razlog,
                 rok(detail),
-                aktPdf(akt.get(), event.rn(), razlog),
-                dostava(akt.get(), detail)));
+                pdf,
+                dostava));
         if (sent) {
             retryStore.markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
         } else {
             retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "smtp_failed");
         }
+    }
+
+    /** Pečaćeni akt ovog prijelaza, kad je eGOP tok stigao do pečata ({@code act_ref} = {@code log_id}). */
+    private Optional<byte[]> pecaceniAkt(RnLifecycleEvent event) {
+        return pismenoRepository.findFirstByRnAndActRef(event.rn(), event.logId().toString())
+                .filter(EgopPismenoEntity::isSealed)
+                .map(EgopPismenoEntity::getPdfContent);
     }
 
     /**

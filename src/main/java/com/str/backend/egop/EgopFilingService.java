@@ -6,6 +6,10 @@ import com.str.backend.domain.EgopSyncStatus;
 import com.str.backend.egop.codebook.VrstaUpisneKnjige;
 import com.str.backend.egop.exception.EgopBadRequestException;
 import com.str.backend.egop.exception.EgopException;
+import com.str.backend.egop.exception.EgopSealingException;
+import com.str.backend.eseal.EsealException;
+import com.str.backend.eseal.EsealHttpClient;
+import com.str.backend.eseal.PdfSealer;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.request.SubmissionEntity;
 import hr.infodom.egov.pismeno.KreirajDokumentZaPismeno;
@@ -28,6 +32,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Urudžbiranje registracije u eGOP (pisarnica MINT-a), po toku dogovorenom s
@@ -40,6 +45,8 @@ import java.util.Optional;
  *   <li>ulazno pismeno (zahtjev) + PDF dokument — PDF se renderira tek nakon
  *       kreiranja pismena jer tada postoje KLASA i URBROJ;</li>
  *   <li>izlazno pismeno (obavijest o dodjeli) + PDF dokument;</li>
+ *   <li>izlazni akt se prije prilaganja pečatira kvalificiranim e-pečatom ({@link PdfSealer}) — iza
+ *       {@code str.eseal.enabled}; bez pečata se ne prilaže ni ne otprema;</li>
  *   <li>otprema izlaznog pismena u korisnički pretinac ({@link EgopKpOtpremaService}) — iza
  *       {@code str.egop.kp.enabled}, i bez utjecaja na ishod urudžbe.</li>
  * </ol>
@@ -63,6 +70,7 @@ public class EgopFilingService {
     private final EgopFilingStore store;
     private final EgopVrstaResolver vrste;
     private final EgopKpOtpremaService kpOtprema;
+    private final PdfSealer sealer;
 
     private final String appUsername;
     private final String rjesavatelj;
@@ -80,6 +88,7 @@ public class EgopFilingService {
                              EgopFilingStore store,
                              EgopVrstaResolver vrste,
                              EgopKpOtpremaService kpOtprema,
+                             PdfSealer sealer,
                              EgopProperties properties,
                              @Value("${str.egop.rjesavatelj:}") String rjesavatelj,
                              // Konfigurabilna jer posudbena vrsta predmeta ne mora biti dopuštena
@@ -89,6 +98,7 @@ public class EgopFilingService {
         this.store = store;
         this.vrste = vrste;
         this.kpOtprema = kpOtprema;
+        this.sealer = sealer;
         this.appUsername = properties.qualifiedAppUsername();
         // InfoDom (26.07.2026): rješavatelj mora biti osoba s username-om; probna
         // vrijednost je servisni račun, a property dopušta zamjenu bez rebuilda.
@@ -134,7 +144,14 @@ public class EgopFilingService {
                 EgopPismenoEntity.Smjer.IZLAZNO, subjektOznaka, lessor);
         // Izlazno pismeno nosi vlastiti URBROJ, pa i vlastiti PDF — ranije se ovdje prilagala
         // kopija PDF-a zahtjeva, dokument s krivim urudžbenim brojem i krivim naslovom.
-        attachPdfOnce(izlazno, documents.obavijestODodjeli(filing(submission, izlazno)), appUsername);
+        if (!izlazno.isDocumentAttached()) {
+            // Dokument koji je već poslan na pečatiranje (ima ključ) se ne renderira ponovo — sealOnce
+            // uzima spremljene bajtove; novi render bi pod istim ključem servis odbio.
+            byte[] obavijest = izlazno.isSealFrozen()
+                    ? izlazno.getPdfContent()
+                    : documents.obavijestODodjeli(filing(submission, izlazno));
+            attachPdfOnce(izlazno, sealOnce(izlazno, obavijest), appUsername);
+        }
 
         // Na submission ide oznaka ULAZNOG pismena — to je akt kojim je postupak pokrenut.
         String filingNumber = formatFilingNumber(ulaznaOznaka);
@@ -454,7 +471,9 @@ public class EgopFilingService {
                     kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
         }
 
-        if (!akt.isDocumentAttached() && !pismenoUPredmetuRegistracije) {
+        // Akt poslan na pečatiranje (ima ključ, pečaćen ili ne) se ne renderira ponovo: retry mora
+        // poslati iste bajtove pod istim ključem, a pečat vrijedi samo za pečatirane bajtove.
+        if (!akt.isDocumentAttached() && !pismenoUPredmetuRegistracije && !akt.isSealFrozen()) {
             Optional<byte[]> konacni = dokument.konacni(
                     new FilingReference(submission.getEgopAktiKlasa(), akt.getUrBroj(), akt.getJop()));
             if (konacni.isPresent()) {
@@ -464,7 +483,9 @@ public class EgopFilingService {
         }
 
         // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
-        attachPdfOnce(akt, akt.getPdfContent(), korisnik);
+        if (!akt.isDocumentAttached()) {
+            attachPdfOnce(akt, sealOnce(akt, akt.getPdfContent()), korisnik);
+        }
 
         log.info("egop_akt_filed akt={} rn={} vrsta='{}' klasa={} urbroj={} korisnik={}",
                 akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(),
@@ -473,6 +494,60 @@ public class EgopFilingService {
 
         // Otpremu je zapisao RnLifecycleFilingListener kad je akt nastao (ako je KP tada bio uključen).
         kpOtprema.otpremi(akt.getId());
+    }
+
+    /**
+     * Izlazni akt tijela pečatira kvalificiranim e-pečatom i vraća bajtove koje treba priložiti.
+     * Ulazna pismena (podnesci stranke) i ugašen eSeal prolaze nepromijenjeni.
+     *
+     * <p>Dokument i ključ zapisuju se zajedno <b>prije</b> poziva ({@link EgopFilingStore#freezeForSealing})
+     * i od tada su zamrznuti: ako poziv istekne, a servis je ipak pečatirao, retry s istim ključem i
+     * istim bajtovima dobiva taj pečat. Novi render bi imao druge bajtove (OpenPDF svaki put upisuje
+     * novi {@code /ID} i datum) i servis bi ga odbio s {@code IDEMPOTENCY_KEY_REUSED}.
+     *
+     * <p>Kad servis zahtjev <b>konačno</b> odbije ({@code retryable=false} uz 4xx/5xx), pečata nema, a
+     * specifikacija za promijenjen zahtjev traži novi ključ — ključ se briše, pa sljedeći pokušaj
+     * renderira dokument iznova (npr. nakon uključivanja PDF/A) i šalje ga pod novim ključem.
+     *
+     * <p>Pad ne prolazi tiho: {@link EgopSealingException} prekida tok prije prilaganja, pa akt bez
+     * pečata ne ide ni u eGOP ni u korisnički pretinac.
+     */
+    private byte[] sealOnce(EgopPismenoEntity pismeno, byte[] pdf) throws EgopException {
+        if (pismeno.getSmjer() != EgopPismenoEntity.Smjer.IZLAZNO || !sealer.isEnabled()) {
+            return pdf;
+        }
+        if (pismeno.isSealed()) {
+            return pismeno.getPdfContent();
+        }
+        EgopFilingStore.SealRequest request = pismeno.getSealIdempotencyKey() != null
+                ? new EgopFilingStore.SealRequest(pismeno.getSealIdempotencyKey(), pismeno.getPdfContent())
+                : store.freezeForSealing(pismeno.getId(), pdf, UUID.randomUUID().toString());
+        EsealHttpClient.Sealed sealed;
+        try {
+            sealed = sealer.seal(request.pdf(), request.key(), pismeno.getUrBroj());
+        } catch (EsealException e) {
+            boolean odbijeno = !e.retryable() && e.httpStatus() >= 400;
+            if (odbijeno) {
+                store.clearSealKey(pismeno.getId(), request.key());
+            }
+            log.error("eseal_pismeno_failed pismeno={} vrsta='{}' urbroj={} key={} novi_kljuc={}: {}",
+                    pismeno.getId(), pismeno.getVrstaPismenaNaziv(), pismeno.getUrBroj(), request.key(),
+                    odbijeno, e.getMessage());
+            throw new EgopSealingException(e);
+        }
+        if (!store.applySeal(pismeno.getId(), sealed.pdf(), sealed.documentGuid(), sealed.controlNumber(),
+                sealed.sealLevel(), sealed.digest())) {
+            // Paralelni tok je isti akt (isti ključ, isti pečat) u međuvremenu priložio; markAktFailed
+            // ga neće vratiti sa SYNCED, a drugo prilaganje se ovime izbjegava.
+            throw new EgopSealingException("eseal pečat primljen, ali je pismeno " + pismeno.getId()
+                    + " u međuvremenu priložio drugi tok");
+        }
+        pismeno.applySeal(sealed.pdf(), sealed.documentGuid(), sealed.controlNumber(), sealed.sealLevel(),
+                sealed.digest());
+        log.info("eseal_pismeno_sealed pismeno={} vrsta='{}' urbroj={} document_guid={} seal_level={}",
+                pismeno.getId(), pismeno.getVrstaPismenaNaziv(), pismeno.getUrBroj(), sealed.documentGuid(),
+                sealed.sealLevel());
+        return sealed.pdf();
     }
 
     /**

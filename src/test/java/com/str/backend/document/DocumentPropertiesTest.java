@@ -31,6 +31,6 @@ class DocumentPropertiesTest {
     void nazivTijela_prazanOstajePrazan() {
         assertThat(tijelo(null).naziv()).isNull();
         assertThat(tijelo("  ").naziv()).isEqualTo("  ");
-        assertThat(new DocumentProperties(null, null, null, null, false).tijelo().naziv()).isNull();
+        assertThat(new DocumentProperties(null, null, null, null, false, false).tijelo().naziv()).isNull();
     }
 }

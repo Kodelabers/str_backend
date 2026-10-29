@@ -5,6 +5,7 @@ import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
+import com.str.backend.eseal.PdfSealer;
 import com.str.backend.email.EmailService;
 import com.str.backend.email.MailRetryEntity;
 import com.str.backend.email.MailRetryStore;
@@ -65,6 +66,7 @@ public class EgopRegistrationDispatcher {
     private final EmailService emailService;
     private final MailRetryStore mailRetryStore;
     private final FacilityRooms facilityRooms;
+    private final PdfSealer sealer;
 
     public EgopRegistrationDispatcher(EgopFilingStore store,
                                       AccommodationRepository accommodationRepository,
@@ -77,7 +79,8 @@ public class EgopRegistrationDispatcher {
                                       EgopRetryPolicy retryPolicy,
                                       EmailService emailService,
                                       MailRetryStore mailRetryStore,
-                                      FacilityRooms facilityRooms) {
+                                      FacilityRooms facilityRooms,
+                                      PdfSealer sealer) {
         this.store = store;
         this.accommodationRepository = accommodationRepository;
         this.lessorRepository = lessorRepository;
@@ -90,6 +93,7 @@ public class EgopRegistrationDispatcher {
         this.emailService = emailService;
         this.mailRetryStore = mailRetryStore;
         this.facilityRooms = facilityRooms;
+        this.sealer = sealer;
     }
 
     /** Sve što dispatch rekonstruira iz baze po {@code submissionId}. */
@@ -219,6 +223,12 @@ public class EgopRegistrationDispatcher {
         boolean dostavaMailom = lessor.getLessorOib() == null || lessor.getLessorOib().isBlank();
         byte[] akt = dostavaMailom ? documents.obavijestZaDostavu() : null;
         if (dostavaMailom && akt == null) {
+            if (sealer.isEnabled()) {
+                // Nije kvar: obavijest čeka pečat i ide s prvim pokušajem nakon njega (MailRetryJob).
+                log.warn("egop_email_deferred reason=not_sealed submission={} rn={}", submissionId, rn);
+                mailRetryStore.recordFailure(MailRetryEntity.Kind.RN_ISSUED, submissionId, "not_sealed");
+                return;
+            }
             log.error("egop_email_skipped reason=no_pdf submission={} rn={}", submissionId, rn);
             mailRetryStore.recordFailure(MailRetryEntity.Kind.RN_ISSUED, submissionId, "no_pdf");
             return;
@@ -307,9 +317,20 @@ public class EgopRegistrationDispatcher {
          * sa submissiona, ako je predmet otvoren) — RB je valjan neovisno o urudžbiranju, pa ni
          * dostava ne čeka na njega.
          *
-         * @return {@code null} kad se akt ne može renderirati
+         * <p>Uz uključen eSeal ide <b>samo pečaćena</b> obavijest spremljena uz izlazno pismeno — ista
+         * koja je priložena u eGOP i otpremljena u KP. E-pošta je non-EU iznajmljivaču dostava akta,
+         * pa nepečaćeni render (ni onaj iz ovog urudžbiranja, nastao prije pečata) ne smije van.
+         *
+         * @return {@code null} kad se akt ne može renderirati, ili uz eSeal još nije pečatiran
          */
         byte[] obavijestZaDostavu() {
+            if (sealer.isEnabled()) {
+                return store.findPismeno(submission.getSubmissionId(),
+                                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.ACT_REF_REGISTRACIJA)
+                        .filter(EgopPismenoEntity::isSealed)
+                        .map(EgopPismenoEntity::getPdfContent)
+                        .orElse(null);
+            }
             if (obavijest != null) {
                 return obavijest;
             }

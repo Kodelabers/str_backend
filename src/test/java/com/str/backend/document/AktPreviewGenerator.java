@@ -63,7 +63,7 @@ class AktPreviewGenerator {
                             + " Upravnom sudu u Zagrebu u roku od 30 dana od dana dostave ove Obavijesti.",
                     "povlacenje", "nije dopuštena žalba, ali se može pokrenuti upravni spor tužbom"
                             + " Upravnom sudu u Zagrebu u roku od 30 dana od dana dostave ove Obavijesti."),
-            false);
+            false, true);
 
     // JUnit poštuje @Disabled i uz -Dtest, pa pokretanje traži i isključen DisabledCondition:
     // mvn test -Dtest=AktPreviewGenerator "-Djunit.jupiter.conditions.deactivate=org.junit.*DisabledCondition"
