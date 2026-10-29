@@ -1,6 +1,7 @@
 package com.str.backend.objection;
 
 import com.str.backend.auth.internal.InternalAccessService;
+import com.str.backend.rn.RnScopeGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ContentDisposition;
@@ -22,7 +23,8 @@ import java.util.UUID;
 
 /**
  * Prigovori uz RB na detalju RB-a. Pod {@code /api/rn/**}, pa vrijedi isto što i za ostale
- * radnje službenika nad RB-om: rola {@code RN_MANAGEMENT} i CSRF zaglavlje ({@code SecurityConfig}).
+ * radnje službenika nad RB-om: rola {@code RN_MANAGEMENT} i CSRF zaglavlje ({@code SecurityConfig}),
+ * a RB izvan opsega službenika (druga županija) je 404 ({@link RnScopeGuard}).
  */
 @RestController
 @RequestMapping("/api/rn/{rn}/objections")
@@ -30,18 +32,22 @@ public class SuspensionObjectionController {
 
     private final SuspensionObjectionAdminService service;
     private final InternalAccessService internalAccess;
+    private final RnScopeGuard scopeGuard;
 
     public SuspensionObjectionController(SuspensionObjectionAdminService service,
-                                         InternalAccessService internalAccess) {
+                                         InternalAccessService internalAccess,
+                                         RnScopeGuard scopeGuard) {
         this.service = service;
         this.internalAccess = internalAccess;
+        this.scopeGuard = scopeGuard;
     }
 
     record ResolveObjectionRequest(@Nullable @Size(max = 1000) String note) {
     }
 
     @GetMapping
-    public List<SuspensionObjectionDto> list(@PathVariable String rn) {
+    public List<SuspensionObjectionDto> list(@PathVariable String rn, Authentication authentication) {
+        scopeGuard.requireInScope(rn, authentication);
         return service.list(rn);
     }
 
@@ -51,7 +57,9 @@ public class SuspensionObjectionController {
      * header injectiona).
      */
     @GetMapping("/{id}/file")
-    public ResponseEntity<byte[]> file(@PathVariable String rn, @PathVariable UUID id) {
+    public ResponseEntity<byte[]> file(@PathVariable String rn, @PathVariable UUID id,
+                                       Authentication authentication) {
+        scopeGuard.requireInScope(rn, authentication);
         SuspensionObjectionFileDto f = service.file(rn, id);
         ContentDisposition.Builder builder = SuspensionObjectionService.CONTENT_TYPE_PDF.equals(f.contentType())
                 ? ContentDisposition.inline()
@@ -68,6 +76,7 @@ public class SuspensionObjectionController {
     public ResponseEntity<Void> accept(@PathVariable String rn, @PathVariable UUID id,
                                        @RequestBody(required = false) @Valid ResolveObjectionRequest body,
                                        Authentication authentication) {
+        scopeGuard.requireInScope(rn, authentication);
         service.accept(rn, id, actor(authentication), body != null ? body.note() : null);
         return ResponseEntity.noContent().build();
     }
@@ -76,6 +85,7 @@ public class SuspensionObjectionController {
     public ResponseEntity<Void> reject(@PathVariable String rn, @PathVariable UUID id,
                                        @RequestBody(required = false) @Valid ResolveObjectionRequest body,
                                        Authentication authentication) {
+        scopeGuard.requireInScope(rn, authentication);
         service.reject(rn, id, actor(authentication), body != null ? body.note() : null);
         return ResponseEntity.noContent().build();
     }

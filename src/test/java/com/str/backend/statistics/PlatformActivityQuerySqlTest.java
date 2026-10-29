@@ -45,7 +45,7 @@ class PlatformActivityQuerySqlTest {
 
     @Test
     void rowSql_joinsFragmentsWithoutMashingTokens() {
-        query.queryAll(PlatformActivityFilter.none(), ANY_LIMIT);
+        query.queryAll(PlatformActivityFilter.none(), null, ANY_LIMIT);
 
         String sql = captureRowSql();
         assertThat(sql)
@@ -60,7 +60,7 @@ class PlatformActivityQuerySqlTest {
     /** Spec §2.10: the header count and the filter must never diverge. */
     @Test
     void anomalyPredicateIsIdenticalInFilterAndHeaderCount() {
-        query.query(PlatformActivityFilter.none(), 0, 20);
+        query.query(PlatformActivityFilter.none(), null, 0, 20);
 
         String summarySql = captureSummarySql();
         // SUSPENSION_PROPOSED is not an anomaly: the proposal only opens the response deadline,
@@ -78,7 +78,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void registrationNumberIsMatchedPartially() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, null, null, "HR0100", false, null, false), ANY_LIMIT);
+                null, null, null, null, null, null, null, "HR0100", false, null, false), null, ANY_LIMIT);
 
         assertThat(captureRowSql()).contains("AND (:rn IS NULL OR aa.rn ILIKE :rnLike)");
         assertThat(captureParams().getValue("rnLike")).isEqualTo("%HR0100%");
@@ -87,7 +87,7 @@ class PlatformActivityQuerySqlTest {
     /** The megasearch has to reach the owner and county it already selects and displays. */
     @Test
     void megasearchCoversOwnerAndCounty() {
-        query.queryAll(PlatformActivityFilter.none(), ANY_LIMIT);
+        query.queryAll(PlatformActivityFilter.none(), null, ANY_LIMIT);
 
         assertThat(captureRowSql())
                 .contains("a.county ILIKE :qLike")
@@ -98,7 +98,7 @@ class PlatformActivityQuerySqlTest {
     /** The export bound belongs in SQL — capping only while writing still fetches everything. */
     @Test
     void exportFetchIsBoundedInSqlAndAsksForOneExtraRow() {
-        query.queryAll(PlatformActivityFilter.none(), 50_000);
+        query.queryAll(PlatformActivityFilter.none(), null, 50_000);
 
         assertThat(captureRowSql()).endsWith(" LIMIT :limit");
         assertThat(captureParams().getValue("limit")).isEqualTo(50_001);
@@ -106,7 +106,7 @@ class PlatformActivityQuerySqlTest {
 
     @Test
     void guestCountryFilterMatchesAgainstGuestTable() {
-        query.queryAll(PlatformActivityFilter.none(), ANY_LIMIT);
+        query.queryAll(PlatformActivityFilter.none(), null, ANY_LIMIT);
 
         assertThat(captureRowSql())
                 .contains("SELECT 1 FROM str_rn.guest g")
@@ -117,7 +117,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void filterValuesAreBoundAsParameters() {
         query.queryAll(new PlatformActivityFilter(
-                7L, null, null, "  ", null, "suspendiran", null, null, true, "  Njemačka  ", false), ANY_LIMIT);
+                7L, null, null, "  ", null, "suspendiran", null, null, true, "  Njemačka  ", false), null, ANY_LIMIT);
 
         MapSqlParameterSource params = captureParams();
         assertThat(params.getValue("platformId")).isEqualTo(7L);
@@ -132,7 +132,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void revokedAndWithdrawnTokensMapToTheirOwnStatus() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, "opozvan", null, null, false, null, false), ANY_LIMIT);
+                null, null, null, null, null, "opozvan", null, null, false, null, false), null, ANY_LIMIT);
         assertThat(captureParams().getValue("rnStatus")).isEqualTo("REVOKED");
     }
 
@@ -144,7 +144,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void invalidTokenMatchesEveryStatusInvalidForAdvertising() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, "nevažeći", null, null, false, null, false), ANY_LIMIT);
+                null, null, null, null, null, "nevažeći", null, null, false, null, false), null, ANY_LIMIT);
 
         MapSqlParameterSource params = captureParams();
         assertThat(params.getValue("rnStatus")).isEqualTo("INVALID");
@@ -157,7 +157,7 @@ class PlatformActivityQuerySqlTest {
     void invalidTokenAppliesToCountAndSummaryToo() {
         when(jdbc.queryForObject(any(String.class), any(SqlParameterSource.class), eq(Long.class))).thenReturn(0L);
         query.query(new PlatformActivityFilter(
-                null, null, null, null, null, "nevažeći", null, null, false, null, false), 0, 20);
+                null, null, null, null, null, "nevažeći", null, null, false, null, false), null, 0, 20);
 
         ArgumentCaptor<String> count = ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForObject(count.capture(), any(SqlParameterSource.class), eq(Long.class));
@@ -175,7 +175,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void withdrawnTokenStillMapsToWithdrawn() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, "povucen", null, null, false, null, false), ANY_LIMIT);
+                null, null, null, null, null, "povucen", null, null, false, null, false), null, ANY_LIMIT);
         assertThat(captureParams().getValue("rnStatus")).isEqualTo("WITHDRAWN");
     }
 
@@ -187,7 +187,7 @@ class PlatformActivityQuerySqlTest {
     void unknownStatusTokenIsRejected() {
         for (String bad : new String[]{"blabla", "ACTIVE", "Aktivan", "active"}) {
             assertThatThrownBy(() -> query.queryAll(new PlatformActivityFilter(
-                    null, null, null, null, null, bad, null, null, false, null, false), ANY_LIMIT))
+                    null, null, null, null, null, bad, null, null, false, null, false), null, ANY_LIMIT))
                     .isInstanceOf(BusinessException.class)
                     .hasMessage("error.activity.status.invalid");
         }
@@ -200,7 +200,7 @@ class PlatformActivityQuerySqlTest {
     @Test
     void absentAnomalyFlagBindsAsFalseNotNull() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, null, null, null, null, null, null), ANY_LIMIT);
+                null, null, null, null, null, null, null, null, null, null, null), null, ANY_LIMIT);
 
         assertThat(captureParams().getValue("anomaliesOnly")).isEqualTo(false);
     }
@@ -208,9 +208,53 @@ class PlatformActivityQuerySqlTest {
     @Test
     void blankStatusLeavesTheFilterOff() {
         query.queryAll(new PlatformActivityFilter(
-                null, null, null, null, null, "  ", null, null, false, null, false), ANY_LIMIT);
+                null, null, null, null, null, "  ", null, null, false, null, false), null, ANY_LIMIT);
 
         assertThat(captureParams().getValue("rnStatus")).isNull();
+    }
+
+    /**
+     * Opseg županijskog službenika: nazivi njegove županije idu u {@code IN}, a {@code county}
+     * iz filtra se zanemaruje — inače bi tuđa županija ispraznila ekran.
+     */
+    @Test
+    void scopeCounties_bindScopeAndDropCountyFromFilter() {
+        List<String> scope = List.of("Splitsko-dalmatinska županija", "Splitsko-dalmatinska");
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, "Grad Zagreb", null, null, null, null, false, null, false), scope, ANY_LIMIT);
+
+        MapSqlParameterSource params = captureParams();
+        assertThat(params.getValue("scopeMode")).isEqualTo("ON");
+        assertThat(params.getValue("scopeCounties")).isEqualTo(scope);
+        assertThat(params.getValue("county")).isNull();
+        assertThat(captureRowSql()).contains("AND (:scopeMode IS NULL OR a.county IN (:scopeCounties))");
+    }
+
+    /** Bez opsega (cijela RH) klauzula je isključena, a filtar županije radi kao i prije. */
+    @Test
+    void withoutScope_scopeModeIsNullAndCountyFilterStays() {
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, "Grad Zagreb", null, null, null, null, false, null, false), null, ANY_LIMIT);
+
+        MapSqlParameterSource params = captureParams();
+        assertThat(params.getValue("scopeMode")).isNull();
+        assertThat(params.getValue("county")).isEqualTo("Grad Zagreb");
+        // IN s praznom listom nije valjan SQL ni kad se grana ne koristi.
+        assertThat((List<?>) params.getValue("scopeCounties")).isNotEmpty();
+    }
+
+    /** Stranica, broj redaka i zaglavlje dijele isti opseg. */
+    @Test
+    void scopeCounties_applyToCountAndSummaryToo() {
+        when(jdbc.queryForObject(any(String.class), any(SqlParameterSource.class), eq(Long.class))).thenReturn(0L);
+        query.query(PlatformActivityFilter.none(), List.of("Grad Zagreb"), 0, 20);
+
+        ArgumentCaptor<String> count = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<SqlParameterSource> countParams = ArgumentCaptor.forClass(SqlParameterSource.class);
+        verify(jdbc).queryForObject(count.capture(), countParams.capture(), eq(Long.class));
+        assertThat(count.getValue()).contains("a.county IN (:scopeCounties)");
+        assertThat(countParams.getValue().getValue("scopeMode")).isEqualTo("ON");
+        assertThat(captureSummarySql()).contains("a.county IN (:scopeCounties)");
     }
 
     private String captureRowSql() {
@@ -234,7 +278,7 @@ class PlatformActivityQuerySqlTest {
 
     @Test
     void countSqlWrapsTheRowQuery() {
-        query.query(PlatformActivityFilter.none(), 0, 20);
+        query.query(PlatformActivityFilter.none(), null, 0, 20);
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForObject(sql.capture(), any(SqlParameterSource.class), eq(Long.class));

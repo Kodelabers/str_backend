@@ -68,6 +68,11 @@ public class InternalAccessService {
         return rolesFor(authentication).contains(role);
     }
 
+    /** Osobni OIB službenika s {@link #RN_MANAGEMENT}; prazno za svakoga drugoga. */
+    public Optional<String> officialOib(Authentication authentication) {
+        return oibOf(authentication).filter(oib -> repository.findRoles(oib).contains(RN_MANAGEMENT));
+    }
+
     /**
      * Uloga NIAS korisnika u STR-u: {@link #RN_MANAGEMENT} za službenika, inače {@link #USER}.
      *

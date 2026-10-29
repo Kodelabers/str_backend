@@ -1,11 +1,16 @@
 package com.str.backend.rn;
 
+import com.str.backend.auth.internal.CountyScope;
 import com.str.backend.auth.internal.InternalAccessService;
+import com.str.backend.auth.internal.OfficialCountyResolver;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.activity.AccommodationActivityEntity;
+import com.str.backend.activity.AccommodationActivityRepository;
 import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionEntity.CategorizationDecisionMetadata;
 import com.str.backend.categorization.CategorizationDecisionRepository;
+import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.domain.RnStatus;
@@ -15,6 +20,7 @@ import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.rn.dto.RnSummaryDto;
 import com.str.backend.str.RnFacilityVerification;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,6 +29,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -31,6 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -60,18 +68,23 @@ class RnRegistrySearchIntegrationTest {
     @MockBean private InternalAccessService internalAccess;
     /** eTurizam (str.*) — verifikacija objekta; H2 nema njegove podatke. */
     @MockBean private RnFacilityVerification facilityVerification;
+    /** Organizacija službenika (eTurizam); bez stubiranja nitko nije službenik, pa je opseg cijela RH. */
+    @MockBean private OfficialCountyResolver countyResolver;
+    @Autowired private RnRegistrySearch registrySearch;
     @Autowired private CategorizationDecisionRepository decisionRepository;
     @Autowired private RnRepository rnRepository;
     @Autowired private AccommodationRepository accommodationRepository;
     @Autowired private SubmissionRepository submissionRepository;
     @Autowired private LessorRepository lessorRepository;
     @Autowired private AccommodationTypeRepository accommodationTypeRepository;
+    @Autowired private AccommodationActivityRepository activityRepository;
 
     private Long apartmanTypeId;
 
     @BeforeEach
     void seed() {
         when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        activityRepository.deleteAll();
         decisionRepository.deleteAll();
         rnRepository.deleteAll();
         accommodationRepository.deleteAll();
@@ -512,5 +525,199 @@ class RnRegistrySearchIntegrationTest {
         assertThat(lines[0]).endsWith("Županija,Verificiran,Rješenje o kategorizaciji");
         assertThat(lines).hasSize(2);
         assertThat(lines[1]).startsWith("HR00000003,").endsWith(",Ne,Nije predano");
+    }
+
+    // --- Opseg službenika (županija) ---
+
+    /** Županijski službenik dobiva opseg iz svoje organizacije u eTurizmu; ovdje ga daje mock resolvera. */
+    private void countyOfficial(String countyName) {
+        when(internalAccess.officialOib(any())).thenReturn(Optional.of("12345678903"));
+        when(countyResolver.resolve(any()))
+                .thenReturn(CountyScope.county(countyName, 17L, 17, countyName));
+    }
+
+    @Test
+    void scopeCounties_restrictRegistryToListedCounty() {
+        RnRegistryFilter filter = new RnRegistryFilter(RnRegistryView.ALL, null, null, null, null,
+                false, null, null, null, null, null, null, null, null, List.of("Splitsko-dalmatinska županija"));
+
+        assertThat(registrySearch.search(filter, PageRequest.of(0, 20)).getContent())
+                .extracting(RnSummaryDto::rn).containsExactly("HR00000003");
+    }
+
+    /**
+     * U upitu se {@code county} i opseg zbrajaju (AND), pa tuđa županija ne proširuje opseg. Da
+     * službenik ne dobije prazan registar, {@code county} iz zahtjeva zanemaruje već kontroler
+     * (v. {@link #countyOfficial_registry_seesOnlyOwnCounty_evenWithForeignCountyParam}).
+     */
+    @Test
+    void scopeCounties_andForeignCountyFilter_neverWidenScope() {
+        RnRegistryFilter filter = new RnRegistryFilter(RnRegistryView.ALL, null, "Grad Zagreb", null, null,
+                false, null, null, null, null, null, null, null, null, List.of("Splitsko-dalmatinska županija"));
+
+        assertThat(registrySearch.search(filter, PageRequest.of(0, 20)).getContent()).isEmpty();
+    }
+
+    @Test
+    void scopeCounties_matchEveryListedVariant() {
+        RnRegistryFilter filter = new RnRegistryFilter(RnRegistryView.ALL, null, null, null, null,
+                false, null, null, null, null, null, null, null, null,
+                List.of("Splitsko-dalmatinska županija", "Grad Zagreb"));
+
+        assertThat(registrySearch.search(filter, PageRequest.of(0, 20)).getContent())
+                .extracting(RnSummaryDto::rn).containsExactlyInAnyOrder("HR00000002", "HR00000003");
+    }
+
+    /** Kroz kontroler: opseg iz {@code CountyScopeService}, nazivi iz {@code accommodation.county}. */
+    @Test
+    void countyOfficial_registry_seesOnlyOwnCounty_evenWithForeignCountyParam() throws Exception {
+        countyOfficial("Splitsko-dalmatinska županija");
+
+        assertOnly(get("/api/rn").param("county", "Grad Zagreb"), "HR00000003");
+        assertOnly(get("/api/rn"), "HR00000003");
+    }
+
+    /** Opseg se uspoređuje u Javi: „SPLITSKO-DALMATINSKA" (velika slova) pogađa zapis „…županija". */
+    @Test
+    void countyOfficial_scopeNameInDifferentForm_stillMatches() throws Exception {
+        countyOfficial("SPLITSKO-DALMATINSKA");
+
+        assertOnly(get("/api/rn"), "HR00000003");
+    }
+
+    @Test
+    void countyOfficial_detailOfForeignCountyRn_is404() throws Exception {
+        countyOfficial("Splitsko-dalmatinska županija");
+
+        mvc.perform(get("/api/rn/{rn}/detail", "HR00000002")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/rn/{rn}/detail", "HR00000003")).andExpect(status().isOk());
+    }
+
+    @Test
+    void countyOfficial_inactive_listsOnlyOwnCounty() throws Exception {
+        for (String rn : List.of("HR00000002", "HR00000003")) {
+            RnEntity e = rnRepository.findById(rn).orElseThrow();
+            e.applyStatus(RnStatus.SUSPENDED); // package-private, same package
+            rnRepository.save(e);
+        }
+        countyOfficial("Splitsko-dalmatinska županija");
+
+        mvc.perform(get("/api/rn/inactive"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].rn").value("HR00000003"));
+    }
+
+    @Test
+    void findCountyByRn_returnsStoredAccommodationCounty() {
+        assertThat(rnRepository.findCountyByRn("HR00000002")).contains("Grad Zagreb");
+        assertThat(rnRepository.findCountyByRn("HR00000003")).contains("Splitsko-dalmatinska županija");
+        assertThat(rnRepository.findCountyByRn("HR99999999")).isEmpty();
+    }
+
+    @Test
+    void findByStatusInAndCountyIn_filtersByStatusAndCounty() {
+        RnEntity b = rnRepository.findById("HR00000002").orElseThrow();
+        b.applyStatus(RnStatus.REVOKED); // package-private, same package
+        rnRepository.save(b);
+
+        assertThat(rnRepository.findByStatusInAndCountyIn(List.of(RnStatus.ACTIVE),
+                List.of("Grad Zagreb", "Splitsko-dalmatinska županija")))
+                .extracting(RnEntity::getRn).containsExactly("HR00000003");
+        assertThat(rnRepository.findByStatusInAndCountyIn(List.of(RnStatus.REVOKED, RnStatus.ACTIVE),
+                List.of("Grad Zagreb")))
+                .extracting(RnEntity::getRn).containsExactly("HR00000002");
+        assertThat(rnRepository.findByStatusInAndCountyIn(List.of(RnStatus.ACTIVE),
+                List.of("Splitsko-dalmatinska")))
+                .isEmpty();
+    }
+
+    /**
+     * JPQL {@code searchInCounties} na H2: samo aktivnosti RB-ova čiji je smještaj u zadanim
+     * županijama; aktivnost RB-a kojeg nema u registru ne pripada nijednoj županiji.
+     */
+    @Test
+    void activitySearchInCounties_returnsOnlyActivitiesOfListedCounties() {
+        LocalDate jan = LocalDate.of(2026, 1, 1);
+        LocalDate janEnd = LocalDate.of(2026, 1, 31);
+        LocalDate mar = LocalDate.of(2026, 3, 1);
+        LocalDate marEnd = LocalDate.of(2026, 3, 31);
+        activity(1L, "HR00000001", jan, janEnd);
+        activity(1L, "HR00000002", jan, janEnd);
+        activity(1L, "HR00000003", jan, janEnd);
+        activity(2L, "HR00000003", mar, marEnd);
+        activity(1L, "HR99999999", jan, janEnd);
+
+        assertThat(activityRepository.searchInCounties(null, null, null, null,
+                List.of("Splitsko-dalmatinska županija")))
+                .extracting(AccommodationActivityEntity::getRn)
+                .containsExactlyInAnyOrder("HR00000003", "HR00000003");
+        assertThat(activityRepository.searchInCounties(null, null, null, null,
+                List.of("Splitsko-dalmatinska županija", "Grad Zagreb")))
+                .extracting(AccommodationActivityEntity::getRn)
+                .containsExactlyInAnyOrder("HR00000002", "HR00000003", "HR00000003");
+        // Ostali filtri se zbrajaju s opsegom.
+        assertThat(activityRepository.searchInCounties(2L, null, null, null,
+                List.of("Splitsko-dalmatinska županija", "Grad Zagreb")))
+                .extracting(AccommodationActivityEntity::getPeriodFrom).containsExactly(mar);
+        assertThat(activityRepository.searchInCounties(null, "HR00000002", null, null,
+                List.of("Splitsko-dalmatinska županija")))
+                .isEmpty();
+        assertThat(activityRepository.searchInCounties(null, null, LocalDate.of(2026, 2, 1), null,
+                List.of("Splitsko-dalmatinska županija")))
+                .extracting(AccommodationActivityEntity::getPeriodFrom).containsExactly(mar);
+        // Usporedba je doslovna — varijante naziva daje CountyScope.matching, ne upit.
+        assertThat(activityRepository.searchInCounties(null, null, null, null,
+                List.of("Splitsko-dalmatinska")))
+                .isEmpty();
+    }
+
+    /**
+     * JPQL interni red rješenja u opsegu na H2: samo rješenja RB-ova iz zadanih županija, a izvor
+     * prenesen na novi RB (T15) ostaje izvan reda i kad je u opsegu — obrađuje se kopija.
+     */
+    @Test
+    void decisionReviewInCounties_returnsOnlyListedCounties_andExcludesCarriedOverSource() {
+        seedRn("HR00000007", null, "Splitsko-dalmatinska županija", "Split", "Riva", "9", "Vila Nova");
+        seedRn("HR00000008", null, "Splitsko-dalmatinska županija", "Split", "Riva", "10", "Vila Potvrđena");
+        decision("HR00000001");
+        CategorizationDecisionEntity zagreb = decision("HR00000002");
+        CategorizationDecisionEntity source = decision("HR00000003");
+        CategorizationDecisionEntity copy = decisionRepository.save(
+                CategorizationDecisionEntity.copyForReissue(source, "HR00000007", Instant.now()));
+        CategorizationDecisionEntity verified = decision("HR00000008");
+        verified.verify("sluzbenik");
+        decisionRepository.save(verified);
+        List<String> split = List.of("Splitsko-dalmatinska županija");
+        PageRequest page = PageRequest.of(0, 20);
+
+        var splitQueue = decisionRepository.findForReviewInCounties(split, page);
+        assertThat(splitQueue.getContent()).extracting(CategorizationDecisionEntity::getDecisionId)
+                .containsExactlyInAnyOrder(copy.getDecisionId(), verified.getDecisionId());
+        assertThat(splitQueue.getTotalElements()).isEqualTo(2);
+
+        assertThat(decisionRepository.findForReviewInCounties(List.of("Splitsko-dalmatinska županija",
+                        "Grad Zagreb"), page).getContent())
+                .extracting(CategorizationDecisionEntity::getDecisionId)
+                .containsExactlyInAnyOrder(zagreb.getDecisionId(), copy.getDecisionId(), verified.getDecisionId());
+
+        var submitted = decisionRepository.findForReviewByStatusInCounties(
+                CategorizationDecisionStatus.SUBMITTED, split, page);
+        assertThat(submitted.getContent()).extracting(CategorizationDecisionEntity::getDecisionId)
+                .containsExactly(copy.getDecisionId());
+        assertThat(submitted.getTotalElements()).isEqualTo(1);
+
+        assertThat(decisionRepository.findForReviewByStatusInCounties(
+                        CategorizationDecisionStatus.VERIFIED, split, page).getContent())
+                .extracting(CategorizationDecisionEntity::getDecisionId)
+                .containsExactly(verified.getDecisionId());
+        assertThat(decisionRepository.findForReviewByStatusInCounties(
+                        CategorizationDecisionStatus.SUBMITTED, List.of("Primorsko-goranska županija"), page)
+                .getContent())
+                .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000001");
+    }
+
+    private void activity(Long platformId, String rn, LocalDate from, LocalDate to) {
+        activityRepository.save(AccommodationActivityEntity.ingest(platformId, rn, null, from, to, 3, 2, "DE"));
     }
 }

@@ -4,9 +4,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 public interface AccommodationActivityRepository extends JpaRepository<AccommodationActivityEntity, java.util.UUID> {
@@ -22,6 +24,24 @@ public interface AccommodationActivityRepository extends JpaRepository<Accommoda
                                              @Param("rn") String rn,
                                              @Param("od") LocalDate od,
                                              @Param("toDate") LocalDate toDate);
+
+    /** Kao {@link #search}, samo za RB-ove smještaja u zadanim županijama (opseg službenika). */
+    @Query("""
+            SELECT a FROM AccommodationActivityEntity a
+            WHERE (:platformId IS NULL OR a.platformId = :platformId)
+              AND (:rn IS NULL OR a.rn = :rn)
+              AND (:od IS NULL OR a.periodTo >= :od)
+              AND (:toDate IS NULL OR a.periodFrom <= :toDate)
+              AND EXISTS (SELECT 1 FROM RnEntity r JOIN AccommodationEntity acc
+                                 ON acc.accommodationId = r.accommodationId
+                           WHERE r.rn = a.rn AND acc.county IN :counties)
+            """)
+    @Transactional(readOnly = true)
+    List<AccommodationActivityEntity> searchInCounties(@Param("platformId") Long platformId,
+                                                       @Param("rn") String rn,
+                                                       @Param("od") LocalDate od,
+                                                       @Param("toDate") LocalDate toDate,
+                                                       @Param("counties") Collection<String> counties);
 
     @Modifying
     @Query("DELETE FROM AccommodationActivityEntity a WHERE a.purgeAfter <= :now")

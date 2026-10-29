@@ -1,5 +1,7 @@
 package com.str.backend.admin;
 
+import com.str.backend.auth.internal.CountyScope;
+import com.str.backend.auth.internal.CountyScopeService;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationFileDto;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,14 +35,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminCategorizationDecisionControllerTest {
 
     private static final String BASE = "/api/admin/categorization-decisions";
+    private static final CountyScope ALL = CountyScope.all(CountyScope.Outcome.NOT_OFFICIAL);
 
     private final AdminCategorizationDecisionService service = mock(AdminCategorizationDecisionService.class);
     private final InternalAccessService internalAccess = mock(InternalAccessService.class);
+    private final CountyScopeService countyScope = mock(CountyScopeService.class);
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new AdminCategorizationDecisionController(service, internalAccess))
+        when(countyScope.scopeFor(any())).thenReturn(ALL);
+        mvc = MockMvcBuilders.standaloneSetup(
+                        new AdminCategorizationDecisionController(service, internalAccess, countyScope))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .build();
     }
@@ -48,7 +54,7 @@ class AdminCategorizationDecisionControllerTest {
     @Test
     void file_setsInlineHeaderAndContentType() throws Exception {
         UUID id = UUID.randomUUID();
-        when(service.file(id)).thenReturn(new CategorizationFileDto(
+        when(service.file(id, ALL)).thenReturn(new CategorizationFileDto(
                 "rjesenje.pdf", "application/pdf", "%PDF".getBytes(StandardCharsets.US_ASCII)));
 
         mvc.perform(get(BASE + "/{id}/file", id))
@@ -66,7 +72,7 @@ class AdminCategorizationDecisionControllerTest {
         mvc.perform(post(BASE + "/{id}/verify", id))
                 .andExpect(status().isNoContent());
 
-        verify(service).verify(eq(id), isNull());
+        verify(service).verify(eq(id), eq(ALL), isNull());
     }
 
     @Test
@@ -79,7 +85,7 @@ class AdminCategorizationDecisionControllerTest {
                         .content("{\"reason\":\"sken nečitak\"}"))
                 .andExpect(status().isNoContent());
 
-        verify(service).reject(id, "INTERNAL:12345678903", "sken nečitak");
+        verify(service).reject(id, ALL, "INTERNAL:12345678903", "sken nečitak");
     }
 
     @Test
@@ -92,6 +98,6 @@ class AdminCategorizationDecisionControllerTest {
                         .content("{\"actorId\":\"netko-drugi\",\"reason\":\"sken nečitak\"}"))
                 .andExpect(status().isNoContent());
 
-        verify(service).reject(id, "INTERNAL:12345678903", "sken nečitak");
+        verify(service).reject(id, ALL, "INTERNAL:12345678903", "sken nečitak");
     }
 }

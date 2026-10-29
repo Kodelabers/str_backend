@@ -41,9 +41,13 @@ public class AccommodationActivityService {
         return req.getEntries().size();
     }
 
+    /** @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH */
     @Transactional(readOnly = true)
-    public List<AccommodationActivityEntity> search(Long platformId, String rn, LocalDate od, LocalDate toDate) {
-        return repository.search(platformId, rn, od, toDate);
+    public List<AccommodationActivityEntity> search(Long platformId, String rn, LocalDate od, LocalDate toDate,
+                                                    List<String> scopeCounties) {
+        return scopeCounties == null
+                ? repository.search(platformId, rn, od, toDate)
+                : repository.searchInCounties(platformId, rn, od, toDate, scopeCounties);
     }
 
     @Transactional

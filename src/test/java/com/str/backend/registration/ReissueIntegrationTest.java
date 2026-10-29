@@ -190,7 +190,7 @@ class ReissueIntegrationTest {
                 second.registrationNumber(), List.of(CategorizationDecisionStatus.SUBMITTED)).orElseThrow();
         List<UUID> queue = queueIds();
         assertThat(queue).contains(copy.getDecisionId()).doesNotContain(source.getDecisionId());
-        assertThat(adminDecisionService.list(null, PageRequest.of(0, 500)).getContent())
+        assertThat(adminDecisionService.list(null, null, PageRequest.of(0, 500)).getContent())
                 .extracting(CategorizationDecisionAdminDto::decisionId)
                 .doesNotContain(source.getDecisionId());
     }
@@ -276,7 +276,7 @@ class ReissueIntegrationTest {
     // ── pomoćno ─────────────────────────────────────────────────────────────
 
     private List<UUID> queueIds() {
-        return adminDecisionService.list(CategorizationDecisionStatus.SUBMITTED, PageRequest.of(0, 500)).getContent()
+        return adminDecisionService.list(CategorizationDecisionStatus.SUBMITTED, null, PageRequest.of(0, 500)).getContent()
                 .stream().map(CategorizationDecisionAdminDto::decisionId).toList();
     }
 

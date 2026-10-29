@@ -66,6 +66,19 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
 
     List<RnEntity> findByStatusInOrderByUpdatedAtDesc(List<RnStatus> statuses);
 
+    /** Kao {@link #findByStatusInOrderByUpdatedAtDesc}, samo za smještaje u zadanim županijama (opseg službenika). */
+    @Transactional(readOnly = true)
+    @Query("SELECT r FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
+            + " WHERE r.status IN :statuses AND a.county IN :counties ORDER BY r.updatedAt DESC")
+    List<RnEntity> findByStatusInAndCountyIn(@Param("statuses") List<RnStatus> statuses,
+                                             @Param("counties") Collection<String> counties);
+
+    /** Županija smještaja RB-a kako je zapisana ({@code accommodation.county}), za provjeru opsega službenika. */
+    @Transactional(readOnly = true)
+    @Query("SELECT a.county FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
+            + " WHERE r.rn = :rn")
+    Optional<String> findCountyByRn(@Param("rn") String rn);
+
     /**
      * RB za promjenu statusa, zaključan do kraja transakcije ({@code SELECT … FOR UPDATE}).
      * Svaki prijelaz statusa kreće odavde: bez zaključavanja bi istodobni opoziv iznajmljivača i
@@ -278,6 +291,9 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " AND (CAST(:name AS string) IS NULL OR LOWER(COALESCE(a.name,'')) LIKE CONCAT('%', LOWER(CAST(:name AS string)), '%'))" +
             " AND (CAST(:lessor AS string) IS NULL OR LOWER(CONCAT(COALESCE(l.firstName,''),' ',COALESCE(l.lastName,''),' ',COALESCE(l.legalEntityName,''))) LIKE CONCAT('%', LOWER(CAST(:lessor AS string)), '%'))" +
             " AND (CAST(:county AS string) IS NULL OR LOWER(a.county) = LOWER(CAST(:county AS string)))" +
+            // Opseg službenika (CountyScope): nazivi njegove županije kako su zapisani na
+            // smještaju. Lista je uvijek neprazna; kad opseg nije ograničen, ne koristi se.
+            " AND (CAST(:scopeMode AS string) IS NULL OR a.county IN :scopeCounties)" +
             " AND (CAST(:municipality AS string) IS NULL OR LOWER(a.city) = LOWER(CAST(:municipality AS string)))" +
             " AND (:typeId IS NULL OR a.accommodationTypeId = :typeId)" +
             " AND (CAST(:foreignOnly AS string) IS NULL OR l.lessorOib IS NULL)" +
@@ -332,6 +348,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("tok6") String tok6, @Param("tok7") String tok7, @Param("tok8") String tok8,
             @Param("tok9") String tok9,
             @Param("county") String county,
+            @Param("scopeMode") String scopeMode,
+            @Param("scopeCounties") Collection<String> scopeCounties,
             @Param("municipality") String municipality,
             @Param("typeId") Long typeId,
             @Param("foreignOnly") String foreignOnly,
@@ -360,6 +378,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("tok6") String tok6, @Param("tok7") String tok7, @Param("tok8") String tok8,
             @Param("tok9") String tok9,
             @Param("county") String county,
+            @Param("scopeMode") String scopeMode,
+            @Param("scopeCounties") Collection<String> scopeCounties,
             @Param("municipality") String municipality,
             @Param("typeId") Long typeId,
             @Param("foreignOnly") String foreignOnly,

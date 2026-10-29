@@ -273,10 +273,22 @@ class RnServiceTest {
     /** STR-1.5: nevažeći za oglašavanje su i opozvani i povučeni, ne samo suspendirani. */
     @Test
     void inactive_listsSuspendedRevokedAndWithdrawn() {
-        service.inactive();
+        service.inactive(null);
 
         verify(repository).findByStatusInOrderByUpdatedAtDesc(
                 List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN));
+    }
+
+    /** Županijski službenik: isti statusi, samo smještaji njegove županije. */
+    @Test
+    void inactive_withScope_filtersByCounty() {
+        List<String> scope = List.of("Splitsko-dalmatinska županija", "Splitsko-dalmatinska");
+
+        service.inactive(scope);
+
+        verify(repository).findByStatusInAndCountyIn(
+                List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN), scope);
+        verify(repository, never()).findByStatusInOrderByUpdatedAtDesc(any());
     }
 
     private RnEntity activeRn() {

@@ -7,8 +7,10 @@ import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.auth.internal.CountyScope;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.rn.RnRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -39,26 +41,39 @@ public class AdminCategorizationDecisionService {
     private final AdminAuditService auditService;
     private final InternalAccessService internalAccess;
     private final LessorRepository lessorRepository;
+    private final RnRepository rnRepository;
 
     public AdminCategorizationDecisionService(CategorizationDecisionRepository repository,
                                               AdminAuditService auditService,
                                               InternalAccessService internalAccess,
-                                              LessorRepository lessorRepository) {
+                                              LessorRepository lessorRepository,
+                                              RnRepository rnRepository) {
         this.repository = repository;
         this.auditService = auditService;
         this.internalAccess = internalAccess;
         this.lessorRepository = lessorRepository;
+        this.rnRepository = rnRepository;
     }
 
     /**
      * Interni red. Zapis koji je pri ponovnom izdavanju RB-a prenesen na novi RB (T15) ovdje se ne
      * prikazuje — obrađuje se kopija uz novi RB, inače bi isti sken bio u redu dvaput.
+     *
+     * @param scopeCounties opseg službenika ({@code accommodation.county} RB-a); {@code null} = cijela RH
      */
     @Transactional(readOnly = true)
-    public Page<CategorizationDecisionAdminDto> list(CategorizationDecisionStatus status, Pageable pageable) {
-        Page<CategorizationDecisionEntity> page = status != null
-                ? repository.findForReviewByStatus(status, pageable)
-                : repository.findForReview(pageable);
+    public Page<CategorizationDecisionAdminDto> list(CategorizationDecisionStatus status, List<String> scopeCounties,
+                                                     Pageable pageable) {
+        Page<CategorizationDecisionEntity> page;
+        if (scopeCounties == null) {
+            page = status != null
+                    ? repository.findForReviewByStatus(status, pageable)
+                    : repository.findForReview(pageable);
+        } else {
+            page = status != null
+                    ? repository.findForReviewByStatusInCounties(status, scopeCounties, pageable)
+                    : repository.findForReviewInCounties(scopeCounties, pageable);
+        }
         // Jedan upit za imena svih službenika na stranici, ne po retku; isto za porezne brojeve.
         Map<String, String> names = internalAccess.displayNames(
                 page.getContent().stream().map(CategorizationDecisionEntity::getVerifiedBy).toList());
@@ -68,8 +83,8 @@ public class AdminCategorizationDecisionService {
     }
 
     @Transactional(readOnly = true)
-    public CategorizationDecisionAdminDto detail(UUID id) {
-        CategorizationDecisionEntity e = findOrThrow(id);
+    public CategorizationDecisionAdminDto detail(UUID id, CountyScope scope) {
+        CategorizationDecisionEntity e = findOrThrow(id, scope);
         Map<String, String> names = internalAccess.displayNames(
                 e.getVerifiedBy() == null ? List.of() : List.of(e.getVerifiedBy()));
         return CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy()),
@@ -95,14 +110,14 @@ public class AdminCategorizationDecisionService {
     }
 
     @Transactional(readOnly = true)
-    public CategorizationFileDto file(UUID id) {
-        CategorizationDecisionEntity e = findOrThrow(id);
+    public CategorizationFileDto file(UUID id, CountyScope scope) {
+        CategorizationDecisionEntity e = findOrThrow(id, scope);
         return new CategorizationFileDto(e.getFileName(), e.getContentType(), e.getFileContent());
     }
 
     @Transactional
-    public void verify(UUID id, String actor) {
-        CategorizationDecisionEntity e = findOrThrow(id);
+    public void verify(UUID id, CountyScope scope, String actor) {
+        CategorizationDecisionEntity e = findOrThrow(id, scope);
         e.verify(actor);
         auditService.record(actor, "CATEGORIZATION_VERIFY", "CATEGORIZATION_DECISION", id.toString(), null);
         // TODO(eTurizam): kad MINTS/Simon potvrde tko upisuje objekt u eTurizam registar, ovdje
@@ -111,14 +126,20 @@ public class AdminCategorizationDecisionService {
     }
 
     @Transactional
-    public void reject(UUID id, String actor, String reason) {
-        CategorizationDecisionEntity e = findOrThrow(id);
+    public void reject(UUID id, CountyScope scope, String actor, String reason) {
+        CategorizationDecisionEntity e = findOrThrow(id, scope);
         e.reject(actor);
         auditService.record(actor, "CATEGORIZATION_REJECT", "CATEGORIZATION_DECISION", id.toString(), reason);
     }
 
-    private CategorizationDecisionEntity findOrThrow(UUID id) {
+    /**
+     * Rješenje izvan opsega službenika (RB u drugoj županiji ili bez RB-a) je nepostojeće (404),
+     * kao u redu, iz kojeg ga ne vidi.
+     */
+    private CategorizationDecisionEntity findOrThrow(UUID id, CountyScope scope) {
         return repository.findById(id)
+                .filter(e -> !scope.restricted()
+                        || (e.getRn() != null && scope.covers(rnRepository.findCountyByRn(e.getRn()).orElse(null))))
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Rješenje o kategorizaciji nije pronađeno: " + id));
     }

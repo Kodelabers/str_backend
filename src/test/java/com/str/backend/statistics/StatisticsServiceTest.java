@@ -3,6 +3,7 @@ package com.str.backend.statistics;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.CountyEntity;
 import com.str.backend.address.CountyRepository;
+import com.str.backend.auth.internal.CountyScope;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.statistics.dto.StrResponse;
@@ -22,6 +23,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class StatisticsServiceTest {
+
+    private static final CountyScope WHOLE_COUNTRY = CountyScope.all(CountyScope.Outcome.NOT_OFFICIAL);
 
     private AccommodationRepository accommodationRepository;
     private RnRepository rnRepository;
@@ -48,7 +51,7 @@ class StatisticsServiceTest {
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
         when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
-        StrResponse res = service.str(null, null);
+        StrResponse res = service.str(null, null, WHOLE_COUNTRY);
 
         assertThat(res.counties()).hasSize(2);
         assertThat(res.counties()).allSatisfy(c -> {
@@ -77,7 +80,7 @@ class StatisticsServiceTest {
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(10L);
 
-        StrResponse res = service.str(null, null);
+        StrResponse res = service.str(null, null, WHOLE_COUNTRY);
 
         CountyStrDto row = res.counties().get(0);
         assertThat(row.accommodations()).isEqualTo(10L);
@@ -106,7 +109,7 @@ class StatisticsServiceTest {
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(4L);
 
-        StrResponse res = service.str(null, null);
+        StrResponse res = service.str(null, null, WHOLE_COUNTRY);
 
         assertThat(res.counties().get(0).activeRn()).isEqualTo(2L);
         assertThat(res.totals().totalRn()).isEqualTo(2L);
@@ -128,7 +131,7 @@ class StatisticsServiceTest {
         ));
         when(facilityRepository.countByActiveTrue()).thenReturn(20L);
 
-        StrResponse res = service.str(null, null);
+        StrResponse res = service.str(null, null, WHOLE_COUNTRY);
 
         assertThat(res.counties()).hasSize(2);
         assertThat(res.counties())
@@ -138,6 +141,42 @@ class StatisticsServiceTest {
         long sumActive = res.counties().stream().mapToLong(CountyStrDto::activeRn).sum();
         assertThat(res.totals().totalObjects()).isEqualTo(20L);
         assertThat(res.totals().totalRn()).isEqualTo(sumActive).isEqualTo(2L);
+    }
+
+    /**
+     * Varijante naziva iste županije (bez nastavka, velikim slovima) idu u njezin red, ne u „Ostalo"
+     * — isto kao u prikazu županijskog službenika, pa obojica vide isti broj.
+     */
+    @Test
+    void str_nameVariantsCountTowardsTheirCounty_notOther() {
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
+                county(1L, "Splitsko-dalmatinska županija")
+        ));
+        when(accommodationRepository.countByCounty()).thenReturn(List.of(
+                accCount("Splitsko-dalmatinska županija", 3L),
+                accCount("Splitsko-dalmatinska", 2L),
+                accCount("SPLITSKO-DALMATINSKA ŽUPANIJA", 1L)
+        ));
+        when(rnRepository.countByCountyAndStatus()).thenReturn(List.of(
+                rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 2L),
+                rnCount("Splitsko-dalmatinska", RnStatus.ACTIVE, 1L),
+                rnCount("SPLITSKO-DALMATINSKA ŽUPANIJA", RnStatus.SUSPENDED, 1L)
+        ));
+        when(facilityRepository.countByActiveTrue()).thenReturn(10L);
+
+        StrResponse res = service.str(null, null, WHOLE_COUNTRY);
+
+        assertThat(res.counties()).singleElement().satisfies(c -> {
+            assertThat(c.countyId()).isEqualTo("1");
+            assertThat(c.accommodations()).isEqualTo(6L);
+            assertThat(c.activeRn()).isEqualTo(3L);
+            assertThat(c.suspendedRn()).isEqualTo(1L);
+        });
+
+        StrResponse county = service.str(null, null,
+                CountyScope.county("Splitsko-dalmatinska županija", 1L, 17, "Splitsko-dalmatinska županija"));
+        assertThat(county.counties().get(0).accommodations()).isEqualTo(res.counties().get(0).accommodations());
+        assertThat(county.counties().get(0).activeRn()).isEqualTo(res.counties().get(0).activeRn());
     }
 
     @Test
@@ -155,7 +194,7 @@ class StatisticsServiceTest {
         when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
         when(facilityRepository.countByActiveTrue()).thenReturn(0L);
 
-        StrResponse res = service.str(null, null);
+        StrResponse res = service.str(null, null, WHOLE_COUNTRY);
 
         assertThat(res.counties())
                 .extracting(CountyStrDto::countyName)
@@ -204,7 +243,7 @@ class StatisticsServiceTest {
                 LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30)))
                 .thenReturn(List.of(rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 3L)));
 
-        StrResponse res = service.str(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
+        StrResponse res = service.str(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), WHOLE_COUNTRY);
 
         assertThat(res.counties()).hasSize(1);
         assertThat(res.counties().get(0).accommodations()).isEqualTo(3L);
@@ -228,7 +267,7 @@ class StatisticsServiceTest {
                 LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30)))
                 .thenReturn(List.of());
 
-        StrResponse res = service.str(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30));
+        StrResponse res = service.str(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), WHOLE_COUNTRY);
 
         assertThat(res.counties()).hasSize(1);
         assertThat(res.counties().get(0).accommodations()).isZero();
@@ -236,4 +275,105 @@ class StatisticsServiceTest {
         assertThat(res.totals().totalRn()).isZero();
     }
 
+    // ── opseg službenika (županija) ─────────────────────────────────────────
+
+    private static final CountyScope SPLIT =
+            CountyScope.county("Splitsko-dalmatinska županija", 1L, 17, "Splitsko-dalmatinska županija");
+
+    /**
+     * Županijski službenik vidi samo red svoje županije: zbrojeni svi zapisani oblici naziva, bez
+     * retka „Ostalo", a ukupno objekata su aktivni eTurizam objekti te županije, ne cijele RH.
+     */
+    @Test
+    void str_restricted_returnsOnlyOwnCountyRow_summingNameVariants() {
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
+                county(1L, "Splitsko-dalmatinska županija"),
+                county(2L, "Grad Zagreb")
+        ));
+        when(accommodationRepository.countByCounty()).thenReturn(List.of(
+                accCount("Splitsko-dalmatinska županija", 6L),
+                accCount("SPLITSKO-DALMATINSKA", 4L),
+                accCount("Grad Zagreb", 50L),
+                accCount("Nepoznata županija", 5L)
+        ));
+        when(rnRepository.countByCountyAndStatus()).thenReturn(List.of(
+                rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 3L),
+                rnCount("Splitsko-dalmatinska", RnStatus.SUSPENDED, 1L),
+                rnCount("Grad Zagreb", RnStatus.ACTIVE, 30L),
+                rnCount("Nepoznata županija", RnStatus.ACTIVE, 2L)
+        ));
+        when(facilityRepository.countActiveByCounty()).thenReturn(List.of(
+                facilityCount("Splitsko-dalmatinska županija", 15L),
+                facilityCount("SPLITSKO-DALMATINSKA ŽUPANIJA", 5L),
+                facilityCount("Grad Zagreb", 100L),
+                facilityCount(null, 7L)
+        ));
+
+        StrResponse res = service.str(null, null, SPLIT);
+
+        assertThat(res.counties()).singleElement().satisfies(row -> {
+            assertThat(row.countyId()).isEqualTo("1");
+            assertThat(row.countyName()).isEqualTo("Splitsko-dalmatinska županija");
+            assertThat(row.accommodations()).isEqualTo(10L);
+            assertThat(row.activeRn()).isEqualTo(3L);
+            assertThat(row.suspendedRn()).isEqualTo(1L);
+            // Stopa retka su aktivni RB-ovi prema smještajima, kao u retcima za cijelu RH.
+            assertThat(row.registrationRate()).isEqualTo(30.0);
+        });
+        assertThat(res.counties()).extracting(CountyStrDto::countyId)
+                .doesNotContain(StatisticsService.OTHER_COUNTY_ID);
+        assertThat(res.totals().totalObjects()).isEqualTo(20L);
+        assertThat(res.totals().totalRn()).isEqualTo(4L);
+        assertThat(res.totals().coverageRate()).isEqualTo(20.0);
+        verify(facilityRepository, never()).countByActiveTrue();
+    }
+
+    /** S razdobljem je nazivnik broj smještaja iz razdoblja, kao i bez opsega. */
+    @Test
+    void str_restricted_withDateFilter_usesPeriodAccommodations() {
+        LocalDate from = LocalDate.of(2026, 6, 1);
+        LocalDate to = LocalDate.of(2026, 6, 30);
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(county(1L, "Splitsko-dalmatinska županija")));
+        when(rnRepository.countDistinctAccommodationsByCountyBetween(from, to)).thenReturn(List.of(
+                rnAccCount("Splitsko-dalmatinska županija", 2L),
+                rnAccCount("Grad Zagreb", 9L)
+        ));
+        when(rnRepository.countByCountyAndStatusBetween(from, to)).thenReturn(List.of(
+                rnCount("Splitsko-dalmatinska županija", RnStatus.ACTIVE, 2L),
+                rnCount("Grad Zagreb", RnStatus.ACTIVE, 9L)
+        ));
+
+        StrResponse res = service.str(from, to, SPLIT);
+
+        assertThat(res.counties()).singleElement()
+                .satisfies(row -> assertThat(row.accommodations()).isEqualTo(2L));
+        assertThat(res.totals().totalObjects()).isEqualTo(2L);
+        assertThat(res.totals().totalRn()).isEqualTo(2L);
+        verify(facilityRepository, never()).countActiveByCounty();
+    }
+
+    /** Bez ograničenja (ministarstvo, nijedno tijelo) opseg ne mijenja ništa. */
+    @Test
+    void str_unrestrictedScope_isWholeCountry() {
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
+                county(1L, "Splitsko-dalmatinska županija"),
+                county(2L, "Grad Zagreb")
+        ));
+        when(accommodationRepository.countByCounty()).thenReturn(List.of());
+        when(rnRepository.countByCountyAndStatus()).thenReturn(List.of());
+        when(facilityRepository.countByActiveTrue()).thenReturn(30L);
+
+        StrResponse res = service.str(null, null, CountyScope.ministry("Ministarstvo turizma i sporta"));
+
+        assertThat(res.counties()).hasSize(2);
+        assertThat(res.totals().totalObjects()).isEqualTo(30L);
+        verify(facilityRepository, never()).countActiveByCounty();
+    }
+
+    private static StrFacilityRepository.CountyCount facilityCount(String county, long count) {
+        return new StrFacilityRepository.CountyCount() {
+            @Override public String getCounty() { return county; }
+            @Override public long getCount() { return count; }
+        };
+    }
 }

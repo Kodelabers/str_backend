@@ -40,6 +40,32 @@ public interface CategorizationDecisionRepository extends JpaRepository<Categori
     Page<CategorizationDecisionEntity> findForReviewByStatus(@Param("status") CategorizationDecisionStatus status,
                                                              Pageable pageable);
 
+    /**
+     * Opseg službenika: RB rješenja je na smještaju u jednoj od zadanih županija. Rješenje bez RB-a
+     * ne pripada nijednoj županiji, pa ga županijski službenik ne vidi.
+     */
+    String IN_COUNTIES = " EXISTS (SELECT 1 FROM RnEntity r JOIN AccommodationEntity a"
+            + " ON a.accommodationId = r.accommodationId WHERE r.rn = d.rn AND a.county IN :counties)";
+
+    /** Kao {@link #findForReview}, u opsegu službenika — v. {@link #IN_COUNTIES}. */
+    @Transactional(readOnly = true)
+    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER + " AND" + IN_COUNTIES,
+            countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER
+                    + " AND" + IN_COUNTIES)
+    Page<CategorizationDecisionEntity> findForReviewInCounties(@Param("counties") Collection<String> counties,
+                                                               Pageable pageable);
+
+    /** Kao {@link #findForReviewByStatus}, u opsegu službenika — v. {@link #IN_COUNTIES}. */
+    @Transactional(readOnly = true)
+    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE d.status = :status AND" + NOT_CARRIED_OVER
+            + " AND" + IN_COUNTIES,
+            countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE d.status = :status AND"
+                    + NOT_CARRIED_OVER + " AND" + IN_COUNTIES)
+    Page<CategorizationDecisionEntity> findForReviewByStatusInCounties(
+            @Param("status") CategorizationDecisionStatus status,
+            @Param("counties") Collection<String> counties,
+            Pageable pageable);
+
     /** Sažetak rješenja bez sadržaja datoteke (predpopuna ponovnog zahtjeva ne treba BLOB). */
     interface DecisionSummary {
         UUID getDecisionId();

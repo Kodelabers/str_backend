@@ -1,5 +1,6 @@
 package com.str.backend.rn;
 
+import com.str.backend.auth.internal.CountyScopeService;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.nias.ActingSubjectService;
@@ -66,6 +67,9 @@ class RnDocumentControllerTest {
     // RnController od /api/rn/export/* endpointa ovisi i o exportu; slice ga mora imati.
     @MockBean private com.str.backend.statistics.StatisticsExportService exportService;
     @MockBean private RnRegistrySearch registrySearch;
+    // Opseg službenika (županija): mock bez stubova znači cijelu RH, čuvar ne radi ništa.
+    @MockBean private CountyScopeService countyScope;
+    @MockBean private RnScopeGuard scopeGuard;
 
     @Test
     void document_returnsPdf() throws Exception {

@@ -17,6 +17,34 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     long countByActiveTrue();
 
     /**
+     * Aktivni objekti po nazivu županije adrese — adresa objekta ili, uz
+     * {@code same_address_subject}, subjekta predmeta (kao u viewu, {@code docs/ETURIZAM-OBJEKTI.md}).
+     * Za STR dashboard županijskog službenika; naziv se s opsegom uspoređuje u Javi
+     * ({@code CountyScope#covers}), jer ga eTurizam ne piše uvijek jednako.
+     */
+    @Query(value = """
+            SELECT coalesce(co.name, a.county) AS county, count(*) AS count
+              FROM str.facility f
+              LEFT JOIN str.document d       ON d.id  = f.document_id
+              LEFT JOIN str.business_case bc ON bc.id = d.business_case_id
+              LEFT JOIN str.address a
+                     ON a.id = CASE WHEN f.same_address_subject = true
+                                    THEN (SELECT max(x.address_id) FROM str.subject_address x
+                                           WHERE x.subject_version_id = bc.subject_version_id
+                                             AND coalesce(x.active, true) = true)
+                                    ELSE f.address_id END
+              LEFT JOIN str.county co        ON co.id = a.county_id
+             WHERE f.active = true
+             GROUP BY coalesce(co.name, a.county)
+            """, nativeQuery = true)
+    List<CountyCount> countActiveByCounty();
+
+    interface CountyCount {
+        String getCounty();
+        long getCount();
+    }
+
+    /**
      * Šifra poslovnog statusa ({@code facility.business_status_id → codebook_element}) objekta koji
      * posluje. Drugi status u registru je {@code FBS_INACTIVE} („Odjavljen"). Isti literal stoji u
      * {@link #PRIKAZ_ZA_OIB} — native query ga ne može referencirati.

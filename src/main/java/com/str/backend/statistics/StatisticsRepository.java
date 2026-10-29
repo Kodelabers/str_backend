@@ -49,7 +49,19 @@ interface StatisticsRepository extends Repository<RnEntity, String> {
             JOIN str_rn.accommodation a ON a.accommodation_id = r.accommodation_id
             LEFT JOIN rpj_dgu.gradovi_i_opcine m ON m.id::text = a.city
             WHERE r.status IN (:statuses)
+              AND (CAST(:scopeMode AS text) IS NULL OR a.county IN (:scopeCounties))
             ORDER BY a.county ASC, a.name ASC
             """, nativeQuery = true)
-    List<DetailRowProjection> findDetailRows(@Param("statuses") List<String> statuses);
+    List<DetailRowProjection> findDetailRows(@Param("statuses") List<String> statuses,
+                                             @Param("scopeMode") String scopeMode,
+                                             @Param("scopeCounties") List<String> scopeCounties);
+
+    /**
+     * @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH
+     */
+    default List<DetailRowProjection> findDetailRows(List<String> statuses, List<String> scopeCounties) {
+        return scopeCounties == null
+                ? findDetailRows(statuses, null, List.of(""))
+                : findDetailRows(statuses, "ON", scopeCounties);
+    }
 }
