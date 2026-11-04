@@ -64,7 +64,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * tko zna registracijski broj mogao povući ime, adresu i OIB iznajmljivača.
  */
 @ActiveProfiles("test")
-@Import({SecurityConfig.class, EffectiveOibResolver.class, NiasOibResolver.class, RnScopeGuard.class})
+@Import({SecurityConfig.class, EffectiveOibResolver.class, NiasOibResolver.class, RnScopeGuard.class,
+        RnAccessGuard.class})
 @WebMvcTest(value = RnController.class,
             excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class)
 class RnDocumentAccessTest {
@@ -164,7 +165,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/rn/{rn}/withdraw", RN)).andExpect(status().isUnauthorized());
 
-        verify(service, never()).withdraw(any(), any(), any(), any());
+        verify(service, never()).withdraw(any(), any(), any(), any(), any());
     }
 
     /**
@@ -188,8 +189,8 @@ class RnDocumentAccessTest {
                         .with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).withdraw(any(), any(), any(), any());
-        verify(service, never()).suspend(any(), any(), any(), any(), any());
+        verify(service, never()).withdraw(any(), any(), any(), any(), any());
+        verify(service, never()).suspend(any(), any(), any(), any(), any(), any());
         verifyNoInteractions(registrySearch, exportService);
     }
 
@@ -275,7 +276,32 @@ class RnDocumentAccessTest {
                 .andExpect(status().isOk());
 
         verify(service).withdraw(RN, com.str.backend.domain.WithdrawalReason.DATA_NOT_CORRECTED, null,
-                "INTERNAL:" + OFFICIAL_OIB);
+                "INTERNAL:" + OFFICIAL_OIB, java.util.List.of());
+    }
+
+    /**
+     * T17: prilozi službenika idu kao ponovljeni query parametar uz postojeće parametre radnje —
+     * isti oblik zahtjeva kao bez priloga.
+     */
+    @Test
+    void suspendAndWithdraw_withRepeatedPrilogIds_passAttachmentsToService() throws Exception {
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(internalAccess.actorFor(any())).thenReturn(java.util.Optional.of("INTERNAL:" + OFFICIAL_OIB));
+
+        mvc.perform(post("/api/rn/{rn}/suspend", RN).param("reason", "INSPECTION")
+                        .param("suspensionDeadline", "2099-01-31")
+                        .param("prilogIds", "11").param("prilogIds", "12")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/rn/{rn}/withdraw", RN).param("reason", "DATA_NOT_CORRECTED")
+                        .param("prilogIds", "13")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isOk());
+
+        verify(service).suspend(RN, com.str.backend.domain.RnTrigger.INSPECTION, java.time.LocalDate.of(2099, 1, 31),
+                null, "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L));
+        verify(service).withdraw(RN, com.str.backend.domain.WithdrawalReason.DATA_NOT_CORRECTED, null,
+                "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(13L));
     }
 
     /** CSRF: bez X-Requested-With mutirajuća radnja ne prolazi ni službeniku s rolom. */
@@ -286,7 +312,7 @@ class RnDocumentAccessTest {
         mvc.perform(post("/api/rn/{rn}/withdraw", RN).with(authentication(official())))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).withdraw(any(), any(), any(), any());
+        verify(service, never()).withdraw(any(), any(), any(), any(), any());
     }
 
     /**
@@ -365,7 +391,7 @@ class RnDocumentAccessTest {
                 .andExpect(status().isNotFound());
 
         verify(service, never()).detailView(any());
-        verify(service, never()).suspend(any(), any(), any(), any(), any());
+        verify(service, never()).suspend(any(), any(), any(), any(), any(), any());
     }
 
     /** Ista županija zapisana drugačije (bez „županija") i dalje je u opsegu. */
@@ -385,7 +411,7 @@ class RnDocumentAccessTest {
 
         verify(service).detailView(RN);
         verify(service).suspend(eq(RN), eq(com.str.backend.domain.RnTrigger.INSPECTION), isNull(), isNull(),
-                eq("INTERNAL:" + OFFICIAL_OIB));
+                eq("INTERNAL:" + OFFICIAL_OIB), eq(java.util.List.of()));
     }
 
     /** Vlasnik vidi svoj RB bez obzira na opseg — opseg ograničava samo službenika. */

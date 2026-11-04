@@ -1,5 +1,8 @@
 package com.str.backend.lessor;
 
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.Ucitao;
 import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
@@ -14,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -31,15 +36,18 @@ public class LessorRnActionService {
     private final SubmissionRepository submissionRepository;
     private final LessorRepository lessorRepository;
     private final RnStatusTransitionService transitionService;
+    private final PrilogService prilogService;
 
     public LessorRnActionService(RnRepository rnRepository,
                                  SubmissionRepository submissionRepository,
                                  LessorRepository lessorRepository,
-                                 RnStatusTransitionService transitionService) {
+                                 RnStatusTransitionService transitionService,
+                                 PrilogService prilogService) {
         this.rnRepository = rnRepository;
         this.submissionRepository = submissionRepository;
         this.lessorRepository = lessorRepository;
         this.transitionService = transitionService;
+        this.prilogService = prilogService;
     }
 
     /**
@@ -54,9 +62,21 @@ public class LessorRnActionService {
      */
     @Transactional
     public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason) {
+        return withdrawOwn(rn, lessorId, reason, List.of());
+    }
+
+    /**
+     * Opoziv s prilozima stranke ({@code prilogIds} iz {@code /api/lessor/attachments}, T17). Prilozi
+     * se vežu uz novi zapis prijelaza u istoj transakciji; kao prilozi stranke idu uz ulazno pismeno
+     * „Zahtjev za opoziv", ne uz obavijest o opozivu ({@code PrilogService#pripadaPismenu}).
+     */
+    @Transactional
+    public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason, Collection<Long> prilogIds) {
         RnEntity entity = loadOwnedByLessorId(rn, lessorId);
-        transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
-                "LESSOR:" + lessorId, Strings.blankToNull(reason));
+        String ucitao = Ucitao.lessor(lessorId);
+        UUID logId = transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                ucitao, Strings.blankToNull(reason));
+        bindPrilozi(ucitao, prilogIds, logId);
         log.info("rn_withdraw_by_lessor rn={} lessor={}", rn, lessorId);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
     }
@@ -68,11 +88,25 @@ public class LessorRnActionService {
      */
     @Transactional
     public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason) {
+        return withdrawOwnByOib(rn, oib, reason, List.of());
+    }
+
+    /** NIAS opoziv s prilozima; {@code oib} je vlasnik (efektivni OIB), isti kao kod staginga. */
+    @Transactional
+    public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason, Collection<Long> prilogIds) {
         RnEntity entity = loadOwnedByOib(rn, oib);
-        transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
-                "NIAS:" + oib, Strings.blankToNull(reason));
+        String ucitao = Ucitao.nias(oib);
+        UUID logId = transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                ucitao, Strings.blankToNull(reason));
+        bindPrilozi(ucitao, prilogIds, logId);
         log.info("rn_withdraw_by_nias rn={} oib={}", rn, oib);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
+    }
+
+    private void bindPrilozi(String ucitao, Collection<Long> prilogIds, UUID logId) {
+        if (prilogIds != null && !prilogIds.isEmpty()) {
+            prilogService.bind(ucitao, prilogIds, PrilogVlasnik.prijelaz(logId));
+        }
     }
 
     /**

@@ -189,6 +189,35 @@ class PrilogEgopServiceTest {
         verify(egopClient, never()).kreirajPrilogIPridruziDokument(any());
     }
 
+    /**
+     * Opoziv nakon T15 ima dva pismena istog prijelaza: ulazni „Zahtjev za opoziv" i izlaznu
+     * obavijest o opozivu. Prilog iznajmljivača (non-EU i NIAS) ide samo uz zahtjev.
+     */
+    @Test
+    void revocation_partyAttachments_onlyOnZahtjevZaOpoziv() throws Exception {
+        UUID logId = UUID.randomUUID();
+        when(repository.findSazeciVlasnika(VrstaVlasnika.RN_LOG, logId)).thenReturn(List.of(
+                TestPrilog.vezan(31, VrstaVlasnika.RN_LOG, logId, "izjava.pdf", Ucitao.lessor(UUID.randomUUID())),
+                TestPrilog.vezan(32, VrstaVlasnika.RN_LOG, logId, "punomoc.pdf", STRANKA)));
+        EgopPismenoEntity zahtjev = EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", logId.toString(),
+                StrDocumentType.ZAHTJEV_OPOZIVA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.ULAZNO,
+                new byte[]{1});
+        zahtjev.applyPismeno(2001, "529-06/26-1", "101", false);
+        EgopPismenoEntity obavijest = EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", logId.toString(),
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, new byte[]{2});
+        obavijest.applyPismeno(2002, "529-06/26-2", "102", false);
+
+        service.prilozi(obavijest, "app");
+        verifyNoInteractions(egopClient);
+
+        service.prilozi(zahtjev, "app");
+        ArgumentCaptor<KreirajPrilogIPridruziDokument> sent = ArgumentCaptor.forClass(KreirajPrilogIPridruziDokument.class);
+        verify(egopClient, times(2)).kreirajPrilogIPridruziDokument(sent.capture());
+        assertThat(sent.getAllValues()).extracting(KreirajPrilogIPridruziDokument::getNazivPriloga)
+                .containsExactly("izjava.pdf", "punomoc.pdf");
+        assertThat(sent.getAllValues()).extracting(KreirajPrilogIPridruziDokument::getJop).containsOnly(2001);
+    }
+
     private static EgopPismenoEntity akt(UUID logId, EgopPismenoEntity.Smjer smjer, int jop) {
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", logId.toString(),
                 "Obavijest o suspenziji registracijskog broja", smjer, new byte[]{1});

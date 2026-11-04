@@ -66,6 +66,10 @@ class RegistrationRequestWithOibTest {
             return new PodnositeljUnos("u" + index, "k" + index, "10000", "m" + index, "o" + index,
                     1000L + index, "mbs" + index);
         }
+        if (type == java.util.List.class) {
+            // Jedina List komponenta su prilogIds (T17).
+            return java.util.List.of(1000L + index, 2000L + index);
+        }
         throw new IllegalStateException("Nepodržan tip komponente " + type + " — dopuni sample()");
     }
 }

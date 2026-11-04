@@ -1,5 +1,6 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
@@ -82,7 +83,8 @@ class RegistrationServiceFacilityCompletionTest {
                 typeRepository, verifier,
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class), mock(ReissueService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class),
+                mock(PrilogService.class));
 
         when(orchestrator.execute(any(ValidationContext.class))).thenReturn(PipelineResult.passed());
         RnEntity issued = mock(RnEntity.class);

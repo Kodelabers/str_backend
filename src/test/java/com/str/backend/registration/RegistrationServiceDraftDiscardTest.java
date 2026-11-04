@@ -1,5 +1,6 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
@@ -76,7 +77,7 @@ class RegistrationServiceDraftDiscardTest {
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                draftService, mock(ReissueService.class));
+                draftService, mock(ReissueService.class), mock(PrilogService.class));
 
         when(countyRepository.findById(7L)).thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));
         lenient().when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(

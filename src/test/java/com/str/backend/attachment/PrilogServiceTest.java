@@ -37,7 +37,7 @@ class PrilogServiceTest {
         repository = mock(PrilogRepository.class);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // Mali limit veličine i nevezanih, da testovi ne trebaju 10 MB.
-        service = new PrilogService(repository, 5, DataSize.ofBytes(100), 3);
+        service = new PrilogService(repository, 5, DataSize.ofBytes(100), 3, DataSize.ofBytes(150));
     }
 
     // --- stage -----------------------------------------------------------------------------
@@ -243,6 +243,108 @@ class PrilogServiceTest {
         assertThat(PrilogService.pripadaPismenu(sluzbenik, false)).isFalse();
         assertThat(PrilogService.pripadaPismenu(stranka, false)).isTrue();
         assertThat(PrilogService.pripadaPismenu(stranka, true)).isFalse();
+    }
+
+    // --- T17/B-2: ukupna veličina priloga službenika -----------------------------------------
+
+    private static final String SLUZBENIK = "INTERNAL:12345678903";
+
+    /** Limit testa je 150 B: 80 + 80 je preko, kod je ATTACHMENT_TOTAL_TOO_LARGE i ništa se ne veže. */
+    @Test
+    void bind_official_overTotalLimit_is400_andBindsNothing() {
+        UUID logId = UUID.randomUUID();
+        when(repository.findSazeci(List.of(1L, 2L))).thenReturn(List.of(
+                TestPrilog.nevezan(1, SLUZBENIK).withVelicina(80), TestPrilog.nevezan(2, SLUZBENIK).withVelicina(80)));
+
+        assertCode(() -> service.bind(SLUZBENIK, List.of(1L, 2L), PrilogVlasnik.prijelaz(logId)),
+                HttpStatus.BAD_REQUEST, PrilogException.TOTAL_TOO_LARGE);
+        verify(repository, never()).bind(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void bind_official_atTotalLimit_binds() {
+        UUID logId = UUID.randomUUID();
+        when(repository.findSazeci(List.of(1L, 2L))).thenReturn(List.of(
+                TestPrilog.nevezan(1, SLUZBENIK).withVelicina(75), TestPrilog.nevezan(2, SLUZBENIK).withVelicina(75)));
+        when(repository.bind(any(), eq(SLUZBENIK), eq(VrstaVlasnika.RN_LOG), eq(logId), any())).thenReturn(2);
+
+        service.bind(SLUZBENIK, List.of(1L, 2L), PrilogVlasnik.prijelaz(logId));
+
+        verify(repository).bind(eq(List.of(1L, 2L)), eq(SLUZBENIK), eq(VrstaVlasnika.RN_LOG), eq(logId), any());
+    }
+
+    /** Već vezani prilozi istog prijelaza ulaze u zbroj. */
+    @Test
+    void bind_official_countsAlreadyBoundTowardsTotal() {
+        UUID logId = UUID.randomUUID();
+        when(repository.findSazeci(List.of(2L))).thenReturn(List.of(TestPrilog.nevezan(2, SLUZBENIK).withVelicina(80)));
+        when(repository.countByVrstaVlasnikaAndVlasnikId(VrstaVlasnika.RN_LOG, logId)).thenReturn(1L);
+        when(repository.findSazeciVlasnika(VrstaVlasnika.RN_LOG, logId)).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, logId, "a.pdf", SLUZBENIK).withVelicina(80)));
+
+        assertCode(() -> service.bind(SLUZBENIK, List.of(2L), PrilogVlasnik.prijelaz(logId)),
+                HttpStatus.BAD_REQUEST, PrilogException.TOTAL_TOO_LARGE);
+    }
+
+    /** Limit vrijedi samo za službenika (dostava e-poštom); stranka ima samo limit po datoteci. */
+    @Test
+    void bind_party_hasNoTotalLimit() {
+        UUID submissionId = UUID.randomUUID();
+        when(repository.findSazeci(List.of(1L, 2L))).thenReturn(List.of(
+                TestPrilog.nevezan(1, ANA).withVelicina(90), TestPrilog.nevezan(2, ANA).withVelicina(90)));
+        when(repository.bind(any(), eq(ANA), eq(VrstaVlasnika.SUBMISSION), eq(submissionId), any())).thenReturn(2);
+
+        service.bind(ANA, List.of(1L, 2L), PrilogVlasnik.zahtjev(submissionId));
+
+        verify(repository).bind(any(), eq(ANA), eq(VrstaVlasnika.SUBMISSION), eq(submissionId), any());
+    }
+
+    // --- T17/B-2: dodatne datoteke prigovora (spremiVezane) ----------------------------------
+
+    @Test
+    void spremiVezane_storesEachFileBound_inOrder() {
+        UUID objectionId = UUID.randomUUID();
+        byte[] jpg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 1};
+
+        List<PrilogResponse> spremljeni = service.spremiVezane(ANA, List.of(
+                new MockMultipartFile("datoteke", "dokaz.pdf", null, PDF),
+                new MockMultipartFile("datoteke", "foto.jpg", null, jpg)), PrilogVlasnik.prigovor(objectionId), 1);
+
+        ArgumentCaptor<PismenoPrilogEntity> saved = ArgumentCaptor.forClass(PismenoPrilogEntity.class);
+        verify(repository, org.mockito.Mockito.times(2)).save(saved.capture());
+        assertThat(saved.getAllValues()).allSatisfy(e -> {
+            assertThat(e.isVezan()).isTrue();
+            assertThat(e.getVrstaVlasnika()).isEqualTo(VrstaVlasnika.OBJECTION);
+            assertThat(e.getVlasnikId()).isEqualTo(objectionId);
+            assertThat(e.getUcitao()).isEqualTo(ANA);
+            assertThat(e.getVezanoU()).isNotNull();
+        });
+        assertThat(spremljeni).extracting(PrilogResponse::naziv).containsExactly("dokaz.pdf", "foto.jpg");
+        assertThat(spremljeni).extracting(PrilogResponse::contentType).containsExactly("application/pdf", "image/jpeg");
+    }
+
+    /** Dokument prigovora (vecPrilozeno = 1) + 5 dodatnih = 6 > 5. */
+    @Test
+    void spremiVezane_overCountWithFirstDocument_is400_andStoresNothing() {
+        List<org.springframework.web.multipart.MultipartFile> pet = java.util.stream.IntStream.range(0, 5)
+                .mapToObj(i -> (org.springframework.web.multipart.MultipartFile)
+                        new MockMultipartFile("datoteke", "d" + i + ".pdf", null, PDF))
+                .toList();
+
+        assertCode(() -> service.spremiVezane(ANA, pet, PrilogVlasnik.prigovor(UUID.randomUUID()), 1),
+                HttpStatus.BAD_REQUEST, PrilogException.COUNT);
+        verify(repository, never()).save(any());
+    }
+
+    /** Neispravna druga datoteka: ni prva se ne sprema (provjere prije pohrane). */
+    @Test
+    void spremiVezane_invalidFile_storesNothing() {
+        assertCode(() -> service.spremiVezane(ANA, List.of(
+                        new MockMultipartFile("datoteke", "dokaz.pdf", null, PDF),
+                        new MockMultipartFile("datoteke", "lazni.pdf", null, "nije pdf".getBytes())),
+                        PrilogVlasnik.prigovor(UUID.randomUUID()), 1),
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE, PrilogException.TYPE);
+        verify(repository, never()).save(any());
     }
 
     private static void assertCode(org.assertj.core.api.ThrowableAssert.ThrowingCallable call,

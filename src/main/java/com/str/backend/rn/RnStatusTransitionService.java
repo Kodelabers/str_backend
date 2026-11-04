@@ -10,6 +10,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 public class RnStatusTransitionService {
 
@@ -24,13 +26,18 @@ public class RnStatusTransitionService {
         this.eventPublisher = eventPublisher;
     }
 
+    /** @return {@code registration_number_log.log_id} novog zapisa (v. dolje) */
     @Transactional
-    public void transition(RnEntity rn, RnStatus target, RnTrigger trigger) {
-        transition(rn, target, trigger, null, null);
+    public UUID transition(RnEntity rn, RnStatus target, RnTrigger trigger) {
+        return transition(rn, target, trigger, null, null);
     }
 
+    /**
+     * @return {@code registration_number_log.log_id} novog zapisa — pozivatelj uz njega u istoj
+     *         transakciji veže priloge radnje (T17), prije nego AFTER_COMMIT listeneri urudžbiraju akt
+     */
     @Transactional
-    public void transition(RnEntity rn, RnStatus target, RnTrigger trigger, String actor, String reason) {
+    public UUID transition(RnEntity rn, RnStatus target, RnTrigger trigger, String actor, String reason) {
         RnStatus current = rn.getStatus();
         if (!current.canTransitionTo(target, trigger)) {
             throw new IllegalStatusTransitionException(
@@ -49,5 +56,6 @@ public class RnStatusTransitionService {
         // (npr. suspensionDeadline u RnService#suspend).
         eventPublisher.publishEvent(new RnLifecycleEvent(
                 zapis.getLogId(), rn.getRn(), current, target, trigger, actor, reason));
+        return zapis.getLogId();
     }
 }

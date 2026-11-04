@@ -22,9 +22,11 @@ import java.util.Optional;
  * {@link InternalAccessService#RN_MANAGEMENT} u svojem opsegu ({@link RnScopeGuard}). Bez prijave
  * 401, inače 404 — da se ne otkriva postoji li tuđi RB.
  *
- * <p>Isto pravilo kao {@code RnController#requireAccess} za {@code /api/rn/{rn}/documents/**};
- * prilozi ga dijele ({@code GET /api/rn/{rn}/attachments/{id}}). TODO(T17/B-2): neka i
- * {@code RnController} zove ovaj guard, da pravilo živi na jednom mjestu.
+ * <p>Jedno pravilo za {@code /api/rn/{rn}/detail}, {@code /api/rn/{rn}/documents/**}
+ * ({@code RnController}) i priloge ({@code GET /api/rn/{rn}/attachments/{id}}).
+ *
+ * <p>Vlasništvo se provjerava prvo, bez upita u shemu {@code str}: iznajmljivač tako ne ovisi
+ * o dostupnosti tablica eTurizma. Non-EU iznajmljivač (prijava lozinkom) nikad nije službenik.
  */
 @Component
 public class RnAccessGuard {
@@ -69,8 +71,11 @@ public class RnAccessGuard {
         throw new ResourceNotFoundException("rn not found: " + rn);
     }
 
-    /** Nedostupna shema {@code str} znači „nije službenik" — vlasnik je već prošao gore. */
-    private boolean isOfficial(Authentication authentication) {
+    /**
+     * Ima li prijavljeni rolu {@link InternalAccessService#RN_MANAGEMENT}. Nedostupna shema
+     * {@code str} znači „nije službenik" — vlasnik je u {@link #requireAccess} već prošao.
+     */
+    public boolean isOfficial(Authentication authentication) {
         try {
             return internalAccess.hasRole(authentication, InternalAccessService.RN_MANAGEMENT);
         } catch (DataAccessException e) {

@@ -1,5 +1,9 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.Ucitao;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.PrilogException;
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
@@ -63,6 +67,7 @@ class RegistrationServiceContactTest {
     private LessorRepository lessorRepository;
     private SubjectProfileService subjectProfileService;
     private RnService rnService;
+    private PrilogService prilogService;
     private RegistrationService service;
 
     @BeforeEach
@@ -81,6 +86,7 @@ class RegistrationServiceContactTest {
         ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
 
         lenient().when(accommodationTypeRepository.existsById(anyLong())).thenReturn(true);
+        prilogService = mock(PrilogService.class);
 
         service = new RegistrationService(
                 lessorRepository, accommodationRepository, submissionRepository,
@@ -89,7 +95,8 @@ class RegistrationServiceContactTest {
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 eventPublisher,
-                mock(SubmissionDraftService.class), mock(ReissueService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class),
+                prilogService);
 
         when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));
@@ -304,6 +311,75 @@ class RegistrationServiceContactTest {
 
         assertThat(bezBroja.getMobileNumber()).isEqualTo("0912223334");
         assertThat(bezBroja.getEmail()).isEqualTo("racun@example.com");
+    }
+
+    // ---- T17: prilozi uz zahtjev za RB
+
+    /** NIAS: prilozi se vežu uz upravo nastali submission, pod vlasnikom zahtjeva (req.oib). */
+    @Test
+    void niasFlow_withAttachments_bindsToSubmissionInIssuingTransaction() {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
+
+        service.generateRegistrationNumber(withPrilozi(request("ana@example.com", "0991234567", null, null),
+                List.of(5L, 6L)));
+
+        ArgumentCaptor<UUID> submissionId = ArgumentCaptor.forClass(UUID.class);
+        verify(rnService).issue(submissionId.capture(), any(UUID.class));
+        verify(prilogService).bind(Ucitao.nias(OIB), List.of(5L, 6L), PrilogVlasnik.zahtjev(submissionId.getValue()));
+    }
+
+    @Test
+    void niasFlow_withoutAttachments_doesNotBind() {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
+
+        service.generateRegistrationNumber(request("ana@example.com", "0991234567", null, null));
+
+        verify(prilogService, org.mockito.Mockito.never()).bind(any(), any(), any());
+    }
+
+    /** Odbijen prilog ruši izdavanje: iznimka izlazi iz transakcijske metode (rollback i RB-a). */
+    @Test
+    void niasFlow_rejectedAttachment_propagates() {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
+        when(prilogService.bind(any(), any(), any())).thenThrow(new PrilogException(
+                org.springframework.http.HttpStatus.NOT_FOUND, "error.attachment.notFound", PrilogException.NOT_FOUND));
+
+        assertThatThrownBy(() -> service.generateRegistrationNumber(
+                withPrilozi(request("ana@example.com", "0991234567", null, null), List.of(9L))))
+                .isInstanceOf(PrilogException.class);
+    }
+
+    /** Non-EU: učitavatelj je iznajmljivač iz prijave. */
+    @Test
+    void externalFlow_withAttachments_bindsAsLessor() {
+        LessorEntity postojeci = LessorEntity.create("PERO", "PERIĆ", "Ilica", "1",
+                "Zagreb", "Grad Zagreb", "racun@example.com");
+        postojeci.setLessorOib(OIB);
+        UUID lessorId = postojeci.getLessorId();
+        when(lessorRepository.findById(lessorId)).thenReturn(Optional.of(postojeci));
+        RegistrationExternalRequest base = externalRequest(null, "0912223334");
+        RegistrationExternalRequest req = new RegistrationExternalRequest(base.name(), base.typeId(), base.countyId(),
+                base.cityId(), base.settlementId(), base.street(), base.streetNumber(), base.kucniBrojId(),
+                base.postalCode(), base.maxBeds(), base.offerType(), base.offering(), base.building(), base.floor(),
+                base.apartments(), base.legalized(), base.lessorResidence(), base.coOwnerConsent(),
+                base.consentDate(), base.consentWithdrawalDate(), base.host(), base.confirmDuplicateLocation(),
+                base.facilityId(), base.kontaktEmail(), base.kontaktMobitel(), base.kontaktTelefon(),
+                base.kontaktOsoba(), base.kcBroj(), null, List.of(4L));
+
+        service.generateRegistrationNumberExternal(req, lessorId);
+
+        ArgumentCaptor<UUID> submissionId = ArgumentCaptor.forClass(UUID.class);
+        verify(rnService).issue(submissionId.capture(), any(UUID.class));
+        verify(prilogService).bind(Ucitao.lessor(lessorId), List.of(4L), PrilogVlasnik.zahtjev(submissionId.getValue()));
+    }
+
+    private static RegistrationRequest withPrilozi(RegistrationRequest r, List<Long> prilogIds) {
+        return new RegistrationRequest(r.oib(), r.name(), r.typeId(), r.countyId(), r.cityId(), r.settlementId(),
+                r.street(), r.streetNumber(), r.kucniBrojId(), r.postalCode(), r.maxBeds(), r.offerType(),
+                r.offering(), r.building(), r.floor(), r.apartments(), r.legalized(), r.lessorResidence(),
+                r.coOwnerConsent(), r.consentDate(), r.consentWithdrawalDate(), r.host(),
+                r.confirmDuplicateLocation(), r.facilityId(), r.kontaktEmail(), r.kontaktMobitel(),
+                r.kontaktTelefon(), r.kontaktOsoba(), r.kcBroj(), r.podnositelj(), r.prethodniRb(), prilogIds);
     }
 
     private LessorEntity savedLessor() {

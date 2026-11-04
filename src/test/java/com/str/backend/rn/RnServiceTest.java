@@ -1,4 +1,7 @@
 package com.str.backend.rn;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.PrilogException;
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -22,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.eq;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,6 +42,7 @@ class RnServiceTest {
     private RnStatusTransitionService transitionService;
     private AccommodationRepository accommodationRepository;
     private AccommodationTypeRepository accommodationTypeRepository;
+    private PrilogService prilogService;
     private final Clock clock = Clock.fixed(Instant.parse("2026-04-30T10:00:00Z"), ZoneId.of("UTC"));
     /** Valjan rok za očitovanje (u budućnosti u odnosu na {@link #clock}). */
     private static final LocalDate DEADLINE = LocalDate.of(2026, 5, 15);
@@ -50,8 +55,9 @@ class RnServiceTest {
         transitionService = mock(RnStatusTransitionService.class);
         accommodationRepository = mock(AccommodationRepository.class);
         accommodationTypeRepository = mock(AccommodationTypeRepository.class);
+        prilogService = mock(PrilogService.class);
         service = new RnService(repository, transitionService, accommodationRepository,
-                accommodationTypeRepository, clock, new DocumentLabels());
+                accommodationTypeRepository, clock, new DocumentLabels(), prilogService);
     }
 
     @Test
@@ -398,5 +404,62 @@ class RnServiceTest {
 
         service.reactivate(rn.getRn(), actor);
         verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null);
+    }
+
+    // ---- T17: prilozi službenika uz prijedlog suspenzije i povlačenje
+
+    /** Prilozi se vežu uz upravo nastali zapis prijelaza, pod službenikom koji je radnju napravio. */
+    @Test
+    void suspend_withAttachments_bindsToNewLogEntry() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION,
+                "INTERNAL:12345678903", null)).thenReturn(logId);
+
+        service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null, "INTERNAL:12345678903", List.of(7L, 8L));
+
+        verify(prilogService).bind("INTERNAL:12345678903", List.of(7L, 8L), PrilogVlasnik.prijelaz(logId));
+    }
+
+    @Test
+    void withdraw_withAttachments_bindsToNewLogEntry() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(eq(rn), eq(RnStatus.WITHDRAWN), eq(RnTrigger.WITHDRAWAL),
+                eq("INTERNAL:12345678903"), anyString())).thenReturn(logId);
+
+        service.withdraw("HR00000001", WithdrawalReason.DATA_NOT_CORRECTED, null, "INTERNAL:12345678903",
+                List.of(9L));
+
+        verify(prilogService).bind("INTERNAL:12345678903", List.of(9L), PrilogVlasnik.prijelaz(logId));
+    }
+
+    /** Bez priloga nema vezanja — ni poziva sa praznim popisom. */
+    @Test
+    void suspend_withoutAttachments_doesNotBind() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+
+        service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null, "INTERNAL:12345678903");
+
+        verify(prilogService, never()).bind(any(), any(), any());
+    }
+
+    /** Neispravan prilog ruši radnju: iznimka iz vezanja izlazi iz transakcijske metode (rollback). */
+    @Test
+    void suspend_rejectedAttachment_propagates() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+        when(transitionService.transition(any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
+        when(prilogService.bind(any(), any(), any())).thenThrow(new PrilogException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "error.attachment.totalTooLarge",
+                PrilogException.TOTAL_TOO_LARGE));
+
+        assertThatThrownBy(() -> service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null,
+                "INTERNAL:12345678903", List.of(1L)))
+                .isInstanceOfSatisfying(PrilogException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("ATTACHMENT_TOTAL_TOO_LARGE"));
     }
 }

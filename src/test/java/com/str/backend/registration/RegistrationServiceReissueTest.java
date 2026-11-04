@@ -1,5 +1,6 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
@@ -95,7 +96,7 @@ class RegistrationServiceReissueTest {
                 mock(AccommodationTypeRepository.class), mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class), reissueService);
+                mock(SubmissionDraftService.class), reissueService, mock(PrilogService.class));
 
         lenient().when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(county(7L, "Splitsko-dalmatinska županija")));

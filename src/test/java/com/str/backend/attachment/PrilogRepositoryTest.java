@@ -54,7 +54,7 @@ class PrilogRepositoryTest {
         for (String sql : addConstraintSql()) {
             jdbc.execute(sql);
         }
-        service = new PrilogService(repository, 5, DataSize.ofMegabytes(10), 20);
+        service = new PrilogService(repository, 5, DataSize.ofMegabytes(10), 20, DataSize.ofMegabytes(15));
     }
 
     @Test

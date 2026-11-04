@@ -2,6 +2,8 @@ package com.str.backend.rn;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.address.CountyNames;
 import com.str.backend.common.SearchTokens;
 import com.str.backend.common.Strings;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -84,17 +87,19 @@ public class RnService {
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final Clock clock;
     private final DocumentLabels labels;
+    private final PrilogService prilogService;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
                      AccommodationTypeRepository accommodationTypeRepository, Clock clock,
-                     DocumentLabels labels) {
+                     DocumentLabels labels, PrilogService prilogService) {
         this.repository = repository;
         this.transitionService = transitionService;
         this.accommodationRepository = accommodationRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.clock = clock;
         this.labels = labels;
+        this.prilogService = prilogService;
     }
 
     @Transactional
@@ -139,6 +144,18 @@ public class RnService {
      */
     @Transactional
     public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor) {
+        return suspend(rn, trigger, suspensionDeadline, note, actor, List.of());
+    }
+
+    /**
+     * Kao {@link #suspend(String, RnTrigger, LocalDate, String, String)}, uz priloge službenika
+     * ({@code prilogIds} iz staginga, T17). Vežu se uz novi zapis {@code registration_number_log} u
+     * istoj transakciji, pa ih AFTER_COMMIT listeneri (eGOP, e-pošta) prilažu uz akt; neispravan
+     * prilog (tuđi, istekao, previše, ukupno preko 15 MB) poništava i prijedlog.
+     */
+    @Transactional
+    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor,
+                            Collection<Long> prilogIds) {
         if (!RnTrigger.SUSPENSION_REASONS.contains(trigger)) {
             throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
@@ -155,8 +172,10 @@ public class RnService {
             throw new BusinessException("error.rn.suspend.deadline.past");
         }
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, Strings.blankToNull(note));
+        UUID logId = transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor,
+                Strings.blankToNull(note));
         e.setSuspensionDeadline(suspensionDeadline);
+        bindPrilozi(actor, prilogIds, logId);
         return e;
     }
 
@@ -217,6 +236,13 @@ public class RnService {
      */
     @Transactional
     public RnEntity withdraw(String rn, WithdrawalReason reason, String note, String actor) {
+        return withdraw(rn, reason, note, actor, List.of());
+    }
+
+    /** Kao {@link #withdraw(String, WithdrawalReason, String, String)}, uz priloge službenika (T17). */
+    @Transactional
+    public RnEntity withdraw(String rn, WithdrawalReason reason, String note, String actor,
+                             Collection<Long> prilogIds) {
         if (reason == null) {
             throw new BusinessException("error.rn.withdraw.reason.required");
         }
@@ -226,8 +252,23 @@ public class RnService {
         }
         String logged = reason.requiresNote() ? cleanNote : labels.withdrawalReason(reason);
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, logged);
+        UUID logId = transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, logged);
+        bindPrilozi(actor, prilogIds, logId);
         return e;
+    }
+
+    /**
+     * Prilozi službenika uz upravo nastali prijelaz. Bez priloga ne radi ništa — ni ne traži
+     * službenika, pa radnja bez priloga radi i bez aktera (testovi bez sigurnosnog lanca).
+     */
+    private void bindPrilozi(String actor, Collection<Long> prilogIds, UUID logId) {
+        if (prilogIds == null || prilogIds.isEmpty()) {
+            return;
+        }
+        if (actor == null) {
+            throw new IllegalStateException("prilozi bez službenika");
+        }
+        prilogService.bind(actor, prilogIds, PrilogVlasnik.prijelaz(logId));
     }
 
     @Transactional(readOnly = true)

@@ -45,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ono što radi sam kontroler: razrješenje sluga i provjera vlasništva.
  */
 @ActiveProfiles("test")
-@Import({EffectiveOibResolver.class, NiasOibResolver.class})
+@Import({EffectiveOibResolver.class, NiasOibResolver.class, RnAccessGuard.class})
 @WebMvcTest(RnController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class RnDocumentControllerTest {

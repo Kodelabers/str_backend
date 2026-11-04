@@ -185,7 +185,8 @@ public class LessorController {
             Authentication authentication) {
         UUID lessorId = extractLessorId(authentication);
         String reason = body != null ? body.reason() : null;
-        return rnActionService.withdrawOwn(rn, lessorId, reason);
+        List<Long> prilogIds = body != null && body.prilogIds() != null ? body.prilogIds() : List.of();
+        return rnActionService.withdrawOwn(rn, lessorId, reason, prilogIds);
     }
 
     private UUID extractLessorId(Authentication authentication) {

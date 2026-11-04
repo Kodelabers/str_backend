@@ -1,6 +1,10 @@
 package com.str.backend.objection;
 
 import com.str.backend.admin.AdminAuditService;
+import com.str.backend.attachment.PrilogDto;
+import com.str.backend.attachment.PrilogRepository.PrilogSazetak;
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
@@ -43,19 +47,22 @@ public class SuspensionObjectionAdminService {
     private final AdminAuditService auditService;
     private final InternalAccessService internalAccess;
     private final LessorRepository lessorRepository;
+    private final PrilogService prilogService;
 
     public SuspensionObjectionAdminService(SuspensionObjectionRepository repository,
                                            RnRepository rnRepository,
                                            RnService rnService,
                                            AdminAuditService auditService,
                                            InternalAccessService internalAccess,
-                                           LessorRepository lessorRepository) {
+                                           LessorRepository lessorRepository,
+                                           PrilogService prilogService) {
         this.repository = repository;
         this.rnRepository = rnRepository;
         this.rnService = rnService;
         this.auditService = auditService;
         this.internalAccess = internalAccess;
         this.lessorRepository = lessorRepository;
+        this.prilogService = prilogService;
     }
 
     /** Povijest prigovora uz RB, najnoviji prvi. Nepostojeći RB je 404, RB bez prigovora prazan popis. */
@@ -69,9 +76,15 @@ public class SuspensionObjectionAdminService {
         Map<String, String> names = internalAccess.displayNames(
                 rows.stream().map(SuspensionObjectionRepository.ObjectionSummary::getResolvedBy).toList());
         Map<UUID, String> taxNumbers = taxNumbers(rows);
+        // Dodatne datoteke svih prigovora jednim upitom (T17).
+        Map<UUID, List<PrilogSazetak>> prilozi = prilogService.zaVlasnike(VrstaVlasnika.OBJECTION,
+                rows.stream().map(SuspensionObjectionRepository.ObjectionSummary::getObjectionId).toList());
         return rows.stream()
                 .map(o -> SuspensionObjectionDto.of(o, names.get(o.getResolvedBy()),
-                        taxNumbers.get(o.getLessorId())))
+                        taxNumbers.get(o.getLessorId()),
+                        prilozi.getOrDefault(o.getObjectionId(), List.of()).stream()
+                                .map(p -> PrilogDto.of(rn, p))
+                                .toList()))
                 .toList();
     }
 

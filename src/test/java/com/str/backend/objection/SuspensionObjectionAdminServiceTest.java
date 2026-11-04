@@ -1,5 +1,10 @@
 package com.str.backend.objection;
 
+import java.util.List;
+import com.str.backend.attachment.VrstaVlasnika;
+import com.str.backend.attachment.TestPrilog;
+import com.str.backend.attachment.PrilogDto;
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.admin.AdminAuditService;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.domain.RnStatus;
@@ -42,8 +47,9 @@ class SuspensionObjectionAdminServiceTest {
     private final AdminAuditService auditService = mock(AdminAuditService.class);
     private final InternalAccessService internalAccess = mock(InternalAccessService.class);
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
+    private final PrilogService prilogService = mock(PrilogService.class);
     private final SuspensionObjectionAdminService service = new SuspensionObjectionAdminService(
-            repository, rnRepository, rnService, auditService, internalAccess, lessorRepository);
+            repository, rnRepository, rnService, auditService, internalAccess, lessorRepository, prilogService);
 
     private final RnEntity rn = mock(RnEntity.class);
     private SuspensionObjectionEntity objection;
@@ -149,6 +155,28 @@ class SuspensionObjectionAdminServiceTest {
         assertThatThrownBy(() -> service.reject(RN, other, ACTOR, null))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(auditService, never()).record(any(), any(), any(), any(), any());
+    }
+
+    /** Povijest nosi sve dodatne datoteke prigovora, s poveznicom za preuzimanje uz RB. */
+    @Test
+    void list_carriesObjectionAttachments() {
+        UUID id = objection.getObjectionId();
+        SuspensionObjectionRepository.ObjectionSummary row = mock(SuspensionObjectionRepository.ObjectionSummary.class);
+        when(row.getObjectionId()).thenReturn(id);
+        when(row.getRn()).thenReturn(RN);
+        when(rnRepository.existsById(RN)).thenReturn(true);
+        when(repository.findSummariesByRn(RN)).thenReturn(List.of(row));
+        when(internalAccess.displayNames(any())).thenReturn(new java.util.HashMap<>());
+        when(prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, List.of(id))).thenReturn(java.util.Map.of(id, List.of(
+                TestPrilog.vezan(21, VrstaVlasnika.OBJECTION, id, "foto.png", "NIAS:99999999990"),
+                TestPrilog.vezan(22, VrstaVlasnika.OBJECTION, id, "dopis.pdf", "NIAS:99999999990"))));
+
+        List<SuspensionObjectionDto> dtos = service.list(RN);
+
+        assertThat(dtos).singleElement().satisfies(d -> {
+            assertThat(d.prilozi()).extracting(PrilogDto::naziv).containsExactly("foto.png", "dopis.pdf");
+            assertThat(d.prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/attachments/21");
+        });
     }
 
     @Test

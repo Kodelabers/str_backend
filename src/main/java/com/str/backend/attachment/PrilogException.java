@@ -19,6 +19,11 @@ public class PrilogException extends RuntimeException {
     public static final String STAGED_LIMIT = "ATTACHMENT_STAGED_LIMIT";
     /** Više od dopuštenog broja priloga uz jedno pismeno (400). */
     public static final String COUNT = "ATTACHMENT_COUNT";
+    /**
+     * Prilozi službenika uz jednu radnju zajedno su veći od dopuštenog (400). Non-EU iznajmljivaču
+     * je e-pošta pravna dostava akta, pa svi prilozi moraju stati u jednu poruku.
+     */
+    public static final String TOTAL_TOO_LARGE = "ATTACHMENT_TOTAL_TOO_LARGE";
     /** Prilog ne postoji — npr. obrisan noćnim čišćenjem nevezanih (404). */
     public static final String NOT_FOUND = "ATTACHMENT_NOT_FOUND";
     /** Prilog je učitao netko drugi (403). */

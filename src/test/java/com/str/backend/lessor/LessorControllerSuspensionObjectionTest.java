@@ -87,6 +87,26 @@ class LessorControllerSuspensionObjectionTest {
         assertThat(req.getValue().getDatoteka().getOriginalFilename()).isEqualTo("prigovor.docx");
     }
 
+    /** T17: dodatne datoteke stižu kao ponovljeni dio `datoteke`, uz nepromijenjen `datoteka`. */
+    @Test
+    void submit_withExtraFiles_bindsRepeatedDatotekePart() throws Exception {
+        when(suspensionObjectionService.submit(any(), anyString(), any()))
+                .thenReturn(new SuspensionObjectionResponse(UUID.randomUUID(), RN, SuspensionObjectionStatus.SUBMITTED,
+                        "prigovor.docx", 12, Instant.now()));
+
+        mvc.perform(multipart(URL, RN).file(docx())
+                        .file(new MockMultipartFile("datoteke", "foto.png", "image/png", new byte[]{1}))
+                        .file(new MockMultipartFile("datoteke", "dopis.pdf", "application/pdf", new byte[]{2}))
+                        .principal(lessorAuth()))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<SuspensionObjectionRequest> req = ArgumentCaptor.forClass(SuspensionObjectionRequest.class);
+        verify(suspensionObjectionService).submit(any(), anyString(), req.capture());
+        assertThat(req.getValue().getDatoteka().getOriginalFilename()).isEqualTo("prigovor.docx");
+        assertThat(req.getValue().getDatoteke()).extracting(f -> f.getOriginalFilename())
+                .containsExactly("foto.png", "dopis.pdf");
+    }
+
     @Test
     void submit_pending_is409WithCode() throws Exception {
         when(suspensionObjectionService.submit(any(), anyString(), any())).thenThrow(new ConflictException(

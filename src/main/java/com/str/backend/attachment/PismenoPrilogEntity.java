@@ -93,6 +93,19 @@ public class PismenoPrilogEntity {
         return e;
     }
 
+    /**
+     * Vezan prilog koji ne prolazi staging — dodatne datoteke prigovora stižu u istom multipart
+     * zahtjevu kao i prigovor, pa se vežu odmah ({@code PrilogService#spremiVezane}).
+     */
+    static PismenoPrilogEntity vezan(String ucitao, String nazivDatoteke, String contentType, byte[] sadrzaj,
+                                     String sha256, PrilogVlasnik vlasnik) {
+        PismenoPrilogEntity e = staged(ucitao, nazivDatoteke, contentType, sadrzaj, sha256);
+        e.vrstaVlasnika = vlasnik.vrsta();
+        e.vlasnikId = vlasnik.id();
+        e.vezanoU = e.ucitanoU;
+        return e;
+    }
+
     public boolean isVezan() {
         return vlasnikId != null;
     }

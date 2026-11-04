@@ -15,6 +15,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Zahtjev NIAS iznajmljivača za RB.
@@ -30,6 +31,9 @@ import java.time.LocalDate;
  * objekta iz kojeg je obrazac predpopunjen ({@code GET /api/nias/registrations/{rn}/ponovni-zahtjev}).
  * Backend ga provjerava prije GO pipelinea ({@code ReissueService}) i prenosi rješenje o
  * kategorizaciji; ne smije doći zajedno s {@code facilityId} (400).
+ *
+ * <p>{@code prilogIds}: prilozi uz zahtjev (T17), id-evi iz {@code POST /api/nias/attachments};
+ * neobavezno. Vežu se uz zahtjev u istoj transakciji u kojoj se izdaje RB.
  */
 public record RegistrationRequest(
         @NotBlank @Pattern(regexp = "\\d{11}", message = "OIB mora sadržavati točno 11 znamenki") String oib,
@@ -65,8 +69,27 @@ public record RegistrationRequest(
         /** Adresa / MBS podnositelja s obrasca — samo kad ih registar nema; {@code null} inače. */
         @Valid PodnositeljUnos podnositelj,
         /** Povučeni RB istog novog objekta (ponovni zahtjev nakon opoziva); {@code null} inače. */
-        @Pattern(regexp = RegistrationNumber.REGEXP, message = "error.reissue.previousRn.format") String prethodniRb
+        @Pattern(regexp = RegistrationNumber.REGEXP, message = "error.reissue.previousRn.format") String prethodniRb,
+        /** Prilozi uz zahtjev iz staginga (T17); {@code null} ili prazno kad ih nema. */
+        List<Long> prilogIds
 ) implements AccommodationRequest {
+
+    /** Zahtjev bez priloga. */
+    public RegistrationRequest(String oib, String name, String typeId, Long countyId, String cityId,
+                               String settlementId, String street, String streetNumber, Long kucniBrojId,
+                               String postalCode, Integer maxBeds, OfferType offerType, Offering offering,
+                               Boolean building, String floor, Boolean apartments, Boolean legalized,
+                               Boolean lessorResidence, Boolean coOwnerConsent, LocalDate consentDate,
+                               LocalDate consentWithdrawalDate, Boolean host, Boolean confirmDuplicateLocation,
+                               String facilityId, String kontaktEmail, String kontaktMobitel,
+                               String kontaktTelefon, String kontaktOsoba, String kcBroj,
+                               PodnositeljUnos podnositelj, String prethodniRb) {
+        this(oib, name, typeId, countyId, cityId, settlementId, street, streetNumber, kucniBrojId,
+                postalCode, maxBeds, offerType, offering, building, floor, apartments, legalized,
+                lessorResidence, coOwnerConsent, consentDate, consentWithdrawalDate, host,
+                confirmDuplicateLocation, facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon,
+                kontaktOsoba, kcBroj, podnositelj, prethodniRb, null);
+    }
 
     /** Zahtjev bez ponovnog zahtjeva nakon opoziva. */
     public RegistrationRequest(String oib, String name, String typeId, Long countyId, String cityId,
@@ -110,7 +133,7 @@ public record RegistrationRequest(
                 orig.consentDate(), orig.consentWithdrawalDate(), orig.host(),
                 orig.confirmDuplicateLocation(), orig.facilityId(),
                 orig.kontaktEmail(), orig.kontaktMobitel(), orig.kontaktTelefon(),
-                orig.kontaktOsoba(), orig.kcBroj(), orig.podnositelj(), orig.prethodniRb());
+                orig.kontaktOsoba(), orig.kcBroj(), orig.podnositelj(), orig.prethodniRb(), orig.prilogIds());
     }
 
     /**
