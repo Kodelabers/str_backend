@@ -1,5 +1,6 @@
 package com.str.backend.exception;
 
+import com.str.backend.attachment.PrilogException;
 import com.str.backend.captcha.CaptchaException;
 import com.str.backend.auth.nias.ActingSubjectChangedException;
 import com.str.backend.auth.nias.ActingSubjectOptionsUnavailableException;
@@ -141,6 +142,12 @@ public class GlobalExceptionHandler {
         details.put("code", ex.getCode().name());
         details.put("field", ex.getField());
         return build(HttpStatus.BAD_REQUEST, resolve(ex.getMessage()), details);
+    }
+
+    /** Odbijen prilog uz pismeno: status i {@code details.code} nosi sama iznimka. */
+    @ExceptionHandler(PrilogException.class)
+    public ResponseEntity<ErrorResponse> handlePrilog(PrilogException ex) {
+        return build(ex.getStatus(), resolve(ex.getMessage()), Map.of("code", ex.getCode()));
     }
 
     @ExceptionHandler(BusinessException.class)

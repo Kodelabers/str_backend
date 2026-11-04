@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Prilozi uz pismena (T17): do 5 datoteka po pismenu, svaka do 10 MB, PDF/JPG/PNG/DOC/DOCX.
+        Sadržaj je u bazi (BYTEA), kao suspension_objection.file_content.
+
+        Tok je "staging, pa vezanje": datoteka se najprije učita bez vlasnika (vrsta_vlasnika i
+        vlasnik_id su NULL), a radnja (zahtjev za RB, opoziv, prijedlog suspenzije, suspenzija,
+        povlačenje, prigovor) je u svojoj transakciji veže uz vlasnika. Nevezane datoteke starije
+        od TTL-a briše noćni posao.
+
+        Vlasnik: SUBMISSION (submission_id zahtjeva), RN_LOG (log_id prijelaza RB-a — opoziv
+        iznajmljivača ili akt službenika), OBJECTION (objection_id prigovora). vlasnik_id je UUID
+        sva tri, ali bez stranog ključa jer pokazuje u tri tablice.
+
+        egop_jop / egop_rbr / egop_prilozeno_u: prilog je priložen uz pismeno u eGOP-u. Isto što
+        egop_pismeno.document_attached za glavni dokument — eGOP nema idempotentno prilaganje,
+        pa retry preskače priloge koji ovdje već imaju jop.
+    -->
+    <changeSet id="148-pismeno-prilog" author="str-backend">
+        <createTable schemaName="str_rn" tableName="pismeno_prilog"
+                     remarks="Prilozi uz pismena (zahtjev, opoziv, akti službenika, prigovor)">
+            <column name="id" type="BIGINT" autoIncrement="true" remarks="PK">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="vrsta_vlasnika" type="VARCHAR(16)"
+                    remarks="SUBMISSION, RN_LOG ili OBJECTION; NULL dok je datoteka nevezana (staging)"/>
+            <column name="vlasnik_id" type="UUID"
+                    remarks="submission_id, log_id ili objection_id; NULL dok je datoteka nevezana"/>
+
+            <column name="naziv_datoteke" type="VARCHAR(255)" remarks="Originalni naziv datoteke">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content_type" type="VARCHAR(100)" remarks="MIME tip potvrđen magic-byteovima, ne header klijenta">
+                <constraints nullable="false"/>
+            </column>
+            <column name="velicina" type="BIGINT" remarks="Veličina u bajtovima">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_content" type="BYTEA" remarks="Sadržaj datoteke (do 10 MB)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sha256" type="VARCHAR(64)" remarks="SHA-256 sadržaja, heksadecimalno">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="ucitao" type="VARCHAR(128)"
+                    remarks="Tko je učitao: NIAS:&lt;OIB vlasnika&gt;, LESSOR:&lt;lessor_id&gt; ili INTERNAL:&lt;oib službenika&gt;">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ucitano_u" type="TIMESTAMPTZ" remarks="Trenutak učitavanja">
+                <constraints nullable="false"/>
+            </column>
+            <column name="vezano_u" type="TIMESTAMPTZ" remarks="Trenutak vezanja uz vlasnika"/>
+
+            <column name="egop_jop" type="INT" remarks="JOP pismena uz koje je prilog priložen u eGOP-u"/>
+            <column name="egop_rbr" type="INT" remarks="Redni broj priloga na pismenu (rbrPriloga)"/>
+            <column name="egop_prilozeno_u" type="TIMESTAMPTZ" remarks="Trenutak prilaganja u eGOP"/>
+        </createTable>
+
+        <sql>
+            ALTER TABLE str_rn.pismeno_prilog
+                ADD CONSTRAINT ck_pismeno_prilog_vrsta_vlasnika
+                CHECK (vrsta_vlasnika IS NULL OR vrsta_vlasnika IN ('SUBMISSION', 'RN_LOG', 'OBJECTION'));
+            ALTER TABLE str_rn.pismeno_prilog
+                ADD CONSTRAINT ck_pismeno_prilog_vlasnik
+                CHECK ((vrsta_vlasnika IS NULL AND vlasnik_id IS NULL AND vezano_u IS NULL)
+                    OR (vrsta_vlasnika IS NOT NULL AND vlasnik_id IS NOT NULL AND vezano_u IS NOT NULL));
+            CREATE INDEX idx_pismeno_prilog_staged
+                ON str_rn.pismeno_prilog (ucitao, ucitano_u)
+                WHERE vlasnik_id IS NULL;
+        </sql>
+
+        <createIndex schemaName="str_rn" tableName="pismeno_prilog"
+                     indexName="idx_pismeno_prilog_vlasnik">
+            <column name="vrsta_vlasnika"/>
+            <column name="vlasnik_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="pismeno_prilog"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

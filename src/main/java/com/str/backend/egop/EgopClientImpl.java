@@ -341,8 +341,8 @@ class EgopClientImpl implements EgopClient {
     /**
      * Primatelj se zadaje OIB-om, ne oznakom subjekta: zastupnik pravne osobe ne mora postojati
      * kao subjekt u eGOP-u. {@code subjektOznakaPrimatelja} je u WSDL-u {@code nillable} i
-     * {@code minOccurs=1}, pa ide kao {@code xsi:nil}. Prilozi se ne otpremaju — STR pismenu
-     * prilaže samo glavni dokument.
+     * {@code minOccurs=1}, pa ide kao {@code xsi:nil}. Prilozi se otpremaju s aktom: prilozi
+     * službenika (T17) dio su akta koji se dostavlja; pismeno bez priloga ih nema.
      */
     @Override
     public void otpremiUKorisnickiPretinac(String username, int jop, String primateljOib, String napomena)
@@ -352,7 +352,7 @@ class EgopClientImpl implements EgopClient {
         request.setJop(jop);
         request.setSubjektOIBPrimatelja(primateljOib);
         request.setNapomena(napomena);
-        request.setOtpremaPriloga(false);
+        request.setOtpremaPriloga(true);
         var response = (OtpremiPismenoUKorisnickiPretinacResponse) call(
                 egopPismenoWebServiceTemplate, request, PISMENO_OTPREMI_U_KORISNICKI_PRETINAC_SOAP_ACTION);
         if (response.getOtpremiPismenoUKorisnickiPretinacResult() == null) {

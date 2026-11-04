@@ -1,5 +1,8 @@
 package com.str.backend.email;
 
+import com.str.backend.attachment.PrilogRepository.PrilogSazetak;
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.document.DocumentLabels;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
@@ -13,11 +16,14 @@ import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+import org.springframework.util.unit.DataSize;
 
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -49,6 +55,8 @@ public class RnLifecycleEmailListener {
     private final MailRetryStore retryStore;
     private final PdfSealer sealer;
     private final EgopPismenoRepository pismenoRepository;
+    private final PrilogService prilogService;
+    private final long priloziMaxUkupno;
 
     public RnLifecycleEmailListener(RnLifecycleLookup lookup,
                                     StrDocumentService documentService,
@@ -56,7 +64,9 @@ public class RnLifecycleEmailListener {
                                     EmailService emailService,
                                     MailRetryStore retryStore,
                                     PdfSealer sealer,
-                                    EgopPismenoRepository pismenoRepository) {
+                                    EgopPismenoRepository pismenoRepository,
+                                    PrilogService prilogService,
+                                    @Value("${app.mail.attachments-max-total:15MB}") DataSize priloziMaxUkupno) {
         this.lookup = lookup;
         this.documentService = documentService;
         this.labels = labels;
@@ -64,6 +74,8 @@ public class RnLifecycleEmailListener {
         this.retryStore = retryStore;
         this.sealer = sealer;
         this.pismenoRepository = pismenoRepository;
+        this.prilogService = prilogService;
+        this.priloziMaxUkupno = priloziMaxUkupno.toBytes();
     }
 
     /**
@@ -136,6 +148,7 @@ public class RnLifecycleEmailListener {
         } else {
             pdf = aktPdf(akt.get(), event.rn(), razlog);
         }
+        PriloziAkta prilozi = priloziAkta(event);
         boolean sent = emailService.sendRnLifecycleNotification(new RnLifecycleMail(
                 template,
                 detail.lessorEmail(),
@@ -145,11 +158,51 @@ public class RnLifecycleEmailListener {
                 razlog,
                 rok(detail),
                 pdf,
-                dostava));
+                dostava,
+                prilozi.uPrivitku(),
+                prilozi.izvanPoruke()));
         if (sent) {
             retryStore.markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
         } else {
             retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "smtp_failed");
+        }
+    }
+
+    /** Prilozi akta: u privitku, ili samo nazivi kad su zajedno preveliki za e-poštu. */
+    private record PriloziAkta(List<MailPrilog> uPrivitku, List<String> izvanPoruke) {
+        static final PriloziAkta NEMA = new PriloziAkta(List.of(), List.of());
+    }
+
+    /**
+     * Prilozi službenika uz akt ovog prijelaza (T17). Ukupno do {@code app.mail.attachments-max-total}
+     * idu u privitak; iznad toga poruka ih samo navodi — 5 × 10 MB premašuje uobičajeni limit
+     * poštanskog poslužitelja, pa bi poruka inače pala cijela. Prilozi stranke (opoziv) se ne
+     * vraćaju. Pad čitanja ne smije spriječiti obavijest: ide bez priloga.
+     */
+    private PriloziAkta priloziAkta(RnLifecycleEvent event) {
+        if (event.logId() == null) {
+            return PriloziAkta.NEMA;
+        }
+        try {
+            List<PrilogSazetak> prilozi = prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId())).stream()
+                    .filter(p -> PrilogService.pripadaPismenu(p, true))
+                    .toList();
+            if (prilozi.isEmpty()) {
+                return PriloziAkta.NEMA;
+            }
+            long ukupno = prilozi.stream().mapToLong(PrilogSazetak::getVelicina).sum();
+            if (ukupno > priloziMaxUkupno) {
+                log.info("rn_lifecycle_mail_attachments_listed rn={} count={} bytes={} limit={}",
+                        event.rn(), prilozi.size(), ukupno, priloziMaxUkupno);
+                return new PriloziAkta(List.of(), prilozi.stream().map(PrilogSazetak::getNazivDatoteke).toList());
+            }
+            return new PriloziAkta(prilozi.stream()
+                    .map(p -> new MailPrilog(p.getNazivDatoteke(), p.getContentType(), prilogService.sadrzaj(p.getId())))
+                    .toList(), List.of());
+        } catch (RuntimeException e) {
+            log.error("rn_lifecycle_mail_attachments_failed rn={} log={}: {} — mail ide bez priloga",
+                    event.rn(), event.logId(), e.getMessage(), e);
+            return PriloziAkta.NEMA;
         }
     }
 

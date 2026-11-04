@@ -39,6 +39,12 @@ public class EmailTemplates {
             </p>
             """;
 
+    /**
+     * Vrijednost s rečenicom o prilozima akta; puni je {@code SmtpEmailService} za obavijesti o
+     * promjeni statusa RB-a. Nije oznaka predloška — ugrađuje se u {@code klauzula.dostava}.
+     */
+    static final String PRILOZI = "prilozi";
+
     private final MailTemplateLoader loader;
     private final MailProperties properties;
 
@@ -70,7 +76,7 @@ public class EmailTemplates {
     public String body(MailTemplate template, Map<String, String> values, Dostava dostava) {
         Map<String, String> safe = new HashMap<>();
         values.forEach((k, v) -> safe.put(k, escape(v)));
-        safe.put("klauzula.dostava", switch (dostava) {
+        safe.put("klauzula.dostava", prilozi(safe.get(PRILOZI)) + switch (dostava) {
             case PRETINAC -> KLAUZULA_PRETINAC;
             case EPOSTA -> KLAUZULA_EPOSTA;
             case BEZ_KLAUZULE -> "";
@@ -78,6 +84,14 @@ public class EmailTemplates {
         safe.put("gumb.prijava", button("Prijava", properties.loginUrl()));
         safe.put("gumb.logIn", button("Log in", properties.loginUrl()));
         return wrap(loader.body(template, safe));
+    }
+
+    /**
+     * Rečenica o prilozima akta (T17) ide u isti blok na dnu kao klauzula o dostavi, ispred nje — oboje
+     * govori gdje je što stranci dostavljeno. Bez priloga nema ni odlomka, pa predlošci ostaju isti.
+     */
+    private static String prilozi(String escapedTekst) {
+        return escapedTekst == null || escapedTekst.isBlank() ? "" : "<p>" + escapedTekst + "</p>";
     }
 
     private static String wrap(String inner) {

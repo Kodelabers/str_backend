@@ -1,5 +1,9 @@
 package com.str.backend.email;
 
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.TestPrilog;
+import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.document.DocumentLabels;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
@@ -14,8 +18,10 @@ import com.str.backend.rn.event.RnLifecycleEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.util.unit.DataSize;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,6 +42,7 @@ class RnLifecycleEmailListenerTest {
     private MailRetryStore retryStore;
     private PdfSealer sealer;
     private EgopPismenoRepository pismenoRepository;
+    private PrilogService prilogService;
     private RnLifecycleEmailListener listener;
 
     @BeforeEach
@@ -46,8 +53,10 @@ class RnLifecycleEmailListenerTest {
         retryStore = mock(MailRetryStore.class);
         sealer = mock(PdfSealer.class);
         pismenoRepository = mock(EgopPismenoRepository.class);
+        prilogService = mock(PrilogService.class);
         listener = new RnLifecycleEmailListener(lookup, documentService,
-                new DocumentLabels(), emailService, retryStore, sealer, pismenoRepository);
+                new DocumentLabels(), emailService, retryStore, sealer, pismenoRepository, prilogService,
+                DataSize.ofMegabytes(15));
 
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com")));
         when(documentService.render(any(), any(), any())).thenReturn("pdf".getBytes());
@@ -333,6 +342,73 @@ class RnLifecycleEmailListenerTest {
 
         assertThat(captured().pdf()).isEqualTo("pdf".getBytes());
         verify(pismenoRepository, never()).findFirstByRnAndActRef(any(), any());
+    }
+
+    /** T17: prilozi službenika uz akt idu u privitak dok su zajedno do limita (15 MB). */
+    @Test
+    void officialAttachments_underLimit_areAttached() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                "INTERNAL:12345678903", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "zapisnik.pdf", "INTERNAL:12345678903")
+                        .withVelicina(14L * 1024 * 1024),
+                TestPrilog.vezan(2, VrstaVlasnika.RN_LOG, event.logId(), "skica.pdf", "INTERNAL:12345678903")
+                        .withVelicina(1024 * 1024)));
+        when(prilogService.sadrzaj(1L)).thenReturn("a".getBytes());
+        when(prilogService.sadrzaj(2L)).thenReturn("b".getBytes());
+
+        listener.onLifecycleChange(event);
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.prilozi()).extracting(MailPrilog::naziv).containsExactly("zapisnik.pdf", "skica.pdf");
+        assertThat(mail.prilozi().get(0).sadrzaj()).isEqualTo("a".getBytes());
+        assertThat(mail.priloziIzvanPoruke()).isEmpty();
+        assertThat(mail.pdf()).isNotEmpty();
+    }
+
+    /** Iznad limita poruka priloge samo navodi; sadržaj se i ne čita. */
+    @Test
+    void officialAttachments_overLimit_areOnlyListed() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                "INTERNAL:12345678903", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "zapisnik.pdf", "INTERNAL:12345678903")
+                        .withVelicina(10L * 1024 * 1024),
+                TestPrilog.vezan(2, VrstaVlasnika.RN_LOG, event.logId(), "fotografije.pdf", "INTERNAL:12345678903")
+                        .withVelicina(5L * 1024 * 1024 + 1)));
+
+        listener.onLifecycleChange(event);
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.prilozi()).isEmpty();
+        assertThat(mail.priloziIzvanPoruke()).containsExactly("zapisnik.pdf", "fotografije.pdf");
+        verify(prilogService, never()).sadrzaj(any());
+    }
+
+    /** Prilozi stranke (npr. uz opoziv) ne vraćaju se stranci e-poštom — samo prilozi službenika. */
+    @Test
+    void lessorAttachments_areNotMailedBack() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                "NIAS:98765432109", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "moj.pdf", "NIAS:98765432109")));
+
+        listener.onLifecycleChange(event);
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.prilozi()).isEmpty();
+        assertThat(mail.priloziIzvanPoruke()).isEmpty();
+    }
+
+    /** Pad čitanja priloga ne smije spriječiti obavijest. */
+    @Test
+    void attachmentLookupFailure_mailStillSent() {
+        when(prilogService.zaVlasnika(any())).thenThrow(new IllegalStateException("db"));
+
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
+                RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
+
+        assertThat(captured().prilozi()).isEmpty();
     }
 
     private RnLifecycleMail captured() {

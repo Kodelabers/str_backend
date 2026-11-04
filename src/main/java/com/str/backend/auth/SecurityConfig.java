@@ -34,7 +34,8 @@ public class SecurityConfig {
 
     /**
      * Mutirajuće radnje pod sesijom koje traže {@link RequiredAjaxHeaderFilter#HEADER}: životni
-     * ciklus RB-a i obrada zahtjeva službenika, aktivnosti platformi i opoziv iznajmljivača.
+     * ciklus RB-a i obrada zahtjeva službenika, aktivnosti platformi, opoziv iznajmljivača i
+     * učitavanje njegovih priloga.
      */
     static final RequestMatcher CSRF_PROTECTED = new AndRequestMatcher(
             request -> !SAFE_METHODS.contains(request.getMethod()),
@@ -42,7 +43,8 @@ public class SecurityConfig {
                     antMatcher("/api/rn/**"),
                     antMatcher("/api/admin/**"),
                     antMatcher("/api/activity/**"),
-                    antMatcher("/api/lessor/registrations/**")));
+                    antMatcher("/api/lessor/registrations/**"),
+                    antMatcher("/api/lessor/attachments/**")));
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -77,12 +79,14 @@ public class SecurityConfig {
                         // RnController#requireAccess. Rola se priznaje i bez prijave, jer lokalni
                         // mock NIAS-a (nias.mock.fixed-oib) nema autentikacije. Prijava se provjerava
                         // prva: prijavljeni korisnik tako ne plaća upit role u shemu str.
-                        .requestMatchers("/api/rn/*/detail", "/api/rn/*/documents/**")
+                        // Prilozi pismena dijele pravilo akata (RnAccessGuard).
+                        .requestMatchers("/api/rn/*/detail", "/api/rn/*/documents/**", "/api/rn/*/attachments/**")
                         .access(AuthorizationManagers.anyOf(AuthenticatedAuthorizationManager.authenticated(), rnManagement))
                         .requestMatchers("/api/auth/me", "/api/auth/logout",
                                 "/api/generateRegistrationNumberExternal",
                                 "/api/lessor/profile", "/api/lessor/registrations",
-                                "/api/lessor/registrations/**").authenticated()
+                                "/api/lessor/registrations/**",
+                                "/api/lessor/attachments", "/api/lessor/attachments/**").authenticated()
                         // Back-office: popis i životni ciklus RB-ova, izvozi, statistike i obrada
                         // non-EU registracija i rješenja o kategorizaciji te aktivnosti platformi
                         // (pretraga, ingest, purge — ingest dok SDEP nema strojnu autentikaciju).
