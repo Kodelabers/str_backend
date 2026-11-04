@@ -1,5 +1,7 @@
 package com.str.backend.document;
 
+import com.google.zxing.oned.Code93Writer;
+import com.lowagie.text.BadElementException;
 import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.DocumentException;
@@ -28,6 +30,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -74,6 +77,14 @@ public class ZupDocumentRenderer {
      */
     private static final float JOP_ODMAK_GORE = 21f;
     private static final float JOP_ODMAK_DESNO = 8.5f;
+    /**
+     * Barkod oznake pismena iznad „P/&lt;jop&gt;", kao na pismenima iz eGOP-a: Code 93 (u predlošku
+     * MINT-a font IDAutomationC93M), jedan modul 0,9 pt. Visina i razmak oduzimaju se od
+     * {@link #JOP_ODMAK_GORE}, pa JOP ostaje na istoj visini s barkodom i bez njega.
+     */
+    private static final float BARKOD_MODUL = 0.9f;
+    private static final float BARKOD_VISINA = 18f;
+    private static final float BARKOD_RAZMAK = 1f;
     /** „REPUBLIKA HRVATSKA" i naziv tijela uvučeni su koliko Wordova ćelija ima unutarnji rub. */
     private static final float ZAGLAVLJE_UVLAKA = 5f;
     /** Potpis počinje na x≈321 pt, kao u predlošku. */
@@ -234,14 +245,21 @@ public class ZupDocumentRenderer {
         lijevo.addElement(zaglavljeRedak(ctx.getOrDefault("tijelo.nazivVelikim", ""), 0f));
         table.addCell(lijevo);
 
-        // Desno je u predlošku barkod jedinstvene oznake pismena, prazan redak pa „P/<jop>".
-        // Barkod čeka eGOP-ov jedinstvenaOznakaPismena; JOP već stoji na svom mjestu ispod
-        // njega, da ne skače kad barkod dođe.
+        // Desno je u predlošku barkod oznake pismena pa „P/<jop>". Prije urudžbiranja JOP-a nema,
+        // pa nema ni barkoda; JOP je na istoj visini s barkodom i bez njega.
         PdfPCell desno = celijaBezOkvira();
         desno.setPaddingTop(JOP_ODMAK_GORE);
         desno.setPaddingRight(JOP_ODMAK_DESNO);
         String jop = ctx.getOrDefault("akt.jopRedak", "");
         if (!jop.isBlank()) {
+            // „Generirati kod kao u eGOP-u" (MINTS, studeni 2026.): barkod iste oznake koja je
+            // ispisana ispod njega. Zauzima redak koji je dosad bio prazan iznad JOP-a.
+            desno.setPaddingTop(JOP_ODMAK_GORE - BARKOD_VISINA - BARKOD_RAZMAK);
+            Paragraph kod = new Paragraph();
+            kod.add(new Chunk(barkod(jop), 0f, 0f, true));
+            kod.setAlignment(Element.ALIGN_RIGHT);
+            kod.setLeading(BARKOD_VISINA + BARKOD_RAZMAK);
+            desno.addElement(kod);
             Paragraph p = new Paragraph(jop, FNT_JOP);
             p.setAlignment(Element.ALIGN_RIGHT);
             p.setLeading(PRORED);
@@ -249,6 +267,37 @@ public class ZupDocumentRenderer {
         }
         table.addCell(desno);
         doc.add(table);
+    }
+
+    /**
+     * Code 93 barkod kao 1-bitna slika visoka jedan piksel, rastegnuta na {@link #BARKOD_VISINA}.
+     * OpenPDF nema Code 93 simbologiju; slika bez interpolacije ostaje oštra kao i QR u bloku
+     * e-pečata. Sadržaj je ispisana oznaka („P/81591802"), pa skener i čovjek čitaju isto.
+     */
+    static Image barkod(String sadrzaj) throws BadElementException {
+        boolean[] moduli = barkodModuli(sadrzaj);
+        int bajtova = (moduli.length + 7) / 8;
+        byte[] red = new byte[bajtova];
+        // DeviceGray s 1 bitom: 1 je bijelo, 0 crno.
+        Arrays.fill(red, (byte) 0xFF);
+        for (int x = 0; x < moduli.length; x++) {
+            if (moduli[x]) {
+                red[x / 8] &= (byte) ~(0x80 >> (x % 8));
+            }
+        }
+        Image slika = Image.getInstance(moduli.length, 1, 1, 1, red);
+        slika.scaleAbsolute(moduli.length * BARKOD_MODUL, BARKOD_VISINA);
+        return slika;
+    }
+
+    /** Moduli barkoda bez tihe zone; izdvojeno da ga test može dekodirati natrag. */
+    static boolean[] barkodModuli(String sadrzaj) {
+        try {
+            return new Code93Writer().encode(sadrzaj);
+        } catch (IllegalArgumentException e) {
+            throw new DocumentTemplateException("Barkod oznake pismena nije moguće složiti za „"
+                    + sadrzaj + "\"", e);
+        }
     }
 
     /**

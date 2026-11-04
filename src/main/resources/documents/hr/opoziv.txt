@@ -1,24 +1,31 @@
 # Obavijest o opozivu registracijskog broja
-# Vrsta pismena (eGOP): „Obavijest o opozivu registracijskog broja" — ULAZNO (MINT, 22.10.2026.):
-# radnju pokreće stranka, pa pismeno ne ide u korisnički pretinac. Dokument je i dalje akt
-# tijela (zaglavlje, potpis, ePečat) — StrDocumentType.aktTijela.
+# Vrsta pismena (eGOP): „Obavijest o opozivu registracijskog broja" — IZLAZNO od T15: akt tijela
+# (zaglavlje, potpis, e-pečat), ide u korisnički pretinac. Zahtjev stranke je zasebno, ulazno
+# pismeno (zahtjev-opoziva.txt) i urudžbira se prije ovog akta.
 #
 # Opoziv pokreće sam iznajmljivač (LessorRnActionService), pa je ovo potvrda o upisanoj
 # promjeni po čl. 159. ZUP-a, a ne odluka protiv stranke — bez obrazloženja i bez upute
 # o pravnom lijeku.
 #
 # Struktura je ista kao na obavijesti o dodjeli (predložak MINT-a od 11.09.2026.): bez adresata,
-# bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu; dokument joj
-# je dostupan u „Moji registracijski brojevi" i u privitku e-pošte.
+# bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu.
+#
+# MINTS, studeni 2026.: propis o nadležnosti je čl. 48. st. 2. (${akt.propisNadleznosti}); u
+# točki 2. bez „javnog dijela" i s danom opoziva (= datum obavijesti, ${akt.datum}); u točki 3.
+# „na internetskim platformama za kratkoročno iznajmljivanje smještaja"; napomena da se obavijest
+# izdaje automatski. Potpis ostaje naziv tijela; akt pečati e-pečat MINTS-a.
 #
 # Katalog placeholdera: docs/ZUP-predlosci.md
 
 [UVOD]
-${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, na zahtjev ${stranka.naziv}, ${stranka.identifikator}, izdaje
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, na zahtjev ${stranka.naziv}, ${stranka.identifikator}, izdaje
 
 [IZREKA]
 1. Na zahtjev stranke opozvan je registracijski broj ${rn.broj}, dodijeljen smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
 
-2. Registracijski broj prestaje važiti danom opoziva i briše se iz javnog dijela integriranog informacijskog sustava turizma.
+2. Registracijski broj prestaje važiti danom opoziva i briše se iz integriranog informacijskog sustava turizma s danom ${akt.datum}
 
-3. Opoziv je trajan. Za ponovno oglašavanje smještajne jedinice potrebno je podnijeti novi zahtjev za registracijski broj.
+3. Opoziv je trajan. Za ponovno oglašavanje smještajne jedinice na internetskim platformama za kratkoročno iznajmljivanje smještaja potrebno je podnijeti novi zahtjev za registracijski broj.
+
+[NAPOMENA]
+Ova obavijest izdaje se automatski iz integriranog informacijskog sustava turizma.

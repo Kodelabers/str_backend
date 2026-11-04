@@ -29,8 +29,9 @@ import java.util.Set;
  * ide na štetu tijela, ne stranke.
  *
  * <p>Sve obavijesti tijela imaju <b>istu strukturu</b> kao obavijest o dodjeli, po predlošku
- * MINT-a od 11.09.2026.: uvod, naslov akta, izreka bez naslova, a obrazloženje i uputa samo
- * tamo gdje ih ZUP traži. Adresat, prilozi i dostavna lista ne ispisuju se nigdje.
+ * MINT-a od 11.09.2026.: uvod, naslov akta i izreka bez naslova. Obrazloženje i uputu o pravnom
+ * lijeku MINTS je u studenom 2026. izbacio i iz akata suspenzije i povlačenja (prigovor je točka
+ * izreke). Adresat, prilozi i dostavna lista ne ispisuju se nigdje.
  * Podnesak stranke ({@link #PRIGOVOR}) nije obavijest i zadržava vlastitu strukturu po
  * čl. 71.
  */
@@ -83,29 +84,30 @@ public enum StrDocumentType {
             EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.OBRAZLOZENJE)),
 
     /**
-     * Poziv na izjašnjavanje prije nepovoljne odluke (čl. 30. st. 2). Nije rješenje, pa nema
-     * upute o pravnom lijeku — ali <b>mora</b> nositi rok za ispravak, koji po čl. 98. st. 3
-     * ide u izreku.
+     * Poziv na očitovanje prije suspenzije. <b>Mora</b> nositi rok za očitovanje, koji po čl. 98.
+     * st. 3 ide u izreku. Obrazloženje je MINTS izbacio (studeni 2026.): razlog je u točki 1., a
+     * posljedice propuštanja roka u točkama 3. i 4.
      */
     PRIJEDLOG_SUSPENZIJE("prijedlog-suspenzije",
             "Obavijest o prijedlogu suspenzije registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O PRIJEDLOGU SUSPENZIJE REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE)),
-
-    /** Odluka koja dira u prava stranke → puna struktura čl. 98., uključujući uputu. */
-    SUSPENZIJA("suspenzija", "Obavijest o suspenziji registracijskog broja", Smjer.IZLAZNO, true, null,
-            "OBAVIJEST O SUSPENZIJI REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
-                    ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
-     * Povlačenje po službenoj dužnosti ({@code WITHDRAWN}). Kao suspenzija, ali trajno — uputa
-     * je time još važnija.
+     * Akt koji dira u prava stranke. Po predlošku MINTS-a (studeni 2026.) bez obrazloženja i bez
+     * zasebne upute o pravnom lijeku: prigovor u roku od osam dana je točka izreke.
+     */
+    SUSPENZIJA("suspenzija", "Obavijest o suspenziji registracijskog broja", Smjer.IZLAZNO, true, null,
+            "OBAVIJEST O SUSPENZIJI REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
+     * Povlačenje po službenoj dužnosti ({@code WITHDRAWN}). Kao suspenzija: prigovor u roku od osam
+     * dana je točka izreke, obrazloženja nema (MINTS, studeni 2026.).
      */
     POVLACENJE("povlacenje", "Obavijest o povlačenju registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O POVLAČENJU REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
-                    ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
      * Podnesak stranke (čl. 71. + čl. 122.) — nema izreke ni upute; tijelo prigovora ide u
@@ -309,6 +311,16 @@ public enum StrDocumentType {
         return forTransition(to, trigger)
                 .map(akt -> akt.podnesak().map(podnesak -> List.of(podnesak, akt)).orElse(List.of(akt)))
                 .orElse(List.of());
+    }
+
+    /**
+     * Akt izdaje službenik u postupku suspenzije odnosno povlačenja, pa ga potpisuje službena
+     * osoba (naziv službene dužnosti i ime, MINTS, studeni 2026.), a ne samo tijelo. Dodjelu i
+     * opoziv sustav izdaje automatski; reaktivacija zasad zadržava potpis tijela.
+     */
+    public boolean potpisujeSluzbenik() {
+        return this == PRIJEDLOG_SUSPENZIJE || this == OBUSTAVA_SUSPENZIJE || this == SUSPENZIJA
+                || this == POVLACENJE;
     }
 
     /** Tipovi koji se renderiraju iz predloška — ono što {@link ZupTemplateLoader} učitava. */

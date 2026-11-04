@@ -84,11 +84,23 @@ public class ZupContextFactory {
         ctx.put("tijelo.ustrojstvenaJedinica", optional(t.ustrojstvenaJedinica()));
         ctx.put("tijelo.propisNadleznosti",
                 required("tijelo.propis-nadleznosti", t.propisNadleznosti()));
+        // Propis po vrsti akta (MINTS: dodjela čl. 46. st. 3., ostali akti čl. 48. st. 2.); vrsta
+        // bez vlastitog unosa uzima zajednički tijelo.propisNadleznosti.
+        ctx.put("akt.propisNadleznosti",
+                required("propis." + type.slug(), properties.propisZa(type)));
 
         // Potpis je naziv tijela; ime službene osobe ispisuje se ispod njega samo ako je
         // konfigurirano (predložak MINT-a ga nema). Prazan redak renderer izbaci.
         ctx.put("potpisnik.ime", optional(properties.potpisnik().ime()));
         ctx.put("potpisnik.funkcija", optional(properties.potpisnik().funkcija()));
+
+        // Potpis akta službenika (MINTS: „oznaka naziva službene dužnosti i osobno ime službene
+        // osobe"). Službenika određuje StrDocumentService iz revizijskog traga i upisuje ga
+        // putSluzbenik; dok ga nema, potpis je kao i dosad naziv tijela i konfigurirano ime.
+        // Naziv službene dužnosti nema izvora (str.application_user ga ne nosi), pa je prazan.
+        ctx.put("sluzbenik.potpisTijela", ctx.get("tijelo.nazivVelikim"));
+        ctx.put("sluzbenik.funkcija", "");
+        ctx.put("sluzbenik.ime", ctx.get("potpisnik.ime"));
 
         ctx.put("akt.naslov", type.naslov());
         ctx.put("akt.klasa", optional(filing.klasa()));
@@ -120,8 +132,8 @@ public class ZupContextFactory {
         ctx.put("rn.broj", optional(d.rn()));
         ctx.put("rn.status", labels.status(d.status()));
         ctx.put("rn.datumIzdavanja", date(d.issueDate()));
-        ctx.put("rn.razlog", (razlog == null || razlog.isBlank())
-                ? labels.get("razlog.nijeNaveden") : razlog.strip());
+        String razlogTekst = razlog == null ? "" : bezZavrsneTocke(razlog);
+        ctx.put("rn.razlog", razlogTekst.isEmpty() ? labels.get("razlog.nijeNaveden") : razlogTekst);
         // Zahtjev za opoziv ispisuje samo razlog koji je stranka sama upisala; bez njega redak
         // ostaje prazan i renderer ga izbacuje. StrDocumentService mu zato ne podmeće natpis okidača.
         ctx.put("opoziv.razlogRedak", type == StrDocumentType.ZAHTJEV_OPOZIVA
@@ -224,6 +236,27 @@ public class ZupContextFactory {
         }
         ctx.put("epecat.provjera", labels.format("epecat.provjera", url));
         ctx.put("epecat.potvrda", labels.format("epecat.potvrda", nazivTijela));
+    }
+
+    /**
+     * Službenik koji potpisuje akt ({@link StrDocumentType#potpisujeSluzbenik()}): njegovo ime
+     * zamjenjuje naziv tijela u potpisu. Prazno ime ne mijenja ništa — potpis ostaje tijelo.
+     */
+    public static void putSluzbenik(Map<String, String> ctx, String ime) {
+        if (ime == null || ime.isBlank()) {
+            return;
+        }
+        ctx.put("sluzbenik.ime", ime.strip());
+        ctx.put("sluzbenik.potpisTijela", "");
+    }
+
+    /**
+     * Razlog se umeće u rečenicu koja sama završava točkom („…zbog sljedećeg razloga: ${rn.razlog}.").
+     * Bilješka službenika ili zapis okidača koji već završava točkom („Rok … istekao.") inače daje
+     * dvostruku točku.
+     */
+    private static String bezZavrsneTocke(String razlog) {
+        return razlog.strip().replaceAll("[.\\s]+$", "");
     }
 
     /** Adresa iznajmljivača ne postoji na {@link RnDetailDto}; puni je pozivatelj kad je ima. */

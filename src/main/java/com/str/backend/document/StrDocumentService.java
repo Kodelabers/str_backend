@@ -1,5 +1,6 @@
 package com.str.backend.document;
 
+import com.str.backend.auth.internal.InternalUserRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -12,12 +13,14 @@ import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.dto.RnDetailDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Generira akte životnog ciklusa registracijskog broja po strukturi iz čl. 98. ZUP-a.
@@ -35,6 +38,9 @@ public class StrDocumentService {
 
     private static final Logger log = LoggerFactory.getLogger(StrDocumentService.class);
 
+    /** Akter službenika u {@code registration_number_log} ({@code InternalAccessService.actorFor}). */
+    private static final String INTERNAL_PREFIX = "INTERNAL:";
+
     private final RnRepository rnRepository;
     private final LessorRepository lessorRepository;
     private final SubmissionRepository submissionRepository;
@@ -43,6 +49,7 @@ public class StrDocumentService {
     private final ZupContextFactory contextFactory;
     private final ZupDocumentRenderer renderer;
     private final DocumentLabels labels;
+    private final InternalUserRepository internalUsers;
 
     public StrDocumentService(RnRepository rnRepository,
                               LessorRepository lessorRepository,
@@ -51,7 +58,8 @@ public class StrDocumentService {
                               ZupTemplateLoader templates,
                               ZupContextFactory contextFactory,
                               ZupDocumentRenderer renderer,
-                              DocumentLabels labels) {
+                              DocumentLabels labels,
+                              InternalUserRepository internalUsers) {
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
         this.submissionRepository = submissionRepository;
@@ -60,6 +68,7 @@ public class StrDocumentService {
         this.contextFactory = contextFactory;
         this.renderer = renderer;
         this.labels = labels;
+        this.internalUsers = internalUsers;
     }
 
     public byte[] render(StrDocumentType type, String rn, String razlog) {
@@ -93,9 +102,9 @@ public class StrDocumentService {
         FilingReference oznake = filing != null ? filing
                 : new FilingReference(klasaZa(type, detail), null);
 
-        Map<String, String> ctx = contextFactory.forRn(
-                type, detail, razlog != null ? razlog : razlogIzTraga(type, rn), oznake);
+        Map<String, String> ctx = contextFactory.forRn(type, detail, razlog(type, rn, razlog), oznake);
         dopuniAdresu(ctx, detail);
+        dopuniSluzbenika(ctx, type, rn);
 
         byte[] pdf = renderer.render(templates.get(type), ctx);
         log.info("document_rendered type={} rn={} klasa={} bytes={}",
@@ -122,6 +131,24 @@ public class StrDocumentService {
     }
 
     /**
+     * Proslijeđeni razlog vrijedi, osim za akte koji razlog čitaju s prijedloga suspenzije: pozivatelji
+     * ({@code RnLifecycleFilingListener}, {@code EgopAktDispatcher}) prosljeđuju razlog <i>svog</i>
+     * prijelaza, a za suspenziju istekom roka to je bilješka joba („Rok za rješavanje nepravilnosti
+     * istekao.") — procesni okidač na mjestu materijalnog razloga, kao na aktu koji je MINTS
+     * komentirao. Zato za te akte vrijedi revizijski trag (vidi {@link #razlogIzTraga}).
+     */
+    private String razlog(StrDocumentType type, String rn, String razlog) {
+        if (razlog == null || razlogSPrijedloga(type)) {
+            return razlogIzTraga(type, rn);
+        }
+        return razlog;
+    }
+
+    private static boolean razlogSPrijedloga(StrDocumentType type) {
+        return type == StrDocumentType.SUSPENZIJA || type == StrDocumentType.OBUSTAVA_SUSPENZIJE;
+    }
+
+    /**
      * Razlog iz {@code registration_number_log}. {@code RnService.suspend} ne prosljeđuje
      * slobodan tekst, pa u praksi ostaje natpis okidača — što je i točnije od proizvoljnog
      * {@code ?reason=} parametra sa zahtjeva.
@@ -138,14 +165,11 @@ public class StrDocumentService {
      * upisao, nikad natpis okidača.
      */
     private String razlogIzTraga(StrDocumentType type, String rn) {
-        Optional<RegistrationNumberLogEntity> zapisi = switch (type) {
-            case SUSPENZIJA, OBUSTAVA_SUSPENZIJE -> logRepository
-                    .findFirstByRnAndToStatusOrderByOccurredAtDesc(
-                            rn, RnStatus.SUSPENSION_PROPOSED.name())
-                    // Jednofazna suspenzija iz starijih podataka nema prijedlog u tragu.
-                    .or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn));
-            default -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn);
-        };
+        Optional<RegistrationNumberLogEntity> zapisi = razlogSPrijedloga(type)
+                ? prijedlog(rn)
+                        // Jednofazna suspenzija iz starijih podataka nema prijedlog u tragu.
+                        .or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn))
+                : logRepository.findFirstByRnOrderByOccurredAtDesc(rn);
         if (zapisi.isEmpty()) {
             return null;
         }
@@ -164,6 +188,56 @@ public class StrDocumentService {
             // Okidač iz starijeg zapisa koji više ne postoji u enumu — bolje ništa nego kriv razlog.
             log.warn("document_unknown_trigger rn={} trigger={}", rn, zapis.getTriggerName());
             return null;
+        }
+    }
+
+    private Optional<RegistrationNumberLogEntity> prijedlog(String rn) {
+        return logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, RnStatus.SUSPENSION_PROPOSED.name());
+    }
+
+    /**
+     * Potpis akta službenika (MINTS: „oznaka naziva službene dužnosti i osobno ime službene osobe"):
+     * ime službenika koji je napravio prijelaz akta ({@code INTERNAL:<oib>} u revizijskom tragu), iz
+     * {@code str.application_user}. Suspenziju istekom roka i obustavu bez službenika radi sustav
+     * ({@code SYSTEM}), pa ih potpisuje službenik koji je postupak pokrenuo prijedlogom — kao što
+     * MINTS za urudžbeni broj traži „službenika koji je pokrenuo postupak".
+     *
+     * <p>Naziv službene dužnosti {@code str.application_user} ne nosi, pa se ne ispisuje. Bez
+     * službenika (stari zapis, nedostupna shema {@code str}) potpis ostaje naziv tijela.
+     */
+    private void dopuniSluzbenika(Map<String, String> ctx, StrDocumentType type, String rn) {
+        if (!type.potpisujeSluzbenik()) {
+            return;
+        }
+        Optional<String> oib = logRepository.findFirstByRnOrderByOccurredAtDesc(rn)
+                .flatMap(StrDocumentService::oibSluzbenika);
+        if (oib.isEmpty() && razlogSPrijedloga(type)) {
+            oib = prijedlog(rn).flatMap(StrDocumentService::oibSluzbenika);
+        }
+        oib.flatMap(o -> imeSluzbenika(o, rn)).ifPresent(ime -> ZupContextFactory.putSluzbenik(ctx, ime));
+    }
+
+    private static Optional<String> oibSluzbenika(RegistrationNumberLogEntity zapis) {
+        String actor = zapis.getActor();
+        if (actor == null || !actor.startsWith(INTERNAL_PREFIX)) {
+            return Optional.empty();
+        }
+        String oib = actor.substring(INTERNAL_PREFIX.length()).strip();
+        return oib.isEmpty() ? Optional.empty() : Optional.of(oib);
+    }
+
+    private Optional<String> imeSluzbenika(String oib, String rn) {
+        try {
+            Optional<String> ime = Optional.ofNullable(internalUsers.findNames(Set.of(oib)).get(oib));
+            if (ime.isEmpty()) {
+                log.warn("document_signer_unknown rn={} — službenik nema ime u str.application_user;"
+                        + " akt potpisuje tijelo", rn);
+            }
+            return ime;
+        } catch (DataAccessException e) {
+            // Akt se ne smije srušiti zbog potpisa: shema str je eTurizmova i zna biti nedostupna.
+            log.warn("document_signer_lookup_failed rn={}: {} — akt potpisuje tijelo", rn, e.getMessage());
+            return Optional.empty();
         }
     }
 

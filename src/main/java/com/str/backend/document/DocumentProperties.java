@@ -27,7 +27,14 @@ public record DocumentProperties(
          * eSeal servis može odbiti PDF koji nije PDF/A ({@code PDF_NOT_PDFA}), a pečat na PDF/A
          * ulazu ostavlja dokument prikladnim za arhivu. Prekidač dok se ne potvrdi što servis traži.
          */
-        boolean pdfa
+        boolean pdfa,
+        /**
+         * slug vrste akta → propis o nadležnosti iz uvoda (čl. 98. st. 2). MINTS (studeni 2026.):
+         * dodjela „članka 46. stavka 3.", akti suspenzije, povlačenja i opoziva „članka 48. stavka
+         * 2." Zakona o ugostiteljskoj djelatnosti. Vrsta bez unosa uzima
+         * {@link Tijelo#propisNadleznosti()}; vidi {@link #propisZa(StrDocumentType)}.
+         */
+        Map<String, String> propis
 ) {
 
     private static final String DEFAULT_UPUTA =
@@ -40,7 +47,10 @@ public record DocumentProperties(
             String adresa,
             String mjesto,
             String ustrojstvenaJedinica,
-            /** Čl. 98. st. 2 — propis koji tijelu daje nadležnost, citira se u uvodu. */
+            /**
+             * Čl. 98. st. 2 — propis koji tijelu daje nadležnost, citira se u uvodu. Zajednička
+             * vrijednost za akte bez unosa u {@link DocumentProperties#propis()} (danas reaktivacija).
+             */
             String propisNadleznosti
     ) {
 
@@ -91,6 +101,17 @@ public record DocumentProperties(
         potpisnik = potpisnik == null ? new Potpisnik(null, null) : potpisnik;
         epecat = epecat == null ? new Epecat(false, null, null, null, null) : epecat;
         uputa = uputa == null ? Map.of() : Map.copyOf(uputa);
+        propis = propis == null ? Map.of() : Map.copyOf(propis);
+    }
+
+    /**
+     * Propis o nadležnosti za uvod zadanog akta: vrijednost po vrsti, inače zajednički
+     * {@code str.documents.tijelo.propis-nadleznosti}. Može biti prazno — tada
+     * {@link ZupContextFactory} ispisuje vidljivu oznaku.
+     */
+    public String propisZa(StrDocumentType type) {
+        String value = propis.get(type.slug());
+        return (value == null || value.isBlank()) ? tijelo.propisNadleznosti() : value;
     }
 
     /**

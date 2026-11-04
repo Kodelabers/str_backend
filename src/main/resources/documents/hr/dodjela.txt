@@ -6,18 +6,25 @@
 # upute o pravnom lijeku.
 #
 # Izgled i tekst su po predlošku MINT-a od 11.09.2026. (Obavijest o dodjeli RB IP DŠ.docx):
-# bez adresata, bez naslova „I Z R E K A" (StrDocumentType.ispisujeNaslovIzreke), bez
-# priloga i dostavne liste.
+# bez adresata, bez naslova „I Z R E K A", bez priloga i dostavne liste.
+#
+# MINTS, studeni 2026. (komentari na PDF-u s testa): propis o nadležnosti je čl. 46. st. 3.
+# (${akt.propisNadleznosti}), točka 3. citira čl. 46. st. 5. Zakona, „kratkoročno iznajmljivanje
+# smještaja" umjesto „kratkoročni najam", a obavijest nosi napomenu da se izdaje automatski.
+# Potpis ostaje naziv tijela; akt pečati e-pečat MINTS-a (EgopFilingService.sealOnce).
 #
 # Katalog placeholdera: docs/ZUP-predlosci.md
 # Redak koji nakon zamjene ostane prazan ne ispisuje se.
 
 [UVOD]
-${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, na zahtjev ${stranka.naziv}, ${stranka.identifikator}, izdaje
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, na zahtjev ${stranka.naziv}, ${stranka.identifikator}, izdaje
 
 [IZREKA]
 1. Smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, dodijeljen je registracijski broj ${rn.broj}.
 
 2. Registracijski broj upisan je u integrirani informacijski sustav turizma dana ${rn.datumIzdavanja} godine.
 
-3. Registracijski broj obvezno se navodi u svakom oglasu smještajne jedinice na internetskim platformama za kratkoročni najam.
+3. Sukladno članku 46. stavku 5. Zakona o ugostiteljskoj djelatnosti registracijski broj se navodi u svakom oglasu smještajne jedinice na internetskim platformama za kratkoročno iznajmljivanje smještaja.
+
+[NAPOMENA]
+Ova obavijest izdaje se automatski iz integriranog informacijskog sustava turizma.

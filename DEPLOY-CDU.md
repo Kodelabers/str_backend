@@ -150,6 +150,10 @@ STR_TIJELO_MJESTO=Zagreb
 STR_TIJELO_USTROJ=Uprava za turizam
 # Propis o nadležnosti: default je tekst iz predloška MINT-a; brojevi Narodnih novina još nedostaju.
 # STR_TIJELO_PROPIS=
+# Propis po vrsti akta (T14): dodjela čl. 46. st. 3., ostali akti čl. 48. st. 2. — default u
+# application.properties; postaviti tek kad stignu brojevi Narodnih novina.
+# STR_PROPIS_DODJELA=
+# STR_PROPIS_POSTUPCI=
 STR_POTPISNIK_IME=
 # Funkcija se u ugradenom potpisu NE ispisuje (potpis je naziv tijela).
 # STR_POTPISNIK_FUNKCIJA=Voditelj postupka

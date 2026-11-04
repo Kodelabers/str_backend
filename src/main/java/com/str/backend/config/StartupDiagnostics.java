@@ -124,10 +124,13 @@ public class StartupDiagnostics {
         // .env-u pregazi default iz application.properties, pa je ovo prva provjera nakon deploya.
         boolean epecat = env.getProperty("str.documents.epecat.enabled", Boolean.class, false);
         String tijeloNaziv = env.getProperty("str.documents.tijelo.naziv");
-        log.info("startup_documents tijelo={} oib={} propis={} potpisnik={} epecat={}{}",
+        log.info("startup_documents tijelo={} oib={} propis={} propis_dodjela={} propis_postupci={}"
+                        + " potpisnik={} epecat={}{}",
                 tijeloNaziv,
                 popunjeno(env.getProperty("str.documents.tijelo.oib")),
                 popunjeno(env.getProperty("str.documents.tijelo.propis-nadleznosti")),
+                popunjeno(env.getProperty("str.documents.propis.dodjela")),
+                popunjeno(env.getProperty("str.documents.propis.suspenzija")),
                 // Ime službene osobe je neobavezno — potpis je naziv tijela.
                 neobavezno(env.getProperty("str.documents.potpisnik.ime")),
                 epecat,
