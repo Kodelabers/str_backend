@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,6 +37,11 @@ import java.util.UUID;
  * preskače se samo korak 3. Akt time postoji u {@code egop_pismeno}, pa se stranci prikazuje u
  * „Moji registracijski brojevi" i može se preuzeti — jednako kao zahtjev i obavijest o dodjeli.
  * Da se preskakalo i zapisivanje, dokument bi postojao samo kao privitak e-pošte.
+ *
+ * <p>Jedan prijelaz može dati više pismena ({@link StrDocumentType#pismenaForTransition}): opoziv
+ * daje ulazni zahtjev iznajmljivača i izlaznu obavijest tijela. Oba imaju isti {@code act_ref},
+ * a razlikuju se po vrsti, pa ih unique ključ {@code uq_egop_pismeno_submission_vrsta_act} drži po
+ * jednom i kroz ponovljene pokušaje.
  */
 @Component
 public class RnLifecycleFilingListener {
@@ -72,43 +79,63 @@ public class RnLifecycleFilingListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLifecycleChange(RnLifecycleEvent event) {
-        Optional<StrDocumentType> type = StrDocumentType.forTransition(event.to(), event.trigger());
-        if (type.isEmpty()) {
+        List<StrDocumentType> vrste = StrDocumentType.pismenaForTransition(event.to(), event.trigger());
+        if (vrste.isEmpty()) {
             return;
         }
         UUID submissionId = lookup.findSubmissionId(event.rn()).orElse(null);
         if (submissionId == null) {
-            log.error("egop_akt_skipped reason=missing_submission rn={} vrsta='{}'",
-                    event.rn(), type.get().vrstaPismenaNaziv());
+            log.error("egop_akt_skipped reason=missing_submission rn={} vrste={}", event.rn(), vrste);
             return;
         }
 
-        EgopPismenoEntity akt;
+        // Prvo se sva pismena prijelaza zapišu, pa tek onda šalju — redom: podnesak stranke pa akt
+        // tijela (opoziv: zahtjev pa obavijest). Zapisani podnesak je ono po čemu EgopAktDispatcher
+        // akt drži iza njega i kad ga šalje retry job.
+        // act_ref jednom po prijelazu: pismena istog prijelaza (zahtjev i obavijest o opozivu) dijele
+        // ga i po njemu se drže zajedno — i kad nema log_id-a pa je oznaka izvedena iz vremena.
+        String actRef = actRef(event);
+        List<UrudzbaAkta> zapisani = new ArrayList<>();
+        for (StrDocumentType vrsta : vrste) {
+            zapisi(event, submissionId, vrsta, actRef).ifPresent(akt -> zapisani.add(new UrudzbaAkta(vrsta, akt)));
+        }
+        for (UrudzbaAkta u : zapisani) {
+            posalji(event, u.vrsta(), u.akt());
+        }
+    }
+
+    private record UrudzbaAkta(StrDocumentType vrsta, EgopPismenoEntity akt) {}
+
+    private Optional<EgopPismenoEntity> zapisi(RnLifecycleEvent event, UUID submissionId, StrDocumentType type,
+                                               String actRef) {
         try {
-            byte[] pdf = documentService.render(type.get(), event.rn(), event.reason());
-            akt = store.saveAkt(EgopPismenoEntity.forAct(
-                    submissionId, event.rn(), actRef(event), type.get().vrstaPismenaNaziv(),
-                    smjer(type.get()), pdf));
+            byte[] pdf = documentService.render(type, event.rn(), event.reason());
+            return Optional.of(store.saveAkt(EgopPismenoEntity.forAct(
+                    submissionId, event.rn(), actRef, type.vrstaPismenaNaziv(),
+                    smjer(type), pdf)));
         } catch (RuntimeException e) {
             // Bez dokumenta nema urudžbe (uredsko poslovanje traži zapisnik uz svaki akt), a
             // status je već promijenjen — pad se mora vidjeti, ne progutati.
             log.error("egop_akt_not_recorded rn={} vrsta='{}': {} — akt nije zapisan pa ga"
                     + " ni retry neće pokupiti; urudžbirati ručno",
-                    event.rn(), type.get().vrstaPismenaNaziv(), e.getMessage(), e);
-            return;
+                    event.rn(), type.vrstaPismenaNaziv(), e.getMessage(), e);
+            return Optional.empty();
         }
+    }
 
+    private void posalji(RnLifecycleEvent event, StrDocumentType type, EgopPismenoEntity akt) {
         // Otprema u KP nastaje s aktom — i za vrste bez šifre, koje se urudžbiraju (i šalju) tek
         // kad šifra stigne, ako akt do tada ne zastari. Akt nastao dok je KP ugašen je nema.
+        // Ulazno pismeno (podnesak) otpremu nema; registerForAkt ga preskače.
         kpOtprema.registerForAkt(akt);
 
-        if (!bezSifre.urudzbiv(type.get())) {
+        if (!bezSifre.urudzbiv(type)) {
             // Akt je zapisan i vidljiv stranci; staje samo slanje, jer bi razrješavanje vrste
             // pismena palo i vrtjelo se do iscrpljenja pokušaja. EgopRetryJob ove akte izuzima
             // iz reda dok je slug na popisu — makne li se, urudžbirat će i ovaj zaostatak.
             log.info("egop_akt_not_filed reason=vrsta_bez_sifre akt={} rn={} vrsta='{}'"
                     + " — maknuti '{}' iz str.egop.akti-bez-sifre kad InfoDom potvrdi šifru",
-                    akt.getId(), event.rn(), type.get().vrstaPismenaNaziv(), type.get().slug());
+                    akt.getId(), event.rn(), type.vrstaPismenaNaziv(), type.slug());
             return;
         }
 
@@ -118,7 +145,7 @@ public class RnLifecycleFilingListener {
     /**
      * Identitet akta je {@code log_id} prijelaza — po njemu se ponovljena suspenzija istog
      * RB-a razlikuje od prethodne. Ako ga nema (prijelaz bez zapisa), pada se na RB + vrijeme,
-     * što je lošije ali i dalje jedinstveno.
+     * što je lošije ali i dalje jedinstveno. Računa se jednom po prijelazu ({@link #onLifecycleChange}).
      */
     private static String actRef(RnLifecycleEvent event) {
         return event.logId() != null

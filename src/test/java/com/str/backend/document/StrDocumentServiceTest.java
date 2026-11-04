@@ -5,6 +5,7 @@ import com.lowagie.text.pdf.PdfName;
 import com.lowagie.text.pdf.PdfObject;
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.parser.PdfTextExtractor;
+import com.str.backend.auth.internal.InternalUserRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -42,7 +44,13 @@ class StrDocumentServiceTest {
     private LessorRepository lessorRepository;
     private SubmissionRepository submissionRepository;
     private RegistrationNumberLogRepository logRepository;
+    private InternalUserRepository internalUsers;
     private StrDocumentService service;
+
+    private static final String PROPIS_DODJELA =
+            "članka 46. stavka 3. Zakona o ugostiteljskoj djelatnosti (Narodne novine, broj ___)";
+    private static final String PROPIS_POSTUPCI =
+            "članka 48. stavka 2. Zakona o ugostiteljskoj djelatnosti (Narodne novine, broj ___)";
 
     private static final DocumentProperties PROPERTIES = new DocumentProperties(
             new DocumentProperties.Tijelo("Ministarstvo turizma i sporta", "12345678901",
@@ -51,14 +59,20 @@ class StrDocumentServiceTest {
             new DocumentProperties.Potpisnik("Ivana Ivić", "Voditeljica postupka"),
             new DocumentProperties.Epecat(false, null, null, null, null),
             Map.of("suspenzija", "može se pokrenuti upravni spor u roku od 30 dana."),
-            false, false);
+            false, false, Map.of(
+                    "dodjela", PROPIS_DODJELA,
+                    "opoziv", PROPIS_POSTUPCI,
+                    "prijedlog-suspenzije", PROPIS_POSTUPCI,
+                    "obustava-suspenzije", PROPIS_POSTUPCI,
+                    "suspenzija", PROPIS_POSTUPCI,
+                    "povlacenje", PROPIS_POSTUPCI));
 
     private static final DocumentProperties PROPERTIES_S_PECATOM = new DocumentProperties(
             PROPERTIES.tijelo(), PROPERTIES.potpisnik(),
             new DocumentProperties.Epecat(true, "CN=Fina RDC 2020,O=Financijska agencija,C=HR",
                     "CN=KVALIFICIRANI ELEKTRONIČKI PEČAT MINISTARSTVA TURIZMA I SPORTA",
                     "SHA256withRSA", "https://provjera.example.hr/"),
-            PROPERTIES.uputa(), false, false);
+            PROPERTIES.uputa(), false, false, PROPERTIES.propis());
 
     static Set<StrDocumentType> templateBackedTypes() {
         return StrDocumentType.templateBackedTypes();
@@ -76,6 +90,7 @@ class StrDocumentServiceTest {
         lessorRepository = mock(LessorRepository.class);
         submissionRepository = mock(SubmissionRepository.class);
         logRepository = mock(RegistrationNumberLogRepository.class);
+        internalUsers = mock(InternalUserRepository.class);
 
         service = service(PROPERTIES);
 
@@ -91,7 +106,7 @@ class StrDocumentServiceTest {
         DocumentLabels labels = new DocumentLabels();
         return new StrDocumentService(rnRepository, lessorRepository, submissionRepository,
                 logRepository, loader, new ZupContextFactory(properties, labels),
-                new ZupDocumentRenderer(properties), labels);
+                new ZupDocumentRenderer(properties), labels, internalUsers);
     }
 
     @ParameterizedTest
@@ -114,20 +129,25 @@ class StrDocumentServiceTest {
         String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN, "nepotpuna dokumentacija"));
 
         assertThat(text).contains("smještajnoj jedinici");
-        assertThat(text).contains("Obrazloženje");
+        assertThat(text).contains("Vijeća");
         assertThat(text).contains("službenoj dužnosti");
         assertThat(text).contains("Anić");
-        assertThat(text).contains("važeći");
-        assertThat(text).contains("kratkoročni najam");
+        assertThat(text).contains("iznajmljivač");
+        assertThat(text).contains("kratkoročnog iznajmljivanja smještaja");
     }
 
-    /** Čl. 98. st. 1 i 6 — akt koji dira u prava stranke mora nositi uputu o pravnom lijeku. */
+    /**
+     * Pravni lijek je po predlošku MINTS-a (studeni 2026.) točka izreke — prigovor u osam dana —
+     * a ne zasebna sekcija s tekstom iz konfiguracije.
+     */
     @Test
-    void suspensionAct_carriesConfiguredLegalRemedy() throws IOException {
+    void suspensionAct_carriesObjectionInOperativePart() throws IOException {
         String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN, "razlog"));
 
-        assertThat(text).contains("Uputa o pravnom lijeku");
-        assertThat(text).contains("upravni spor u roku od 30 dana");
+        assertThat(text).contains("5. Protiv ove Obavijesti stranka može izjaviti prigovor nadležnom"
+                + " upravnom tijelu u roku od osam dana od dana dostave ove Obavijesti.");
+        assertThat(text).doesNotContain("Uputa o pravnom lijeku");
+        assertThat(text).doesNotContain("upravni spor");
     }
 
     /**
@@ -142,11 +162,10 @@ class StrDocumentServiceTest {
                 .isLessThan(text.indexOf("OBAVIJEST O SUSPENZIJI"));
         assertThat(text.indexOf("OBAVIJEST O SUSPENZIJI"))
                 .isLessThan(text.indexOf("1. Suspendira se"));
-        assertThat(text.indexOf("1. Suspendira se")).isLessThan(text.indexOf("Obrazloženje"));
-        assertThat(text.indexOf("Obrazloženje")).isLessThan(text.indexOf("Uputa o pravnom lijeku"));
+        assertThat(text.indexOf("1. Suspendira se")).isLessThan(text.indexOf("5. Protiv ove Obavijesti"));
         // Naziv tijela velikim slovima je i u zaglavlju, pa potpis traži zadnje pojavljivanje.
         int potpis = text.lastIndexOf("MINISTARSTVO TURIZMA I SPORTA");
-        assertThat(text.indexOf("Uputa o pravnom lijeku")).isLessThan(potpis);
+        assertThat(text.indexOf("5. Protiv ove Obavijesti")).isLessThan(potpis);
     }
 
     /** Čl. 98. st. 2 — uvod nosi OIB tijela i OIB stranke. */
@@ -163,7 +182,30 @@ class StrDocumentServiceTest {
     void proposalAct_printsCorrectionDeadline() throws IOException {
         String text = textOf(service.render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "razlog"));
 
-        assertThat(text).contains("najkasnije do 15. kolovoza 2026.");
+        assertThat(text).contains("2. Poziva se stranka dostaviti očitovanje o razlozima suspenzije"
+                + " registracijskog broja s ispravnim podacima i dokumentacijom najkasnije do 15. kolovoza 2026.");
+        assertThat(text).doesNotContain("2026..");
+    }
+
+    /**
+     * Prijedlog po predlošku MINTS-a: „Pokrenut je", stranka u točki 1. iza „dodijeljenog", automatska
+     * suspenzija po isteku roka (t. 3.) i ishodi postupka po čl. 6. Uredbe (t. 4.).
+     */
+    @Test
+    void proposalAct_followsMintsTemplate() throws IOException {
+        String text = textOf(service.render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "nepotpuni i/ili netočni podaci"));
+
+        assertThat(text).contains("na temelju " + PROPIS_POSTUPCI + ", po službenoj dužnosti, izdaje");
+        assertThat(text).doesNotContain("stranka: Ana Anić");
+        assertThat(text).contains("1. Pokrenut je postupak suspenzije registracijskog broja " + RN
+                + ", dodijeljenog na zahtjev stranke: Ana Anić, OIB: 98765432109, smještajnoj jedinici");
+        assertThat(text).contains("zbog sljedećeg razloga: nepotpuni i/ili netočni podaci.");
+        assertThat(text).contains("3. Registracijski broj automatski će se suspendirati ako očitovanje iz"
+                + " točke 2. ove Obavijesti nije dostavljeno u ostavljenom roku.");
+        assertThat(text).contains("4. Na temelju dostavljenog očitovanja postupak suspenzije registracijskog"
+                + " broja bit će obustavljen ili će registracijski broj biti suspendiran odnosno povučen"
+                + " sukladno članku 6. Uredbe (EU) 2024/1028");
+        assertThat(text).contains("(SL L, 2024/1028, 29.4.2024.).");
     }
 
     /**
@@ -190,9 +232,58 @@ class StrDocumentServiceTest {
         String text = textOf(service.render(StrDocumentType.OBUSTAVA_SUSPENZIJE, RN,
                 "dokumentacija je dopunjena"));
 
-        assertThat(text).contains("Obustavlja se postupak suspenzije");
+        assertThat(text).contains("1. Obustavlja se postupak suspenzije registracijskog broja " + RN
+                + ", dodijeljenog na zahtjev stranke: Ana Anić, OIB: 98765432109, smještajnoj jedinici");
         assertThat(text).contains("ostaje važeći");
-        assertThat(text).contains("dokumentacija je dopunjena");
+        // MINTS: bez razloga pokretanja postupka i bez točke 3. o oglašavanju.
+        assertThat(text).doesNotContain("pokrenut zbog");
+        assertThat(text).doesNotContain("dokumentacija je dopunjena");
+        assertThat(text).doesNotContain("oglašavati");
+    }
+
+    /**
+     * Zahtjev za opoziv je podnesak stranke: tijelo je adresat (naslov), stranka ga potpisuje, a
+     * pečata tijela nema — ni kad je e-pečat uključen.
+     */
+    @Test
+    void revocationRequest_isPartySubmissionWithReason() throws IOException {
+        String text = textOf(service(PROPERTIES_S_PECATOM).render(StrDocumentType.ZAHTJEV_OPOZIVA, RN,
+                "prodajem stan"));
+
+        assertThat(text).contains("ZAHTJEV ZA OPOZIV REGISTRACIJSKOG BROJA");
+        assertThat(text).contains("Podnositelj: Ana Anić, OIB: 98765432109");
+        assertThat(text).contains("Predmet: zahtjev za opoziv registracijskog broja " + RN);
+        assertThat(text).contains("Podnositelj traži opoziv registracijskog broja " + RN);
+        assertThat(text).contains("„Apartman Sunce\"");
+        assertThat(text).contains("Kao razlog opoziva podnositelj navodi: prodajem stan");
+        assertThat(text).doesNotContain("REPUBLIKA HRVATSKA");
+        assertThat(text).doesNotContain("KVALIFICIRANI ELEKTRONIČKI PEČAT");
+        assertThat(text).doesNotContain("${");
+    }
+
+    /** Bez razloga stranke redak otpada — natpis okidača ne smije joj se podmetnuti kao razlog. */
+    @Test
+    void revocationRequest_withoutReason_omitsReasonLine() throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "ACTIVE", "REVOKED", "REVOCATION",
+                        "NIAS:98765432109", null)));
+
+        String text = textOf(service.render(StrDocumentType.ZAHTJEV_OPOZIVA, RN, null));
+
+        assertThat(text).contains("Podnositelj traži opoziv");
+        assertThat(text).doesNotContain("Kao razlog opoziva");
+        assertThat(text).doesNotContain("na zahtjev iznajmljivača");
+        assertThat(text).doesNotContain("razlog nije naveden");
+    }
+
+    /** Obavijest o opozivu ostaje akt tijela s grbom i pečatom (izlazno pismeno od T15). */
+    @Test
+    void revocationNotice_isActOfTheAuthority() throws IOException {
+        String text = textOf(service(PROPERTIES_S_PECATOM).render(StrDocumentType.OPOZIV, RN, null));
+
+        assertThat(text).contains("REPUBLIKA HRVATSKA");
+        assertThat(text).contains("OBAVIJEST O OPOZIVU REGISTRACIJSKOG BROJA");
+        assertThat(text).contains("opozvan je registracijski broj " + RN);
     }
 
     /** Razlog iz revizijskog traga za okidače uvedene uz dvofaznu suspenziju. */
@@ -230,7 +321,7 @@ class StrDocumentServiceTest {
     @MethodSource("aktiTijela")
     void pdfa_marksDocumentAsPdfA1b(StrDocumentType type) throws IOException {
         DocumentProperties pdfa = new DocumentProperties(PROPERTIES.tijelo(), PROPERTIES.potpisnik(),
-                PROPERTIES.epecat(), PROPERTIES.uputa(), false, true);
+                PROPERTIES.epecat(), PROPERTIES.uputa(), false, true, PROPERTIES.propis());
 
         byte[] pdf = service(pdfa).render(type, RN, "razlog");
 
@@ -281,7 +372,7 @@ class StrDocumentServiceTest {
     void sealBlock_withoutCertificateConfig_showsVisibleMarker() throws IOException {
         DocumentProperties bezCertifikata = new DocumentProperties(PROPERTIES.tijelo(),
                 PROPERTIES.potpisnik(), new DocumentProperties.Epecat(true, null, null, null, null),
-                PROPERTIES.uputa(), false, false);
+                PROPERTIES.uputa(), false, false, PROPERTIES.propis());
 
         String text = textOf(service(bezCertifikata).render(StrDocumentType.DODJELA, RN, null));
 
@@ -299,14 +390,19 @@ class StrDocumentServiceTest {
 
         String text = textOf(service.render(StrDocumentType.DODJELA, RN, null));
 
-        assertThat(text).contains("Ministarstvo turizma i sporta, OIB: 12345678901, na temelju"
-                + " članka 6. Uredbe (EU) 2024/1028, na zahtjev Ana Anić, OIB: 98765432109, izdaje");
+        assertThat(text).contains("Ministarstvo turizma i sporta, OIB: 12345678901, na temelju "
+                + PROPIS_DODJELA + ", na zahtjev Ana Anić, OIB: 98765432109, izdaje");
         assertThat(text).contains("OBAVIJEST O DODJELI REGISTRACIJSKOG BROJA");
         assertThat(text).contains("1. Smještajnoj jedinici „Apartman Sunce\", na adresi Ilica 1,"
                 + " Zagreb, skupine: Objekti u kojima se pružaju ugostiteljske usluge u domaćinstvu,"
                 + " vrste: Apartman, dodijeljen je registracijski broj " + RN + ".");
         assertThat(text).contains("2. Registracijski broj upisan je u integrirani informacijski"
                 + " sustav turizma dana 01. ožujka 2026. godine.");
+        assertThat(text).contains("3. Sukladno članku 46. stavku 5. Zakona o ugostiteljskoj djelatnosti"
+                + " registracijski broj se navodi u svakom oglasu smještajne jedinice na internetskim"
+                + " platformama za kratkoročno iznajmljivanje smještaja.");
+        assertThat(text).contains("Ova obavijest izdaje se automatski iz integriranog informacijskog"
+                + " sustava turizma.");
         assertThat(text).doesNotContain("I Z R E K A");
         assertThat(text).doesNotContain("Prilozi");
         assertThat(text).doesNotContain("Dostaviti");
@@ -324,7 +420,7 @@ class StrDocumentServiceTest {
                 new DocumentProperties.Tijelo("ministarstvo turizma i sporta", "12345678901",
                         "Prisavlje 14", "Zagreb", "Uprava za turizam",
                         "članka 6. Uredbe (EU) 2024/1028"),
-                PROPERTIES.potpisnik(), PROPERTIES.epecat(), PROPERTIES.uputa(), false, false);
+                PROPERTIES.potpisnik(), PROPERTIES.epecat(), PROPERTIES.uputa(), false, false, PROPERTIES.propis());
         when(rnRepository.findDetail(RN)).thenReturn(Optional.of(detail(RnStatus.SUSPENSION_PROPOSED)));
 
         String text = textOf(service(malimSlovom).render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "razlog"));
@@ -359,26 +455,180 @@ class StrDocumentServiceTest {
     }
 
     /**
-     * Struktura je jedno, pravni sastavni dijelovi drugo: rješenja i dalje nose obrazloženje
-     * (čl. 98. st. 5) i uputu o pravnom lijeku (čl. 98. st. 6), koju po čl. 111. nose na štetu
-     * tijela ako je izostane.
+     * MINTS (studeni 2026.): suspenzija i povlačenje bez obrazloženja i bez zasebne upute — prigovor
+     * u roku od osam dana je točka izreke, a troškova postupka nema.
      */
     @ParameterizedTest
     @ValueSource(strings = {"SUSPENZIJA", "POVLACENJE"})
-    void adverseActs_keepReasoningAndLegalRemedy(String slug) throws IOException {
+    void adverseActs_carryObjectionWithoutReasoning(String slug) throws IOException {
         String text = textOf(service.render(StrDocumentType.valueOf(slug), RN, "razlog"));
 
-        assertThat(text).contains("Obrazloženje");
-        assertThat(text).contains("Uputa o pravnom lijeku");
+        assertThat(text).doesNotContain("Obrazloženje");
+        assertThat(text).doesNotContain("Uputa o pravnom lijeku");
+        assertThat(text).doesNotContain("Troškovi");
+        assertThat(text).contains("može izjaviti prigovor nadležnom upravnom tijelu u roku od osam dana"
+                + " od dana dostave ove Obavijesti.");
+        String dan = slug.equals("SUSPENZIJA") ? "suspenzije" : "povlačenja";
+        assertThat(text).contains("prestaje važiti danom " + dan
+                + " i briše se iz integriranog informacijskog sustava turizma s danom " + danas());
     }
 
-    /** Prijedlog suspenzije je poziv na izjašnjavanje: obrazloženje da, uputa ne. */
     @Test
-    void proposalAct_keepsReasoningWithoutLegalRemedy() throws IOException {
+    void withdrawalAct_followsMintsTemplate() throws IOException {
+        String text = textOf(service.render(StrDocumentType.POVLACENJE, RN,
+                "dostavljene su nevjerodostojne ili nevaljane informacije"));
+
+        assertThat(text).contains("1. Povlači se registracijski broj " + RN + ", dodijeljen na zahtjev"
+                + " stranke: Ana Anić, OIB: 98765432109, smještajnoj jedinici");
+        assertThat(text).contains("zbog sljedećeg razloga: dostavljene su nevjerodostojne ili nevaljane informacije.");
+        assertThat(text).contains("3. Sukladno članku 6. stavku 6. Uredbe (EU) 2024/1028");
+        assertThat(text).contains("krajnjom nepažnjom nije ispravio tražene informacije");
+        assertThat(text).contains("zahtijeva da bez nepotrebne odgode uklone sve ponude");
+        assertThat(text).doesNotContain("javnog dijela");
+        assertThat(text).doesNotContain("trajno");
+    }
+
+    @Test
+    void suspensionAct_followsMintsTemplate() throws IOException {
+        String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN, "razlog"));
+
+        assertThat(text).contains(", dodijeljen na zahtjev stranke: Ana Anić, OIB: 98765432109, smještajnoj jedinici");
+        assertThat(text).contains("3. Sukladno članku 6. stavku 8. Uredbe (EU) 2024/1028 Europskog parlamenta"
+                + " i Vijeća od 11. travnja 2024.");
+        assertThat(text).contains("4. Nakon primitka te provjere točnosti, potpunosti i ispravnosti"
+                + " dostavljenih informacija i dokumentacije nadležna tijela ponovno će aktivirati"
+                + " registracijski broj.");
+        assertThat(text).doesNotContain("Suspenzija ne briše");
+    }
+
+    /** Prijedlog suspenzije je poziv na očitovanje: MINTS je izbacio obrazloženje, uputu nikad nije imao. */
+    @Test
+    void proposalAct_hasNoReasoningOrLegalRemedy() throws IOException {
         String text = textOf(service.render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "razlog"));
 
-        assertThat(text).contains("Obrazloženje");
+        assertThat(text).doesNotContain("Obrazloženje");
         assertThat(text).doesNotContain("Uputa o pravnom lijeku");
+    }
+
+    /** Opoziv: bez „javnog dijela", s danom opoziva i s platformama za kratkoročno iznajmljivanje. */
+    @Test
+    void revocationNotice_followsMintsTemplate() throws IOException {
+        String text = textOf(service.render(StrDocumentType.OPOZIV, RN, null));
+
+        assertThat(text).contains("na temelju " + PROPIS_POSTUPCI + ", na zahtjev Ana Anić");
+        assertThat(text).contains("2. Registracijski broj prestaje važiti danom opoziva i briše se iz"
+                + " integriranog informacijskog sustava turizma s danom " + danas());
+        assertThat(text).contains("Za ponovno oglašavanje smještajne jedinice na internetskim platformama"
+                + " za kratkoročno iznajmljivanje smještaja potrebno je");
+        assertThat(text).contains("Ova obavijest izdaje se automatski iz integriranog informacijskog"
+                + " sustava turizma.");
+        assertThat(text).doesNotContain("javnog dijela");
+    }
+
+    /** Propis o nadležnosti po vrsti akta; reaktivacija (bez unosa) uzima zajednički propis tijela. */
+    @ParameterizedTest
+    @MethodSource("aktiTijela")
+    void everyAct_citesLegalBasisForItsType(StrDocumentType type) throws IOException {
+        String text = textOf(service.render(type, RN, "razlog"));
+
+        String ocekivano = switch (type) {
+            case DODJELA -> PROPIS_DODJELA;
+            case REAKTIVACIJA -> "članka 6. Uredbe (EU) 2024/1028";
+            default -> PROPIS_POSTUPCI;
+        };
+        assertThat(text).contains("na temelju " + ocekivano + ",");
+    }
+
+    /** MINTS-ove tipfelere i stari naziv djelatnosti nijedan od šest akata ne smije ponoviti. */
+    @ParameterizedTest
+    @ValueSource(strings = {"DODJELA", "OPOZIV", "PRIJEDLOG_SUSPENZIJE", "OBUSTAVA_SUSPENZIJE",
+            "SUSPENZIJA", "POVLACENJE"})
+    void mintsActs_haveNoTyposOrOldTerm(String slug) throws IOException {
+        String text = textOf(service.render(StrDocumentType.valueOf(slug), RN, "razlog"));
+
+        assertThat(text).doesNotContain("nepaožnjom", "roko ", "zahtjeva da", "listopda", "kratkoročni najam",
+                "kratkoročnog najma", "Temeljem", "stranka: Ana Anić", "..");
+    }
+
+    /**
+     * Akt službenika potpisuje službenik koji je napravio prijelaz (MINTS: osobno ime službene
+     * osobe), a ne tijelo. Naziv službene dužnosti nema izvora, pa se ne ispisuje.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"PRIJEDLOG_SUSPENZIJE", "OBUSTAVA_SUSPENZIJE", "SUSPENZIJA", "POVLACENJE"})
+    void officialAct_isSignedByTheOfficial(String slug) throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "ACTIVE", "SUSPENSION_PROPOSED", "INSPECTION",
+                        "INTERNAL:12345678903", null)));
+        when(internalUsers.findNames(Set.of("12345678903"))).thenReturn(Map.of("12345678903", "Ana Službenica"));
+
+        String text = textOf(service.render(StrDocumentType.valueOf(slug), RN, "razlog"));
+
+        assertThat(text).endsWith("Ana Službenica ");
+        // Naziv tijela velikim slovima ostaje samo u zaglavlju.
+        assertThat(text.split("MINISTARSTVO TURIZMA I SPORTA", -1).length - 1).isEqualTo(1);
+        assertThat(text).doesNotContain("Ivana Ivić");
+    }
+
+    /** Suspenziju istekom roka radi sustav — potpisuje je službenik koji je postupak pokrenuo. */
+    @Test
+    void systemSuspension_isSignedByTheOfficialWhoProposedIt() throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "SUSPENSION_PROPOSED", "SUSPENDED",
+                        "DEADLINE_EXCEEDED", "SYSTEM", "Rok za rješavanje nepravilnosti istekao.")));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "SUSPENSION_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE",
+                        "SUSPENSION_PROPOSED", "INSPECTION", "INTERNAL:12345678903", null)));
+        when(internalUsers.findNames(Set.of("12345678903"))).thenReturn(Map.of("12345678903", "Ana Službenica"));
+
+        String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN,
+                "Rok za rješavanje nepravilnosti istekao."));
+
+        assertThat(text).endsWith("Ana Službenica ");
+        // Razlog je materijalni razlog s prijedloga, ne bilješka joba koju pozivatelj proslijedi.
+        assertThat(text).contains("zbog sljedećeg razloga: nalaz inspekcijskog nadzora.");
+        assertThat(text).doesNotContain("Rok za rješavanje");
+    }
+
+    /** M-BE1: isto pravilo razloga za akt i obavijest e-poštom — suspenzija čita prijedlog. */
+    @Test
+    void razlogAkta_suspension_isProposalReason_notJobNote() {
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "SUSPENSION_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE",
+                        "SUSPENSION_PROPOSED", "INSPECTION", "INTERNAL:12345678903", null)));
+
+        assertThat(service.razlogAkta(StrDocumentType.SUSPENZIJA, RN, "Rok za rješavanje nepravilnosti istekao."))
+                .isEqualTo("nalaz inspekcijskog nadzora");
+        assertThat(service.razlogAkta(StrDocumentType.POVLACENJE, RN, "drugi razlozi")).isEqualTo("drugi razlozi");
+    }
+
+    /**
+     * M-BE2: „prestaje važiti … s danom" je dan prijelaza (po hrvatskom vremenu), ne dan rendera —
+     * konačni dokument se renderira nakon urudžbe, na retryju i danima kasnije.
+     */
+    @Test
+    void withdrawal_effectiveDate_isDayOfTransition() throws IOException {
+        RegistrationNumberLogEntity povlacenje = org.mockito.Mockito.mock(RegistrationNumberLogEntity.class);
+        when(povlacenje.getOccurredAt()).thenReturn(java.time.Instant.parse("2026-09-09T23:30:00Z"));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "WITHDRAWN"))
+                .thenReturn(Optional.of(povlacenje));
+
+        String text = textOf(service.render(StrDocumentType.POVLACENJE, RN, "drugi razlozi"));
+
+        assertThat(text.replaceAll("\\s+", " ")).contains("s danom 10. rujna 2026");
+    }
+
+    /** Nedostupna shema str ne smije srušiti akt — potpis tada ostaje naziv tijela. */
+    @Test
+    void officialAct_withoutReadableOfficial_isSignedByTheAuthority() throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "ACTIVE", "WITHDRAWN", "WITHDRAWAL",
+                        "INTERNAL:12345678903", "drugi razlozi")));
+        when(internalUsers.findNames(any())).thenThrow(new DataAccessResourceFailureException("permission denied"));
+
+        String text = textOf(service.render(StrDocumentType.POVLACENJE, RN, null));
+
+        assertThat(text).endsWith("MINISTARSTVO TURIZMA I SPORTA Ivana Ivić ");
     }
 
     /** Okvir svih akata tijela: grb, tijelo velikim slovima, dugi datum, bez podnožja. */
@@ -417,19 +667,24 @@ class StrDocumentServiceTest {
     /** eGOP-ov JOP u desnom kutu zaglavlja, samo kad je pismeno urudžbirano. */
     @Test
     void header_printsKlasaUrbrojAndJop_whenFiled() throws IOException {
-        String text = textOf(service.render(StrDocumentType.DODJELA, RN, null,
-                new FilingReference("334-06/26-10/1", "529-06-03/01-26-2", 21748084)));
+        byte[] pdf = service.render(StrDocumentType.DODJELA, RN, null,
+                new FilingReference("334-06/26-10/1", "529-06-03/01-26-2", 21748084));
+        String text = textOf(pdf);
 
         assertThat(text).contains("P/21748084");
+        // „Generirati kod kao u eGOP-u" (MINTS): grb i barkod oznake pismena.
+        assertThat(imageCount(pdf)).isEqualTo(2);
         assertThat(text).contains("KLASA: 334-06/26-10/1 URBROJ: 529-06-03/01-26-2 Zagreb, ");
     }
 
     @Test
     void header_omitsJop_beforeFiling() throws IOException {
-        String text = textOf(service.render(StrDocumentType.DODJELA, RN, null,
-                new FilingReference("334-06/26-10/1", null)));
+        byte[] pdf = service.render(StrDocumentType.DODJELA, RN, null,
+                new FilingReference("334-06/26-10/1", null));
+        String text = textOf(pdf);
 
         assertThat(text).doesNotContain("P/");
+        assertThat(imageCount(pdf)).isEqualTo(1);
         assertThat(text).doesNotContain("URBROJ");
     }
 
@@ -453,12 +708,9 @@ class StrDocumentServiceTest {
         assertThat(text).doesNotContain("istek roka za očitovanje");
     }
 
-    /**
-     * Obustava je iz zadnjeg zapisa ispisivala samu sebe: „pokrenut zbog sljedećeg razloga:
-     * obustava postupka suspenzije". Razlog pokretanja postupka je onaj s prijedloga.
-     */
+    /** Obustava razlog ne ispisuje (MINTS) — ni razlog prijedloga ni vlastiti procesni okidač. */
     @Test
-    void revocationAct_citesGroundFromProposal_notItself() throws IOException {
+    void revocationAct_citesNoGround() throws IOException {
         when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "SUSPENSION_PROPOSED"))
                 .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE",
                         "SUSPENSION_PROPOSED", "INCOMPLETE_DOCUMENTATION", null, null)));
@@ -468,7 +720,7 @@ class StrDocumentServiceTest {
 
         String text = textOf(service.render(StrDocumentType.OBUSTAVA_SUSPENZIJE, RN, null));
 
-        assertThat(text).contains("pokrenut zbog sljedećeg razloga: nepotpuna dokumentacija");
+        assertThat(text).doesNotContain("nepotpuni i/ili netočni podaci");
         assertThat(text).doesNotContain("obustava postupka suspenzije");
     }
 
@@ -500,9 +752,12 @@ class StrDocumentServiceTest {
     void lifecycleAct_headerCarriesRenderDate() throws IOException {
         String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN, "razlog"));
 
-        assertThat(text).contains("Zagreb, " + java.time.LocalDate.now()
-                .format(java.time.format.DateTimeFormatter.ofPattern("dd. MMMM yyyy.",
-                        java.util.Locale.forLanguageTag("hr"))));
+        assertThat(text).contains("Zagreb, " + danas());
+    }
+
+    private static String danas() {
+        return java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(
+                "dd. MMMM yyyy.", java.util.Locale.forLanguageTag("hr")));
     }
 
     /**
@@ -537,7 +792,7 @@ class StrDocumentServiceTest {
         DocumentProperties bezUrla = new DocumentProperties(PROPERTIES.tijelo(),
                 PROPERTIES.potpisnik(),
                 new DocumentProperties.Epecat(true, "CN=Fina RDC 2020", "CN=PEČAT", null, null),
-                PROPERTIES.uputa(), false, false);
+                PROPERTIES.uputa(), false, false, PROPERTIES.propis());
 
         byte[] pdf = service(bezUrla).render(StrDocumentType.DODJELA, RN, null);
 
@@ -554,7 +809,22 @@ class StrDocumentServiceTest {
 
         String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN, null));
 
-        assertThat(text).contains("nepotpuna dokumentacija");
+        assertThat(text).contains("nepotpuni i/ili netočni podaci");
+    }
+
+    /**
+     * Razlog povlačenja (MINTS) nije okidač — prijelaz nosi WITHDRAWAL, a natpis razloga stoji u
+     * {@code reason} zapisa ({@code RnService.withdraw}). Akt ga ispisuje umjesto natpisa okidača.
+     */
+    @Test
+    void withdrawalAct_citesReasonFromLog_notTheTrigger() throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "ACTIVE", "WITHDRAWN", "WITHDRAWAL", null,
+                        "namjerno ili krajnjom nepažnjom nisu ispravljeni podaci")));
+
+        String text = textOf(service.render(StrDocumentType.POVLACENJE, RN, null));
+
+        assertThat(text).contains("zbog sljedećeg razloga: namjerno ili krajnjom nepažnjom nisu ispravljeni podaci");
     }
 
     /**

@@ -150,6 +150,10 @@ STR_TIJELO_MJESTO=Zagreb
 STR_TIJELO_USTROJ=Uprava za turizam
 # Propis o nadležnosti: default je tekst iz predloška MINT-a; brojevi Narodnih novina još nedostaju.
 # STR_TIJELO_PROPIS=
+# Propis po vrsti akta (T14): dodjela čl. 46. st. 3., ostali akti čl. 48. st. 2. — default u
+# application.properties; postaviti tek kad stignu brojevi Narodnih novina.
+# STR_PROPIS_DODJELA=
+# STR_PROPIS_POSTUPCI=
 STR_POTPISNIK_IME=
 # Funkcija se u ugradenom potpisu NE ispisuje (potpis je naziv tijela).
 # STR_POTPISNIK_FUNKCIJA=Voditelj postupka
@@ -159,12 +163,20 @@ STR_DOCUMENTS_RELOAD=false
 # --- eGOP ---
 # Prazno od 22.10.2026. (MINT je unio sve vrste pismena) — sve se urudžbira.
 EGOP_AKTI_BEZ_SIFRE=
+# Vrsta priloga uz pismena (T17): šifra ili naziv iz MDM šifrarnika vrsta priloga. Na CDU-u je eGOP
+# mock pa se ne koristi; uz EGOP_ENABLED=true provjerava se pri startu (startup_egop_prilog_unresolved
+# = akti idu bez priloga). Naziv ne ostavljati praznim. Vidi DEPLOY-CDU-PREPROD.md §B5a.2.
+#EGOP_SIFRA_PRILOGA=
+#EGOP_NAZIV_PRILOGA=Prilog
 
 # --- obavijesti e-poštom (relay servmail.ssc.gov.hr:25 i pošiljatelj su default u application-cdu.properties) ---
 APP_MAIL_ENABLED=true
 # Obavezno uz true: baza nosi stvarne adrese iznajmljivača. Sve poruke idu ovamo, stvarni
 # primatelj je u predmetu „[za: …]". U logu: startup_mail enabled=true … redirect_to=<adresa>.
 APP_MAIL_REDIRECT_TO=ime.prezime@kodelab.hr
+# Najveća kodirana poruka koju relay prima (default 20MB). Prilozi akta koji s aktom ne stanu samo se
+# navode u poruci; poruka koju relay odbije zbog veličine (552) odmah ide s popisom priloga.
+#APP_MAIL_MAX_MESSAGE_SIZE=20MB
 ```
 
 **Ključ koji ne postavljaš zakomentiraj, nemoj ostaviti prazan** — prazna vrijednost je
@@ -522,7 +534,8 @@ Očekivano: `startup_eseal enabled=true … api_key=postavljen … allow_http=tr
 Uz `enabled=true` bez URL-a, ključa ili projekta backend namjerno ne krene (poruka navodi što fali).
 
 **4. Okidači:** nova registracija (obavijest o dodjeli) i radnja nad RB-om (prijedlog suspenzije,
-povlačenje…). Pečatiraju se samo izlazni akti; zahtjev, opoziv i prigovor stranke ne.
+povlačenje, opoziv…). Pečatiraju se samo izlazni akti, od T15 i obavijest o opozivu; podnesci
+stranke (zahtjev, zahtjev za opoziv, prigovor) ne.
 
 ```bash
 docker logs str-backend-cdu 2>&1 | grep -E "eseal_seal|eseal_pismeno|not_sealed" | tail -20

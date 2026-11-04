@@ -38,11 +38,11 @@ class RnStatusTransitionServiceTest {
     }
 
     @Test
-    void active_to_suspension_proposed_via_consent_expiry() {
+    void active_to_suspension_proposed_via_no_decision() {
         RnEntity rn = active();
-        service.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.CONSENT_EXPIRY);
+        service.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.NO_DECISION);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENSION_PROPOSED);
-        verifyLog("ACTIVE", "SUSPENSION_PROPOSED", "CONSENT_EXPIRY");
+        verifyLog("ACTIVE", "SUSPENSION_PROPOSED", "NO_DECISION");
     }
 
     @Test

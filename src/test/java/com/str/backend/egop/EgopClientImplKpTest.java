@@ -18,7 +18,7 @@ import javax.xml.datatype.DatatypeFactory;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -50,7 +50,8 @@ class EgopClientImplKpTest {
         assertNull(sent.getSubjektOznakaPrimatelja(), "primatelj ide po OIB-u, ne po oznaci subjekta");
         assertNull(sent.getJedinstveniIdentifikatorPismena());
         assertEquals("Obavijest — HR1", sent.getNapomena());
-        assertFalse(sent.isOtpremaPriloga());
+        // Prilozi službenika uz akt (T17) idu u pretinac s aktom.
+        assertTrue(sent.isOtpremaPriloga());
     }
 
     @Test

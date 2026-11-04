@@ -45,10 +45,18 @@ public enum ZupSection {
     /** Čl. 98. st. 6 — koje sredstvo, kojem tijelu, u kojem roku i na koji način. */
     UPUTA_O_PRAVNOM_LIJEKU("Uputa o pravnom lijeku", Mode.PROZA, Element.ALIGN_JUSTIFIED, 14f),
 
+    /**
+     * Završna napomena bez naslova, iza izreke a ispred potpisa — „Ova obavijest izdaje se
+     * automatski iz integriranog informacijskog sustava turizma" na obavijestima koje nastaju bez
+     * službenika (dodjela, opoziv; MINTS, studeni 2026.). Nije dio izreke, pa nije numerirana.
+     */
+    NAPOMENA(null, Mode.PROZA, Element.ALIGN_JUSTIFIED, 14f),
+
     PRILOZI("Prilozi", Mode.BLOK, Element.ALIGN_LEFT, 14f),
 
     /**
-     * Čl. 98. st. 7–8 — naziv tijela (i službena osoba, ako je konfigurirana). Lijevo poravnat
+     * Čl. 98. st. 7–8 — naziv tijela (i službena osoba, ako je konfigurirana), a na aktima koje
+     * izdaje službenik njegova službena dužnost i ime (predložak ga nadjačava). Lijevo poravnat
      * od uvlake u desnoj polovici stranice, kao u predlošku MINT-a.
      */
     POTPISNIK(null, Mode.BLOK, Element.ALIGN_LEFT, 24f),

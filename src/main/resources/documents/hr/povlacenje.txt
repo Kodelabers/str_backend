@@ -1,33 +1,34 @@
 # Obavijest o povlačenju registracijskog broja
 # Vrsta pismena (eGOP): „Obavijest o povlačenju registracijskog broja" — izlazno
 #
-# Povlačenje je trajno (RnStatus.WITHDRAWN je terminalan), pa je uputa o pravnom lijeku
-# obvezna i najvažnija sekcija ovog akta. Tekst dolazi iz str.documents.uputa.povlacenje.
+# Povlačenje je trajno (RnStatus.WITHDRAWN je terminalan). Po predlošku MINTS-a (studeni 2026.)
+# nema obrazloženja ni zasebne upute o pravnom lijeku: prigovor u roku od osam dana je točka 4.
+# izreke, pa ${uputa.tekst} ovdje više nije u upotrebi.
 #
-# Struktura je ista kao na obavijesti o dodjeli (predložak MINT-a od 11.09.2026.): bez adresata,
-# bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu, a dostava ide
-# u korisnički pretinac.
+# Razlog u točki 1. je razlog povlačenja koji je službenik odabrao (WithdrawalReason, MINTS):
+# RnService.withdraw upisuje njegov natpis, odnosno opis uz „drugi razlozi", u
+# registration_number_log.reason, a StrDocumentService ga čita odande.
+#
+# MINTS, studeni 2026.: propis o nadležnosti čl. 48. st. 2.; stranka se ne imenuje u uvodu nego u
+# točki 1. („dodijeljen na zahtjev stranke: …"); točka 2. s danom povlačenja (datum prijelaza statusa,
+# ${prijelaz.datum}, ne datum rendera); nove točke 3. i 4. (čl. 6. st. 6. Uredbe, prigovor); izbrisani obrazloženje i
+# uputa. Akt potpisuje službenik koji je broj povukao (naziv službene dužnosti i ime).
 #
 # Katalog placeholdera: docs/ZUP-predlosci.md
 
 [UVOD]
-${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, po službenoj dužnosti, stranka: ${stranka.naziv}, ${stranka.identifikator}, donosi
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po službenoj dužnosti, donosi
 
 [IZREKA]
-1. Povlači se registracijski broj ${rn.broj}, dodijeljen smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, zbog sljedećeg razloga: ${rn.razlog}.
+1. Povlači se registracijski broj ${rn.broj}, dodijeljen na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, zbog sljedećeg razloga: ${rn.razlog}.
 
-2. Povlačenje stupa na snagu danom dostave ove Obavijesti. Od toga dana registracijski broj prestaje važiti i briše se iz javnog dijela integriranog informacijskog sustava turizma, a smještajna jedinica ne smije se oglašavati na internetskim platformama za kratkoročni najam.
+2. Registracijski broj prestaje važiti danom povlačenja i briše se iz integriranog informacijskog sustava turizma s danom ${prijelaz.datum}
 
-3. Povlačenje je trajno. Registracijski broj ne može se reaktivirati; za ponovno oglašavanje smještajne jedinice potrebno je podnijeti novi zahtjev za registracijski broj.
+3. Sukladno članku 6. stavku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća od 11. travnja 2024. o prikupljanju i razmjeni podataka o uslugama kratkoročnog iznajmljivanja smještaja i izmjeni Uredbe (EU) 2018/1724 (SL L, 2024/1028, 29.4.2024.), ako iznajmljivač namjerno ili krajnjom nepažnjom nije ispravio tražene informacije ili je dostavio nevjerodostojne ili nevaljane informacije, nadležna tijela ovlaštena su povući registracijski broj i izdati nalog kojim se od internetskih platformi za kratkoročno iznajmljivanje smještaja zahtijeva da bez nepotrebne odgode uklone sve ponude koje se odnose na predmetni smještajni objekt.
 
-4. Troškovi postupka nisu nastali.
+4. Protiv ove Obavijesti stranka može izjaviti prigovor nadležnom upravnom tijelu u roku od osam dana od dana dostave ove Obavijesti.
 
-[OBRAZLOZENJE]
-Postupak je pokrenut po službenoj dužnosti nakon što je utvrđen razlog za povlačenje registracijskog broja ${rn.broj}: ${rn.razlog}.
-
-Stranci je prethodno omogućeno izjašnjavanje sukladno članku 30. stavku 2. Zakona o općem upravnom postupku. Uvidom u spis predmeta i podatke integriranog informacijskog sustava turizma utvrđeno je da razlog iz točke 1. izreke nije otklonjen ni nakon proteka ostavljenog roka, pa je odlučeno kao u izreci.
-
-Povlačenje registracijskog broja provodi se sukladno članku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća o prikupljanju i razmjeni podataka o uslugama kratkoročnog najma smještaja, te ${tijelo.propisNadleznosti}.
-
-[UPUTA_O_PRAVNOM_LIJEKU]
-Protiv ove Obavijesti ${uputa.tekst}
+[POTPISNIK]
+${sluzbenik.potpisTijela}
+${sluzbenik.funkcija}
+${sluzbenik.ime}

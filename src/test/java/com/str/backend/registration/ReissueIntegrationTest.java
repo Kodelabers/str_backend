@@ -109,7 +109,7 @@ class ReissueIntegrationTest {
         CategorizationDecisionEntity decision = decision(first);
         decision.verify("sluzbenik");
         decisionRepository.save(decision);
-        rnActionService.withdrawOwnByOib(first, OIB, null);
+        rnActionService.withdrawOwnByOib(first, OIB, null, List.of());
 
         // Popis: povučeni RB novog objekta nudi ponovni zahtjev do validTo + 18 mjeseci.
         LocalDate withdrawnOn = rnRepository.findById(first).orElseThrow().getValidTo();
@@ -163,7 +163,7 @@ class ReissueIntegrationTest {
         CategorizationDecisionEntity decision = decision(first);
         decision.verify("sluzbenik");
         decisionRepository.save(decision);
-        rnActionService.withdrawOwnByOib(first, OIB, null);
+        rnActionService.withdrawOwnByOib(first, OIB, null, List.of());
 
         RegistrationResponse second = issue(request(streetNumber, 6, first));
 
@@ -180,7 +180,7 @@ class ReissueIntegrationTest {
         String streetNumber = nextNumber();
         String first = issue(request(streetNumber, 4, null)).registrationNumber();
         CategorizationDecisionEntity source = decision(first);
-        rnActionService.withdrawOwnByOib(first, OIB, null);
+        rnActionService.withdrawOwnByOib(first, OIB, null, List.of());
         assertThat(queueIds()).contains(source.getDecisionId());
 
         RegistrationResponse second = issue(request(streetNumber, 4, first));
@@ -203,7 +203,7 @@ class ReissueIntegrationTest {
         CategorizationDecisionEntity rejected = decision(first);
         rejected.reject("sluzbenik");
         decisionRepository.save(rejected);
-        rnActionService.withdrawOwnByOib(first, OIB, null);
+        rnActionService.withdrawOwnByOib(first, OIB, null, List.of());
 
         assertThat(reissueService.prefill(first, RnOwner.byOib(OIB)).rjesenje()).isNull();
 
@@ -217,7 +217,7 @@ class ReissueIntegrationTest {
     @Test
     void foreignOwner_is404WithCode() throws Exception {
         String first = issue(request(nextNumber(), 4, null)).registrationNumber();
-        rnActionService.withdrawOwnByOib(first, OIB, null);
+        rnActionService.withdrawOwnByOib(first, OIB, null, List.of());
 
         RegistrationRequest foreign = RegistrationRequest.withOib(request(nextNumber(), 4, first), "99999999990");
         mvc.perform(post("/api/generateRegistrationNumber")
@@ -256,7 +256,7 @@ class ReissueIntegrationTest {
 
         String first = registrationService.generateRegistrationNumberExternal(external(streetNumber, null), lessorId)
                 .registrationNumber();
-        rnActionService.withdrawOwn(first, lessorId, null);
+        rnActionService.withdrawOwn(first, lessorId, null, List.of());
 
         LocalDate deadline = reissueService.withReissueDeadlines(rnRepository.findByLessorId(lessorId)).stream()
                 .filter(r -> r.rn().equals(first)).findFirst().orElseThrow().ponovniZahtjevDo();
@@ -319,7 +319,7 @@ class ReissueIntegrationTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, null,
-                "iznajmljivac@example.com", "0991234567", null, null, null, null, previousRn);
+                "iznajmljivac@example.com", "0991234567", null, null, null, null, previousRn, null);
     }
 
     private static RegistrationExternalRequest external(String streetNumber, String previousRn) {
@@ -327,7 +327,7 @@ class ReissueIntegrationTest {
                 "Villa", typeId, 2L, "Split", null, "Obala", streetNumber, null, "21000", 4,
                 OfferType.OTHER, Offering.WHOLE, false, "0", false, true,
                 null, null, null, null, null, null, null,
-                null, "+441234567", null, null, null, previousRn);
+                null, "+441234567", null, null, null, previousRn, null);
     }
 
     private static CountyEntity county(Long id, String name) {

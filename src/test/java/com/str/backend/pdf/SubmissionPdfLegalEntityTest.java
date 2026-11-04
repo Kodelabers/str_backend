@@ -23,7 +23,7 @@ class SubmissionPdfLegalEntityTest {
             new DocumentProperties.Tijelo("Ministarstvo turizma i sporta", "87892589782",
                     "Prisavlje 14", "Zagreb", "Uprava za turizam", null),
             new DocumentProperties.Potpisnik(null, null),
-            null, Map.of(), false, false);
+            null, Map.of(), false, false, Map.of());
 
     @Test
     void legalEntity_printsCompanyOib_andRepresentativeSeparately() throws Exception {

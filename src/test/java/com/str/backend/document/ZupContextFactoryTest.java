@@ -123,13 +123,28 @@ class ZupContextFactoryTest {
     @Test
     void actDate_isIssueDateForDodjela_todayForOthers() {
         LocalDate izdano = LocalDate.of(2026, 3, 1);
-        String danas = LocalDate.now().format(
+        String danas = LocalDate.now(java.time.ZoneId.of("Europe/Zagreb")).format(
                 java.time.format.DateTimeFormatter.ofPattern("dd. MMMM yyyy.", HR_LOCALE));
 
         assertThat(factory(false).forRn(StrDocumentType.DODJELA, detail(izdano), null,
                 FilingReference.NONE).get("akt.datum")).isEqualTo("01. ožujka 2026.");
         assertThat(factory(false).forRn(StrDocumentType.SUSPENZIJA, detail(izdano), null,
                 FilingReference.NONE).get("akt.datum")).isEqualTo(danas);
+    }
+
+    /**
+     * M-BE2: dan učinka je dan prijelaza, ne dan rendera — konačni dokument se renderira i danima
+     * kasnije. Bez zapisa prijelaza je datum akta; dan je po hrvatskom vremenu (23:30 UTC = sutra).
+     */
+    @Test
+    void transitionDate_defaultsToActDate_andUsesZagrebDayOfTransition() {
+        Map<String, String> ctx = factory(false).forRn(StrDocumentType.SUSPENZIJA, detail(LocalDate.of(2026, 3, 1)),
+                null, FilingReference.NONE);
+        assertThat(ctx.get("prijelaz.datum")).isEqualTo(ctx.get("akt.datum"));
+
+        ZupContextFactory.putDatumPrijelaza(ctx, java.time.Instant.parse("2026-09-09T23:30:00Z"));
+
+        assertThat(ctx.get("prijelaz.datum")).isEqualTo("10. rujna 2026.");
     }
 
     /** Redak adrese nosi natpis, pa nepoznata adresa ne ostavlja goli „Adresa: ,". */
@@ -160,7 +175,7 @@ class ZupContextFactoryTest {
         DocumentProperties.Epecat bezUrla =
                 new DocumentProperties.Epecat(true, "CN=Fina RDC 2020", "CN=PEČAT", null, null);
         Map<String, String> ctx = new ZupContextFactory(
-                new DocumentProperties(TIJELO, null, bezUrla, Map.of(), false, false), labels)
+                new DocumentProperties(TIJELO, null, bezUrla, Map.of(), false, false, Map.of()), labels)
                 .forRn(StrDocumentType.DODJELA, detail(LocalDate.of(2026, 9, 9)), null,
                         FilingReference.NONE);
 
@@ -175,7 +190,7 @@ class ZupContextFactoryTest {
                         "https://provjera.example.hr/")
                 : new DocumentProperties.Epecat(false, null, null, null, null);
         return new ZupContextFactory(
-                new DocumentProperties(TIJELO, null, epecat, Map.of(), false, false), labels);
+                new DocumentProperties(TIJELO, null, epecat, Map.of(), false, false, Map.of()), labels);
     }
 
     private static final java.util.Locale HR_LOCALE = java.util.Locale.forLanguageTag("hr");

@@ -1,5 +1,10 @@
 package com.str.backend.objection;
 
+import java.util.List;
+import com.str.backend.attachment.Ucitao;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.PrilogException;
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ConflictException;
@@ -52,15 +57,16 @@ class SuspensionObjectionServiceTest {
     private final RnRepository rnRepository = mock(RnRepository.class);
     private final RegistrationNumberLogRepository logRepository = mock(RegistrationNumberLogRepository.class);
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
+    private final PrilogService prilogService = mock(PrilogService.class);
     private final SuspensionObjectionService service =
-            new SuspensionObjectionService(repository, rnRepository, logRepository, lessorRepository);
+            new SuspensionObjectionService(repository, rnRepository, logRepository, lessorRepository, prilogService);
 
     private final RnEntity rn = mock(RnEntity.class);
 
     @BeforeEach
     void ownedRnProposedForSuspension() {
         when(rnRepository.isOwnedByOib(RN, OIB)).thenReturn(true);
-        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
         when(rn.getStatus()).thenReturn(RnStatus.SUSPENSION_PROPOSED);
         RegistrationNumberLogEntity proposal = mock(RegistrationNumberLogEntity.class);
         when(proposal.getLogId()).thenReturn(LOG_ID);
@@ -176,6 +182,65 @@ class SuspensionObjectionServiceTest {
         assertThatThrownBy(() -> service.submit(OWNER, SUBMITTED_BY, request(file("prigovor.pdf", new byte[0]))))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.objection.file.empty");
+    }
+
+    // --- T17: više datoteka uz prigovor
+
+    /** Prigovor s 3 datoteke: prva ostaje dokument prigovora, ostale dvije idu u priloge prigovora. */
+    @Test
+    void threeFiles_firstStaysInObjection_restBoundAsObjectionAttachments() {
+        SuspensionObjectionRequest req = request(file("prigovor.pdf", PDF));
+        MockMultipartFile foto = new MockMultipartFile("datoteke", "foto.png", null, PNG);
+        MockMultipartFile dopis = new MockMultipartFile("datoteke", "dopis.docx", null, ZIP);
+        req.setDatoteke(List.of(foto, dopis));
+
+        SuspensionObjectionEntity saved = capture(OWNER, req);
+
+        assertThat(saved.getFileName()).isEqualTo("prigovor.pdf");
+        verify(prilogService).spremiVezane(Ucitao.nias(OIB), List.of(foto, dopis),
+                PrilogVlasnik.prigovor(saved.getObjectionId()), 1);
+    }
+
+    @Test
+    void nonEuOwner_extraFilesUploadedAsLessor() {
+        when(rnRepository.isOwnedByLessor(RN, LESSOR_ID)).thenReturn(true);
+        SuspensionObjectionRequest req = request(file("prigovor.pdf", PDF));
+        MockMultipartFile foto = new MockMultipartFile("datoteke", "foto.png", null, PNG);
+        req.setDatoteke(List.of(foto));
+
+        SuspensionObjectionEntity saved = capture(RnOwner.byLessor(LESSOR_ID), req);
+
+        verify(prilogService).spremiVezane(Ucitao.lessor(LESSOR_ID), List.of(foto),
+                PrilogVlasnik.prigovor(saved.getObjectionId()), 1);
+    }
+
+    /** Dokument + 5 dodatnih = 6: odbija se prije pohrane prigovora. */
+    @Test
+    void sixFiles_is400_andNothingStored() {
+        SuspensionObjectionRequest req = request(file("prigovor.pdf", PDF));
+        req.setDatoteke(java.util.stream.IntStream.range(0, 5)
+                .mapToObj(i -> (org.springframework.web.multipart.MultipartFile)
+                        new MockMultipartFile("datoteke", "d" + i + ".pdf", null, PDF))
+                .toList());
+        // Pravilo broja je jedno, u PrilogService (dijeli ga s prilozima uz pismena).
+        org.mockito.Mockito.doThrow(new PrilogException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                "error.attachment.count", PrilogException.COUNT)).when(prilogService).requireBroj(6);
+
+        assertThatThrownBy(() -> service.submit(OWNER, SUBMITTED_BY, req))
+                .isInstanceOfSatisfying(PrilogException.class, e -> assertThat(e.getCode()).isEqualTo("ATTACHMENT_COUNT"));
+        verify(repository, never()).saveAndFlush(any());
+        verify(prilogService, never()).spremiVezane(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    /** Prazan dio bez naziva (polje bez odabrane datoteke) se preskače; bez dodatnih nema poziva. */
+    @Test
+    void emptyUnnamedExtraPart_isIgnored() {
+        SuspensionObjectionRequest req = request(file("prigovor.pdf", PDF));
+        req.setDatoteke(List.of(new MockMultipartFile("datoteke", "", null, new byte[0])));
+
+        capture(OWNER, req);
+
+        verify(prilogService, never()).spremiVezane(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     private void assertFileType(MockMultipartFile file) {

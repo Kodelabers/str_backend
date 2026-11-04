@@ -404,6 +404,10 @@ S tim postavkama otvaranje oba predmeta, pismena i otprema u KP prošli su na te
    `SLUZBENIK` MINT mora dati službeniku pravo otvaranja predmeta 334-06/11 (vidi tablicu gore).
 6. Jesu li MINT-ove vrste pismena na predprodukciji u `DohvatiVrstePismenaActive` za `strservis4`.
    Dok nisu, pismena idu pod općenitim „Zahtjev"/„Obavijest" (`egop_vrsta_privremena=true`).
+7. **T15:** postoji li ulazna vrsta pismena „Zahtjev za opoziv registracijskog broja" i smije li
+   „Obavijest o opozivu registracijskog broja" biti izlazna. Dok vrste zahtjeva nema, uz posudbene
+   vrste postaviti `EGOP_NAZIV_PISMENA_ZAHTJEV_OPOZIVA=Zahtjev` (inače bi ulazni zahtjev otišao
+   pod fallbackom „Obavijest"); bez ičega urudžba zahtjeva pada, a obavijest o opozivu čeka iza njega.
 
 ### B5a.2 Paljenje
 
@@ -429,7 +433,23 @@ STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest
 EGOP_SIFRE_PRIVREMENE=true
 EGOP_MOCK_FILING_PREFIX=
 EGOP_KP_ENABLED=true
+#EGOP_SIFRA_PRILOGA=
+#EGOP_NAZIV_PRILOGA=Prilog
 ```
+
+**Vrsta priloga (T17).** Prilozi uz pismena (zahtjev za RB, zahtjev za opoziv, prijedlog suspenzije i
+povlačenje) idu u eGOP pod vrstom priloga iz MDM šifrarnika (`DohvatiVrstePrilogaActive`):
+`EGOP_SIFRA_PRILOGA` (šifra), inače `EGOP_NAZIV_PRILOGA` (naziv, default „Prilog"). Naziv ne
+ostavljati praznim — prazna vrijednost pregazi default. Uz `EGOP_ENABLED=true` vrsta se provjerava pri
+startu (tablica niže). **Akt ne čeka na priloge:** glavni dokument se prilaže, pečatira, pismeno je
+`SYNCED` i otprema se u KP s prilozima koji su do tada priloženi; neuspjeli prilog ima vlastiti retry
+(`pismeno_prilog.egop_pokusaji`, ista politika kao `str.egop.retry.*`) i nakon iscrpljenja ERROR
+`egop_prilog_retry_exhausted` s RB-om, pismenom i id-em priloga — tada priložiti ručno ili vratiti u
+red (`UPDATE str_rn.pismeno_prilog SET egop_pokusaji = 0, egop_sljedeci_pokusaj_u = NULL WHERE id = …`).
+
+**Otvoreno pitanje za InfoDom/MINT:** najveći SOAP zahtjev koji eGOP (i proxy ispred njega) prima.
+Prilog od 10 MB putuje kao ~13,4 MB base64 u jednom `KreirajPrilogIPridruziDokument`; ako je limit
+manji, takav prilog pada svaki put i iscrpi se (`egop_prilog_failed … 413`/`Request Entity Too Large`).
 
 `EGOP_AKTI_KORISNIK` postoji od PR-a #139 — jar mora biti s `develop`-a od 22.10.2026. ili novijeg.
 
@@ -452,7 +472,7 @@ ssh cdu-preprod "docker exec str-backend-cdupreprod timeout 5 bash -c '</dev/tcp
 Startup log:
 
 ```powershell
-ssh cdu-preprod "docker logs str-backend-cdupreprod 2>&1 | grep -E 'Loaded eGOP|egop_codebook|egop_vrste_config|egop_kp_disabled' | tail -20"
+ssh cdu-preprod "docker logs str-backend-cdupreprod 2>&1 | grep -E 'Loaded eGOP|egop_codebook|egop_vrste_config|egop_kp_disabled|startup_egop_prilog' | tail -20"
 ```
 
 | Redak | Značenje |
@@ -463,6 +483,8 @@ ssh cdu-preprod "docker logs str-backend-cdupreprod 2>&1 | grep -E 'Loaded eGOP|
 | `egop_codebook_load_failed … Navedeni korisnik ne postoji` | `EGOP_APP_USERNAME` / `EGOP_APP_DOMAIN` |
 | `egop_kp_disabled reason=egop_disabled` | `EGOP_ENABLED` nije `true` |
 | `egop_akti_korisnik=APLIKACIJSKI` (WARN) | prekidač je učitan — akti idu pod `strservis4` |
+| `startup_egop_prilog vrsta_id=…` | vrsta priloga razriješena — prilozi idu uz pismena |
+| `startup_egop_prilog_unresolved` (ERROR) | `EGOP_SIFRA_PRILOGA`/`EGOP_NAZIV_PRILOGA` ne postoji u šifrarniku vrsta priloga — akti idu **bez** priloga |
 
 Uz `EGOP_CODEBOOKS_LOG_CONTENTS=true` u logu su i svi unosi (`egop_codebook_entry`): potraži
 „Dodjela registracijskog STR broja", „Suspenzija, povlačenje i reaktiviranje…", ustrojstvenu
@@ -496,7 +518,9 @@ LEFT JOIN str_rn.egop_kp_otprema o ON o.pismeno_id = p.id
 ORDER BY p.created_at;
 ```
 
-Očekivano: zahtjev i opoziv `ULAZNO` bez otpreme; ostala pismena `IZLAZNO`, otprema `SENT`;
+Očekivano: zahtjev i zahtjev za opoziv `ULAZNO` bez otpreme, zahtjev za opoziv odmah ispred
+obavijesti o opozivu i s istom `egop_akti_klasa`; ostala pismena (i obavijest o opozivu, od T15)
+`IZLAZNO`, otprema `SENT`;
 klasa registracije počinje s `334-06/10`, klasa akata s `334-06/11`.
 
 ### B5a.5 Povratak (bez rebuilda)

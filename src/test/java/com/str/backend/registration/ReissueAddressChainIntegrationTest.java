@@ -131,7 +131,7 @@ class ReissueAddressChainIntegrationTest {
         CategorizationDecisionEntity decision = decision(first);
         decision.verify("sluzbenik");
         decisionRepository.save(decision);
-        rnActionService.withdrawOwnByOib(first, OIB, null);
+        rnActionService.withdrawOwnByOib(first, OIB, null, List.of());
 
         JsonNode objekt = json(prefill(first)
                 .andExpect(status().isOk())
@@ -199,7 +199,7 @@ class ReissueAddressChainIntegrationTest {
     void reissueWithBrokenChain_is400_andWithdrawnRnStaysUnused() throws Exception {
         String first = issue(newObjectRequest(MUNICIPALITY, SETTLEMENT, HOUSE_9, "9", null, null));
         CategorizationDecisionEntity source = decision(first);
-        rnActionService.withdrawOwnByOib(first, OIB, null);
+        rnActionService.withdrawOwnByOib(first, OIB, null, List.of());
 
         JsonNode objekt = json(prefill(first)
                 .andExpect(status().isOk())
@@ -298,6 +298,6 @@ class ReissueAddressChainIntegrationTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, null,
-                "iznajmljivac@example.com", "0991234567", null, null, kcBroj, null, previousRn);
+                "iznajmljivac@example.com", "0991234567", null, null, kcBroj, null, previousRn, null);
     }
 }

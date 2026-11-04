@@ -95,29 +95,56 @@ class RnLifecycleFilingListenerTest {
     }
 
     /**
-     * Opoziv iznajmljivača ima vlastiti status (REVOKED) i vlastiti akt, koji je u eGOP-u
-     * ulazno pismeno (MINT, 22.10.2026.) — KP otpremu za njega odbija sam
-     * {@link EgopKpOtpremaService}, jer zapisuje samo izlazna.
+     * Opoziv iznajmljivača (REVOKED) daje dva pismena, redom urudžbe: ulazni zahtjev stranke pa
+     * izlaznu obavijest tijela. Oba nose isti act_ref (log_id prijelaza), a KP otpremu zapisuje
+     * {@link EgopKpOtpremaService} samo za izlazno.
      */
     @Test
-    void revocation_byLessor_filesRevocationAct() {
-        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
-                RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), null));
+    void revocation_byLessor_recordsRequestThenNotice() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), "prodajem stan");
 
-        EgopPismenoEntity akt = capturedAkt();
-        assertThat(akt.getVrstaPismenaNaziv()).isEqualTo("Obavijest o opozivu registracijskog broja");
-        assertThat(akt.getSmjer()).isEqualTo(EgopPismenoEntity.Smjer.ULAZNO);
-        verify(dispatcher).dispatch(akt.getId());
+        listener().onLifecycleChange(event);
+
+        java.util.List<EgopPismenoEntity> akti = capturedAkti();
+        assertThat(akti).extracting(EgopPismenoEntity::getVrstaPismenaNaziv).containsExactly(
+                "Zahtjev za opoziv registracijskog broja", "Obavijest o opozivu registracijskog broja");
+        assertThat(akti).extracting(EgopPismenoEntity::getSmjer).containsExactly(
+                EgopPismenoEntity.Smjer.ULAZNO, EgopPismenoEntity.Smjer.IZLAZNO);
+        assertThat(akti).extracting(EgopPismenoEntity::getActRef)
+                .containsOnly(event.logId().toString());
+        verify(documentService).render(StrDocumentType.ZAHTJEV_OPOZIVA, RN, "prodajem stan");
+        verify(documentService).render(StrDocumentType.OPOZIV, RN, "prodajem stan");
+
+        org.mockito.InOrder redoslijed = org.mockito.Mockito.inOrder(kpOtprema, dispatcher);
+        redoslijed.verify(kpOtprema).registerForAkt(akti.get(0));
+        redoslijed.verify(dispatcher).dispatch(akti.get(0).getId());
+        redoslijed.verify(kpOtprema).registerForAkt(akti.get(1));
+        redoslijed.verify(dispatcher).dispatch(akti.get(1).getId());
     }
 
     /** NIAS je produkcijski put prijave, pa je ovo u praksi najčešći opoziv. */
     @Test
-    void revocation_byNiasLessor_filesRevocationAct() {
+    void revocation_byNiasLessor_recordsBothPismena() {
         listener().onLifecycleChange(event(RnStatus.SUSPENDED, RnStatus.REVOKED,
                 RnTrigger.REVOCATION, "NIAS:12345678903", null));
 
-        assertThat(capturedAkt().getVrstaPismenaNaziv())
-                .isEqualTo("Obavijest o opozivu registracijskog broja");
+        assertThat(capturedAkti()).extracting(EgopPismenoEntity::getVrstaPismenaNaziv).containsExactly(
+                "Zahtjev za opoziv registracijskog broja", "Obavijest o opozivu registracijskog broja");
+    }
+
+    /** Pad rendera zahtjeva ne smije zaustaviti obavijest — stranka mora dobiti akt tijela. */
+    @Test
+    void revocation_requestRenderFails_noticeStillRecorded() {
+        when(documentService.render(org.mockito.ArgumentMatchers.eq(StrDocumentType.ZAHTJEV_OPOZIVA), any(), any()))
+                .thenThrow(new IllegalStateException("predložak"));
+
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
+                RnTrigger.REVOCATION, "NIAS:12345678903", null));
+
+        EgopPismenoEntity akt = capturedAkt();
+        assertThat(akt.getVrstaPismenaNaziv()).isEqualTo("Obavijest o opozivu registracijskog broja");
+        verify(dispatcher).dispatch(akt.getId());
     }
 
     /**
@@ -252,6 +279,12 @@ class RnLifecycleFilingListenerTest {
         return captor.getValue();
     }
 
+    private java.util.List<EgopPismenoEntity> capturedAkti() {
+        ArgumentCaptor<EgopPismenoEntity> captor = ArgumentCaptor.forClass(EgopPismenoEntity.class);
+        verify(store, org.mockito.Mockito.atLeastOnce()).saveAkt(captor.capture());
+        return captor.getAllValues();
+    }
+
     private static RnLifecycleEvent event(RnStatus from, RnStatus to, RnTrigger trigger,
                                           String actor, String reason) {
         return new RnLifecycleEvent(UUID.randomUUID(), RN, from, to, trigger, actor, reason);
@@ -270,6 +303,8 @@ class RnLifecycleFilingListenerTest {
                 .contains(StrDocumentType.REAKTIVACIJA);
         assertThat(StrDocumentType.forTransition(RnStatus.REVOKED, RnTrigger.REVOCATION))
                 .contains(StrDocumentType.OPOZIV);
+        assertThat(StrDocumentType.pismenaForTransition(RnStatus.REVOKED, RnTrigger.REVOCATION))
+                .containsExactly(StrDocumentType.ZAHTJEV_OPOZIVA, StrDocumentType.OPOZIV);
         assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL))
                 .contains(StrDocumentType.POVLACENJE);
     }

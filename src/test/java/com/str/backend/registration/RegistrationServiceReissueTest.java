@@ -1,5 +1,6 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
@@ -95,7 +96,7 @@ class RegistrationServiceReissueTest {
                 mock(AccommodationTypeRepository.class), mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class), reissueService);
+                mock(SubmissionDraftService.class), reissueService, mock(PrilogService.class));
 
         lenient().when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(county(7L, "Splitsko-dalmatinska županija")));
@@ -287,7 +288,7 @@ class RegistrationServiceReissueTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, facilityId,
-                "ana@example.com", "0991234567", null, null, null, null, previousRn);
+                "ana@example.com", "0991234567", null, null, null, null, previousRn, null);
     }
 
     private static RegistrationExternalRequest externalRequest(String previousRn, String facilityId) {
@@ -295,7 +296,7 @@ class RegistrationServiceReissueTest {
                 "Apartman Riva", null, 7L, "Split", "Split", "Riva", "1", null, "21000", 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, "2", false, true,
                 null, null, null, null, null, null, facilityId,
-                null, "0991234567", null, null, null, previousRn);
+                null, "0991234567", null, null, null, previousRn, null);
     }
 
     private static CountyEntity county(Long id, String name) {

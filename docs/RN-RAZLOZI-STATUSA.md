@@ -3,9 +3,12 @@
 Popis za pregled i dopunu naručitelja (primjedba s UAT-a: *„Jesu li razlozi za suspenziju i
 povlačenje u nekoj tablici? Možemo li ih izbaciti u neki format da ih pregledaju i dopune?"*).
 
-**Stanje:** razlozi **nisu** u tablici. Žive kao Java enum `RnTrigger` (10 vrijednosti), a hrvatski
-natpisi u `src/main/resources/documents/hr/labels.properties`. U bazi se u
-`str_rn.registration_number_log.trigger_name` upisuju kao slobodan string, bez ograničenja.
+**Stanje:** razlozi **nisu** u tablici. Razlozi suspenzije žive kao Java enum `RnTrigger`, razlozi
+povlačenja kao enum `WithdrawalReason`, a hrvatski natpisi u
+`src/main/resources/documents/hr/labels.properties`. U bazi se okidač upisuje u
+`str_rn.registration_number_log.trigger_name` kao slobodan string, bez ograničenja.
+
+Popisi u §1a i §1b konačni su popisi naručitelja (MINTS, studeni 2026.).
 
 Od sada ih izlaže `GET /api/lookups/rn-triggers?kontekst=SUSPENZIJA|POVLACENJE`, pa ih frontend
 više ne hardkodira.
@@ -21,31 +24,45 @@ Ovo su razlozi koji se nude u obrascima — jedini na koje se dopuna popisa stva
 Vodi iz `ACTIVE` u `SUSPENSION_PROPOSED` (prijedlog suspenzije, čl. 30. st. 2 ZUP-a). Generira akt
 **„Obavijest o prijedlogu suspenzije registracijskog broja"**.
 
-| Šifra | Hrvatski naziv | Traži bilješku | Dopuna naručitelja |
-| :--- | :--- | :---: | :--- |
-| `CONSENT_EXPIRY` | istek suglasnosti suvlasnika | ne | |
-| `INSPECTION` | nalaz inspekcijskog nadzora | ne | |
-| `INCOMPLETE_DOCUMENTATION` | nepotpuna dokumentacija | ne | |
-| `OTHER` | drugi razlog | **da** | |
+Razlozi se nude u padajućem izborniku ovim redom (`RnTrigger.SUSPENSION_REASONS`):
+
+| Šifra | Hrvatski naziv | Traži bilješku |
+| :--- | :--- | :---: |
+| `NO_DECISION` | za objekt nije izdano rješenje | ne |
+| `DECISION_REVOKED` | rješenje je ukinuto | ne |
+| `INCOMPLETE_DOCUMENTATION` | nepotpuni i/ili netočni podaci | ne |
+| `INSPECTION` | nalaz inspekcijskog nadzora | ne |
+| `OTHER` | drugi razlozi | **da** |
 
 `OTHER` traži bilješku jer nema kodiranog razloga koji bi se ispisao — bilješka nosi obrazloženje
-u izreku akta. Ostala tri ispisuju svoj naziv iz tablice.
+u izreku akta. Ostali ispisuju svoj naziv iz tablice (malim slovom, jer se umeće u rečenicu akta).
 
-### 1b. Povlačenje — `POST /api/rn/{rb}/withdraw?reason=<slobodan tekst>`
+`CONSENT_EXPIRY` („istek suglasnosti suvlasnika") je **povijesni** razlog: ostaje u enumu i u
+`labels.properties` zbog postojećih zapisa i već izdanih akata, ali se više ne nudi, a
+`RnService.suspend` i `RnStatus.canTransitionTo` ga za novi prijedlog odbijaju
+(`error.rn.suspend.trigger.invalid`).
+
+### 1b. Povlačenje — `POST /api/rn/{rb}/withdraw?reason=<šifra>&note=<opis>`
 
 Vodi u `WITHDRAWN` („Povučen"), **trajno** — reaktivacije nema (čl. 6. STR Uredbe). Mjera
 nadležnog tijela; generira akt „Obavijest o povlačenju registracijskog broja" (s uputom o pravnom
 lijeku).
 
-| Šifra | Hrvatski naziv | Napomena | Dopuna naručitelja |
-| :--- | :--- | :--- | :--- |
-| `WITHDRAWAL` | povlačenje registracijskog broja | jedini razlog; obrazloženje ide kao slobodan tekst | |
+Razlog je **obvezan** (`error.rn.withdraw.reason.required`) i bira se s popisa
+(`WithdrawalReason`, `GET /api/lookups/rn-triggers?kontekst=POVLACENJE`):
+
+| Šifra | Hrvatski naziv | Traži bilješku |
+| :--- | :--- | :---: |
+| `DATA_NOT_CORRECTED` | namjerno ili krajnjom nepažnjom nisu ispravljeni podaci | ne |
+| `INVALID_INFORMATION` | dostavljene su nevjerodostojne ili nevaljane informacije | ne |
+| `OTHER` | drugi razlozi | **da** (`error.rn.withdraw.note.required`) |
+
+Okidač prijelaza je i dalje uvijek `WITHDRAWAL` (o njemu ovise akt, eGOP i obavijesti). Razlog se
+upisuje u `registration_number_log.reason` kao tekst koji akt ispisuje: natpis razloga, a uz
+`OTHER` opis službenika. Šifra razloga se zato u bazi ne čuva zasebno; izvještavanje po razlogu
+povlačenja moguće je po tekstu natpisa.
 
 Opoziv iznajmljivača **nije** povlačenje i nema ga na ovom popisu — v. §2a.
-
-> **Pitanje za naručitelja:** treba li povlačenje kodirane razloge kao i suspenzija (npr. „na
-> zahtjev stranke", „pravomoćna odluka inspekcije", „prestanak obavljanja djelatnosti")? Sada je
-> sve slobodan tekst, pa se po razlogu ne može izvještavati.
 
 ---
 
@@ -75,7 +92,7 @@ postojeće opozive po tom kriteriju preveo u `REVOKED` / `REVOCATION`.
 
 | Šifra | Hrvatski naziv | Prijelaz | Tko okida | Akt |
 | :--- | :--- | :--- | :--- | :--- |
-| `DEADLINE_EXCEEDED` | istek roka za očitovanje | `SUSPENSION_PROPOSED → SUSPENDED` | sustav (`SuspensionDeadlineJob`, dnevno u 01:00) | Obavijest o suspenziji |
+| `DEADLINE_EXCEEDED` | istek roka za očitovanje | `SUSPENSION_PROPOSED → SUSPENDED` | sustav (`SuspensionDeadlineJob`, dnevno u 01:00) ili službenik neuvažavanjem prigovora nakon isteka roka | Obavijest o suspenziji |
 | `REVOKE_PROPOSAL` | obustava postupka suspenzije | `SUSPENSION_PROPOSED → ACTIVE` | službenik (stranka je ispravila nedostatak) | Obavijest o obustavi postupka |
 | `REACTIVATE` | reaktivacija registracijskog broja | `SUSPENDED → ACTIVE` | službenik | Obavijest o reaktivaciji |
 
@@ -85,18 +102,18 @@ postojeće opozive po tom kriteriju preveo u `REVOKED` / `REVOCATION`.
 
 Suspenzija je dvofazna: prijedlog otvara rok, a suspendira tek njegov istek.
 
-- Rok se šalje uz zahtjev (`?suspensionDeadline=2026-09-01`). **Rok u prošlosti se odbija**
+- Rok se šalje uz zahtjev (`?suspensionDeadline=2026-09-01`) i **obvezan je**
+  (`error.rn.suspend.deadline.required`); sustav ga više ne postavlja sam, pa nema ni postavke
+  `str.rn.suspension.response-days`. **Rok u prošlosti se odbija**
   (`error.rn.suspend.deadline.past`) — inače bi ga `SuspensionDeadlineJob` pokupio već iduće noći i
   RB bi bio suspendiran a da se stranka nije imala kad očitovati. Rok koji ističe danas je valjan.
-- **Ako se ne pošalje, sustav ga sam postavlja na `danas + 15 dana`** — zadana vrijednost prati
-  tekst akta („u roku od 15 dana od dana dostave ove Obavijesti") i mijenja se postavkom
-  `str.rn.suspension.response-days`.
+- Istekom roka RB se **automatski suspendira**, osim ako uz njega čeka prigovor (`SUBMITTED`)
+  predan do kraja dana roka (po hrvatskom vremenu). Tada odlučuje službenik: uvažavanje obustavlja
+  postupak, a neuvažavanje RB odmah suspendira u ime službenika (isti prijelaz i akt kao job).
+  Prigovor predan nakon roka suspenziju ne zaustavlja.
 - Radna lista „rok ističe uskoro":
   `GET /api/rn?view=SUSPENSION_PROPOSED&deadlineWithinDays=7`. Filtar nema donju granicu, pa
   obuhvaća i već istekle, a još neobrađene rokove.
-
-> **Pitanje za naručitelja:** je li 15 dana ispravan zadani rok i treba li se razlikovati po
-> razlogu suspenzije (npr. kraći za inspekcijski nalaz)? Sada je jedan za sve.
 
 ---
 
@@ -121,8 +138,7 @@ promijenjen.
 
 ## 5. Kako popuniti
 
-Stupac **„Dopuna naručitelja"** u tablicama §1a i §1b je za vas: dopišite razloge koji nedostaju,
-prekrižite one koji se ne koriste, ispravite nazive. Za svaki **novi** razlog treba i:
+Popisi u §1a i §1b su konačni. Za svaki **novi** razlog treba i:
 
 1. hrvatski naziv kakav treba pisati u rješenju,
 2. traži li obrazloženje (kao `OTHER`),

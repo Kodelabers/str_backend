@@ -1,14 +1,12 @@
 package com.str.backend.rn;
 
-import com.str.backend.auth.LessorPrincipal;
 import com.str.backend.auth.internal.CountyScopeService;
 import com.str.backend.auth.internal.InternalAccessService;
-import com.str.backend.auth.nias.EffectiveOibResolver;
-import com.str.backend.auth.nias.NiasOibExtractor;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.domain.WithdrawalReason;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.rn.dto.RnDetailResponse;
 import com.str.backend.rn.dto.RnDocumentDto;
@@ -16,9 +14,6 @@ import com.str.backend.rn.dto.RnResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
 import com.str.backend.statistics.StatisticsExportService;
 import jakarta.validation.constraints.Pattern;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,7 +23,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,7 +36,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -51,25 +44,21 @@ import java.util.UUID;
 @RequestMapping("/api/rn")
 public class RnController {
 
-    private static final Logger log = LoggerFactory.getLogger(RnController.class);
-
     private final RnService service;
     private final RnMapper mapper;
     private final StrDocumentService documentService;
     private final RnDocumentsService documentsService;
-    private final RnRepository rnRepository;
     private final StatisticsExportService exportService;
-    private final EffectiveOibResolver effectiveOibResolver;
     private final InternalAccessService internalAccess;
     private final RnRegistrySearch registrySearch;
     private final CountyScopeService countyScope;
     private final RnScopeGuard scopeGuard;
+    private final RnAccessGuard accessGuard;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
-                        RnDocumentsService documentsService, RnRepository rnRepository,
-                        StatisticsExportService exportService, EffectiveOibResolver effectiveOibResolver,
+                        RnDocumentsService documentsService, StatisticsExportService exportService,
                         InternalAccessService internalAccess, RnRegistrySearch registrySearch,
-                        CountyScopeService countyScope, RnScopeGuard scopeGuard) {
+                        CountyScopeService countyScope, RnScopeGuard scopeGuard, RnAccessGuard accessGuard) {
         this.service = service;
         this.countyScope = countyScope;
         this.scopeGuard = scopeGuard;
@@ -77,10 +66,9 @@ public class RnController {
         this.mapper = mapper;
         this.documentService = documentService;
         this.documentsService = documentsService;
-        this.rnRepository = rnRepository;
         this.exportService = exportService;
-        this.effectiveOibResolver = effectiveOibResolver;
         this.internalAccess = internalAccess;
+        this.accessGuard = accessGuard;
     }
 
     /** STR-1.5: display of inactive RNs (SUSPENDED + REVOKED + WITHDRAWN), u opsegu službenika. */
@@ -151,15 +139,29 @@ public class RnController {
      * opsega službenika (druga županija) je 404, kao nepostojeći.
      */
 
+    /*
+     * Rok za očitovanje (suspend) i razlog povlačenja (withdraw) su obvezni, ali ih provjerava
+     * servis, ne `required = true`: nedostajući parametar bi završio u generičkom handleru kao
+     * 500, a servis vraća 400 s prevedenom porukom (error.rn.suspend.deadline.required,
+     * error.rn.withdraw.reason.required).
+     *
+     * Prilozi službenika (T17) idu kao ponovljeni query parametar `prilogIds=1&prilogIds=2` — id-evi
+     * iz `POST /api/rn/attachments`, uz isti oblik zahtjeva kao ostali parametri (tijela nema), pa
+     * poziv bez priloga ostaje kakav je bio. Najviše 5 priloga i zajedno do
+     * `app.attachments.official-max-total` (15 MB, dostava e-poštom non-EU iznajmljivaču).
+     */
+
     @PostMapping("/{rn}/suspend")
     public RnResponse suspend(
             @PathVariable String rn,
             @RequestParam RnTrigger reason,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate suspensionDeadline,
             @RequestParam(required = false) String note,
+            @RequestParam(required = false) List<Long> prilogIds,
             Authentication authentication) {
         requireInScope(rn, authentication);
-        return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline, note, actor(authentication)));
+        return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline, note, actor(authentication),
+                prilogIds != null ? prilogIds : List.of()));
     }
 
     @PostMapping("/{rn}/revoke-proposal")
@@ -176,10 +178,13 @@ public class RnController {
 
     @PostMapping("/{rn}/withdraw")
     public RnResponse withdraw(@PathVariable String rn,
-                              @RequestParam(required = false) String reason,
+                              @RequestParam(required = false) WithdrawalReason reason,
+                              @RequestParam(required = false) String note,
+                              @RequestParam(required = false) List<Long> prilogIds,
                               Authentication authentication) {
         requireInScope(rn, authentication);
-        return mapper.toResponse(service.withdraw(rn, reason, actor(authentication)));
+        return mapper.toResponse(service.withdraw(rn, reason, note, actor(authentication),
+                prilogIds != null ? prilogIds : List.of()));
     }
 
     /**
@@ -231,8 +236,8 @@ public class RnController {
         StrDocumentType type = StrDocumentType.fromSlug(tip)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Nepoznata vrsta akta: " + tip));
-        boolean sluzbenik = requireAccess(rn, authentication) == Pristup.SLUZBENIK
-                || isOfficial(authentication);
+        boolean sluzbenik = requireAccess(rn, authentication) == RnAccessGuard.Pristup.SLUZBENIK
+                || accessGuard.isOfficial(authentication);
         if (!sluzbenik && !VLASNIKOVI_AKTI.contains(type)) {
             throw new ResourceNotFoundException("document not available: " + type.slug() + " " + rn);
         }
@@ -358,38 +363,9 @@ public class RnController {
     private static final Set<StrDocumentType> VLASNIKOVI_AKTI =
             EnumSet.of(StrDocumentType.ZAHTJEV, StrDocumentType.DODJELA);
 
-    private enum Pristup { VLASNIK, SLUZBENIK }
-
-    /**
-     * Pristup pojedinom RB-u: vlasnik (prijavljeni iznajmljivač; za NIAS po efektivnom OIB-u —
-     * zastupnik vidi RB-ove tvrtke u čije ime djeluje) ili službenik s rolom
-     * {@link InternalAccessService#RN_MANAGEMENT}. Sve ostalo je odbijeno: bez prijave 401,
-     * prijavljen bez prava 404, da endpoint ne otkriva postojanje tuđeg RB-a.
-     *
-     * <p>Vlasništvo se provjerava prvo, bez upita u shemu {@code str}: iznajmljivač tako ne ovisi
-     * o dostupnosti tablica eTurizma. Non-EU iznajmljivač (prijava lozinkom) nikad nije službenik.
-     */
-    private Pristup requireAccess(String rn, Authentication authentication) {
-        if (authentication != null && authentication.getPrincipal() instanceof LessorPrincipal principal) {
-            if (rnRepository.isOwnedByLessor(rn, principal.getLessorId())) {
-                return Pristup.VLASNIK;
-            }
-            throw new ResourceNotFoundException("rn not found: " + rn);
-        }
-        Optional<String> oib = NiasOibExtractor.extractOib(authentication).isPresent()
-                ? effectiveOibResolver.resolve(authentication) : Optional.empty();
-        if (oib.isPresent() && rnRepository.isOwnedByOib(rn, oib.get())) {
-            return Pristup.VLASNIK;
-        }
-        // Lokalni mock NIAS-a nema autentikacije — rolu tada daje nias.mock.fixed-oib.
-        if (isOfficial(authentication)) {
-            requireInScope(rn, authentication);
-            return Pristup.SLUZBENIK;
-        }
-        if (authentication == null || authentication instanceof AnonymousAuthenticationToken) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
-        throw new ResourceNotFoundException("rn not found: " + rn);
+    /** Vlasnik ili službenik u opsegu — pravilo je u {@link RnAccessGuard}, zajedničkom s prilozima. */
+    private RnAccessGuard.Pristup requireAccess(String rn, Authentication authentication) {
+        return accessGuard.requireAccess(rn, authentication);
     }
 
     /** RB iz županije izvan opsega službenika je 404 ({@link RnScopeGuard}). */
@@ -409,16 +385,6 @@ public class RnController {
         List<String> counties = countyScope.accommodationCounties(authentication, county);
         return new RnRegistryFilter(view, q, null, municipality, typeId,
                 foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified, counties);
-    }
-
-    /** Nedostupna shema {@code str} znači „nije službenik" — vlasnik je već prošao gore. */
-    private boolean isOfficial(Authentication authentication) {
-        try {
-            return internalAccess.hasRole(authentication, InternalAccessService.RN_MANAGEMENT);
-        } catch (DataAccessException e) {
-            log.error("internal_role_check_failed context=rn_access", e);
-            return false;
-        }
     }
 
     /** Endpoint je iza role, pa službenik iz sesije postoji; {@code null} samo u testovima bez lanca. */

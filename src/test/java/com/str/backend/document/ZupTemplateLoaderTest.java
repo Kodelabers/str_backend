@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ZupTemplateLoaderTest {
 
     private static final DocumentProperties PROPERTIES =
-            new DocumentProperties(null, null, null, Map.of(), false, false);
+            new DocumentProperties(null, null, null, Map.of(), false, false, Map.of());
 
     private final ZupTemplateLoader loader = loaded();
 
@@ -53,24 +53,30 @@ class ZupTemplateLoaderTest {
         assertThat(ZupPlaceholders.keysIn(izreka)).contains("rok.ispravak");
     }
 
-    /** Čl. 98. st. 2 traži OIB stranke u uvodu — nosi ga ${stranka.identifikator}. */
+    /**
+     * Čl. 98. st. 2 traži OIB stranke — nosi ga ${stranka.identifikator}. Akti službenika imenuju
+     * stranku u točki 1. („dodijeljen na zahtjev stranke: …", MINTS, studeni 2026.), ostali u uvodu.
+     */
     @ParameterizedTest
     @MethodSource("templateBackedTypes")
-    void everyTemplate_identifiesThePartyInTheIntroduction(StrDocumentType type) {
-        String uvod = loader.get(type).section(ZupSection.UVOD).orElseThrow();
+    void everyTemplate_identifiesTheParty(StrDocumentType type) {
+        ZupTemplate template = loader.get(type);
+        String uvod = template.section(ZupSection.UVOD).orElseThrow();
+        String izreka = template.section(ZupSection.IZREKA).orElse("");
 
-        assertThat(ZupPlaceholders.keysIn(uvod)).contains("stranka.identifikator");
+        assertThat(ZupPlaceholders.keysIn(uvod + "\n" + izreka)).contains("stranka.identifikator");
     }
 
-    /** Akti koji diraju u prava stranke moraju imati uputu; obavijesti o činjenici ne moraju. */
-    @Test
-    void onlyAdverseActs_requireLegalRemedySection() {
-        assertThat(StrDocumentType.SUSPENZIJA.requiredSections())
-                .contains(ZupSection.UPUTA_O_PRAVNOM_LIJEKU);
-        assertThat(StrDocumentType.POVLACENJE.requiredSections())
-                .contains(ZupSection.UPUTA_O_PRAVNOM_LIJEKU);
-        assertThat(StrDocumentType.DODJELA.requiredSections())
-                .doesNotContain(ZupSection.UPUTA_O_PRAVNOM_LIJEKU);
+    /**
+     * MINTS (studeni 2026.): suspenzija i povlačenje nose prigovor kao točku izreke, pa nijedna
+     * obavijest više ne traži sekciju upute o pravnom lijeku — ali pravni lijek ne smije nestati.
+     */
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = StrDocumentType.class, names = {"SUSPENZIJA", "POVLACENJE"})
+    void adverseActs_carryObjectionInOperativePart(StrDocumentType type) {
+        assertThat(type.requiredSections()).doesNotContain(ZupSection.UPUTA_O_PRAVNOM_LIJEKU);
+        assertThat(loader.get(type).section(ZupSection.IZREKA).orElseThrow())
+                .contains("može izjaviti prigovor nadležnom upravnom tijelu u roku od osam dana");
     }
 
     /**
@@ -122,6 +128,7 @@ class ZupTemplateLoaderTest {
                 ZupSection.IZREKA,
                 ZupSection.OBRAZLOZENJE,
                 ZupSection.UPUTA_O_PRAVNOM_LIJEKU,
+                ZupSection.NAPOMENA,
                 ZupSection.PRILOZI,
                 ZupSection.POTPISNIK,
                 ZupSection.DOSTAVNA_LISTA);
@@ -155,6 +162,7 @@ class ZupTemplateLoaderTest {
                         "Zahtjev za dodjelu registracijskog broja",
                         "Obavijest o dodjeli registracijskog broja",
                         "Obavijest o opozivu registracijskog broja",
+                        "Zahtjev za opoziv registracijskog broja",
                         "Obavijest o prijedlogu suspenzije registracijskog broja",
                         "Obavijest o obustavi postupka suspenzije registracijskog broja",
                         "Obavijest o suspenziji registracijskog broja",
@@ -176,6 +184,8 @@ class ZupTemplateLoaderTest {
                 "Zahtjev za dodjelu registracijskog broja",
                 "Obavijest o dodjeli registracijskog broja",
                 "Obavijest o opozivu registracijskog broja",
+                // T15: novu vrstu MINT mora unijeti na svakoj okolini (docs/eGOP-endpoint-analiza.md).
+                "Zahtjev za opoziv registracijskog broja",
                 "Obavijest o prijedlogu suspenzije registracijskog broja",
                 "Obavijest o obustavi postupka suspenzije registracijskog broja",
                 "Obavijest o suspenziji registracijskog broja",

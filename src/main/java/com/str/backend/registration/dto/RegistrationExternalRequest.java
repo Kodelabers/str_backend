@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Zahtjev prijavljenog non-EU iznajmljivača.
@@ -33,6 +34,8 @@ import java.time.LocalDate;
  *
  * <p>{@code prethodniRb}: ponovni zahtjev za novi objekt nakon povlačenja (T15), kao u
  * {@link RegistrationRequest}; predpopuna je {@code GET /api/lessor/registrations/{rn}/ponovni-zahtjev}.
+ *
+ * <p>{@code prilogIds}: prilozi uz zahtjev (T17), id-evi iz {@code POST /api/lessor/attachments}.
  */
 public record RegistrationExternalRequest(
         @NotBlank String name,
@@ -65,7 +68,9 @@ public record RegistrationExternalRequest(
         @Size(max = 128) String kontaktOsoba,
         @Size(max = 64) String kcBroj,
         /** Povučeni RB istog novog objekta (ponovni zahtjev nakon opoziva); {@code null} inače. */
-        @Pattern(regexp = RegistrationNumber.REGEXP, message = "error.reissue.previousRn.format") String prethodniRb
+        @Pattern(regexp = RegistrationNumber.REGEXP, message = "error.reissue.previousRn.format") String prethodniRb,
+        /** Prilozi uz zahtjev iz staginga (T17); {@code null} ili prazno kad ih nema. */
+        List<Long> prilogIds
 ) implements AccommodationRequest {
 
     /** Zahtjev bez ponovnog zahtjeva nakon opoziva. */
@@ -82,6 +87,6 @@ public record RegistrationExternalRequest(
         this(name, typeId, countyId, cityId, settlementId, street, streetNumber, kucniBrojId, postalCode,
                 maxBeds, offerType, offering, building, floor, apartments, legalized, lessorResidence,
                 coOwnerConsent, consentDate, consentWithdrawalDate, host, confirmDuplicateLocation,
-                facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon, kontaktOsoba, kcBroj, null);
+                facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon, kontaktOsoba, kcBroj, null, null);
     }
 }

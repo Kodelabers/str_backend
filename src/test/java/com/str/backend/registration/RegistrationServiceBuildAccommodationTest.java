@@ -1,5 +1,6 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
@@ -77,7 +78,8 @@ class RegistrationServiceBuildAccommodationTest {
                 new CadastreResolver(houseNumberRepository),
                 addressValidator,
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class), mock(ReissueService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class),
+                mock(PrilogService.class));
     }
 
     private static HouseNumberRepository.CadastreRow registryRow(String broj, String ulica,

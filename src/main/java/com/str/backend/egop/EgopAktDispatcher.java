@@ -1,5 +1,6 @@
 package com.str.backend.egop;
 
+import com.str.backend.common.Uuids;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
@@ -42,6 +43,7 @@ public class EgopAktDispatcher {
     private final EgopAktKorisnik korisnik;
     private final StrDocumentService documentService;
     private final RnLifecycleLookup lookup;
+    private final EgopAktiBezSifre bezSifre;
 
     public EgopAktDispatcher(EgopFilingStore store,
                              LessorRepository lessorRepository,
@@ -49,7 +51,8 @@ public class EgopAktDispatcher {
                              EgopRetryPolicy retryPolicy,
                              EgopAktKorisnik korisnik,
                              StrDocumentService documentService,
-                             RnLifecycleLookup lookup) {
+                             RnLifecycleLookup lookup,
+                             EgopAktiBezSifre bezSifre) {
         this.store = store;
         this.lessorRepository = lessorRepository;
         this.filingService = filingService;
@@ -57,6 +60,7 @@ public class EgopAktDispatcher {
         this.korisnik = korisnik;
         this.documentService = documentService;
         this.lookup = lookup;
+        this.bezSifre = bezSifre;
     }
 
     /** Idempotentan: već urudžbiran akt se preskače, djelomično obavljen nastavlja gdje je stao. */
@@ -80,11 +84,69 @@ public class EgopAktDispatcher {
             return;
         }
 
+        if (!akt.isFiled() && cekaPodnesak(akt)) {
+            return;
+        }
+
         try {
             filingService.fileAct(akt, submission, lessor, korisnik.za(akt), filing -> konacniDokument(akt, filing));
         } catch (EgopException | RuntimeException e) {
             handleFailure(akt, e);
         }
+    }
+
+    /**
+     * Akt kojem prethodi podnesak stranke ({@link StrDocumentType#podnesak()}, npr. obavijest o
+     * opozivu iza zahtjeva za opoziv) urudžbira se tek kad je podnesak dobio pismeno u eGOP-u — inače
+     * bi obavijest dobila manji urbroj od zahtjeva kojim je postupak pokrenut. Podnesak koji još nije
+     * urudžbiran i smije se pokušati šalje se ovdje, prvi; ne uspije li, akt se <b>odgađa bez trošenja
+     * pokušaja</b> ({@link EgopFilingStore#deferAkt}) do sljedećeg pokušaja podneska, pa ga retry job
+     * pokuša opet, iza podneska (kandidati idu po vremenu nastanka). Čekanje nije kvar akta: ranije je
+     * svako odgađanje trošilo pokušaj i logiralo ERROR sa stack traceom, pa bi akt bio iscrpljen prije
+     * podneska.
+     *
+     * <p>Ne čeka se podnesak kojeg nema (opozivi zapisani prije T15, pad rendera podneska), podnesak
+     * čija je vrsta na popisu {@code str.egop.akti-bez-sifre} — on se ne urudžbira, pa bi akt čekao
+     * zauvijek — ni podnesak koji je iscrpio pokušaje: akt (i dostava obavijesti o opozivu, koja čeka
+     * njegov pečat) tada ide bez njega, uz glasan ERROR.
+     *
+     * @return {@code true} ako akt mora pričekati
+     */
+    private boolean cekaPodnesak(EgopPismenoEntity akt) {
+        Optional<EgopPismenoEntity> podnesak = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv())
+                .flatMap(StrDocumentType::podnesak)
+                .filter(bezSifre::urudzbiv)
+                .flatMap(vrsta -> store.findPismeno(akt.getSubmissionId(), vrsta.vrstaPismenaNaziv(), akt.getActRef()));
+        if (podnesak.isEmpty() || podnesak.get().isFiled()) {
+            return false;
+        }
+        EgopPismenoEntity p = podnesak.get();
+        Instant now = Instant.now();
+        if (!retryPolicy.isExhausted(p.getSyncAttempts())
+                && (p.getNextAttemptAt() == null || !p.getNextAttemptAt().isAfter(now))) {
+            dispatch(p.getId());
+            p = store.findAkt(p.getId()).orElse(p);
+        }
+        if (p.isFiled()) {
+            return false;
+        }
+        if (retryPolicy.isExhausted(p.getSyncAttempts())) {
+            log.error("egop_akt_podnesak_exhausted akt={} rn={} vrsta='{}' podnesak={} podnesak_attempts={}"
+                            + " last_error={} — podnesak se više ne pokušava; akt se urudžbira bez njega."
+                            + " Podnesak urudžbiti ručno (urbroj će mu biti veći od akta)",
+                    akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), p.getId(), p.getSyncAttempts(),
+                    p.getSyncError());
+            return false;
+        }
+        Instant nextAttemptAt = p.getNextAttemptAt() != null && p.getNextAttemptAt().isAfter(now)
+                ? p.getNextAttemptAt()
+                : retryPolicy.nextAttemptAt(now, 0);
+        store.deferAkt(akt.getId(), "Čeka urudžbu podneska " + p.getId() + " ('" + p.getVrstaPismenaNaziv()
+                + "') — akt ide u isti predmet iza njega", nextAttemptAt);
+        log.info("egop_akt_deferred reason=podnesak_not_filed akt={} rn={} vrsta='{}' podnesak={}"
+                        + " podnesak_attempts={} next_attempt_at={}",
+                akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), p.getId(), p.getSyncAttempts(), nextAttemptAt);
+        return true;
     }
 
     /**
@@ -95,7 +157,7 @@ public class EgopAktDispatcher {
      */
     private Optional<byte[]> konacniDokument(EgopPismenoEntity akt, FilingReference filing) {
         Optional<StrDocumentType> vrsta = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv());
-        Optional<RnLifecycleEvent> event = logId(akt).flatMap(lookup::findEvent);
+        Optional<RnLifecycleEvent> event = Uuids.parse(akt.getActRef()).flatMap(lookup::findEvent);
         if (vrsta.isEmpty() || event.isEmpty()) {
             log.warn("egop_akt_snapshot_kept reason=missing_event akt={} rn={}", akt.getId(), akt.getRn());
             return Optional.empty();
@@ -111,14 +173,6 @@ public class EgopAktDispatcher {
         } catch (RuntimeException e) {
             log.error("egop_akt_render_failed akt={} rn={} vrsta='{}': {} — prilaže se dokument iz trenutka"
                     + " događaja", akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), e.getMessage(), e);
-            return Optional.empty();
-        }
-    }
-
-    private static Optional<UUID> logId(EgopPismenoEntity akt) {
-        try {
-            return Optional.of(UUID.fromString(akt.getActRef()));
-        } catch (IllegalArgumentException | NullPointerException e) {
             return Optional.empty();
         }
     }

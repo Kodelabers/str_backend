@@ -12,7 +12,10 @@ import java.util.List;
  * Zatvara neobrađeni prigovor kad RB napusti prijedlog suspenzije i suspenziju drugim putem
  * (službenik ručno povuče prijedlog ili reaktivira, opoziv, povlačenje) — o prigovoru se tada
  * više nema što odlučiti. Prijelaz prijedlog → suspenzija po isteku roka prigovor ostavlja
- * otvorenim: prigovor ne zaustavlja rok, a službenik o njemu i dalje odlučuje.
+ * otvorenim: službenik o njemu i dalje odlučuje. Takav prijelaz nastaje samo uz prigovor predan
+ * nakon roka — uz prigovor predan u roku {@code SuspensionDeadlineJob} čeka službenika, a kad ga
+ * službenik ne uvaži, prigovor je prije suspenzije već {@code REJECTED}
+ * ({@link SuspensionObjectionAdminService#reject}).
  *
  * <p>Sinkroni {@link EventListener}, ne {@code AFTER_COMMIT}: radi u transakciji prijelaza, pa
  * prigovor i status RB-a ne mogu ostati u nesuglasju. Uvaženi prigovor je u tom trenutku već

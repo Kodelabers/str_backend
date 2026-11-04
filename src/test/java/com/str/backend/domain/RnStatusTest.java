@@ -18,15 +18,29 @@ class RnStatusTest {
     /** Exactly the set {@code RnService#suspend} lets through. */
     @ParameterizedTest
     @EnumSource(value = RnTrigger.class,
-            names = {"CONSENT_EXPIRY", "INSPECTION", "INCOMPLETE_DOCUMENTATION", "OTHER"})
+            names = {"NO_DECISION", "DECISION_REVOKED", "INCOMPLETE_DOCUMENTATION", "INSPECTION", "OTHER"})
     void everySuspendTriggerProposesSuspensionFromActive(RnTrigger trigger) {
         assertThat(RnStatus.ACTIVE.canTransitionTo(RnStatus.SUSPENSION_PROPOSED, trigger)).isTrue();
+    }
+
+    /** The state machine and {@code RnService#suspend} share one list — {@link RnTrigger#SUSPENSION_REASONS}. */
+    @ParameterizedTest
+    @EnumSource(RnTrigger.class)
+    void suspensionReasonsAreExactlyWhatProposesSuspension(RnTrigger trigger) {
+        assertThat(RnStatus.ACTIVE.canTransitionTo(RnStatus.SUSPENSION_PROPOSED, trigger))
+                .isEqualTo(RnTrigger.SUSPENSION_REASONS.contains(trigger));
+    }
+
+    /** Historical reason: kept for old log rows and acts, but no new proposal may use it (MINTS). */
+    @Test
+    void consentExpiryNoLongerProposesSuspension() {
+        assertThat(RnStatus.ACTIVE.canTransitionTo(RnStatus.SUSPENSION_PROPOSED, RnTrigger.CONSENT_EXPIRY)).isFalse();
     }
 
     /** A suspension reason must never jump the response phase (čl. 30. st. 2 ZUP). */
     @ParameterizedTest
     @EnumSource(value = RnTrigger.class,
-            names = {"CONSENT_EXPIRY", "INSPECTION", "INCOMPLETE_DOCUMENTATION", "OTHER"})
+            names = {"NO_DECISION", "DECISION_REVOKED", "INCOMPLETE_DOCUMENTATION", "INSPECTION", "OTHER"})
     void suspendTriggersDoNotSuspendDirectly(RnTrigger trigger) {
         assertThat(RnStatus.ACTIVE.canTransitionTo(RnStatus.SUSPENDED, trigger)).isFalse();
     }

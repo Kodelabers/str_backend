@@ -2,12 +2,17 @@ package com.str.backend.rn;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.attachment.PrilogException;
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.address.CountyNames;
 import com.str.backend.common.SearchTokens;
 import com.str.backend.common.Strings;
+import com.str.backend.document.DocumentLabels;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.domain.RegistrationNumber;
+import com.str.backend.domain.WithdrawalReason;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
@@ -17,15 +22,16 @@ import com.str.backend.rn.dto.RnDetailResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -82,18 +88,20 @@ public class RnService {
     private final AccommodationRepository accommodationRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
     private final Clock clock;
-    private final int suspensionResponseDays;
+    private final DocumentLabels labels;
+    private final PrilogService prilogService;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
                      AccommodationTypeRepository accommodationTypeRepository, Clock clock,
-                     @Value("${str.rn.suspension.response-days:15}") int suspensionResponseDays) {
+                     DocumentLabels labels, PrilogService prilogService) {
         this.repository = repository;
         this.transitionService = transitionService;
         this.accommodationRepository = accommodationRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.clock = clock;
-        this.suspensionResponseDays = suspensionResponseDays;
+        this.labels = labels;
+        this.prilogService = prilogService;
     }
 
     @Transactional
@@ -129,38 +137,69 @@ public class RnService {
      * Prva faza suspenzije (čl. 30. st. 2 ZUP-a): stranka se poziva na očitovanje, RB i dalje
      * vrijedi, a suspendira ga tek {@link SuspensionDeadlineJob} po isteku roka.
      *
-     * <p>Rok se, ako nije poslan, postavlja sam na {@code danas + responseDays}. Bez toga bi
-     * kolona ostala {@code NULL}, job predmet nikad ne bi pokupio i RB bi zauvijek visio u
-     * {@code SUSPENSION_PROPOSED} — dok akt stranci već tvrdi da rok teče („u roku od 15 dana",
-     * {@code rok.default} u {@code documents/hr/labels.properties}). Zadana vrijednost prati taj
-     * tekst; mijenja se preko {@code str.rn.suspension.response-days}.
+     * <p>Rok za očitovanje je obvezan (MINTS): službenik ga sam određuje, a sustav ga ne
+     * izmišlja. Bez roka kolona bi ostala {@code NULL}, job predmet nikad ne bi pokupio i RB bi
+     * zauvijek visio u {@code SUSPENSION_PROPOSED}.
      *
      * <p>{@code actor} je službenik ({@code INTERNAL:<oib>}) — zapisuje se u revizijski trag, kao i
      * kod obustave, reaktivacije i povlačenja.
+     *
+     * <p>U {@code registration_number_log.reason} ide natpis razloga, a bilješka službenika samo uz
+     * {@link RnTrigger#OTHER} (kao kod {@link #withdraw}): akt i obavijest razlog čitaju odande, pa bi
+     * bilješka uz kodirani razlog zamijenila natpis koji MINTS traži.
+     *
+     * <p>Prilozi službenika ({@code prilogIds} iz staginga, T17) vežu se uz novi zapis
+     * {@code registration_number_log} u istoj transakciji, pa ih AFTER_COMMIT listeneri (eGOP, e-pošta)
+     * prilažu uz akt; neispravan prilog (tuđi, istekao, previše, ukupno preko 15 MB) poništava i prijedlog.
      */
     @Transactional
-    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor) {
-        if (trigger != RnTrigger.CONSENT_EXPIRY
-                && trigger != RnTrigger.INSPECTION
-                && trigger != RnTrigger.INCOMPLETE_DOCUMENTATION
-                && trigger != RnTrigger.OTHER) {
+    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor,
+                            Collection<Long> prilogIds) {
+        if (!RnTrigger.SUSPENSION_REASONS.contains(trigger)) {
             throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
         if (trigger == RnTrigger.OTHER && Strings.blankToNull(note) == null) {
             throw new BusinessException("error.rn.suspend.note.required");
         }
+        if (suspensionDeadline == null) {
+            throw new BusinessException("error.rn.suspend.deadline.required");
+        }
         // Rok u prošlosti nije rok: SuspensionDeadlineJob bi ga pokupio već iduće noći i RB bi bio
         // suspendiran a da se stranka nije imala kad očitovati — a upravo joj to čl. 30. st. 2
         // ZUP-a jamči. Tipfeler u godini ne smije proći kao valjan poziv na očitovanje.
-        if (suspensionDeadline != null && suspensionDeadline.isBefore(LocalDate.now(clock))) {
+        if (suspensionDeadline.isBefore(danas())) {
             throw new BusinessException("error.rn.suspend.deadline.past");
         }
+        String logged = trigger == RnTrigger.OTHER ? Strings.blankToNull(note) : labels.trigger(trigger);
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, Strings.blankToNull(note));
-        e.setSuspensionDeadline(suspensionDeadline != null
-                ? suspensionDeadline
-                : LocalDate.now(clock).plusDays(suspensionResponseDays));
+        UUID logId = transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, logged);
+        e.setSuspensionDeadline(suspensionDeadline);
+        bindPrilozi(actor, prilogIds, logId);
         return e;
+    }
+
+    /**
+     * Suspenzija istekom roka, odmah, u ime službenika — kad službenik ne uvaži prigovor predan u
+     * roku. Takav prigovor zadržava {@link SuspensionDeadlineJob} (o njemu prvo odlučuje
+     * službenik), pa bi bez ovoga RB nakon neuvažavanja čekao noćni job, a akt o suspenziji bi
+     * kasnio dan.
+     *
+     * <p>Isti prijelaz i isti uvjet kao u jobu ({@code DEADLINE_EXCEEDED}, rok strogo prije
+     * danas), pa nastaje isti akt. RB koji više nije pred suspenzijom ili mu rok još teče ostaje
+     * kakav jest.
+     *
+     * @return je li RB suspendiran
+     */
+    @Transactional
+    public boolean suspendIfDeadlineExpired(String rn, String actor) {
+        RnEntity e = loadForUpdate(rn);
+        if (e.getStatus() != RnStatus.SUSPENSION_PROPOSED || e.getSuspensionDeadline() == null
+                || !e.getSuspensionDeadline().isBefore(danas())) {
+            return false;
+        }
+        transitionService.transition(e, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED, actor,
+                SuspensionDeadlineJob.DEADLINE_EXCEEDED_NOTE);
+        return true;
     }
 
     @Transactional
@@ -182,17 +221,56 @@ public class RnService {
      * Permanent: allowed from ACTIVE, SUSPENSION_PROPOSED and SUSPENDED, never reactivated
      * (čl. 6 STR Uredbe). The lessor's own revocation (opoziv) is a separate final status,
      * {@code REVOKED} — see {@code LessorRnActionService}.
-     * The optional reason is persisted on the audit log. STR-2.1-002.
+     * STR-2.1-002.
+     *
+     * <p>Razlog je obvezan i bira se s popisa ({@link WithdrawalReason}, MINTS). Okidač prijelaza
+     * ostaje {@link RnTrigger#WITHDRAWAL}, a razlog ide u {@code registration_number_log.reason}
+     * kao tekst koji akt ispisuje: natpis razloga, a uz {@link WithdrawalReason#OTHER} opis
+     * službenika (obvezan). Opis uz kodirani razlog se ne upisuje — kao ni bilješka uz kodirani
+     * razlog suspenzije, frontend ga tada ni ne šalje.
+     *
+     * <p>Prilozi službenika (T17) vežu se uz novi zapis prijelaza kao kod {@link #suspend}.
      *
      * <p>TODO (zasebni epic, "Zajedničke backend teme"): obavijest Internetskim platformama
-     * (mail/M2M) + dostava potvrde u KP. Retencija (18 mj.) se računa iz {@code valid_to}
+     * (mail/M2M); akt o povlačenju ide u KP kroz eGOP tok. Retencija (18 mj.) se računa iz {@code valid_to}
      * koji {@link RnEntity#applyStatus} postavlja na dan povlačenja.
      */
     @Transactional
-    public RnEntity withdraw(String rn, String reason, String actor) {
+    public RnEntity withdraw(String rn, WithdrawalReason reason, String note, String actor,
+                             Collection<Long> prilogIds) {
+        if (reason == null) {
+            throw new BusinessException("error.rn.withdraw.reason.required");
+        }
+        String cleanNote = Strings.blankToNull(note);
+        if (reason.requiresNote() && cleanNote == null) {
+            throw new BusinessException("error.rn.withdraw.note.required");
+        }
+        String logged = reason.requiresNote() ? cleanNote : labels.withdrawalReason(reason);
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, Strings.blankToNull(reason));
+        UUID logId = transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, logged);
+        bindPrilozi(actor, prilogIds, logId);
         return e;
+    }
+
+    /**
+     * Prilozi službenika uz upravo nastali prijelaz. Bez priloga ne radi ništa — ni ne traži
+     * službenika, pa radnja bez priloga radi i bez aktera (testovi bez sigurnosnog lanca). Prilozi
+     * bez identificiranog službenika su 403 {@code ATTACHMENT_FORBIDDEN}: nevezani prilog pripada
+     * učitavatelju, a njega ovdje nema — i radnja se poništava.
+     */
+    private void bindPrilozi(String actor, Collection<Long> prilogIds, UUID logId) {
+        if (prilogIds == null || prilogIds.isEmpty()) {
+            return;
+        }
+        if (actor == null) {
+            throw new PrilogException(HttpStatus.FORBIDDEN, "error.attachment.forbidden", PrilogException.FORBIDDEN);
+        }
+        prilogService.bind(actor, prilogIds, PrilogVlasnik.prijelaz(logId));
+    }
+
+    /** Današnji dan za rokove suspenzije — po hrvatskom vremenu, kao {@link SuspensionDeadlineJob}. */
+    private LocalDate danas() {
+        return LocalDate.now(clock.withZone(SuspensionDeadlineJob.ZAGREB));
     }
 
     @Transactional(readOnly = true)
@@ -318,7 +396,7 @@ public class RnService {
         }
         int days = Math.clamp(deadlineWithinDays.longValue(),
                 -MAX_DEADLINE_WINDOW_DAYS, MAX_DEADLINE_WINDOW_DAYS);
-        return LocalDate.now(clock).plusDays(days);
+        return danas().plusDays(days);
     }
 
     /** STR wireframe §12 / §13: full detail for a single RN (joined accommodation + lessor). */

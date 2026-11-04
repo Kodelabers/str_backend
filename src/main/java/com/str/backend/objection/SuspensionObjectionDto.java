@@ -1,8 +1,10 @@
 package com.str.backend.objection;
 
+import com.str.backend.attachment.PrilogDto;
 import com.str.backend.domain.RnStatus;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -11,6 +13,9 @@ import java.util.UUID;
  *
  * <p>{@code lessorTaxNumber} je strani porezni broj non-EU iznajmljivača (on nema OIB);
  * {@code resolvedBy} je prikaz aktera (ime službenika ili {@code SYSTEM}), ne sirovi zapis iz baze.
+ *
+ * <p>{@code prilozi} su dodatne datoteke prigovora (T17), bez dokumenta prigovora ({@code fileName});
+ * preuzimaju se preko {@code href} ({@code GET /api/rn/{rn}/attachments/{id}}).
  */
 public record SuspensionObjectionDto(
         UUID objectionId,
@@ -26,11 +31,12 @@ public record SuspensionObjectionDto(
         Instant submittedAt,
         String resolvedBy,
         Instant resolvedAt,
-        String resolutionNote
+        String resolutionNote,
+        List<PrilogDto> prilozi
 ) {
 
     public static SuspensionObjectionDto of(SuspensionObjectionRepository.ObjectionSummary o, String resolvedBy,
-                                            String lessorTaxNumber) {
+                                            String lessorTaxNumber, List<PrilogDto> prilozi) {
         return new SuspensionObjectionDto(
                 o.getObjectionId(),
                 o.getRn(),
@@ -45,6 +51,7 @@ public record SuspensionObjectionDto(
                 o.getSubmittedAt(),
                 resolvedBy,
                 o.getResolvedAt(),
-                o.getResolutionNote());
+                o.getResolutionNote(),
+                prilozi);
     }
 }

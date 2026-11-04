@@ -1,6 +1,10 @@
 package com.str.backend.objection;
 
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.Ucitao;
 import com.str.backend.common.Strings;
+import com.str.backend.common.VrstaDatoteke;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ConflictException;
@@ -19,8 +23,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -35,14 +39,13 @@ import java.util.UUID;
 @Service
 public class SuspensionObjectionService {
 
-    private static final byte[] MAGIC_PDF = {0x25, 0x50, 0x44, 0x46};                                  // %PDF
-    private static final byte[] MAGIC_OLE2 = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0,
-            (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1};                                               // .doc
-    private static final byte[] MAGIC_ZIP = {0x50, 0x4B, 0x03, 0x04};                                   // .docx
+    /** Vrste dokumenta prigovora — isto što frontend nudi u dropzoneu. */
+    private static final Set<VrstaDatoteke> DOPUSTENE_VRSTE =
+            EnumSet.of(VrstaDatoteke.PDF, VrstaDatoteke.DOC, VrstaDatoteke.DOCX);
 
-    static final String CONTENT_TYPE_PDF = "application/pdf";
-    static final String CONTENT_TYPE_DOC = "application/msword";
-    static final String CONTENT_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    static final String CONTENT_TYPE_PDF = VrstaDatoteke.PDF.contentType();
+    static final String CONTENT_TYPE_DOC = VrstaDatoteke.DOC.contentType();
+    static final String CONTENT_TYPE_DOCX = VrstaDatoteke.DOCX.contentType();
 
     /** Parcijalni unique index iz changeseta 145 — jedan neobrađeni prigovor po RB-u. */
     static final String SUBMITTED_OBJECTION_INDEX = "uq_suspension_objection_rn_submitted";
@@ -56,15 +59,18 @@ public class SuspensionObjectionService {
     private final RnRepository rnRepository;
     private final RegistrationNumberLogRepository rnLogRepository;
     private final LessorRepository lessorRepository;
+    private final PrilogService prilogService;
 
     public SuspensionObjectionService(SuspensionObjectionRepository repository,
                                       RnRepository rnRepository,
                                       RegistrationNumberLogRepository rnLogRepository,
-                                      LessorRepository lessorRepository) {
+                                      LessorRepository lessorRepository,
+                                      PrilogService prilogService) {
         this.repository = repository;
         this.rnRepository = rnRepository;
         this.rnLogRepository = rnLogRepository;
         this.lessorRepository = lessorRepository;
+        this.prilogService = prilogService;
     }
 
     /**
@@ -72,6 +78,10 @@ public class SuspensionObjectionService {
      *
      * <p>Redoslijed provjera kao kod rješenja: prvo vlasništvo (404 i za nepostojeći i za tuđi RB,
      * da se ne otkriva postoji li), zatim smisao predaje (409), a tek onda datoteka (400).
+     *
+     * <p>Dodatne datoteke ({@code datoteke}, T17) spremaju se uz prigovor u istoj transakciji; s
+     * dokumentom prigovora najviše {@code app.attachments.max-per-owner} (400 {@code ATTACHMENT_COUNT}).
+     * Neispravna dodatna datoteka poništava cijelu predaju.
      *
      * @param submittedBy tko je fizički predao — {@code NIAS:<oib osobe>} ili {@code LESSOR:<lessorId>}
      */
@@ -81,7 +91,9 @@ public class SuspensionObjectionService {
         if (rn == null || !isOwned(rn, owner)) {
             throw new ResourceNotFoundException("error.rn.notFound");
         }
-        RnEntity rnEntity = rnRepository.findById(rn)
+        // Zaključano, kao kod promjene statusa: paralelna obustava prijedloga inače može proći između
+        // provjere statusa i upisa, pa bi SUBMITTED prigovor ostao uz ACTIVE RB.
+        RnEntity rnEntity = rnRepository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
 
         RnStatus rnStatus = rnEntity.getStatus();
@@ -96,9 +108,14 @@ public class SuspensionObjectionService {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("error.objection.file.empty");
         }
+        List<MultipartFile> dodatne = dodatneDatoteke(req);
+        // Dokument prigovora + dodatne; isto pravilo kao uz pismena, provjereno prije čitanja datoteka.
+        prilogService.requireBroj(1 + dodatne.size());
         byte[] content = readBytes(file);
-        String fileName = Strings.safeFileName(file.getOriginalFilename(), "prigovor");
-        String contentType = detectContentType(content, fileName);
+        String imeDatoteke = Strings.safeFileName(file.getOriginalFilename(), "prigovor");
+        VrstaDatoteke vrsta = detectType(content, imeDatoteke);
+        String fileName = vrsta.nazivSEkstenzijom(imeDatoteke);
+        String contentType = vrsta.contentType();
 
         // Akt koji se pobija: prijelaz u trenutni status (prijedlog ili suspenzija).
         UUID rnLogId = rnLogRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, rnStatus.name())
@@ -111,7 +128,25 @@ public class SuspensionObjectionService {
                 : SuspensionObjectionEntity.createForLessor(owner.lessorId(), lessorEmail(owner.lessorId()), rn,
                         rnStatus, rnLogId, submittedBy, fileName, contentType, content);
 
-        return SuspensionObjectionResponse.of(saveSubmitted(entity));
+        SuspensionObjectionEntity saved = saveSubmitted(entity);
+        if (!dodatne.isEmpty()) {
+            String ucitao = owner.oib() != null ? Ucitao.nias(owner.oib()) : Ucitao.lessor(owner.lessorId());
+            prilogService.spremiVezane(ucitao, dodatne, PrilogVlasnik.prigovor(saved.getObjectionId()), 1);
+        }
+        return SuspensionObjectionResponse.of(saved);
+    }
+
+    /**
+     * Dodatne datoteke bez praznih dijelova bez naziva — tako obrazac šalje polje u koje ništa nije
+     * odabrano. Prazna datoteka s nazivom ostaje i pada na provjeri ({@code ATTACHMENT_EMPTY}).
+     */
+    private static List<MultipartFile> dodatneDatoteke(SuspensionObjectionRequest req) {
+        if (req.getDatoteke() == null) {
+            return List.of();
+        }
+        return req.getDatoteke().stream()
+                .filter(f -> f != null && !(f.isEmpty() && Strings.blankToNull(f.getOriginalFilename()) == null))
+                .toList();
     }
 
     private boolean isOwned(String rn, RnOwner owner) {
@@ -155,22 +190,12 @@ public class SuspensionObjectionService {
     }
 
     /**
-     * Tip se određuje iz sadržaja, ne iz {@code Content-Type} headera — header postavlja klijent i
-     * može lagati. Dopušteni su PDF, DOC i DOCX, isto što frontend nudi u dropzoneu. Potpisi Worda
-     * nisu jedinstveni (DOCX je ZIP arhiva, DOC je OLE2 kao i stari Excel), pa se uz potpis traži
-     * i odgovarajuća ekstenzija — inače bi prošla bilo koja arhiva ili Office datoteka.
+     * Tip se određuje iz sadržaja, ne iz {@code Content-Type} headera ({@link VrstaDatoteke}).
+     * Dopušteni su PDF, DOC i DOCX, isto što frontend nudi u dropzoneu.
      */
-    static String detectContentType(byte[] content, String fileName) {
-        if (startsWith(content, MAGIC_PDF)) return CONTENT_TYPE_PDF;
-        String name = fileName.toLowerCase(Locale.ROOT);
-        if (startsWith(content, MAGIC_OLE2) && name.endsWith(".doc")) return CONTENT_TYPE_DOC;
-        if (startsWith(content, MAGIC_ZIP) && name.endsWith(".docx")) return CONTENT_TYPE_DOCX;
-        throw new BusinessException("error.objection.file.type");
-    }
-
-    private static boolean startsWith(byte[] content, byte[] magic) {
-        return content.length >= magic.length
-                && Arrays.equals(content, 0, magic.length, magic, 0, magic.length);
+    static VrstaDatoteke detectType(byte[] content, String fileName) {
+        return VrstaDatoteke.odredi(content, fileName, DOPUSTENE_VRSTE)
+                .orElseThrow(() -> new BusinessException("error.objection.file.type"));
     }
 
     private static byte[] readBytes(MultipartFile file) {

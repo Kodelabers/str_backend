@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -84,17 +85,34 @@ public class ZupContextFactory {
         ctx.put("tijelo.ustrojstvenaJedinica", optional(t.ustrojstvenaJedinica()));
         ctx.put("tijelo.propisNadleznosti",
                 required("tijelo.propis-nadleznosti", t.propisNadleznosti()));
+        // Propis po vrsti akta (MINTS: dodjela čl. 46. st. 3., ostali akti čl. 48. st. 2.); vrsta
+        // bez vlastitog unosa uzima zajednički tijelo.propisNadleznosti.
+        ctx.put("akt.propisNadleznosti",
+                required("propis." + type.slug(), properties.propisZa(type)));
 
         // Potpis je naziv tijela; ime službene osobe ispisuje se ispod njega samo ako je
         // konfigurirano (predložak MINT-a ga nema). Prazan redak renderer izbaci.
         ctx.put("potpisnik.ime", optional(properties.potpisnik().ime()));
         ctx.put("potpisnik.funkcija", optional(properties.potpisnik().funkcija()));
 
+        // Potpis akta službenika (MINTS: „oznaka naziva službene dužnosti i osobno ime službene
+        // osobe"). Službenika određuje StrDocumentService iz revizijskog traga i upisuje ga
+        // putSluzbenik; dok ga nema, potpis je kao i dosad naziv tijela i konfigurirano ime.
+        // Naziv službene dužnosti nema izvora (str.application_user ga ne nosi), pa je prazan.
+        ctx.put("sluzbenik.potpisTijela", ctx.get("tijelo.nazivVelikim"));
+        ctx.put("sluzbenik.funkcija", "");
+        ctx.put("sluzbenik.ime", ctx.get("potpisnik.ime"));
+
         ctx.put("akt.naslov", type.naslov());
         ctx.put("akt.klasa", optional(filing.klasa()));
         ctx.put("akt.urbroj", optional(filing.urBroj()));
         String datumAkta = datumAkta(type, d).format(DATE);
         ctx.put("akt.datum", datumAkta);
+        // Pravni dan učinka („prestaje važiti … s danom …"): dan prijelaza statusa, ne dan rendera.
+        // Konačni dokument se renderira nakon urudžbe, i na retryju do str.egop.retry.max-age kasnije,
+        // pa bi datum rendera pomaknuo dan prestanka. Puni ga StrDocumentService (putDatumPrijelaza);
+        // bez zapisa prijelaza ostaje datum akta.
+        ctx.put("prijelaz.datum", datumAkta);
         // Gotovi redci zaglavlja: prije urudžbiranja KLASA i URBROJ ne postoje, a „KLASA:" bez
         // vrijednosti nije prazan redak pa ga renderer ne bi izbacio.
         ctx.put("akt.klasaRedak", prefiks("KLASA: ", filing.klasa()));
@@ -120,8 +138,13 @@ public class ZupContextFactory {
         ctx.put("rn.broj", optional(d.rn()));
         ctx.put("rn.status", labels.status(d.status()));
         ctx.put("rn.datumIzdavanja", date(d.issueDate()));
-        ctx.put("rn.razlog", (razlog == null || razlog.isBlank())
-                ? labels.get("razlog.nijeNaveden") : razlog.strip());
+        String razlogTekst = razlog == null ? "" : bezZavrsneTocke(razlog);
+        ctx.put("rn.razlog", razlogTekst.isEmpty() ? labels.get("razlog.nijeNaveden") : razlogTekst);
+        // Zahtjev za opoziv ispisuje samo razlog koji je stranka sama upisala; bez njega redak
+        // ostaje prazan i renderer ga izbacuje. StrDocumentService mu zato ne podmeće natpis okidača.
+        ctx.put("opoziv.razlogRedak", type == StrDocumentType.ZAHTJEV_OPOZIVA
+                ? prefiks("Kao razlog opoziva podnositelj navodi: ", razlog == null ? null : razlog.strip())
+                : "");
 
         ctx.put("objekt.naziv", fallback(d.accommodationName()));
         ctx.put("objekt.adresa", objektAdresa(d));
@@ -140,7 +163,6 @@ public class ZupContextFactory {
         // Pečat je pečat tijela: podnesak stranke (prigovor) ga ne dobiva, pa mu se podaci ni ne
         // grade — inače bi se za svaki takav render generirao broj zapisa i, uz nekonfiguriran
         // certifikat, upisao ERROR za blok koji se nikad ne ispisuje.
-        // Po autorstvu, ne po smjeru: opoziv je ulazno pismeno, a dokument je akt tijela.
         if (type.aktTijela()) {
             putEpecat(ctx, naziv);
         }
@@ -153,13 +175,21 @@ public class ZupContextFactory {
      * ({@code GET /api/rn/{rn}/documents/dodjela}), pa mora nositi datum izdavanja RB-a — inače
      * ista obavijest svaki dan izlazi s novim datumom, različitim od verzije urudžbirane u
      * eGOP-u. Akti životnog ciklusa nastaju u trenutku prijelaza i PDF im se sprema, pa im je
-     * datum rendera i datum akta.
+     * datum rendera i datum akta (zaglavlje, „mjesto, datum"). Dan od kojeg akt djeluje je
+     * {@code prijelaz.datum}. Po hrvatskom vremenu, neovisno o zoni poslužitelja (kontejner je UTC).
      */
     private static LocalDate datumAkta(StrDocumentType type, RnDetailDto d) {
         if (type == StrDocumentType.DODJELA && d.issueDate() != null) {
             return d.issueDate();
         }
-        return LocalDate.now();
+        return LocalDate.now(ZAGREB);
+    }
+
+    /** Dan prijelaza statusa koji je akt izazvao ({@code registration_number_log.occurred_at}), po hrvatskom vremenu. */
+    public static void putDatumPrijelaza(Map<String, String> ctx, Instant occurredAt) {
+        if (occurredAt != null) {
+            ctx.put("prijelaz.datum", occurredAt.atZone(ZAGREB).toLocalDate().format(DATE));
+        }
     }
 
     /**
@@ -220,6 +250,27 @@ public class ZupContextFactory {
         }
         ctx.put("epecat.provjera", labels.format("epecat.provjera", url));
         ctx.put("epecat.potvrda", labels.format("epecat.potvrda", nazivTijela));
+    }
+
+    /**
+     * Službenik koji potpisuje akt ({@link StrDocumentType#potpisujeSluzbenik()}): njegovo ime
+     * zamjenjuje naziv tijela u potpisu. Prazno ime ne mijenja ništa — potpis ostaje tijelo.
+     */
+    public static void putSluzbenik(Map<String, String> ctx, String ime) {
+        if (ime == null || ime.isBlank()) {
+            return;
+        }
+        ctx.put("sluzbenik.ime", ime.strip());
+        ctx.put("sluzbenik.potpisTijela", "");
+    }
+
+    /**
+     * Razlog se umeće u rečenicu koja sama završava točkom („…zbog sljedećeg razloga: ${rn.razlog}.").
+     * Bilješka službenika ili zapis okidača koji već završava točkom („Rok … istekao.") inače daje
+     * dvostruku točku.
+     */
+    private static String bezZavrsneTocke(String razlog) {
+        return razlog.strip().replaceAll("[.\\s]+$", "");
     }
 
     /** Adresa iznajmljivača ne postoji na {@link RnDetailDto}; puni je pozivatelj kad je ima. */

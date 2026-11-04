@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
 /**
  * Popis razloga koji se nudi frontendu mora se poklapati s onim što servis stvarno prihvaća —
@@ -35,14 +36,23 @@ class RnTriggerLookupControllerTest {
                 .containsExactlyInAnyOrderElementsOf(accepted);
     }
 
+    /** MINTS: tri razloga povlačenja, tim redom; opis traži samo „drugi razlozi". */
     @Test
-    void withdrawalReason_matchesWhatTheStateMachineAccepts() {
-        List<RnTrigger> accepted = List.of(RnTrigger.values()).stream()
-                .filter(t -> RnStatus.ACTIVE.canTransitionTo(RnStatus.WITHDRAWN, t))
-                .toList();
+    void withdrawalReasons_inMintsOrder_onlyOtherRequiresNote() {
+        assertThat(body(TriggerContext.POVLACENJE))
+                .extracting(RnTriggerResponse::sifra, RnTriggerResponse::naziv, RnTriggerResponse::traziBiljesku)
+                .containsExactly(
+                        tuple("DATA_NOT_CORRECTED", "namjerno ili krajnjom nepažnjom nisu ispravljeni podaci", false),
+                        tuple("INVALID_INFORMATION", "dostavljene su nevjerodostojne ili nevaljane informacije", false),
+                        tuple("OTHER", "drugi razlozi", true));
+    }
 
-        assertThat(RnTriggerLookupController.WITHDRAWAL_REASONS)
-                .containsExactlyInAnyOrderElementsOf(accepted);
+    /** Povijesni razlog ostaje u enumu (stari zapisi), ali se više ne nudi. */
+    @Test
+    void consentExpiry_isNoLongerOffered() {
+        assertThat(body(TriggerContext.SUSPENZIJA))
+                .extracting(RnTriggerResponse::sifra)
+                .doesNotContain(RnTrigger.CONSENT_EXPIRY.name());
     }
 
     /**
@@ -56,9 +66,6 @@ class RnTriggerLookupControllerTest {
                     .extracting(RnTriggerResponse::sifra)
                     .doesNotContain(RnTrigger.REVOCATION.name());
         }
-        assertThat(body(TriggerContext.POVLACENJE))
-                .extracting(RnTriggerResponse::sifra)
-                .containsExactly(RnTrigger.WITHDRAWAL.name());
     }
 
     /** Natpis se traži po ključu i baca ako ga nema — bolje pasti u testu nego pri renderu akta. */
@@ -82,7 +89,7 @@ class RnTriggerLookupControllerTest {
     void defaultsToSuspensionContext() {
         assertThat(body(TriggerContext.SUSPENZIJA))
                 .extracting(RnTriggerResponse::sifra)
-                .containsExactly("CONSENT_EXPIRY", "INSPECTION", "INCOMPLETE_DOCUMENTATION", "OTHER");
+                .containsExactly("NO_DECISION", "DECISION_REVOKED", "INCOMPLETE_DOCUMENTATION", "INSPECTION", "OTHER");
     }
 
     /**
@@ -95,8 +102,8 @@ class RnTriggerLookupControllerTest {
         String json = new ObjectMapper().writeValueAsString(body(TriggerContext.SUSPENZIJA));
 
         assertThat(json)
-                .contains("\"sifra\":\"CONSENT_EXPIRY\"")
-                .contains("\"naziv\":\"istek suglasnosti suvlasnika\"")
+                .contains("\"sifra\":\"NO_DECISION\"")
+                .contains("\"naziv\":\"za objekt nije izdano rješenje\"")
                 .contains("\"traziBiljesku\":false")
                 .contains("\"traziBiljesku\":true");
     }

@@ -12,6 +12,8 @@ import com.str.backend.lessor.LessorRepository;
 import com.str.backend.pdf.SubmissionPdfContext;
 import com.str.backend.pdf.SubmissionPdfGenerator;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.auth.internal.InternalUserRepository;
+import com.str.backend.rn.RegistrationNumberLogEntity;
 import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.dto.RnDetailDto;
@@ -41,6 +43,9 @@ class AktPreviewGenerator {
     private static final String RN = "HR180000123456789001";
     private static final Path OUT = Path.of("target", "preview");
 
+    private static final String PROPIS_POSTUPCI =
+            "članka 48. stavka 2. Zakona o ugostiteljskoj djelatnosti (Narodne novine, broj ___)";
+
     /**
      * Vrijednosti su iz predloška MINT-a od 11.09.2026., a pečat je uključen s primjerom podataka
      * po uzoru na Poreznu upravu — da preview pokaže cijeli ciljani izgled, i blok koji je u
@@ -63,7 +68,13 @@ class AktPreviewGenerator {
                             + " Upravnom sudu u Zagrebu u roku od 30 dana od dana dostave ove Obavijesti.",
                     "povlacenje", "nije dopuštena žalba, ali se može pokrenuti upravni spor tužbom"
                             + " Upravnom sudu u Zagrebu u roku od 30 dana od dana dostave ove Obavijesti."),
-            false, true);
+            false, true,
+            Map.of("dodjela", "članka 46. stavka 3. Zakona o ugostiteljskoj djelatnosti (Narodne novine, broj ___)",
+                    "opoziv", PROPIS_POSTUPCI,
+                    "prijedlog-suspenzije", PROPIS_POSTUPCI,
+                    "obustava-suspenzije", PROPIS_POSTUPCI,
+                    "suspenzija", PROPIS_POSTUPCI,
+                    "povlacenje", PROPIS_POSTUPCI));
 
     // JUnit poštuje @Disabled i uz -Dtest, pa pokretanje traži i isključen DisabledCondition:
     // mvn test -Dtest=AktPreviewGenerator "-Djunit.jupiter.conditions.deactivate=org.junit.*DisabledCondition"
@@ -85,27 +96,39 @@ class AktPreviewGenerator {
         when(rnRepository.findDetail(RN)).thenReturn(Optional.of(detail()));
         when(lessorRepository.findById(any())).thenReturn(Optional.of(lessor()));
         when(submissionRepository.findById(any())).thenReturn(Optional.empty());
-        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.empty());
+        // Akte suspenzijskog toka napravio je službenik (StrDocumentService.dopuniSluzbenika); razlog
+        // suspenzije čita se s prijedloga.
+        RegistrationNumberLogEntity prijedlog = RegistrationNumberLogEntity.transition(RN, "ACTIVE",
+                "SUSPENSION_PROPOSED", "INCOMPLETE_DOCUMENTATION", "INTERNAL:12345678903", null);
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(prijedlog));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "SUSPENSION_PROPOSED"))
+                .thenReturn(Optional.of(prijedlog));
+        InternalUserRepository internalUsers = mock(InternalUserRepository.class);
+        when(internalUsers.findNames(any())).thenReturn(Map.of("12345678903", "Ana Službenica"));
 
         ZupTemplateLoader loader = new ZupTemplateLoader(PROPS);
         loader.loadAll();
         DocumentLabels labels = new DocumentLabels();
         StrDocumentService service = new StrDocumentService(rnRepository, lessorRepository,
                 submissionRepository, logRepository, loader, new ZupContextFactory(PROPS, labels),
-                new ZupDocumentRenderer(PROPS), labels);
+                new ZupDocumentRenderer(PROPS), labels, internalUsers);
 
         for (StrDocumentType type : StrDocumentType.templateBackedTypes()) {
             String razlog = switch (type) {
-                case SUSPENZIJA, PRIJEDLOG_SUSPENZIJE -> "istek suglasnosti suvlasnika";
-                case POVLACENJE -> "utvrđeno oglašavanje bez važećeg registracijskog broja";
+                case PRIJEDLOG_SUSPENZIJE -> "nepotpuni i/ili netočni podaci";
+                case POVLACENJE -> "namjerno ili krajnjom nepažnjom nisu ispravljeni podaci";
                 case PRIGOVOR -> "suglasnost suvlasnika je pribavljena i dostavlja se u privitku";
+                case ZAHTJEV_OPOZIVA -> "smještajnu jedinicu više ne iznajmljujem";
+                // Suspenzija: proslijeđena bilješka joba, kao u RnLifecycleFilingListeneru — akt
+                // svejedno ispisuje razlog s prijedloga.
+                case SUSPENZIJA -> "Rok za rješavanje nepravilnosti istekao.";
                 default -> null;
             };
-            // Urudžbene oznake u obliku iz predloška; JOP i URBROJ ima samo dodjela, jer se akti
-            // životnog ciklusa renderiraju prije urudžbiranja.
+            // Urudžbene oznake u obliku iz komentara MINTS-a: konačni dokument svakog izlaznog akta
+            // renderira se nakon urudžbe (EgopFilingService.fileAct), pa nosi URBROJ, JOP i barkod.
             FilingReference filing = type == StrDocumentType.DODJELA
-                    ? new FilingReference("334-06/26-10/1", "529-06-03/01-26-2", 21748084)
-                    : new FilingReference("334-06/26-10/1", null);
+                    ? new FilingReference("334-06/27-10/1", "529-06-03/TUREGBROJ-27-2", 81591802)
+                    : new FilingReference("334-06/27-11/1", "529-06-03/TUREGBROJ-27-2", 81591803);
             byte[] pdf = service.render(type, RN, razlog, filing);
             Files.write(OUT.resolve(type.slug() + ".pdf"), pdf);
         }

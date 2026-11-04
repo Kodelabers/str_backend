@@ -44,6 +44,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Mock eGOP klijenta — aktivan kad je {@code hr.infodom.str.integration.egop.enabled}
@@ -69,6 +71,12 @@ class EgopClientMock implements EgopClient {
     private final LocalFilingNumberAllocator allocator;
 
     private final boolean egopEnabled;
+
+    /**
+     * Prilozi po {@code jop}-u, da {@link #dohvatiListuPrilogaPismena} vrati ono što je priloženo — o
+     * tome ovisi zaštita od dvostrukog prilaganja ({@code PrilogEgopService}). Samo u memoriji.
+     */
+    private final Map<Integer, List<PriloziPismenaInfo>> prilozi = new ConcurrentHashMap<>();
 
     EgopClientMock(LocalFilingNumberAllocator allocator,
                    @Value("${hr.infodom.str.integration.egop.enabled:false}") boolean egopEnabled) {
@@ -128,7 +136,8 @@ class EgopClientMock implements EgopClient {
 
     @Override
     public Map<String, Integer> getVrstePriloga() {
-        return Map.of();
+        // Zadani str.egop.prilog.vrsta-naziv, da prilozi lokalno prolaze isti tok kao na eGOP-u.
+        return Map.of("Prilog", 1);
     }
 
     @Override
@@ -239,7 +248,7 @@ class EgopClientMock implements EgopClient {
                 allocator.nextUrBroj(request.getUredskaGodina(), request.getRbrSpisa());
         PismenoBasicInfo2 mockResponse = new PismenoBasicInfo2();
         mockResponse.setOperationSucceeded(true);
-        mockResponse.setJop(request.getRbrSpisa() * 100 + urBroj.redni());
+        mockResponse.setJop(novoPismeno(request.getRbrSpisa() * 100 + urBroj.redni()));
         mockResponse.setUrBroj(urBroj.vrijednost());
         return mockResponse;
     }
@@ -252,10 +261,19 @@ class EgopClientMock implements EgopClient {
                 allocator.nextUrBroj(request.getUredskaGodina(), request.getRbrSpisa());
         PismenoInfo mockResponse = new PismenoInfo();
         mockResponse.setOperationSucceeded(true);
-        mockResponse.setJop(request.getRbrSpisa() * 100 + urBroj.redni());
+        mockResponse.setJop(novoPismeno(request.getRbrSpisa() * 100 + urBroj.redni()));
         mockResponse.setUrBroj(urBroj.vrijednost());
         mockResponse.setUI("I");
         return mockResponse;
+    }
+
+    /**
+     * Novo pismeno nema priloga. {@code jop} mocka se ponavlja nakon brisanja baze (brojač je u bazi),
+     * pa bi inače naslijedilo priloge ranijeg pismena istog broja.
+     */
+    private int novoPismeno(int jop) {
+        prilozi.remove(jop);
+        return jop;
     }
 
     @Override
@@ -276,7 +294,20 @@ class EgopClientMock implements EgopClient {
 
     @Override
     public DokumentInfo kreirajPrilogIPridruziDokument(KreirajPrilogIPridruziDokument request) {
-        return null;
+        log.info("Mock eGOP kreirajPrilogIPridruziDokument called: jop={}, rbr={}, vrsta={}, naziv={}, size={}",
+                request.getJop(), request.getRbrPriloga(), request.getIdVrstaPriloga(), request.getNazivPriloga(),
+                request.getAttachment() == null ? 0 : request.getAttachment().length);
+        PriloziPismenaInfo prilog = new PriloziPismenaInfo();
+        prilog.setJop(request.getJop());
+        prilog.setRbrPriloga(request.getRbrPriloga());
+        prilog.setNazivPriloga(request.getNazivPriloga());
+        prilog.setIdVrstePriloga(request.getIdVrstaPriloga());
+        prilog.setPostojiEDokument(request.getAttachment() != null);
+        prilozi.computeIfAbsent(request.getJop(), jop -> new CopyOnWriteArrayList<>()).add(prilog);
+        DokumentInfo mockResponse = new DokumentInfo();
+        mockResponse.setOperationSucceeded(true);
+        mockResponse.setJop(request.getJop());
+        return mockResponse;
     }
 
     @Override
@@ -336,7 +367,7 @@ class EgopClientMock implements EgopClient {
 
     @Override
     public List<PriloziPismenaInfo> dohvatiListuPrilogaPismena(DohvatiListuPrilogaPismena request) {
-        return List.of();
+        return List.copyOf(prilozi.getOrDefault(request.getJop(), List.of()));
     }
 
     @Override

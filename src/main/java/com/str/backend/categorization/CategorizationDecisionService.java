@@ -4,6 +4,7 @@ import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.categorization.CategorizationDecisionEntity.CategorizationDecisionMetadata;
 import com.str.backend.common.Strings;
+import com.str.backend.common.VrstaDatoteke;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ConflictException;
@@ -21,7 +22,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Objects;
@@ -32,9 +32,9 @@ import java.util.stream.Stream;
 @Service
 public class CategorizationDecisionService {
 
-    private static final byte[] MAGIC_PDF = {0x25, 0x50, 0x44, 0x46};                 // %PDF
-    private static final byte[] MAGIC_JPEG = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
-    private static final byte[] MAGIC_PNG = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    /** Skenirano rješenje: PDF ili fotografija ({@link VrstaDatoteke}). */
+    private static final Set<VrstaDatoteke> DOPUSTENE_VRSTE =
+            EnumSet.of(VrstaDatoteke.PDF, VrstaDatoteke.JPEG, VrstaDatoteke.PNG);
 
     /** Parcijalni unique index iz changeseta 126 — jedno predano ili potvrđeno rješenje po RB-u. */
     static final String ACTIVE_DECISION_INDEX = "uq_categorization_decision_rn_active";
@@ -112,9 +112,10 @@ public class CategorizationDecisionService {
             throw new BusinessException("error.categorization.file.empty");
         }
         byte[] content = readBytes(file);
-        String contentType = detectContentType(content);
+        VrstaDatoteke vrsta = detectType(content);
+        String contentType = vrsta.contentType();
 
-        String fileName = safeFileName(file.getOriginalFilename());
+        String fileName = vrsta.nazivSEkstenzijom(safeFileName(file.getOriginalFilename()));
         CategorizationDecisionMetadata metadata = metadataOf(accommodation);
         CategorizationDecisionEntity entity = owner.oib() != null
                 ? CategorizationDecisionEntity.create(owner.oib(), rn, fileName, contentType, content, metadata)
@@ -211,16 +212,9 @@ public class CategorizationDecisionService {
      * klijent i može lagati, a ovdje pohranjujemo datoteku koju će kasnije otvarati
      * nadležno tijelo. Dopušteni su PDF, JPEG i PNG, isto što frontend nudi u dropzoneu.
      */
-    private static String detectContentType(byte[] content) {
-        if (startsWith(content, MAGIC_PDF)) return "application/pdf";
-        if (startsWith(content, MAGIC_JPEG)) return "image/jpeg";
-        if (startsWith(content, MAGIC_PNG)) return "image/png";
-        throw new BusinessException("error.categorization.file.type");
-    }
-
-    private static boolean startsWith(byte[] content, byte[] magic) {
-        return content.length >= magic.length
-                && Arrays.equals(content, 0, magic.length, magic, 0, magic.length);
+    private static VrstaDatoteke detectType(byte[] content) {
+        return VrstaDatoteke.odredi(content, null, DOPUSTENE_VRSTE)
+                .orElseThrow(() -> new BusinessException("error.categorization.file.type"));
     }
 
     private static byte[] readBytes(MultipartFile file) {

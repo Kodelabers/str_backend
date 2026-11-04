@@ -10,8 +10,11 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public class SmtpEmailService implements EmailService {
 
@@ -53,21 +56,77 @@ public class SmtpEmailService implements EmailService {
     }
 
     @Override
-    public boolean sendRnLifecycleNotification(RnLifecycleMail mail) {
+    public IshodSlanja sendRnLifecycleNotification(RnLifecycleMail mail) {
         Map<String, String> values = new HashMap<>();
         values.put("ime", nn(mail.ime()));
         values.put("rn", nn(mail.rn()));
         values.put("objekt", nn(mail.objekt()));
         values.put("razlog", nn(mail.razlog()));
         values.put("rok", nn(mail.rok()));
+        values.put(EmailTemplates.PRILOZI, priloziTekst(mail));
 
-        if (mail.pdf() == null || mail.pdf().length == 0) {
-            return send(mail.to(), mail.template(), values, mail.dostava());
+        List<Privitak> privitci = new ArrayList<>();
+        if (mail.pdf() != null && mail.pdf().length > 0) {
+            privitci.add(new Privitak(mail.template().slug() + "-" + mail.rn() + ".pdf", mail.pdf(), null));
         }
-        return sendWithAttachment(mail.to(), mail.template(), values,
-                mail.template().slug() + "-" + mail.rn() + ".pdf", mail.pdf(),
-                mail.dostava());
+        mail.prilozi().forEach(p -> privitci.add(new Privitak(p.naziv(), p.sadrzaj(), p.contentType())));
+        if (privitci.isEmpty()) {
+            return send(mail.to(), mail.template(), values, mail.dostava()) ? IshodSlanja.POSLANA : IshodSlanja.NEUSPJELA;
+        }
+        try {
+            deliverWithAttachments(mail.to(), mail.template(), values, privitci, mail.dostava());
+            return IshodSlanja.POSLANA;
+        } catch (MessagingException | MailException e) {
+            boolean prevelika = isMessageTooLarge(e);
+            log.error("Failed to send email to {} with subject '{}'{}: {}", mail.to(),
+                    templates.subject(mail.template(), values), prevelika ? " (message too large)" : "",
+                    e.getMessage(), e);
+            return prevelika ? IshodSlanja.PREVELIKA : IshodSlanja.NEUSPJELA;
+        }
     }
+
+    /**
+     * Je li poslužitelj odbio poruku zbog veličine. JavaMail kod vraća samo u tekstu iznimke
+     * ({@code SMTPSendFailedException} je u implementaciji, ne u API-ju), pa se čita odgovor
+     * poslužitelja: {@code 552} / {@code 5.3.4} (RFC 1870, RFC 3463) ili uobičajeni opis. Lanac uzroka
+     * pokriva i {@code MessagingException#getNextException}, koji je ondje {@code getCause}.
+     */
+    static boolean isMessageTooLarge(Throwable e) {
+        for (Throwable c = e; c != null; c = c.getCause() == c ? null : c.getCause()) {
+            String poruka = c.getMessage();
+            if (poruka != null && PREVELIKA.matcher(poruka).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final Pattern PREVELIKA = Pattern.compile(
+            "(^|\\D)552(\\D|$)|5\\.3\\.4|message size|too large|too big|size exceeds|exceeds .*size",
+            Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Rečenica o prilozima akta (T17); prazno kad ih nema. Prilozi preveliki za e-poštu samo se
+     * navode, uz uputu gdje su — non-EU iznajmljivač nema korisnički pretinac.
+     */
+    private static String priloziTekst(RnLifecycleMail mail) {
+        if (!mail.prilozi().isEmpty()) {
+            return "U privitku su i prilozi akta: "
+                    + String.join(", ", mail.prilozi().stream().map(MailPrilog::naziv).toList()) + ".";
+        }
+        if (!mail.priloziIzvanPoruke().isEmpty()) {
+            String gdje = mail.dostava() == Dostava.PRETINAC
+                    ? "Dostupni su uz akt u Vašem korisničkom pretincu i u aplikaciji eTurizam STR"
+                    : "Dostupni su uz akt u aplikaciji eTurizam STR";
+            return "Prilozi akta nisu u privitku ove poruke jer su zajedno preveliki za e-poštu: "
+                    + String.join(", ", mail.priloziIzvanPoruke()) + ". "
+                    + gdje + " pod „Moji registracijski brojevi“.";
+        }
+        return "";
+    }
+
+    /** Datoteka u privitku; {@code contentType} {@code null} = po nazivu datoteke. */
+    private record Privitak(String naziv, byte[] sadrzaj, String contentType) {}
 
     private boolean send(String to, MailTemplate template, Map<String, String> values) {
         return send(to, template, values, Dostava.PRETINAC);
@@ -99,28 +158,48 @@ public class SmtpEmailService implements EmailService {
         return sendWithAttachment(to, template, values, attachmentName, attachment, Dostava.PRETINAC);
     }
 
-    /** @return je li poruka predana SMTP poslužitelju; greška se bilježi, ne propagira. */
     private boolean sendWithAttachment(String to, MailTemplate template, Map<String, String> values,
                                        String attachmentName, byte[] attachment,
                                        Dostava dostava) {
-        String subject = templates.subject(template, values);
+        List<Privitak> privitci = attachment == null || attachment.length == 0
+                ? List.of()
+                : List.of(new Privitak(attachmentName, attachment, null));
+        return sendWithAttachments(to, template, values, privitci, dostava);
+    }
+
+    /** @return je li poruka predana SMTP poslužitelju; greška se bilježi, ne propagira. */
+    private boolean sendWithAttachments(String to, MailTemplate template, Map<String, String> values,
+                                        List<Privitak> privitci, Dostava dostava) {
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
-            helper.setFrom(properties.from());
-            String recipient = address(helper, to, subject);
-            helper.setText(templates.body(template, values, dostava), true);
-            if (attachment != null && attachment.length > 0) {
-                helper.addAttachment(attachmentName, new ByteArrayResource(attachment));
-            }
-            mailSender.send(message);
-            log.info("Sent email to {} with subject '{}' and attachment '{}' ({} bytes)",
-                    recipient, subject, attachmentName, attachment == null ? 0 : attachment.length);
+            deliverWithAttachments(to, template, values, privitci, dostava);
             return true;
         } catch (MessagingException | MailException e) {
-            log.error("Failed to send email to {} with subject '{}': {}", to, subject, e.getMessage(), e);
+            log.error("Failed to send email to {} with subject '{}': {}", to, templates.subject(template, values),
+                    e.getMessage(), e);
             return false;
         }
+    }
+
+    private void deliverWithAttachments(String to, MailTemplate template, Map<String, String> values,
+                                        List<Privitak> privitci, Dostava dostava) throws MessagingException {
+        String subject = templates.subject(template, values);
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
+        helper.setFrom(properties.from());
+        String recipient = address(helper, to, subject);
+        helper.setText(templates.body(template, values, dostava), true);
+        for (Privitak privitak : privitci) {
+            ByteArrayResource resource = new ByteArrayResource(privitak.sadrzaj());
+            if (privitak.contentType() == null) {
+                helper.addAttachment(privitak.naziv(), resource);
+            } else {
+                helper.addAttachment(privitak.naziv(), resource, privitak.contentType());
+            }
+        }
+        mailSender.send(message);
+        log.info("Sent email to {} with subject '{}' and attachments {} ({} bytes)",
+                recipient, subject, privitci.stream().map(Privitak::naziv).toList(),
+                privitci.stream().mapToLong(p -> p.sadrzaj().length).sum());
     }
 
     /**

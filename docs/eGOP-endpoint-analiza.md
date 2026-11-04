@@ -453,7 +453,7 @@ Miješanje dviju generacija na istom pismenu nema smisla — biramo jednu, i to 
 | `DohvatiDokumentZaPismenoPoUredbi` | str. 62–63 | STR već ima izvorni PDF u `submission.pdf_content`; nema potrebe dohvaćati ga natrag. |
 | `ObrisiPrilogPoUredbi` | str. 66 | Isto — bez brisanja. |
 | `ObrisiDokumentPrilogaPoUredbi` | str. 69–70 | Isto. |
-| `DohvatiListuPrilogaPismenaPoUredbi` | str. 70–71 | U prvoj fazi ne šaljemo priloge, pa nema što listati. |
+| `DohvatiListuPrilogaPismenaPoUredbi` | str. 70–71 | Od T17 priloge šaljemo, ali listamo ih starijom `DohvatiListuPrilogaPismena` (po `jop`, kao i `KreirajPrilogIPridruziDokument`) — prije slanja, da se prilog čiji se upis izgubio preuzme po `rbrPriloga` umjesto da se pošalje drugi put. |
 | `DohvatiDokumentZaPrilogPoUredbi` | str. 71–73 | Isto. |
 
 **Kontrola zbroja:** 6 (§5) + 5 (§6) + 30 (§7) = **41** dokumentirana metoda. ✔
@@ -1867,7 +1867,8 @@ idu u **isti** neupravni predmet.
 | :--- | :--- | :--- | :--- |
 | Registracija | Zahtjev za registracijski broj | ulazno | `EgopRegistrationDispatcher` |
 | Registracija | Obavijest o dodjeli registracijskog broja | izlazno | isto |
-| Opoziv | Obavijest o opozivu registracijskog broja | izlazno (od 22.10.2026. **ulazno**, vidi „Smjer pismena po predmetu") | prijelaz → `REVOKED` (okidač `REVOCATION`; do changeseta 137 `WITHDRAWN` uz actor `LESSOR:`/`NIAS:`) |
+| Opoziv | Zahtjev za opoziv registracijskog broja (od T15) | ulazno | prijelaz → `REVOKED` (okidač `REVOCATION`), urudžbira se prvi |
+| Opoziv | Obavijest o opozivu registracijskog broja | izlazno (22.10.2026.–T15 **ulazno**, vidi „Smjer pismena po predmetu") | isti prijelaz, iza zahtjeva (do changeseta 137 `WITHDRAWN` uz actor `LESSOR:`/`NIAS:`) |
 | Suspenzija | Obavijest o suspenziji registracijskog broja | izlazno | prijelaz → `SUSPENDED` |
 | Povlačenje | Obavijest o povlačenju registracijskog broja | izlazno | prijelaz → `WITHDRAWN` (okidač `WITHDRAWAL`) po sl. dužnosti |
 | Reaktivacija | Obavijest o reaktivaciji registracijskog broja | izlazno | prijelaz → `ACTIVE`, **iza zastavice** |
@@ -1927,7 +1928,8 @@ InfoDom je mailom opisao tri metode **izvan specifikacije v1.11**: `OtpremiPisme
 zamijenjen verzijom s `egopeaitest.mint.hr/ServicePismeno.asmx?wsdl`; strukturna usporedba sa starim:
 ništa uklonjeno ni promijenjeno, dodano 5 operacija (tri KP + `DohvatiDodatnePodatkePismenaComplex`,
 `PostaviUpozorenjeNaPismenu`, koje ne koristimo). Primatelj se zadaje OIB-om (`subjektOznakaPrimatelja`
-ide kao `xsi:nil`), `otpremaPriloga=false`.
+ide kao `xsi:nil`), `otpremaPriloga=true` (od T17: prilozi službenika dio su akta koji se dostavlja;
+pismeno bez priloga ih nema, pa zastavica tada ništa ne mijenja).
 
 Vremena iz `OtpremnicaKPInfo` bez oznake zone čitaju se kao Europe/Zagreb, a `0001-01-01` (.NET
 `DateTime.MinValue` za ne-nillable polje) kao prazno (`EgopDates.toInstant`). **Provjeriti na prvom
@@ -1973,7 +1975,23 @@ Otvoreno prema InfoDomu / MINT-u:
 6. Smije li se akt koji glasi na tvrtku dostaviti u KP zastupnika?
 7. Je li status 1 konačan za poruke bez potvrde primitka; posljedice statusa 0 i 3?
 8. Ograničenje učestalosti za `DohvatiKPStatusPoruke*`.
-9. Potvrda `otpremaPriloga=false` (priloge ne šaljemo, PDF je glavni dokument).
+9. Potvrda `otpremaPriloga=true`: idu li prilozi pismena u KP s glavnim dokumentom, i u kojem obliku.
+10. Najveći SOAP zahtjev koji eGOP prima: prilog od 10 MB putuje kao ~13,4 MB base64 u jednom
+    `KreirajPrilogIPridruziDokument`.
+
+**Prilozi (T17).** Prilozi uz pismena idu u eGOP `KreirajPrilogIPridruziDokument`, jedan poziv po
+prilogu, **nakon** glavnog dokumenta: akt (i dodjela) se urudžbira, pečatira, postaje `SYNCED` i
+otprema u KP s prilozima koji su do tada priloženi — pad priloga ne zaustavlja akt. Neuspjeli prilog
+ima vlastiti retry (`pismeno_prilog.egop_pokusaji` / `egop_sljedeci_pokusaj_u` / `egop_greska`,
+changeset 149; ista politika kao urudžba), a iscrpljen daje ERROR `egop_prilog_retry_exhausted`.
+Prilog priložen nakon otpreme u KP ostaje samo u eGOP-u. Prije slanja se pismeno pita za postojeće
+priloge (`DohvatiListuPrilogaPismena`); prilog s našim `rbrPriloga` se preuzima, ne šalje ponovo.
+
+**Poznato ograničenje (M5):** prvi pokušaj urudžbe i priloga ide sinkrono, iz `AFTER_COMMIT`
+listenera na niti zahtjeva (izdavanje RB-a, opoziv, prijedlog suspenzije, povlačenje). Radnja s
+nekoliko priloga od po 10 MB zato može trajati dulje od timeouta klijenta ili proxyja: radnja je tada
+već spremljena (commit je prošao), korisnik vidi grešku, a urudžba i prilozi se dovrše ili ih
+dovrši `EgopRetryJob`. Asinkrono slanje je svjesno odgođeno.
 
 Popravljeno uz KP: kad je render obavijesti o dodjeli pao, `EgopRegistrationDispatcher` je izlaznom
 pismenu prilagao PDF **zahtjeva**, koji bi uz KP otišao stranci kao akt. Sada greška propagira:
@@ -2029,17 +2047,35 @@ JOP-om pravog zahtjeva; zahtjev je poslan eGOP timu).
 | | Obavijest o suspenziji | isti | izlazno | da |
 | | Obavijest o reaktivaciji | **Obavijest o reaktiviranju registracijskog broja** | izlazno | da |
 | | Obavijest o povlačenju | isti | izlazno | da |
-| | **Obavijest o opozivu** | isti | **ulazno** | ne |
+| | **Zahtjev za opoziv registracijskog broja** (T15) | isti | **ulazno** | ne |
+| | **Obavijest o opozivu** | isti | izlazno (od T15) | da |
 
 - Smjer je `StrDocumentType.smjer()`: ulazna idu kroz `KreirajPismeno2` sa subjektom
   (iznajmljivač), izlazna kroz `KreirajIzlaznoPismeno`. Otpremu u KP zapisuje
   `EgopKpOtpremaService` samo za izlazna.
-- **Opoziv** je ulazno pismeno jer radnju pokreće stranka, ali PDF ostaje akt tijela
-  (zaglavlje, potpis, ePečat). Autorstvo dokumenta je zato zasebno polje,
-  `StrDocumentType.aktTijela()`, a render ga čita umjesto smjera. Mail o opozivu nema klauzulu o
-  dostavi (`Dostava.BEZ_KLAUZULE`), ni za korisnika s OIB-om ni za non-EU.
-- Opozivi zapisani prije ove promjene ostaju u `egop_pismeno` kao `IZLAZNO` (odluka: bez
-  migracije podataka; na okolinama su samo testni).
+- **Opoziv su od T15 (studeni 2026.) dva pismena** istog prijelaza (`StrDocumentType.pismenaForTransition`):
+  ulazni **Zahtjev za opoziv registracijskog broja** (podnesak stranke, potpisuje ga iznajmljivač,
+  predložak `zahtjev-opoziva.txt`; ne pečati se i ne ide u KP) pa izlazna **Obavijest o opozivu**
+  (akt tijela: e-pečat, otprema u KP, mail s klauzulom o dostavi kao ostale obavijesti). Oba nose
+  isti `act_ref` (log_id prijelaza) i razlikuju se po vrsti, pa ih unique ključ
+  `uq_egop_pismeno_submission_vrsta_act` drži po jednom kroz retry — bez promjene sheme.
+  - **Redoslijed:** `EgopAktDispatcher` obavijest ne urudžbira dok zahtjev nema pismeno (`jop`);
+    zahtjev koji smije pokušati šalje prvi, inače obavijest odgađa kao neuspjeh (`egop_akt_deferred`),
+    pa je retry job pokuša iza zahtjeva. Ne čeka se zahtjev kojeg nema (opozivi prije T15) ni
+    zahtjev na popisu `str.egop.akti-bez-sifre`.
+  - **Predmet:** oba idu u predmet koji bira `EgopFilingService.predmetZaPostupak` — zasad predmet
+    akata RB-a (334-06/11). Pitanje T16 (novi predmet po postupku) mijenja samo tu metodu.
+  - **Korisnik:** oba pod aplikacijskim korisnikom (akter `LESSOR:`/`NIAS:`), dakle URBROJ
+    automatskih akata.
+  - **Vrsta pismena „Zahtjev za opoziv registracijskog broja" mora postojati u eGOP šifrarniku na
+    svakoj okolini** (test, predprodukcija, produkcija) i biti ulazna. „Obavijest o opozivu" sada ide
+    kroz `KreirajIzlaznoPismeno` i u KP — MINT ju je 22.10.2026. propisao kao ulaznu, pa s MINT-om
+    potvrditi da je vrsta na svakoj okolini dopuštena kao izlazna. Drukčiji naziv ili šifra: `EGOP_NAZIV_PISMENA_ZAHTJEV_OPOZIVA` /
+    `EGOP_SIFRA_PISMENA_ZAHTJEV_OPOZIVA`. Bez unosa i bez fallbacka urudžba zahtjeva pada
+    („nema unos za vrstu pismena"), a obavijest čeka iza njega do iscrpljenja pokušaja.
+- Opozivi zapisani između 22.10.2026. i T15 ostaju u `egop_pismeno` kao jedno `ULAZNO` pismeno
+  „Obavijest o opozivu" i retry ih dovršava po zapisanom smjeru (bez pečata i KP-a). Oni prije
+  22.10.2026. ostaju `IZLAZNO` (odluka: bez migracije podataka; na okolinama su samo testni).
 - **Nazivi:** naš kanonski naziv (`vrstaPismenaNaziv`) ostaje ključ na `egop_pismeno` i ide u
   `nazivPismena`. Šifra se razrješava po `StrDocumentType.egopVrstaNaziv()`, koji se razlikuje
   za zahtjev i reaktivaciju. Nazivi su u enumu, ne u `application.properties`, jer Spring tu

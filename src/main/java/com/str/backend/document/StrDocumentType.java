@@ -4,11 +4,12 @@ import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Sedam vrsta pismena koje STR urudžbira u eGOP predmet, prema mailu InfoDoma od 22.07.2026.
+ * Vrste pismena koje STR urudžbira u eGOP predmet, prema mailu InfoDoma od 22.07.2026.
  *
  * <p>{@link #vrstaPismenaNaziv()} je naš kanonski naziv: zapisuje se na {@code egop_pismeno}
  * (dio unique ključa, filter retry joba, popis dokumenata) i ide u {@code nazivPismena}.
@@ -18,7 +19,9 @@ import java.util.Set;
  * {@code EgopClientMock}); ovaj enum je od sada jedini izvor.
  *
  * <p>{@link #smjer()} je smjer u urudžbenom zapisniku, a {@link #aktTijela()} tko je autor
- * dokumenta. Razilaze se samo kod {@link #OPOZIV}: PDF je akt tijela, a pismeno je ulazno.
+ * dokumenta. Danas se poklapaju: podnesci stranke su ulazni, akti tijela izlazni. Do T15
+ * (studeni 2026.) opoziv je bio ulazno pismeno s PDF-om akta tijela; sada su to dva pismena,
+ * {@link #ZAHTJEV_OPOZIVA} i {@link #OPOZIV}.
  *
  * <p>{@link #requiredSections()} je <b>pravni minimum</b> koji {@link ZupTemplateLoader}
  * provjerava na startu. Sadržaj sekcije određuje predložak; ovaj popis samo brani da akt
@@ -26,8 +29,9 @@ import java.util.Set;
  * ide na štetu tijela, ne stranke.
  *
  * <p>Sve obavijesti tijela imaju <b>istu strukturu</b> kao obavijest o dodjeli, po predlošku
- * MINT-a od 11.09.2026.: uvod, naslov akta, izreka bez naslova, a obrazloženje i uputa samo
- * tamo gdje ih ZUP traži. Adresat, prilozi i dostavna lista ne ispisuju se nigdje.
+ * MINT-a od 11.09.2026.: uvod, naslov akta i izreka bez naslova. Obrazloženje i uputu o pravnom
+ * lijeku MINTS je u studenom 2026. izbacio i iz akata suspenzije i povlačenja (prigovor je točka
+ * izreke). Adresat, prilozi i dostavna lista ne ispisuju se nigdje.
  * Podnesak stranke ({@link #PRIGOVOR}) nije obavijest i zadržava vlastitu strukturu po
  * čl. 71.
  */
@@ -55,41 +59,55 @@ public enum StrDocumentType {
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
-     * Opoziv na zahtjev samog iznajmljivača ({@code REVOKED}) — evidencijska obavijest, bez
+     * Opoziv na zahtjev samog iznajmljivača ({@code REVOKED}): evidencijska obavijest, bez
      * pravnog lijeka.
      *
-     * <p>U eGOP-u je <b>ulazno</b> pismeno (MINT, 22. 10. 2026.): radnju je pokrenula stranka,
-     * pa ide kroz {@code KreirajPismeno2} sa subjektom i ne otprema se u korisnički pretinac.
-     * Dokument ostaje akt tijela (zaglavlje, potpis, ePečat), zato {@code aktTijela=true}.
+     * <p>Izlazni akt tijela (T15, studeni 2026.): pečati se kvalificiranim e-pečatom, otprema u
+     * korisnički pretinac i dostavlja e-poštom kao i ostale obavijesti. Zahtjev stranke kojim je
+     * opoziv pokrenut zasebno je, ulazno pismeno ({@link #ZAHTJEV_OPOZIVA}) i urudžbira se prije
+     * ovog akta, u isti predmet. Od 22. 10. 2026. do T15 opoziv je bio jedno ulazno pismeno s PDF-om
+     * akta tijela; takvi zapisi ostaju u {@code egop_pismeno} kao {@code ULAZNO} i retry ih šalje
+     * po zapisanom smjeru.
      */
-    OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.ULAZNO, true, null,
+    OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O OPOZIVU REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
-     * Poziv na izjašnjavanje prije nepovoljne odluke (čl. 30. st. 2). Nije rješenje, pa nema
-     * upute o pravnom lijeku — ali <b>mora</b> nositi rok za ispravak, koji po čl. 98. st. 3
-     * ide u izreku.
+     * Podnesak stranke (čl. 71. ZUP-a), kao {@link #PRIGOVOR}: iznajmljivač je sam zatražio opoziv
+     * svog registracijskog broja ({@code LessorRnActionService}). Ulazno pismeno, potpisuje ga
+     * stranka; ne pečati se i ne otprema u korisnički pretinac. Nastaje iz istog prijelaza kao
+     * {@link #OPOZIV} i urudžbira se prije njega ({@link #podnesak()}).
+     */
+    ZAHTJEV_OPOZIVA("zahtjev-opoziva", "Zahtjev za opoziv registracijskog broja", Smjer.ULAZNO, false,
+            null, "ZAHTJEV ZA OPOZIV REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.OBRAZLOZENJE)),
+
+    /**
+     * Poziv na očitovanje prije suspenzije. <b>Mora</b> nositi rok za očitovanje, koji po čl. 98.
+     * st. 3 ide u izreku. Obrazloženje je MINTS izbacio (studeni 2026.): razlog je u točki 1., a
+     * posljedice propuštanja roka u točkama 3. i 4.
      */
     PRIJEDLOG_SUSPENZIJE("prijedlog-suspenzije",
             "Obavijest o prijedlogu suspenzije registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O PRIJEDLOGU SUSPENZIJE REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE)),
-
-    /** Odluka koja dira u prava stranke → puna struktura čl. 98., uključujući uputu. */
-    SUSPENZIJA("suspenzija", "Obavijest o suspenziji registracijskog broja", Smjer.IZLAZNO, true, null,
-            "OBAVIJEST O SUSPENZIJI REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
-                    ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
-     * Povlačenje po službenoj dužnosti ({@code WITHDRAWN}). Kao suspenzija, ali trajno — uputa
-     * je time još važnija.
+     * Akt koji dira u prava stranke. Po predlošku MINTS-a (studeni 2026.) bez obrazloženja i bez
+     * zasebne upute o pravnom lijeku: prigovor u roku od osam dana je točka izreke.
+     */
+    SUSPENZIJA("suspenzija", "Obavijest o suspenziji registracijskog broja", Smjer.IZLAZNO, true, null,
+            "OBAVIJEST O SUSPENZIJI REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
+     * Povlačenje po službenoj dužnosti ({@code WITHDRAWN}). Kao suspenzija: prigovor u roku od osam
+     * dana je točka izreke, obrazloženja nema (MINTS, studeni 2026.).
      */
     POVLACENJE("povlacenje", "Obavijest o povlačenju registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O POVLAČENJU REGISTRACIJSKOG BROJA", true,
-            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA, ZupSection.OBRAZLOZENJE,
-                    ZupSection.UPUTA_O_PRAVNOM_LIJEKU)),
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
      * Podnesak stranke (čl. 71. + čl. 122.) — nema izreke ni upute; tijelo prigovora ide u
@@ -273,6 +291,36 @@ public enum StrDocumentType {
             return Optional.of(POVLACENJE);
         }
         return Optional.empty();
+    }
+
+    /**
+     * Podnesak stranke kojim je postupak ovog akta pokrenut i koji se urudžbira <b>prije</b> njega,
+     * u isti predmet. Zasad samo opoziv: zahtjev iznajmljivača pa obavijest tijela. Ostali akti
+     * nastaju po službenoj dužnosti i podnesak nemaju.
+     */
+    public Optional<StrDocumentType> podnesak() {
+        return this == OPOZIV ? Optional.of(ZAHTJEV_OPOZIVA) : Optional.empty();
+    }
+
+    /**
+     * Sva pismena koja nastaju iz prijelaza, redom urudžbiranja: podnesak stranke (ako postoji) pa
+     * akt iz {@link #forTransition}. Urudžba i popis dokumenata čitaju ovo; obavijest e-poštom ide
+     * samo za akt.
+     */
+    public static List<StrDocumentType> pismenaForTransition(RnStatus to, RnTrigger trigger) {
+        return forTransition(to, trigger)
+                .map(akt -> akt.podnesak().map(podnesak -> List.of(podnesak, akt)).orElse(List.of(akt)))
+                .orElse(List.of());
+    }
+
+    /**
+     * Akt izdaje službenik u postupku suspenzije odnosno povlačenja, pa ga potpisuje službena
+     * osoba (naziv službene dužnosti i ime, MINTS, studeni 2026.), a ne samo tijelo. Dodjelu i
+     * opoziv sustav izdaje automatski; reaktivacija zasad zadržava potpis tijela.
+     */
+    public boolean potpisujeSluzbenik() {
+        return this == PRIJEDLOG_SUSPENZIJE || this == OBUSTAVA_SUSPENZIJE || this == SUSPENZIJA
+                || this == POVLACENJE;
     }
 
     /** Tipovi koji se renderiraju iz predloška — ono što {@link ZupTemplateLoader} učitava. */

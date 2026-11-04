@@ -1,5 +1,8 @@
 package com.str.backend.lessor;
 
+import java.util.List;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -32,6 +35,7 @@ class LessorRnActionServiceTest {
     private SubmissionRepository submissionRepository;
     private LessorRepository lessorRepository;
     private RnStatusTransitionService transitionService;
+    private PrilogService prilogService;
 
     private LessorRnActionService service;
 
@@ -41,7 +45,9 @@ class LessorRnActionServiceTest {
         submissionRepository = mock(SubmissionRepository.class);
         lessorRepository = mock(LessorRepository.class);
         transitionService = mock(RnStatusTransitionService.class);
-        service = new LessorRnActionService(rnRepository, submissionRepository, lessorRepository, transitionService);
+        prilogService = mock(PrilogService.class);
+        service = new LessorRnActionService(rnRepository, submissionRepository, lessorRepository, transitionService,
+                prilogService);
     }
 
     /** Opoziv iznajmljivača je zaseban konačni status — Opozvan, ne Povučen (mjera službenika). */
@@ -53,7 +59,7 @@ class LessorRnActionServiceTest {
         when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
 
-        LessorRnActionResponse response = service.withdrawOwn(RN, lessorId, "  vise ne iznajmljujem  ");
+        LessorRnActionResponse response = service.withdrawOwn(RN, lessorId, "  vise ne iznajmljujem  ", List.of());
 
         assertThat(response.rn()).isEqualTo(RN);
         verify(transitionService).transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION,
@@ -71,10 +77,59 @@ class LessorRnActionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
         when(lessorRepository.findById(lessorId)).thenReturn(Optional.of(lessor));
 
-        service.withdrawOwnByOib(RN, "12312312316", null);
+        service.withdrawOwnByOib(RN, "12312312316", null, List.of());
 
         verify(transitionService).transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION,
                 "NIAS:12312312316", null);
+    }
+
+    /** Prilozi opoziva (T17) vežu se uz zapis prijelaza REVOCATION, pod učitavateljem stranke. */
+    @Test
+    void withdrawOwn_withAttachments_bindsToRevocationLog() {
+        UUID lessorId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        RnEntity rn = rn(submissionId, RnStatus.ACTIVE);
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION, "LESSOR:" + lessorId, null))
+                .thenReturn(logId);
+
+        service.withdrawOwn(RN, lessorId, null, List.of(3L, 4L));
+
+        verify(prilogService).bind("LESSOR:" + lessorId, List.of(3L, 4L), PrilogVlasnik.prijelaz(logId));
+    }
+
+    @Test
+    void withdrawOwnByOib_withAttachments_bindsUnderOwnerOib() {
+        UUID lessorId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
+        RnEntity rn = rn(submissionId, RnStatus.ACTIVE);
+        LessorEntity lessor = mock(LessorEntity.class);
+        when(lessor.getLessorOib()).thenReturn("12312312316");
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
+        when(lessorRepository.findById(lessorId)).thenReturn(Optional.of(lessor));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION, "NIAS:12312312316", null))
+                .thenReturn(logId);
+
+        service.withdrawOwnByOib(RN, "12312312316", null, List.of(5L));
+
+        verify(prilogService).bind("NIAS:12312312316", List.of(5L), PrilogVlasnik.prijelaz(logId));
+    }
+
+    /** Tuđi RB: 404 prije vezanja — prilog ostaje nevezan. */
+    @Test
+    void withdrawOwn_notOwner_doesNotBind() {
+        UUID submissionId = UUID.randomUUID();
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn(submissionId, RnStatus.ACTIVE)));
+        when(submissionRepository.findById(submissionId))
+                .thenReturn(Optional.of(submission(submissionId, UUID.randomUUID())));
+
+        assertThatThrownBy(() -> service.withdrawOwn(RN, UUID.randomUUID(), null, List.of(1L)))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(prilogService, never()).bind(any(), any(), any());
     }
 
     @Test
@@ -85,7 +140,7 @@ class LessorRnActionServiceTest {
         when(submissionRepository.findById(submissionId))
                 .thenReturn(Optional.of(submission(submissionId, UUID.randomUUID()))); // different lessor
 
-        assertThatThrownBy(() -> service.withdrawOwn(RN, lessorId, null))
+        assertThatThrownBy(() -> service.withdrawOwn(RN, lessorId, null, List.of()))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(transitionService, never()).transition(any(), any(), any(), any(), any());
     }
@@ -94,7 +149,7 @@ class LessorRnActionServiceTest {
     void withdrawOwn_throwsNotFound_whenRnMissing() {
         when(rnRepository.findForUpdate(RN)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.withdrawOwn(RN, UUID.randomUUID(), null))
+        assertThatThrownBy(() -> service.withdrawOwn(RN, UUID.randomUUID(), null, List.of()))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

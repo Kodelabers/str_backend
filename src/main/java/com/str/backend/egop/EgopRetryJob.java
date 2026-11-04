@@ -37,6 +37,7 @@ public class EgopRetryJob {
     private final EgopAktiBezSifre bezSifre;
     private final EgopKpOtpremaRepository kpOtpremaRepository;
     private final EgopKpOtpremaService kpOtprema;
+    private final EgopPrilozi prilozi;
     private final Duration grace;
     private final Duration maxAge;
     private final int batchSize;
@@ -49,6 +50,7 @@ public class EgopRetryJob {
                         EgopAktiBezSifre bezSifre,
                         EgopKpOtpremaRepository kpOtpremaRepository,
                         EgopKpOtpremaService kpOtprema,
+                        EgopPrilozi prilozi,
                         @Value("${str.egop.retry.grace:PT5M}") Duration grace,
                         @Value("${str.egop.retry.max-age:P7D}") Duration maxAge,
                         @Value("${str.egop.retry.batch-size:50}") int batchSize) {
@@ -60,6 +62,7 @@ public class EgopRetryJob {
         this.bezSifre = bezSifre;
         this.kpOtpremaRepository = kpOtpremaRepository;
         this.kpOtprema = kpOtprema;
+        this.prilozi = prilozi;
         this.grace = grace;
         this.maxAge = maxAge;
         this.batchSize = batchSize;
@@ -70,6 +73,7 @@ public class EgopRetryJob {
         Instant now = Instant.now();
         retryRegistracije(now);
         retryAkte(now);
+        retryPrilozi(now);
         retryKpOtpreme(now);
     }
 
@@ -128,6 +132,20 @@ public class EgopRetryJob {
             }
         }
         log.info("egop_akt_retry_done processed={} unexpected_errors={}", batch.size(), failed);
+    }
+
+    /**
+     * Prilozi uz urudžbirana pismena (T17) koji nisu prošli ili nisu stigli krenuti. Akt na njih ne
+     * čeka ({@link EgopPrilozi}), pa imaju vlastiti red, brojač i backoff na {@code pismeno_prilog},
+     * po istoj {@link EgopRetryPolicy}. Idu nakon akata: akt urudžbiran u ovom prolazu je svoje
+     * priloge već pokušao inline. Pad cijelog koraka ne smije zaustaviti otpreme iza njega.
+     */
+    private void retryPrilozi(Instant now) {
+        try {
+            prilozi.ponovi(now);
+        } catch (RuntimeException e) {
+            log.error("egop_prilog_retry_error: {}", e.getMessage(), e);
+        }
     }
 
     /**

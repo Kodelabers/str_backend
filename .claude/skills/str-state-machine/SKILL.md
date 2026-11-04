@@ -28,7 +28,7 @@ Defines legal transitions for `submission.status` (SubmissionStatus) and `regist
 | From | Trigger | To |
 | :--- | :--- | :--- |
 | — | RN issued (`RnEntity.issue()`, no log row) | `ACTIVE` |
-| `ACTIVE` | `CONSENT_EXPIRY` / `INSPECTION` / `INCOMPLETE_DOCUMENTATION` / `OTHER` | `SUSPENSION_PROPOSED` |
+| `ACTIVE` | `NO_DECISION` / `DECISION_REVOKED` / `INCOMPLETE_DOCUMENTATION` / `INSPECTION` / `OTHER` (`CONSENT_EXPIRY` historical only) | `SUSPENSION_PROPOSED` |
 | `SUSPENSION_PROPOSED` | `REVOKE_PROPOSAL` | `ACTIVE` |
 | `SUSPENSION_PROPOSED` | `DEADLINE_EXCEEDED` | `SUSPENDED` |
 | `SUSPENDED` | `REACTIVATE` | `ACTIVE` |

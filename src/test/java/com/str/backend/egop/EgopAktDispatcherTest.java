@@ -57,7 +57,7 @@ class EgopAktDispatcherTest {
         lookup = mock(RnLifecycleLookup.class);
         dispatcher = new EgopAktDispatcher(store, lessorRepository, filingService,
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)), korisnik,
-                documentService, lookup);
+                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of()));
         logId = UUID.randomUUID();
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb",
@@ -132,6 +132,145 @@ class EgopAktDispatcherTest {
         dispatcher.dispatch(UUID.randomUUID());
 
         verify(filingService, never()).fileAct(any(), any(), any(), any(), any());
+    }
+
+    // --- opoziv: zahtjev stranke pa obavijest tijela ----------------------------------------
+
+    private EgopPismenoEntity zahtjevOpoziva;
+    private EgopPismenoEntity obavijestOOpozivu;
+
+    /** Dva pismena istog prijelaza (isti act_ref), zapisana redom kojim ih zapisuje listener. */
+    private void opoziv() {
+        String actRef = UUID.randomUUID().toString();
+        zahtjevOpoziva = EgopPismenoEntity.forAct(submission.getSubmissionId(), RN, actRef,
+                StrDocumentType.ZAHTJEV_OPOZIVA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.ULAZNO, "zahtjev".getBytes());
+        obavijestOOpozivu = EgopPismenoEntity.forAct(submission.getSubmissionId(), RN, actRef,
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, "obavijest".getBytes());
+        for (EgopPismenoEntity p : new EgopPismenoEntity[]{zahtjevOpoziva, obavijestOOpozivu}) {
+            when(store.findAkt(p.getId())).thenReturn(Optional.of(p));
+        }
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.ZAHTJEV_OPOZIVA.vrstaPismenaNaziv(),
+                actRef)).thenReturn(Optional.of(zahtjevOpoziva));
+        when(korisnik.za(any())).thenReturn("strservis4");
+        when(store.markAktFailed(any(), any(), any())).thenAnswer(inv -> {
+            EgopPismenoEntity p = inv.getArgument(0).equals(zahtjevOpoziva.getId()) ? zahtjevOpoziva : obavijestOOpozivu;
+            p.markFailed(inv.getArgument(1), inv.getArgument(2));
+            return p.getSyncAttempts();
+        });
+        org.mockito.Mockito.doAnswer(inv -> {
+            obavijestOOpozivu.defer(inv.getArgument(1), inv.getArgument(2));
+            return null;
+        }).when(store).deferAkt(eq(obavijestOOpozivu.getId()), any(), any());
+    }
+
+    /** Uobičajeni tok: listener je zahtjev već urudžbirao, obavijest ide odmah iza njega. */
+    @Test
+    void opoziv_requestAlreadyFiled_filesNotice() throws Exception {
+        opoziv();
+        zahtjevOpoziva.applyPismeno(2001, "529-06-03/TUREGBROJ-26-1", "57", false);
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        verify(filingService).fileAct(eq(obavijestOOpozivu), eq(submission), eq(lessor), eq("strservis4"), any());
+        verify(filingService, never()).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
+    }
+
+    /**
+     * Retry job je došao do obavijesti prije zahtjeva: zahtjev se šalje prvi, pa tek onda obavijest
+     * — inače bi obavijest dobila manji urbroj od zahtjeva kojim je postupak pokrenut.
+     */
+    @Test
+    void opoziv_requestNotFiled_filesRequestFirst() throws Exception {
+        opoziv();
+        org.mockito.Mockito.doAnswer(inv -> {
+            zahtjevOpoziva.applyPismeno(2001, "529-06-03/TUREGBROJ-26-1", "57", false);
+            zahtjevOpoziva.markSynced();
+            return null;
+        }).when(filingService).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        org.mockito.InOrder redoslijed = org.mockito.Mockito.inOrder(filingService);
+        redoslijed.verify(filingService).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
+        redoslijed.verify(filingService).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
+    }
+
+    /**
+     * Zahtjev ne prolazi: obavijest se ne šalje, nego čeka sljedeći pokušaj iza zahtjeva — bez trošenja
+     * vlastitog pokušaja i bez statusa FAILED (čekanje nije kvar obavijesti).
+     */
+    @Test
+    void opoziv_requestFails_defersNotice_withoutConsumingAttempt() throws Exception {
+        opoziv();
+        doThrow(new EgopBadRequestException("eGOP down"))
+                .when(filingService).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        verify(filingService, never()).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
+        assertThat(zahtjevOpoziva.getSyncAttempts()).isEqualTo(1);
+        assertThat(obavijestOOpozivu.getSyncAttempts()).isZero();
+        assertThat(obavijestOOpozivu.getStatus()).isNotEqualTo(EgopSyncStatus.FAILED);
+        assertThat(obavijestOOpozivu.getNextAttemptAt()).isEqualTo(zahtjevOpoziva.getNextAttemptAt());
+        verify(store, never()).markAktFailed(eq(obavijestOOpozivu.getId()), any(), any());
+    }
+
+    /** Zahtjev u backoffu se ne pokušava izvan reda — obavijest se odgađa do njegova sljedećeg pokušaja. */
+    @Test
+    void opoziv_requestInBackoff_isNotRetriedEarly() throws Exception {
+        opoziv();
+        Instant sljedeci = Instant.now().plus(Duration.ofMinutes(30));
+        zahtjevOpoziva.markFailed("eGOP down", sljedeci);
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        verify(filingService, never()).fileAct(any(), any(), any(), any(), any());
+        assertThat(zahtjevOpoziva.getSyncAttempts()).isEqualTo(1);
+        assertThat(obavijestOOpozivu.getSyncAttempts()).isZero();
+        assertThat(obavijestOOpozivu.getNextAttemptAt()).isEqualTo(sljedeci);
+    }
+
+    /**
+     * Zahtjev je iscrpio pokušaje: obavijest se više ne drži iza njega (i dostava e-poštom, koja čeka
+     * njezin pečat, ne ostaje zauvijek zaglavljena) — urudžbira se, uz glasan ERROR.
+     */
+    @Test
+    void opoziv_requestExhausted_filesNoticeAnyway() throws Exception {
+        opoziv();
+        for (int i = 0; i < 10; i++) {
+            zahtjevOpoziva.markFailed("eGOP down", Instant.now().minusSeconds(1));
+        }
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        verify(filingService, never()).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
+        verify(filingService).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
+    }
+
+    /** Opoziv zapisan prije T15 (jedno pismeno) nema zahtjev — ne čeka ništa. */
+    @Test
+    void opoziv_withoutRequestRecord_filesNotice() throws Exception {
+        opoziv();
+        when(store.findPismeno(any(), eq(StrDocumentType.ZAHTJEV_OPOZIVA.vrstaPismenaNaziv()), any()))
+                .thenReturn(Optional.empty());
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        verify(filingService).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
+    }
+
+    /** Zahtjev na popisu vrsta bez šifre nikad se ne urudžbira, pa obavijest ne smije čekati na njega. */
+    @Test
+    void opoziv_requestWithoutCode_doesNotBlockNotice() throws Exception {
+        dispatcher = new EgopAktDispatcher(store, lessorRepository, filingService,
+                new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)), korisnik,
+                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of("zahtjev-opoziva")));
+        opoziv();
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        verify(filingService, never()).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
+        verify(filingService).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
     }
 
     // --- konačni dokument ------------------------------------------------------------------

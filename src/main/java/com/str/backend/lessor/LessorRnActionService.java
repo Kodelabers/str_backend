@@ -1,5 +1,8 @@
 package com.str.backend.lessor;
 
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.Ucitao;
 import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
@@ -14,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -31,15 +36,18 @@ public class LessorRnActionService {
     private final SubmissionRepository submissionRepository;
     private final LessorRepository lessorRepository;
     private final RnStatusTransitionService transitionService;
+    private final PrilogService prilogService;
 
     public LessorRnActionService(RnRepository rnRepository,
                                  SubmissionRepository submissionRepository,
                                  LessorRepository lessorRepository,
-                                 RnStatusTransitionService transitionService) {
+                                 RnStatusTransitionService transitionService,
+                                 PrilogService prilogService) {
         this.rnRepository = rnRepository;
         this.submissionRepository = submissionRepository;
         this.lessorRepository = lessorRepository;
         this.transitionService = transitionService;
+        this.prilogService = prilogService;
     }
 
     /**
@@ -48,15 +56,22 @@ public class LessorRnActionService {
      * STR-1.3-001. The officer's withdrawal (povlačenje) is a separate final status,
      * {@code WITHDRAWN} — see {@code RnService#withdraw}.
      *
-     * <p>TODO (zasebni epic, "Zajedničke backend teme"): potvrda u KP + obavijest Internetskim
-     * platformama. 18-mj. retencijski/brisaći brojač računa se iz {@code valid_to} koji
+     * <p>Prilozi stranke ({@code prilogIds} iz {@code /api/lessor/attachments}, T17; neobavezni) vežu
+     * se uz novi zapis prijelaza u istoj transakciji; kao prilozi stranke idu uz ulazno pismeno
+     * „Zahtjev za opoziv", ne uz obavijest o opozivu ({@code PrilogService#pripadaPismenu}).
+     *
+     * <p>Obavijest o opozivu je izlazni akt (T15) i ide u korisnički pretinac kroz eGOP tok.
+     * TODO (zasebni epic, "Zajedničke backend teme"): obavijest Internetskim platformama.
+     * 18-mj. retencijski/brisaći brojač računa se iz {@code valid_to} koji
      * {@link RnEntity#applyStatus} postavlja na dan opoziva.
      */
     @Transactional
-    public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason) {
+    public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason, Collection<Long> prilogIds) {
         RnEntity entity = loadOwnedByLessorId(rn, lessorId);
-        transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
-                "LESSOR:" + lessorId, Strings.blankToNull(reason));
+        String ucitao = Ucitao.lessor(lessorId);
+        UUID logId = transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                ucitao, Strings.blankToNull(reason));
+        bindPrilozi(ucitao, prilogIds, logId);
         log.info("rn_withdraw_by_lessor rn={} lessor={}", rn, lessorId);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
     }
@@ -64,15 +79,24 @@ public class LessorRnActionService {
     /**
      * NIAS varijanta: vlasništvo se provjerava po OIB-u jer svaki NIAS submission
      * kreira novi LessorEntity snapshot — fiksan lessorId ne pokriva starije RB-ove
-     * istog korisnika. Provjera: submission.lessorId → LessorEntity.lessorOib == oib.
+     * istog korisnika. Provjera: submission.lessorId → LessorEntity.lessorOib == oib. {@code oib} je
+     * vlasnik (efektivni OIB), isti kao kod staginga priloga.
      */
     @Transactional
-    public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason) {
+    public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason, Collection<Long> prilogIds) {
         RnEntity entity = loadOwnedByOib(rn, oib);
-        transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
-                "NIAS:" + oib, Strings.blankToNull(reason));
+        String ucitao = Ucitao.nias(oib);
+        UUID logId = transitionService.transition(entity, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                ucitao, Strings.blankToNull(reason));
+        bindPrilozi(ucitao, prilogIds, logId);
         log.info("rn_withdraw_by_nias rn={} oib={}", rn, oib);
         return new LessorRnActionResponse(entity.getRn(), entity.getStatus());
+    }
+
+    private void bindPrilozi(String ucitao, Collection<Long> prilogIds, UUID logId) {
+        if (prilogIds != null && !prilogIds.isEmpty()) {
+            prilogService.bind(ucitao, prilogIds, PrilogVlasnik.prijelaz(logId));
+        }
     }
 
     /**

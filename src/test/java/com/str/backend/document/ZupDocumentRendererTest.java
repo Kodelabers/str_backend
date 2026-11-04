@@ -34,4 +34,25 @@ class ZupDocumentRendererTest {
         assertThat(ZupDocumentRenderer.odlomci(vezano, ZupSection.Mode.PROZA))
                 .containsExactly("Prvi odlomak", "Treći");
     }
+
+    /**
+     * Barkod oznake pismena („Generirati kod kao u eGOP-u", MINTS) mora se dati očitati natrag u
+     * istu oznaku koja je ispisana ispod njega — necitljiv barkod gori je od nikakvog.
+     */
+    @Test
+    void barcode_decodesBackToTheFilingMark() throws Exception {
+        boolean[] moduli = ZupDocumentRenderer.barkodModuli("P/81591802");
+        int tiho = 10;
+        com.google.zxing.common.BitArray red = new com.google.zxing.common.BitArray(moduli.length + 2 * tiho);
+        for (int i = 0; i < moduli.length; i++) {
+            if (moduli[i]) {
+                red.set(tiho + i);
+            }
+        }
+
+        com.google.zxing.Result rezultat = new com.google.zxing.oned.Code93Reader().decodeRow(0, red, Map.of());
+
+        assertThat(rezultat.getText()).isEqualTo("P/81591802");
+        assertThat(rezultat.getBarcodeFormat()).isEqualTo(com.google.zxing.BarcodeFormat.CODE_93);
+    }
 }

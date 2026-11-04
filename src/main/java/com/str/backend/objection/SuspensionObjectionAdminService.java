@@ -1,6 +1,10 @@
 package com.str.backend.objection;
 
 import com.str.backend.admin.AdminAuditService;
+import com.str.backend.attachment.PrilogDto;
+import com.str.backend.attachment.PrilogRepository.PrilogSazetak;
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.common.Strings;
 import com.str.backend.domain.RnStatus;
@@ -43,19 +47,22 @@ public class SuspensionObjectionAdminService {
     private final AdminAuditService auditService;
     private final InternalAccessService internalAccess;
     private final LessorRepository lessorRepository;
+    private final PrilogService prilogService;
 
     public SuspensionObjectionAdminService(SuspensionObjectionRepository repository,
                                            RnRepository rnRepository,
                                            RnService rnService,
                                            AdminAuditService auditService,
                                            InternalAccessService internalAccess,
-                                           LessorRepository lessorRepository) {
+                                           LessorRepository lessorRepository,
+                                           PrilogService prilogService) {
         this.repository = repository;
         this.rnRepository = rnRepository;
         this.rnService = rnService;
         this.auditService = auditService;
         this.internalAccess = internalAccess;
         this.lessorRepository = lessorRepository;
+        this.prilogService = prilogService;
     }
 
     /** Povijest prigovora uz RB, najnoviji prvi. Nepostojeći RB je 404, RB bez prigovora prazan popis. */
@@ -69,9 +76,15 @@ public class SuspensionObjectionAdminService {
         Map<String, String> names = internalAccess.displayNames(
                 rows.stream().map(SuspensionObjectionRepository.ObjectionSummary::getResolvedBy).toList());
         Map<UUID, String> taxNumbers = taxNumbers(rows);
+        // Dodatne datoteke svih prigovora jednim upitom (T17).
+        Map<UUID, List<PrilogSazetak>> prilozi = prilogService.zaVlasnike(VrstaVlasnika.OBJECTION,
+                rows.stream().map(SuspensionObjectionRepository.ObjectionSummary::getObjectionId).toList());
         return rows.stream()
                 .map(o -> SuspensionObjectionDto.of(o, names.get(o.getResolvedBy()),
-                        taxNumbers.get(o.getLessorId())))
+                        taxNumbers.get(o.getLessorId()),
+                        prilozi.getOrDefault(o.getObjectionId(), List.of()).stream()
+                                .map(p -> PrilogDto.of(rn, p))
+                                .toList()))
                 .toList();
     }
 
@@ -106,12 +119,26 @@ public class SuspensionObjectionAdminService {
         auditService.record(actor, "OBJECTION_ACCEPT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
     }
 
-    /** Neuvažavanje: prigovor → {@code REJECTED}; RB ostaje gdje jest, rok za očitovanje teče dalje. */
+    /**
+     * Neuvažavanje: prigovor → {@code REJECTED}. Ako je RB i dalje pred suspenzijom, a rok je već
+     * istekao, odmah se suspendira u ime službenika ({@link RnService#suspendIfDeadlineExpired}):
+     * prigovor predan u roku zadržao je {@code SuspensionDeadlineJob}, pa bi suspenzija inače
+     * čekala noćni job. Dok rok teče, RB ostaje gdje jest. Prigovor je u tom trenutku već
+     * {@code REJECTED}, a suspenzija ga ni ne zatvara ({@link SuspensionObjectionLifecycleListener}),
+     * pa odluka službenika ostaje zapisana.
+     *
+     * <p>RB se zaključava prije svega, kao kod uvažavanja, da se ne utrka s noćnim jobom.
+     */
     @Transactional
     public void reject(String rn, UUID id, String actor, String note) {
+        RnEntity rnEntity = rnRepository.findForUpdate(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
         SuspensionObjectionEntity e = findOrThrow(rn, id);
         String cleanNote = Strings.blankToNull(note);
         e.reject(actor, cleanNote);
+        if (rnEntity.getStatus() == RnStatus.SUSPENSION_PROPOSED) {
+            rnService.suspendIfDeadlineExpired(rn, actor);
+        }
         auditService.record(actor, "OBJECTION_REJECT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
     }
 

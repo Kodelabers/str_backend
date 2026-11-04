@@ -105,7 +105,11 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
             + " WHERE p.id = :id AND p.sealIdempotencyKey = :key AND p.sealedAt IS NULL")
     int clearSealKey(@Param("id") UUID id, @Param("key") String key, @Param("now") Instant now);
 
-    /** Akt životnog ciklusa po prijelazu koji ga je izazvao ({@code act_ref} = {@code log_id}). */
+    /**
+     * Pismeno određene vrste nastalo iz prijelaza ({@code act_ref} = {@code log_id}). Vrsta je
+     * nužna: opoziv iz istog prijelaza daje dva pismena, zahtjev i obavijest.
+     */
     @Transactional(readOnly = true)
-    Optional<EgopPismenoEntity> findFirstByRnAndActRef(String rn, String actRef);
+    Optional<EgopPismenoEntity> findFirstByRnAndActRefAndVrstaPismenaNaziv(String rn, String actRef,
+                                                                            String vrstaPismenaNaziv);
 }

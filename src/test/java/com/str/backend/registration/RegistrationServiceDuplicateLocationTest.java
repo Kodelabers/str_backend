@@ -1,5 +1,6 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
 import com.str.backend.address.CadastreResolver;
@@ -94,7 +95,8 @@ class RegistrationServiceDuplicateLocationTest {
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 eventPublisher,
-                mock(SubmissionDraftService.class), mock(ReissueService.class));
+                mock(SubmissionDraftService.class), mock(ReissueService.class),
+                mock(PrilogService.class));
 
         CountyEntity county = buildCountyEntity(7L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));

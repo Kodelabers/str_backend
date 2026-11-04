@@ -2,6 +2,7 @@ package com.str.backend.document;
 
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.domain.WithdrawalReason;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -56,6 +57,10 @@ public class DocumentLabels {
 
     public String trigger(RnTrigger trigger) {
         return trigger == null ? get("razlog.nijeNaveden") : get("trigger." + trigger.name());
+    }
+
+    public String withdrawalReason(WithdrawalReason reason) {
+        return reason == null ? get("razlog.nijeNaveden") : get("povlacenje.razlog." + reason.name());
     }
 
     public String status(RnStatus status) {

@@ -1,5 +1,8 @@
 package com.str.backend.registration;
 
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.Ucitao;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.AddressHierarchyValidator;
@@ -49,6 +52,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
@@ -74,6 +78,7 @@ public class RegistrationService {
     private final ApplicationEventPublisher eventPublisher;
     private final SubmissionDraftService submissionDraftService;
     private final ReissueService reissueService;
+    private final PrilogService prilogService;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -91,7 +96,8 @@ public class RegistrationService {
                                AddressHierarchyValidator addressHierarchyValidator,
                                ApplicationEventPublisher eventPublisher,
                                SubmissionDraftService submissionDraftService,
-                               ReissueService reissueService) {
+                               ReissueService reissueService,
+                               PrilogService prilogService) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -109,6 +115,7 @@ public class RegistrationService {
         this.eventPublisher = eventPublisher;
         this.submissionDraftService = submissionDraftService;
         this.reissueService = reissueService;
+        this.prilogService = prilogService;
     }
 
     /** Bez NIAS assertiona (local/mock, testovi): identitet je samo OIB iz zahtjeva. */
@@ -168,7 +175,8 @@ public class RegistrationService {
                 trimmed(req.kontaktTelefon()), trimmed(req.kontaktMobitel()));
         runValidation(accommodation, lessor);
 
-        return commitRegistration(lessor, accommodation);
+        // Prilozi su učitani pod vlasnikom (efektivni OIB) — isti OIB koji je kontroler potvrdio kao req.oib().
+        return commitRegistration(lessor, accommodation, Ucitao.nias(req.oib()), req.prilogIds());
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
@@ -190,7 +198,7 @@ public class RegistrationService {
         applyContact(lessor, req);
         runValidation(accommodation, lessor);
 
-        return commitRegistration(lessor, accommodation);
+        return commitRegistration(lessor, accommodation, Ucitao.lessor(lessorId), req.prilogIds());
     }
 
     /**
@@ -483,7 +491,14 @@ public class RegistrationService {
         }
     }
 
-    private RegistrationResponse commitRegistration(LessorEntity lessor, AccommodationEntity accommodation) {
+    /**
+     * @param ucitao   tko je učitao priloge zahtjeva ({@link Ucitao}) — samo njegovi se mogu vezati
+     * @param prilogIds prilozi uz zahtjev (T17); vežu se uz submission u ovoj transakciji, pa ih eGOP
+     *                  listener nakon commita prilaže uz ulazno pismeno zahtjeva. Neispravan prilog
+     *                  (tuđi, istekao, previše) poništava i izdavanje RB-a.
+     */
+    private RegistrationResponse commitRegistration(LessorEntity lessor, AccommodationEntity accommodation,
+                                                    String ucitao, List<Long> prilogIds) {
         lessorRepository.save(lessor);
 
         // RN is issued before PDF/eGOP/e-mail. filing_number stays null — it
@@ -502,6 +517,9 @@ public class RegistrationService {
         saveAccommodation(accommodation);
 
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
+        if (prilogIds != null && !prilogIds.isEmpty()) {
+            prilogService.bind(ucitao, prilogIds, PrilogVlasnik.zahtjev(submission.getSubmissionId()));
+        }
 
         // Ponovni zahtjev nakon opoziva: predano ili potvrđeno rješenje prelazi na novi RB u istoj
         // transakciji, ali samo za isti objekt — ako izdavanje padne, ne ostaje ni kopija.

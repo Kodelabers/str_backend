@@ -1,10 +1,15 @@
 package com.str.backend.email;
 
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.TestPrilog;
+import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.document.DocumentLabels;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.egop.EgopAktiBezSifre;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
 import com.str.backend.eseal.PdfSealer;
@@ -14,15 +19,19 @@ import com.str.backend.rn.event.RnLifecycleEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.util.unit.DataSize;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +45,7 @@ class RnLifecycleEmailListenerTest {
     private MailRetryStore retryStore;
     private PdfSealer sealer;
     private EgopPismenoRepository pismenoRepository;
+    private PrilogService prilogService;
     private RnLifecycleEmailListener listener;
 
     @BeforeEach
@@ -46,12 +56,14 @@ class RnLifecycleEmailListenerTest {
         retryStore = mock(MailRetryStore.class);
         sealer = mock(PdfSealer.class);
         pismenoRepository = mock(EgopPismenoRepository.class);
+        prilogService = mock(PrilogService.class);
         listener = new RnLifecycleEmailListener(lookup, documentService,
-                new DocumentLabels(), emailService, retryStore, sealer, pismenoRepository);
+                new DocumentLabels(), emailService, retryStore, sealer, pismenoRepository, prilogService,
+                new EgopAktiBezSifre(Set.of()), DataSize.ofMegabytes(20));
 
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com")));
         when(documentService.render(any(), any(), any())).thenReturn("pdf".getBytes());
-        when(emailService.sendRnLifecycleNotification(any())).thenReturn(true);
+        when(emailService.sendRnLifecycleNotification(any())).thenReturn(IshodSlanja.POSLANA);
     }
 
     @Test
@@ -62,10 +74,10 @@ class RnLifecycleEmailListenerTest {
         RnLifecycleMail mail = captured();
         assertThat(mail.template()).isEqualTo(MailTemplate.SUSPENZIJA);
         assertThat(mail.to()).isEqualTo("ana@example.com");
-        assertThat(mail.razlog()).isEqualTo("nepotpuna dokumentacija");
+        assertThat(mail.razlog()).isEqualTo("nepotpuni i/ili netočni podaci");
         assertThat(mail.rok()).isEqualTo("najkasnije do 15.08.2026.");
         assertThat(mail.pdf()).isNotEmpty();
-        verify(documentService).render(StrDocumentType.SUSPENZIJA, RN, "nepotpuna dokumentacija");
+        verify(documentService).render(StrDocumentType.SUSPENZIJA, RN, "nepotpuni i/ili netočni podaci");
     }
 
     /**
@@ -122,7 +134,7 @@ class RnLifecycleEmailListenerTest {
 
         RnLifecycleMail mail = captured();
         assertThat(mail.template()).isEqualTo(MailTemplate.PRIJEDLOG_SUSPENZIJE);
-        assertThat(mail.razlog()).isEqualTo("nepotpuna dokumentacija");
+        assertThat(mail.razlog()).isEqualTo("nepotpuni i/ili netočni podaci");
         assertThat(mail.rok()).isEqualTo("najkasnije do 15.08.2026.");
         assertThat(mail.pdf()).isNotEmpty();
     }
@@ -141,6 +153,7 @@ class RnLifecycleEmailListenerTest {
 
     @Test
     void withdrawal_byAuthority_usesWithdrawalTemplate() {
+        when(documentService.razlogAkta(StrDocumentType.POVLACENJE, RN, "nalaz inspekcije")).thenReturn("nalaz inspekcije");
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWN,
                 RnTrigger.WITHDRAWAL, null, "nalaz inspekcije"));
 
@@ -184,26 +197,48 @@ class RnLifecycleEmailListenerTest {
     }
 
     /**
-     * Opoziv je u eGOP-u ulazno pismeno i ne ide u korisnički pretinac (MINT, 22.10.2026.), pa
-     * poruka ne smije tvrditi dostavu u pretinac — ni korisniku s OIB-om ni non-EU korisniku.
+     * Obavijest o opozivu je od T15 izlazni akt tijela i ide u korisnički pretinac, pa poruka nosi
+     * klauzulu o dostavi kao i ostale obavijesti.
      */
     @Test
-    void revocation_hasNoDeliveryClause_forEuLessor() {
+    void revocation_deliveredToMailbox_forEuLessor() {
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
                 RnTrigger.REVOCATION, "NIAS:12345678903", null));
 
-        assertThat(captured().dostava()).isEqualTo(Dostava.BEZ_KLAUZULE);
+        assertThat(captured().dostava()).isEqualTo(Dostava.PRETINAC);
         assertThat(captured().pdf()).isNotEmpty();
     }
 
     @Test
-    void revocation_hasNoDeliveryClause_forNonEuLessor() {
+    void revocation_deliveredByEmail_forNonEuLessor() {
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
 
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
                 RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), null));
 
-        assertThat(captured().dostava()).isEqualTo(Dostava.BEZ_KLAUZULE);
+        assertThat(captured().dostava()).isEqualTo(Dostava.EPOSTA);
+    }
+
+    /**
+     * Non-EU uz eSeal: opoziv daje dva pismena istog prijelaza (zahtjev i obavijest), a mail mora
+     * nositi pečaćenu obavijest — traži se po vrsti, ne prvo pismeno tog prijelaza.
+     */
+    @Test
+    void revocation_nonEu_sealingEnabled_attachesSealedNotice() {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                "LESSOR:" + UUID.randomUUID(), null);
+        EgopPismenoEntity obavijest = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, event.logId().toString(),
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
+        obavijest.applySeal("%PDF-opoziv".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv())).thenReturn(Optional.of(obavijest));
+
+        listener.onLifecycleChange(event);
+
+        assertThat(captured().template()).isEqualTo(MailTemplate.OPOZIV);
+        assertThat(captured().pdf()).isEqualTo("%PDF-opoziv".getBytes());
     }
 
     /** Pad rendera akta ne smije progutati obavijest — status je već promijenjen. */
@@ -232,7 +267,7 @@ class RnLifecycleEmailListenerTest {
     /** SMTP neuspjeh ide u red ponovnog slanja, pod log_id-em prijelaza. */
     @Test
     void sendFailure_isQueuedForRetry() {
-        when(emailService.sendRnLifecycleNotification(any())).thenReturn(false);
+        when(emailService.sendRnLifecycleNotification(any())).thenReturn(IshodSlanja.NEUSPJELA);
         RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INSPECTION, null, null);
 
         listener.onLifecycleChange(event);
@@ -300,7 +335,8 @@ class RnLifecycleEmailListenerTest {
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, event.logId().toString(),
                 "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
         akt.applySeal("%PDF-pecaceni".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
-        when(pismenoRepository.findFirstByRnAndActRef(RN, event.logId().toString())).thenReturn(Optional.of(akt));
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv())).thenReturn(Optional.of(akt));
 
         listener.onLifecycleChange(event);
 
@@ -315,7 +351,8 @@ class RnLifecycleEmailListenerTest {
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
         RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
                 null, null);
-        when(pismenoRepository.findFirstByRnAndActRef(RN, event.logId().toString())).thenReturn(Optional.empty());
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv())).thenReturn(Optional.empty());
 
         listener.onLifecycleChange(event);
 
@@ -332,7 +369,198 @@ class RnLifecycleEmailListenerTest {
                 RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
 
         assertThat(captured().pdf()).isEqualTo("pdf".getBytes());
-        verify(pismenoRepository, never()).findFirstByRnAndActRef(any(), any());
+        verify(pismenoRepository, never()).findFirstByRnAndActRefAndVrstaPismenaNaziv(any(), any(), any());
+    }
+
+    /** T17: prilozi službenika uz akt idu u privitak dok procjena kodirane poruke stane u limit (20 MB). */
+    @Test
+    void officialAttachments_underLimit_areAttached() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                "INTERNAL:12345678903", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "zapisnik.pdf", "INTERNAL:12345678903")
+                        .withVelicina(10L * 1024 * 1024),
+                TestPrilog.vezan(2, VrstaVlasnika.RN_LOG, event.logId(), "skica.pdf", "INTERNAL:12345678903")
+                        .withVelicina(4L * 1024 * 1024)));
+        when(prilogService.sadrzaj(1L)).thenReturn("a".getBytes());
+        when(prilogService.sadrzaj(2L)).thenReturn("b".getBytes());
+
+        listener.onLifecycleChange(event);
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.prilozi()).extracting(MailPrilog::naziv).containsExactly("zapisnik.pdf", "skica.pdf");
+        assertThat(mail.prilozi().get(0).sadrzaj()).isEqualTo("a".getBytes());
+        assertThat(mail.priloziIzvanPoruke()).isEmpty();
+        assertThat(mail.pdf()).isNotEmpty();
+    }
+
+    /**
+     * 15 MB sirovo (granica službenika pri vezanju) je u base64 ~20,3 MB — iznad limita poruke, pa
+     * poruka priloge samo navodi; sadržaj se i ne čita. Ranije se uspoređivala sirova veličina s istih
+     * 15 MB, pa ova grana nije bila dohvatljiva.
+     */
+    @Test
+    void officialAttachments_overLimit_areOnlyListed() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                "INTERNAL:12345678903", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "zapisnik.pdf", "INTERNAL:12345678903")
+                        .withVelicina(10L * 1024 * 1024),
+                TestPrilog.vezan(2, VrstaVlasnika.RN_LOG, event.logId(), "fotografije.pdf", "INTERNAL:12345678903")
+                        .withVelicina(5L * 1024 * 1024 + 1)));
+
+        listener.onLifecycleChange(event);
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.prilozi()).isEmpty();
+        assertThat(mail.priloziIzvanPoruke()).containsExactly("zapisnik.pdf", "fotografije.pdf");
+        verify(prilogService, never()).sadrzaj(any());
+    }
+
+    /** Prilozi stranke (npr. uz opoziv) ne vraćaju se stranci e-poštom — samo prilozi službenika. */
+    @Test
+    void lessorAttachments_areNotMailedBack() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                "NIAS:98765432109", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "moj.pdf", "NIAS:98765432109")));
+
+        listener.onLifecycleChange(event);
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.prilozi()).isEmpty();
+        assertThat(mail.priloziIzvanPoruke()).isEmpty();
+    }
+
+    /** Pad čitanja priloga ne smije spriječiti obavijest. */
+    @Test
+    void attachmentLookupFailure_mailStillSent() {
+        when(prilogService.zaVlasnika(any())).thenThrow(new IllegalStateException("db"));
+
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENDED,
+                RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
+
+        assertThat(captured().prilozi()).isEmpty();
+    }
+
+    /** Procjena uključuje i akt u privitku, ne samo priloge. */
+    @Test
+    void messageEstimate_countsEncodedActAndAttachments() {
+        long mb = 1024L * 1024;
+        assertThat(RnLifecycleEmailListener.procjenaPoruke(0, 15 * mb)).isGreaterThan(20 * mb);
+        assertThat(RnLifecycleEmailListener.procjenaPoruke(0, 14 * mb)).isLessThan(20 * mb);
+        assertThat(RnLifecycleEmailListener.procjenaPoruke(2 * mb, 14 * mb)).isGreaterThan(20 * mb);
+    }
+
+    /**
+     * Relay ima manji limit od procjene i odbije poruku zbog veličine: odmah ide varijanta s popisom
+     * priloga (akt ostaje u privitku), umjesto ponavljanja iste poruke do odustajanja.
+     */
+    @Test
+    void smtpRejectsSize_resendsWithAttachmentsListed() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                "INTERNAL:12345678903", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "zapisnik.pdf", "INTERNAL:12345678903")));
+        when(prilogService.sadrzaj(1L)).thenReturn("a".getBytes());
+        when(emailService.sendRnLifecycleNotification(any()))
+                .thenReturn(IshodSlanja.PREVELIKA)
+                .thenReturn(IshodSlanja.POSLANA);
+
+        listener.onLifecycleChange(event);
+
+        ArgumentCaptor<RnLifecycleMail> captor = ArgumentCaptor.forClass(RnLifecycleMail.class);
+        verify(emailService, times(2)).sendRnLifecycleNotification(captor.capture());
+        assertThat(captor.getAllValues().get(0).prilozi()).extracting(MailPrilog::naziv).containsExactly("zapisnik.pdf");
+        RnLifecycleMail drugi = captor.getAllValues().get(1);
+        assertThat(drugi.prilozi()).isEmpty();
+        assertThat(drugi.priloziIzvanPoruke()).containsExactly("zapisnik.pdf");
+        assertThat(drugi.pdf()).isNotEmpty();
+        verify(retryStore).markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
+    }
+
+    /** Odbijena i varijanta bez privitaka: ide u red ponovnog slanja s vlastitim razlogom. */
+    @Test
+    void smtpRejectsSizeTwice_isQueuedAsTooLarge() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                "INTERNAL:12345678903", null);
+        when(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(event.logId()))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, event.logId(), "zapisnik.pdf", "INTERNAL:12345678903")));
+        when(prilogService.sadrzaj(1L)).thenReturn("a".getBytes());
+        when(emailService.sendRnLifecycleNotification(any())).thenReturn(IshodSlanja.PREVELIKA);
+
+        listener.onLifecycleChange(event);
+
+        verify(emailService, times(2)).sendRnLifecycleNotification(any());
+        verify(retryStore).recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "message_too_large");
+    }
+
+    /**
+     * M-BE1: suspenzija i obustava navode razlog po istom pravilu kao akt (prijedlog suspenzije), ne
+     * procesnu bilješku svog prijelaza.
+     */
+    @Test
+    void suspensionAfterDeadline_mailUsesProposalReason_sameAsAct() {
+        when(documentService.razlogAkta(StrDocumentType.SUSPENZIJA, RN, "Rok za rješavanje nepravilnosti istekao."))
+                .thenReturn("nalaz inspekcijskog nadzora");
+
+        listener.onLifecycleChange(event(RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED,
+                RnTrigger.DEADLINE_EXCEEDED, "SYSTEM", "Rok za rješavanje nepravilnosti istekao."));
+
+        assertThat(captured().razlog()).isEqualTo("nalaz inspekcijskog nadzora");
+        verify(documentService).render(StrDocumentType.SUSPENZIJA, RN, "nalaz inspekcijskog nadzora");
+    }
+
+    @Test
+    void discontinuation_mailUsesProposalReason() {
+        when(documentService.razlogAkta(StrDocumentType.OBUSTAVA_SUSPENZIJE, RN, null)).thenReturn("nalaz inspekcijskog nadzora");
+
+        listener.onLifecycleChange(event(RnStatus.SUSPENSION_PROPOSED, RnStatus.ACTIVE,
+                RnTrigger.REVOKE_PROPOSAL, "INTERNAL:12345678903", null));
+
+        assertThat(captured().razlog()).isEqualTo("nalaz inspekcijskog nadzora");
+    }
+
+    /**
+     * Ulazni opoziv zapisan prije T15 nikad neće biti pečatiran (ulazna pismena se ne pečate): non-EU
+     * dostava ide s nepečaćenim aktom umjesto da čeka do odustajanja.
+     */
+    @Test
+    void nonEu_sealingEnabled_legacyIncomingRevocation_sendsUnsealed() {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                "LESSOR:" + UUID.randomUUID(), null);
+        EgopPismenoEntity stari = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, event.logId().toString(),
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.ULAZNO, "%PDF-stari".getBytes());
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv())).thenReturn(Optional.of(stari));
+
+        listener.onLifecycleChange(event);
+
+        assertThat(captured().pdf()).isEqualTo("%PDF-stari".getBytes());
+        verify(retryStore, never()).recordFailure(any(), any(), any());
+    }
+
+    /** Vrsta s popisa akti-bez-sifre se ne urudžbira, pa ni ne pečatira: dostava ide s nepečaćenim aktom. */
+    @Test
+    void nonEu_sealingEnabled_actTypeWithoutCode_sendsUnsealed() {
+        listener = new RnLifecycleEmailListener(lookup, documentService, new DocumentLabels(), emailService,
+                retryStore, sealer, pismenoRepository, prilogService,
+                new EgopAktiBezSifre(Set.of(StrDocumentType.SUSPENZIJA.slug())), DataSize.ofMegabytes(20));
+        when(sealer.isEnabled()).thenReturn(true);
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                null, null);
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, event.logId().toString(),
+                StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
+                "%PDF-nepecaceni".getBytes());
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv())).thenReturn(Optional.of(akt));
+
+        listener.onLifecycleChange(event);
+
+        assertThat(captured().pdf()).isEqualTo("%PDF-nepecaceni".getBytes());
     }
 
     private RnLifecycleMail captured() {

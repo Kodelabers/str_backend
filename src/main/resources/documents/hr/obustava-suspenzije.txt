@@ -6,18 +6,21 @@
 # odnosno otklonila nedostatak, pa razloga za suspenziju više nema. Stranci je u korist, pa
 # po čl. 30. st. 2 ZUP-a nema potrebe za obrazloženjem ni uputom o pravnom lijeku.
 #
-# Struktura je ista kao na obavijesti o dodjeli (predložak MINT-a od 11.09.2026.): bez adresata,
-# bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu, a dostava ide
-# u korisnički pretinac.
+# MINTS, studeni 2026.: propis o nadležnosti čl. 48. st. 2.; stranka se ne imenuje u uvodu nego u
+# točki 1. („dodijeljenog na zahtjev stranke: …"); bez razloga pokretanja postupka i bez točke o
+# oglašavanju. Akt potpisuje službenik koji je postupak obustavio (naziv službene dužnosti i ime).
 #
 # Katalog placeholdera: docs/ZUP-predlosci.md
 
 [UVOD]
-${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, po službenoj dužnosti, stranka: ${stranka.naziv}, ${stranka.identifikator}, izdaje
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po službenoj dužnosti, izdaje
 
 [IZREKA]
-1. Obustavlja se postupak suspenzije registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, pokrenut zbog sljedećeg razloga: ${rn.razlog}.
+1. Obustavlja se postupak suspenzije registracijskog broja ${rn.broj}, dodijeljenog na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
 
 2. Utvrđuje se da su razlozi za suspenziju otklonjeni te da registracijski broj ostaje važeći bez prekida.
 
-3. Smještajna jedinica smije se i dalje oglašavati na internetskim platformama za kratkoročni najam.
+[POTPISNIK]
+${sluzbenik.potpisTijela}
+${sluzbenik.funkcija}
+${sluzbenik.ime}

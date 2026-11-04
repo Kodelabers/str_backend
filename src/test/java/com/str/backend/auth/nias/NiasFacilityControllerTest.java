@@ -334,7 +334,7 @@ class NiasFacilityControllerTest {
         mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw")).andExpect(status().isOk());
 
         verify(actingSubjectService).reverify(any(), eq(new NiasIdentity(OIB, "Test", "Korisnik")), eq(companySubject()));
-        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", COMPANY_OIB, null);
+        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", COMPANY_OIB, null, List.of());
     }
 
     @Test
@@ -348,7 +348,7 @@ class NiasFacilityControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.details.code").value("EOVLASTENJA_NOT_REPRESENTATIVE"));
 
-        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any(), any());
     }
 
     // ── zaštita od promjene subjekta (X-Acting-Subject) ─────────────────────
@@ -365,7 +365,7 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.details.current").value(COMPANY_OIB));
 
         verify(actingSubjectService, never()).reverify(any(), any(), any());
-        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any(), any());
     }
 
     @Test
@@ -377,7 +377,7 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.details.code").value("ACTING_SUBJECT_CHANGED"))
                 .andExpect(jsonPath("$.details.current").isEmpty());
 
-        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any(), any());
     }
 
     @Test
@@ -389,7 +389,7 @@ class NiasFacilityControllerTest {
         mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw").header("X-Acting-Subject", COMPANY_OIB))
                 .andExpect(status().isOk());
 
-        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", COMPANY_OIB, null);
+        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", COMPANY_OIB, null, List.of());
     }
 
     @Test
@@ -399,7 +399,7 @@ class NiasFacilityControllerTest {
         mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw").header("X-Acting-Subject", "tvrtka"))
                 .andExpect(status().isBadRequest());
 
-        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any());
+        verify(rnActionService, never()).withdrawOwnByOib(any(), any(), any(), any());
     }
 
     /** Rješenje pripremljeno za tvrtku ne smije se upisati osobi nakon povratka u svoje ime (drugi prozor). */
@@ -538,7 +538,7 @@ class NiasFacilityControllerTest {
         mvc.perform(post("/api/nias/registrations/HR120001000000000123/withdraw")).andExpect(status().isOk());
 
         verify(actingSubjectService, never()).reverify(any(), any(), any());
-        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", OIB, null);
+        verify(rnActionService).withdrawOwnByOib("HR120001000000000123", OIB, null, List.of());
     }
 
     /**

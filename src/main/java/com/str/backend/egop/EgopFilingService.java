@@ -47,6 +47,8 @@ import java.util.UUID;
  *   <li>izlazno pismeno (obavijest o dodjeli) + PDF dokument;</li>
  *   <li>izlazni akt se prije prilaganja pečatira kvalificiranim e-pečatom ({@link PdfSealer}) — iza
  *       {@code str.eseal.enabled}; bez pečata se ne prilaže ni ne otprema;</li>
+ *   <li>prilozi uz pismena (T17) — nakon glavnog dokumenta, bez utjecaja na ishod urudžbe
+ *       ({@link EgopPrilozi}; neuspjele ponavlja {@link EgopRetryJob});</li>
  *   <li>otprema izlaznog pismena u korisnički pretinac ({@link EgopKpOtpremaService}) — iza
  *       {@code str.egop.kp.enabled}, i bez utjecaja na ishod urudžbe.</li>
  * </ol>
@@ -71,6 +73,7 @@ public class EgopFilingService {
     private final EgopVrstaResolver vrste;
     private final EgopKpOtpremaService kpOtprema;
     private final PdfSealer sealer;
+    private final EgopPrilozi prilozi;
 
     private final String appUsername;
     private final String rjesavatelj;
@@ -93,12 +96,14 @@ public class EgopFilingService {
                              @Value("${str.egop.rjesavatelj:}") String rjesavatelj,
                              // Konfigurabilna jer posudbena vrsta predmeta ne mora biti dopuštena
                              // u neupravnoj knjizi — tada se bez rebuilda proba UP/I.
-                             @Value("${str.egop.upisna-knjiga:NP}") String upisnaKnjiga) {
+                             @Value("${str.egop.upisna-knjiga:NP}") String upisnaKnjiga,
+                             EgopPrilozi prilozi) {
         this.egopClient = egopClient;
         this.store = store;
         this.vrste = vrste;
         this.kpOtprema = kpOtprema;
         this.sealer = sealer;
+        this.prilozi = prilozi;
         this.appUsername = properties.qualifiedAppUsername();
         // InfoDom (26.07.2026): rješavatelj mora biti osoba s username-om; probna
         // vrijednost je servisni račun, a property dopušta zamjenu bez rebuilda.
@@ -159,6 +164,11 @@ public class EgopFilingService {
         submission.applyEgopSyncStatus(EgopSyncStatus.SYNCED);
         log.info("egop_filing_ok submission={} klasa={} urbroj_ulazno={} urbroj_izlazno={}",
                 submission.getSubmissionId(), submission.getEgopKlasa(), ulazno.getUrBroj(), izlazno.getUrBroj());
+
+        // Prilozi zahtjeva (T17) idu uz ulazno pismeno, tek kad je dodjela urudžbirana: ne bacaju
+        // iznimke i ne mijenjaju ishod urudžbe — neuspjeli se bilježe na prilogu i ponavlja ih
+        // EgopRetryJob. Dodjela ne smije čekati na priloge zahtjeva.
+        prilozi.prilozi(ulazno, appUsername);
 
         // Dostava u korisnički pretinac (EU/OIB). Ne baca iznimke: pad otpreme ne mijenja ishod
         // urudžbe, a ponavlja ga EgopRetryJob.
@@ -388,7 +398,8 @@ public class EgopFilingService {
      * pouzdano iz vrste — na MINT-ovom testu je obavijest pod vrstom „Obavijest" postala ulazna i
      * otprema u KP je odbijena (21.10.2026.).
      *
-     * <p>Ulazna su zahtjev, opoziv i prigovor (MINT, 22.10.2026.); ostale obavijesti su izlazne.
+     * <p>Ulazni su podnesci stranke: zahtjev, zahtjev za opoziv i prigovor; sve obavijesti tijela,
+     * od T15 i obavijest o opozivu, izlazne su.
      * Smjer dolazi iz {@link StrDocumentType#smjer()} preko {@code egop_pismeno.smjer}.
      */
     private Kreirano kreirajPismeno(int uredskaGodina, int rbrPredmeta, String vrstaNaziv,
@@ -435,8 +446,9 @@ public class EgopFilingService {
     }
 
     /**
-     * Urudžbira jedan akt nakon dodjele u predmet akata tog RB-a (klasa 334-06/11), pod
-     * korisnikom koji je radnju napravio ({@link EgopAktKorisnik}).
+     * Urudžbira jedan akt nakon dodjele u predmet koji bira {@link #predmetZaPostupak} (zasad
+     * predmet akata tog RB-a, klasa 334-06/11), pod korisnikom koji je radnju napravio
+     * ({@link EgopAktKorisnik}).
      *
      * <p>Subjekt se osigurava i ovdje: ako je registracijsko urudžbiranje trajno palo, subjekt
      * u eGOP-u možda ne postoji.
@@ -457,14 +469,14 @@ public class EgopFilingService {
         // Pismeno kreirano prije uvođenja predmeta akata (21.10.2026.) živi u predmetu registracije:
         // ne otvara se novi predmet i ne renderira dokument s klasom predmeta u kojem pismeno nije.
         boolean pismenoUPredmetuRegistracije = akt.isFiled() && submission.getEgopAktiRbrPredmeta() == null;
-        if (!pismenoUPredmetuRegistracije) {
-            ensurePredmetAkti(submission, lessor, subjektOznaka, korisnik, akt.getRn());
-        }
+        PredmetAkta predmet = pismenoUPredmetuRegistracije
+                ? new PredmetAkta(submission.getEgopUredskaGodina(), submission.getEgopRbrPredmeta(),
+                        submission.getEgopKlasa())
+                : predmetZaPostupak(akt, submission, lessor, subjektOznaka, korisnik);
 
         if (!akt.isFiled()) {
-            Kreirano kreirano = kreirajPismeno(submission.getEgopAktiUredskaGodina(),
-                    submission.getEgopAktiRbrPredmeta(), akt.getVrstaPismenaNaziv(), akt.getSmjer(), subjektOznaka,
-                    lessor.getLessorOib(), korisnik);
+            Kreirano kreirano = kreirajPismeno(predmet.uredskaGodina(), predmet.rbrPredmeta(),
+                    akt.getVrstaPismenaNaziv(), akt.getSmjer(), subjektOznaka, lessor.getLessorOib(), korisnik);
             akt.applyPismeno(kreirano.jop(), kreirano.urBroj(), kreirano.vrsta().sifra(),
                     kreirano.vrsta().privremena());
             store.applyPismeno(akt.getId(), kreirano.jop(), kreirano.urBroj(),
@@ -475,25 +487,50 @@ public class EgopFilingService {
         // poslati iste bajtove pod istim ključem, a pečat vrijedi samo za pečatirane bajtove.
         if (!akt.isDocumentAttached() && !pismenoUPredmetuRegistracije && !akt.isSealFrozen()) {
             Optional<byte[]> konacni = dokument.konacni(
-                    new FilingReference(submission.getEgopAktiKlasa(), akt.getUrBroj(), akt.getJop()));
+                    new FilingReference(predmet.klasa(), akt.getUrBroj(), akt.getJop()));
             if (konacni.isPresent()) {
                 akt.replacePdf(konacni.get());
                 store.replacePdf(akt.getId(), konacni.get());
             }
         }
 
-        // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
+        // markDocumentAttached ujedno postavlja SYNCED — akt je urudžbiran kad ima glavni dokument.
         if (!akt.isDocumentAttached()) {
             attachPdfOnce(akt, sealOnce(akt, akt.getPdfContent()), korisnik);
         }
 
         log.info("egop_akt_filed akt={} rn={} vrsta='{}' klasa={} urbroj={} korisnik={}",
-                akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(),
-                pismenoUPredmetuRegistracije ? submission.getEgopKlasa() : submission.getEgopAktiKlasa(),
-                akt.getUrBroj(), korisnik);
+                akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), predmet.klasa(), akt.getUrBroj(), korisnik);
+
+        // Prilozi (T17) idu NAKON glavnog dokumenta i ne zaustavljaju akt: pad priloga ne baca
+        // iznimku, bilježi se na prilogu i ponavlja ga EgopRetryJob. Prije KP otpreme su da u
+        // pretinac odu s aktom oni koji su do tada priloženi; otprema ne čeka na neuspjele.
+        prilozi.prilozi(akt, korisnik);
 
         // Otpremu je zapisao RnLifecycleFilingListener kad je akt nastao (ako je KP tada bio uključen).
         kpOtprema.otpremi(akt.getId());
+    }
+
+    /** Predmet u koji ide pismeno akta: identitet u eGOP-u i KLASA za dokument. */
+    private record PredmetAkta(Integer uredskaGodina, Integer rbrPredmeta, String klasa) {}
+
+    /**
+     * Predmet u koji idu pismena postupka kojem akt pripada — <b>jedino mjesto</b> izbora predmeta
+     * za akte nakon dodjele. Podnesak i akt istog postupka (zahtjev za opoziv pa obavijest o opozivu)
+     * idu u isti predmet, redom kojim ih šalje {@link EgopAktDispatcher}.
+     *
+     * <p>Zasad je to jedan predmet po RB-u (klasa 334-06/11, odluka 21.10.2026.), za sve postupke.
+     * T16: potvrdi li MINT/eGOP predmet po postupku (npr. opoziv otvara novi predmet: zahtjev
+     * urbroj 1, obavijest urbroj 2), mijenja se ova metoda. Postupak se prepoznaje po
+     * {@code act_ref} (log_id prijelaza), koji podnesak i akt dijele; identitet predmeta tada mora
+     * živjeti po postupku, a ne na {@code submission.egop_akti_*}. KLASU za snimak prije urudžbe
+     * čita {@code StrDocumentService.klasaZa}, pa i nju treba uskladiti.
+     */
+    private PredmetAkta predmetZaPostupak(EgopPismenoEntity akt, SubmissionEntity submission, LessorEntity lessor,
+                                          Integer subjektOznaka, String korisnik) throws EgopException {
+        ensurePredmetAkti(submission, lessor, subjektOznaka, korisnik, akt.getRn());
+        return new PredmetAkta(submission.getEgopAktiUredskaGodina(), submission.getEgopAktiRbrPredmeta(),
+                submission.getEgopAktiKlasa());
     }
 
     /**

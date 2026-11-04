@@ -376,7 +376,8 @@ public class NiasController {
             @RequestHeader(value = ActingSubjectGuard.HEADER, required = false) String actingSubjectHeader) {
         String oib = ownerOibForChange(authentication, actingSubjectHeader);
         String reason = body != null ? body.reason() : null;
-        return rnActionService.withdrawOwnByOib(rn, oib, reason);
+        List<Long> prilogIds = body != null && body.prilogIds() != null ? body.prilogIds() : List.of();
+        return rnActionService.withdrawOwnByOib(rn, oib, reason, prilogIds);
     }
 
     /**

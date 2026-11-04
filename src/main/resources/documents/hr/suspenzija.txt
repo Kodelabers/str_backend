@@ -1,36 +1,36 @@
 # Obavijest o suspenziji registracijskog broja
 # Vrsta pismena (eGOP): „Obavijest o suspenziji registracijskog broja" — izlazno
 #
-# Akt dira u prava stranke, pa nosi punu strukturu čl. 98. ZUP-a, uključujući uputu o
-# pravnom lijeku. Tekst upute dolazi iz str.documents.uputa.suspenzija — vidi napomenu
-# uz ${uputa.tekst} u docs/ZUP-predlosci.md (pravna narav postupka nije potvrđena s MINT-om).
+# Akt dira u prava stranke. Po predlošku MINTS-a (studeni 2026.) nema obrazloženja ni zasebne
+# upute o pravnom lijeku: pravni lijek (prigovor u roku od osam dana) je točka 5. izreke, pa
+# ${uputa.tekst} ovdje više nije u upotrebi.
 #
-# Struktura je ista kao na obavijesti o dodjeli (predložak MINT-a od 11.09.2026.): bez adresata,
-# bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu, a dostava ide
-# u korisnički pretinac.
+# MINTS, studeni 2026.: propis o nadležnosti čl. 48. st. 2.; stranka se ne imenuje u uvodu nego u
+# točki 1. („dodijeljen na zahtjev stranke: …"); točka 2. s danom suspenzije (datum prijelaza statusa,
+# ${prijelaz.datum}, ne datum rendera); nove točke 3. do 5. (čl. 6. st. 8. Uredbe, ponovna aktivacija, prigovor);
+# izbrisani troškovi, obrazloženje i uputa. Akt potpisuje službenik (naziv službene dužnosti i
+# ime); suspenziju istekom roka radi sustav, pa je potpisuje službenik koji je postupak pokrenuo.
+#
+# Razlog u točki 1. je materijalni razlog s prijedloga, ne bilješka o isteku roka
+# (StrDocumentService.razlog).
 #
 # Katalog placeholdera: docs/ZUP-predlosci.md
 
 [UVOD]
-${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, po službenoj dužnosti, stranka: ${stranka.naziv}, ${stranka.identifikator}, donosi
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po službenoj dužnosti, donosi
 
 [IZREKA]
-1. Suspendira se registracijski broj ${rn.broj}, dodijeljen smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, zbog sljedećeg razloga: ${rn.razlog}.
+1. Suspendira se registracijski broj ${rn.broj}, dodijeljen na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, zbog sljedećeg razloga: ${rn.razlog}.
 
-2. Suspenzija stupa na snagu danom dostave ove Obavijesti. Od toga dana registracijski broj nije važeći i smještajna jedinica ne smije se oglašavati na internetskim platformama za kratkoročni najam.
+2. Registracijski broj prestaje važiti danom suspenzije i briše se iz integriranog informacijskog sustava turizma s danom ${prijelaz.datum}
 
-3. Suspenzija traje do otklanjanja razloga iz točke 1. ove izreke. Po dostavi ispravne odnosno potpune dokumentacije registracijski broj se reaktivira.
+3. Sukladno članku 6. stavku 8. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća od 11. travnja 2024. o prikupljanju i razmjeni podataka o uslugama kratkoročnog iznajmljivanja smještaja i izmjeni Uredbe (EU) 2018/1724 (SL L, 2024/1028, 29.4.2024.) valjanost registracijskog broja ostaje suspendirana sve dok iznajmljivač nadležnom tijelu putem integriranog informacijskog sustava turizma ne dostavi ispravljene relevantne informacije i dokumentaciju.
 
-4. Troškovi postupka nisu nastali.
+4. Nakon primitka te provjere točnosti, potpunosti i ispravnosti dostavljenih informacija i dokumentacije nadležna tijela ponovno će aktivirati registracijski broj.
 
-[OBRAZLOZENJE]
-Postupak je pokrenut po službenoj dužnosti nakon što je u nadzoru nad podacima upisanima u integrirani informacijski sustav turizma utvrđen razlog za suspenziju registracijskog broja ${rn.broj}: ${rn.razlog}.
+5. Protiv ove Obavijesti stranka može izjaviti prigovor nadležnom upravnom tijelu u roku od osam dana od dana dostave ove Obavijesti.
 
-Stranci je prethodno omogućeno izjašnjavanje sukladno članku 30. stavku 2. Zakona o općem upravnom postupku. Uvidom u spis predmeta i podatke integriranog informacijskog sustava turizma utvrđeno je da razlog iz točke 1. izreke nije otklonjen, pa je odlučeno kao u izreci.
-
-Suspenzija registracijskog broja provodi se sukladno članku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća o prikupljanju i razmjeni podataka o uslugama kratkoročnog najma smještaja, te ${tijelo.propisNadleznosti}.
-
-Suspenzija ne briše registracijski broj — podaci ostaju u integriranom informacijskom sustavu turizma, a broj se reaktivira čim se razlog suspenzije otkloni.
-
-[UPUTA_O_PRAVNOM_LIJEKU]
-Protiv ove Obavijesti ${uputa.tekst}
+[POTPISNIK]
+${sluzbenik.potpisTijela}
+${sluzbenik.funkcija}
+${sluzbenik.ime}

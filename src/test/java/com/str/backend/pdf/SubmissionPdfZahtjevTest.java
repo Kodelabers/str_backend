@@ -27,7 +27,7 @@ class SubmissionPdfZahtjevTest {
             new DocumentProperties.Tijelo("ministarstvo turizma i sporta", "87892589782",
                     "Prisavlje 14", "Zagreb", "Uprava za turizam", null),
             new DocumentProperties.Potpisnik(null, null),
-            null, Map.of(), false, false);
+            null, Map.of(), false, false, Map.of());
 
     private final SubmissionPdfGenerator generator = new SubmissionPdfGenerator(PROPS);
 

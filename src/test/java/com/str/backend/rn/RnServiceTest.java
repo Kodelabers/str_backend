@@ -1,8 +1,13 @@
 package com.str.backend.rn;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.PrilogException;
+import com.str.backend.attachment.PrilogService;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.document.DocumentLabels;
+import com.str.backend.domain.WithdrawalReason;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.BusinessException;
@@ -20,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.eq;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,9 +42,10 @@ class RnServiceTest {
     private RnStatusTransitionService transitionService;
     private AccommodationRepository accommodationRepository;
     private AccommodationTypeRepository accommodationTypeRepository;
-    private static final int SUSPENSION_RESPONSE_DAYS = 15;
-
+    private PrilogService prilogService;
     private final Clock clock = Clock.fixed(Instant.parse("2026-04-30T10:00:00Z"), ZoneId.of("UTC"));
+    /** Valjan rok za očitovanje (u budućnosti u odnosu na {@link #clock}). */
+    private static final LocalDate DEADLINE = LocalDate.of(2026, 5, 15);
 
     private RnService service;
 
@@ -48,8 +55,9 @@ class RnServiceTest {
         transitionService = mock(RnStatusTransitionService.class);
         accommodationRepository = mock(AccommodationRepository.class);
         accommodationTypeRepository = mock(AccommodationTypeRepository.class);
+        prilogService = mock(PrilogService.class);
         service = new RnService(repository, transitionService, accommodationRepository,
-                accommodationTypeRepository, clock, SUSPENSION_RESPONSE_DAYS);
+                accommodationTypeRepository, clock, new DocumentLabels(), prilogService);
     }
 
     @Test
@@ -176,25 +184,74 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, null, null, null);
+        service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, DEADLINE, null, null, List.of());
 
-        verify(transitionService).transition(
-                rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION, null, null);
+        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION,
+                null, "nepotpuni i/ili netočni podaci");
     }
 
     /**
-     * Bez zadanog roka kolona bi ostala NULL, {@code SuspensionDeadlineJob} predmet nikad ne bi
-     * pokupio i RB bi zauvijek visio u SUSPENSION_PROPOSED — dok akt stranci tvrdi da rok teče.
+     * L-note: uz kodirani razlog u trag ide natpis razloga, ne bilješka službenika — akt i obavijest
+     * razlog čitaju odande. Bilješka ide samo uz OTHER.
      */
     @Test
-    void suspend_defaultsDeadline_whenNoneGiven() {
+    void suspend_codedTrigger_logsLabel_notNote() {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.suspend(rn.getRn(), RnTrigger.INSPECTION, null, null, null);
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, DEADLINE, "interna bilješka", "INTERNAL:12345678903",
+                List.of());
 
-        assertThat(rn.getSuspensionDeadline())
-                .isEqualTo(LocalDate.now(clock).plusDays(SUSPENSION_RESPONSE_DAYS));
+        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION,
+                "INTERNAL:12345678903", "nalaz inspekcijskog nadzora");
+    }
+
+    @Test
+    void suspend_other_logsNote() {
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.suspend(rn.getRn(), RnTrigger.OTHER, DEADLINE, "  opis službenika ", "INTERNAL:12345678903",
+                List.of());
+
+        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.OTHER,
+                "INTERNAL:12345678903", "opis službenika");
+    }
+
+    /** L-null-actor: prilozi bez identificiranog službenika su 403 ATTACHMENT_FORBIDDEN, ne 500. */
+    @Test
+    void suspend_attachmentsWithoutActor_is403() {
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        assertThatThrownBy(() -> service.suspend(rn.getRn(), RnTrigger.INSPECTION, DEADLINE, null, null, List.of(7L)))
+                .isInstanceOfSatisfying(PrilogException.class, ex -> {
+                    assertThat(ex.getStatus()).isEqualTo(org.springframework.http.HttpStatus.FORBIDDEN);
+                    assertThat(ex.getCode()).isEqualTo(PrilogException.FORBIDDEN);
+                });
+        verify(prilogService, never()).bind(any(), any(), any());
+    }
+
+    /**
+     * Rok je obvezan (MINTS): bez njega kolona ostaje NULL, {@code SuspensionDeadlineJob} predmet
+     * nikad ne pokupi i RB zauvijek visi u SUSPENSION_PROPOSED. Sustav ga više ne određuje sam.
+     */
+    @Test
+    void suspend_requiresDeadline() {
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.INSPECTION, null, null, null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.suspend.deadline.required");
+        verify(repository, never()).findForUpdate(anyString());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    /** Povijesni razlog ostaje u enumu, ali novi prijedlog njime više ne nastaje. */
+    @Test
+    void suspend_rejectsHistoricalConsentExpiry() {
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.CONSENT_EXPIRY,
+                DEADLINE, null, null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.suspend.trigger.invalid");
     }
 
     @Test
@@ -203,7 +260,7 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         LocalDate chosen = LocalDate.of(2026, 6, 1);
 
-        service.suspend(rn.getRn(), RnTrigger.INSPECTION, chosen, null, null);
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, chosen, null, null, List.of());
 
         assertThat(rn.getSuspensionDeadline()).isEqualTo(chosen);
     }
@@ -212,7 +269,7 @@ class RnServiceTest {
     @Test
     void suspend_rejectsDeadlineInThePast() {
         assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.INSPECTION,
-                LocalDate.now(clock).minusDays(1), null, null))
+                LocalDate.now(clock).minusDays(1), null, null, List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.deadline.past");
         verify(transitionService, never())
@@ -226,14 +283,14 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         LocalDate today = LocalDate.now(clock);
 
-        service.suspend(rn.getRn(), RnTrigger.INSPECTION, today, null, null);
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, today, null, null, List.of());
 
         assertThat(rn.getSuspensionDeadline()).isEqualTo(today);
     }
 
     @Test
     void suspend_requiresNote_forOtherReason() {
-        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.OTHER, null, "  ", null))
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.OTHER, DEADLINE, "  ", null, List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.note.required");
         verify(transitionService, never())
@@ -242,32 +299,84 @@ class RnServiceTest {
 
     @Test
     void suspend_rejectsNonSuspendTrigger() {
-        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.WITHDRAWAL, null, null, null))
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.WITHDRAWAL, DEADLINE, null, null, List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.trigger.invalid");
         verify(transitionService, never())
                 .transition(any(), any(), any(), anyString(), anyString());
     }
 
+    /** Kodirani razlog ide u trag kao natpis — akt povlačenja ga odande ispisuje. Okidač ostaje WITHDRAWAL. */
     @Test
-    void withdraw_passesReasonToTransition() {
+    void withdraw_logsLabelOfCodedReason() {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.withdraw(rn.getRn(), "  nedostaje suglasnost  ", null);
+        service.withdraw(rn.getRn(), WithdrawalReason.INVALID_INFORMATION, "ne upisuje se", null, List.of());
+
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
+                null, "dostavljene su nevjerodostojne ili nevaljane informacije");
+    }
+
+    /** Uz „drugi razlozi" u trag (i akt) ide opis službenika. */
+    @Test
+    void withdraw_logsNoteForOtherReason() {
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.withdraw(rn.getRn(), WithdrawalReason.OTHER, "  nedostaje suglasnost  ", null, List.of());
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
                 null, "nedostaje suglasnost");
     }
 
     @Test
-    void withdraw_nullReasonStaysNull() {
+    void withdraw_requiresReason() {
+        assertThatThrownBy(() -> service.withdraw("HR120001000000000001", null, "opis", null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.withdraw.reason.required");
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void withdraw_requiresNote_forOtherReason() {
+        assertThatThrownBy(() -> service.withdraw("HR120001000000000001", WithdrawalReason.OTHER, "  ", null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.withdraw.note.required");
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    /** Neuvaženi prigovor nakon isteka roka: odmah suspenzija, u ime službenika, istim prijelazom kao job. */
+    @Test
+    void suspendIfDeadlineExpired_suspendsInOfficialsName() {
+        RnEntity rn = proposedRn(LocalDate.now(clock).minusDays(1));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isTrue();
+
+        verify(transitionService, times(1)).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
+                "INTERNAL:12345678903", SuspensionDeadlineJob.DEADLINE_EXCEEDED_NOTE);
+    }
+
+    /** Rok koji ističe danas još teče — kao i u jobu. */
+    @Test
+    void suspendIfDeadlineExpired_keepsProposalWhileDeadlineRuns() {
+        RnEntity rn = proposedRn(LocalDate.now(clock));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isFalse();
+
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void suspendIfDeadlineExpired_ignoresRnNoLongerProposed() {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.withdraw(rn.getRn(), null, null);
+        assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isFalse();
 
-        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, null, null);
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
     }
 
     /** STR-1.5: nevažeći za oglašavanje su i opozvani i povučeni, ne samo suspendirani. */
@@ -296,6 +405,13 @@ class RnServiceTest {
                 LocalDate.of(2026, 4, 30));
     }
 
+    private RnEntity proposedRn(LocalDate deadline) {
+        RnEntity rn = activeRn();
+        rn.applyStatus(RnStatus.SUSPENSION_PROPOSED);
+        rn.setSuspensionDeadline(deadline);
+        return rn;
+    }
+
     private AccommodationEntity accommodation(UUID id, Long typeId) {
         AccommodationEntity e = AccommodationEntity.create(
                 UUID.randomUUID(), "Grad Zagreb", "Zagreb", "Ilica", "1",
@@ -319,16 +435,74 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         String actor = "INTERNAL:12345678903";
 
-        service.withdraw(rn.getRn(), "razlog", actor);
+        service.withdraw(rn.getRn(), WithdrawalReason.OTHER, "razlog", actor, List.of());
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, "razlog");
 
-        service.suspend(rn.getRn(), RnTrigger.INSPECTION, null, null, actor);
-        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION, actor, null);
+        service.suspend(rn.getRn(), RnTrigger.INSPECTION, DEADLINE, null, actor, List.of());
+        verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION, actor,
+                "nalaz inspekcijskog nadzora");
 
         service.revokeProposal(rn.getRn(), actor);
         verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null);
 
         service.reactivate(rn.getRn(), actor);
         verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null);
+    }
+
+    // ---- T17: prilozi službenika uz prijedlog suspenzije i povlačenje
+
+    /** Prilozi se vežu uz upravo nastali zapis prijelaza, pod službenikom koji je radnju napravio. */
+    @Test
+    void suspend_withAttachments_bindsToNewLogEntry() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION,
+                "INTERNAL:12345678903", "nalaz inspekcijskog nadzora")).thenReturn(logId);
+
+        service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null, "INTERNAL:12345678903", List.of(7L, 8L));
+
+        verify(prilogService).bind("INTERNAL:12345678903", List.of(7L, 8L), PrilogVlasnik.prijelaz(logId));
+    }
+
+    @Test
+    void withdraw_withAttachments_bindsToNewLogEntry() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(eq(rn), eq(RnStatus.WITHDRAWN), eq(RnTrigger.WITHDRAWAL),
+                eq("INTERNAL:12345678903"), anyString())).thenReturn(logId);
+
+        service.withdraw("HR00000001", WithdrawalReason.DATA_NOT_CORRECTED, null, "INTERNAL:12345678903",
+                List.of(9L));
+
+        verify(prilogService).bind("INTERNAL:12345678903", List.of(9L), PrilogVlasnik.prijelaz(logId));
+    }
+
+    /** Bez priloga nema vezanja — ni poziva sa praznim popisom. */
+    @Test
+    void suspend_withoutAttachments_doesNotBind() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+
+        service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null, "INTERNAL:12345678903", List.of());
+
+        verify(prilogService, never()).bind(any(), any(), any());
+    }
+
+    /** Neispravan prilog ruši radnju: iznimka iz vezanja izlazi iz transakcijske metode (rollback). */
+    @Test
+    void suspend_rejectedAttachment_propagates() {
+        RnEntity rn = mock(RnEntity.class);
+        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
+        when(transitionService.transition(any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
+        when(prilogService.bind(any(), any(), any())).thenThrow(new PrilogException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "error.attachment.totalTooLarge",
+                PrilogException.TOTAL_TOO_LARGE));
+
+        assertThatThrownBy(() -> service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null,
+                "INTERNAL:12345678903", List.of(1L)))
+                .isInstanceOfSatisfying(PrilogException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("ATTACHMENT_TOTAL_TOO_LARGE"));
     }
 }

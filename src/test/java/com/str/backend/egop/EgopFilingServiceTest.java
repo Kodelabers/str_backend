@@ -80,7 +80,7 @@ class EgopFilingServiceTest {
                 "Obavijest o dodjeli registracijskog broja", "102"));
 
         service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, sealer, properties("MINT", "str-svc"),
-                "", "NP");
+                "", "NP", mock(EgopPrilozi.class));
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
         lessor.setLessorOib("12345678901");
@@ -217,7 +217,7 @@ class EgopFilingServiceTest {
     @Test
     void fileRegistration_usesConfiguredRjesavateljWhenSet() throws Exception {
         service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, sealer, properties("MINT", "str-svc"),
-                "MINT\\ivan.ivic", "NP");
+                "MINT\\ivan.ivic", "NP", mock(EgopPrilozi.class));
         givenSubjektAndPredmetCreated();
 
         service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
@@ -472,32 +472,110 @@ class EgopFilingServiceTest {
         assertEquals("snimak", new String(dokument.getValue().getAttachment()));
     }
 
-    /**
-     * Opoziv je ulazno pismeno (MINT, 22.10.2026.): ide kroz KreirajPismeno2 sa subjektom
-     * (iznajmljivač), u predmet akata, nikad kroz KreirajIzlaznoPismeno.
-     */
-    @Test
-    void fileAct_revocation_isFiledAsIncomingWithSubject() throws Exception {
+    // --- opoziv: zahtjev stranke (ulazno) pa obavijest tijela (izlazno), T15 ---------------
+
+    private EgopPismenoEntity zahtjevOpoziva;
+    private EgopPismenoEntity obavijestOOpozivu;
+
+    /** RB još nema predmet akata: prvi od dva pismena opoziva ga otvara. */
+    private void givenOpoziv() throws Exception {
         lessor.assignEgopSubjekt(42);
-        submission.applyEgopAktiPredmet(2026, 77, "334-06/11-26/77");
+        PredmetBasicInfo2 predmet = new PredmetBasicInfo2();
+        predmet.setOperationSucceeded(true);
+        predmet.setUredskaGodina(2026);
+        predmet.setRbrPredmeta(78);
+        predmet.setKlasifikacijskaOznaka("334-06/11-26/78");
+        when(egopClient.kreirajPredmet2(any())).thenReturn(predmet);
         PredmetInfo postoji = new PredmetInfo();
         postoji.setOperationSucceeded(true);
         when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
-        when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o opozivu registracijskog broja", "105"));
-        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1006, "529-06/26-6"));
+        when(egopClient.getVrstePismena()).thenReturn(Map.of(
+                "Zahtjev za opoziv registracijskog broja", "106",
+                "Obavijest o opozivu registracijskog broja", "105"));
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1006, "529-06-03/TUREGBROJ-26-1"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1007, "529-06-03/TUREGBROJ-26-2"));
         when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
-        EgopPismenoEntity akt = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-6",
-                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.ULAZNO, "snimak".getBytes());
+        zahtjevOpoziva = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-6",
+                StrDocumentType.ZAHTJEV_OPOZIVA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.ULAZNO,
+                "zahtjev".getBytes());
+        obavijestOOpozivu = EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", "log-6",
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
+                "obavijest".getBytes());
+    }
 
-        service.fileAct(akt, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
+    /**
+     * Zahtjev je podnesak stranke: KreirajPismeno2 sa subjektom (iznajmljivač), bez pečata (i uz
+     * uključen eSeal) i bez otpreme u KP.
+     */
+    @Test
+    void fileAct_revocationRequest_isIncomingWithSubject_andNotSealed() throws Exception {
+        givenSealing();
+        givenOpoziv();
+
+        service.fileAct(zahtjevOpoziva, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
 
         ArgumentCaptor<KreirajPismeno2> request = ArgumentCaptor.forClass(KreirajPismeno2.class);
         verify(egopClient).kreirajPismeno2(request.capture());
-        assertEquals(77, request.getValue().getRbrSpisa());
-        assertEquals("105", request.getValue().getVrstaPismena());
+        assertEquals(78, request.getValue().getRbrSpisa());
+        assertEquals("106", request.getValue().getVrstaPismena());
         assertEquals(42, request.getValue().getSubjektOznaka());
         assertEquals("12345678901", request.getValue().getSubjektOIB());
         verify(egopClient, never()).kreirajIzlaznoPismeno(any());
+        verify(sealer, never()).seal(any(), anyString(), any());
+        verify(store, never()).freezeForSealing(any(), any(), anyString());
+        ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
+        assertEquals("zahtjev", new String(dokument.getValue().getAttachment()));
+        verify(kpOtprema, never()).register(any(), any(), any());
+    }
+
+    /** Obavijest o opozivu je izlazni akt tijela: KreirajIzlaznoPismeno, pečat, pa otprema u KP. */
+    @Test
+    void fileAct_revocationNotice_isOutgoing_sealed_andSentToKp() throws Exception {
+        givenSealing();
+        givenOpoziv();
+
+        service.fileAct(obavijestOOpozivu, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
+
+        verify(egopClient, never()).kreirajPismeno2(any());
+        ArgumentCaptor<KreirajIzlaznoPismeno> request = ArgumentCaptor.forClass(KreirajIzlaznoPismeno.class);
+        verify(egopClient).kreirajIzlaznoPismeno(request.capture());
+        assertEquals("105", request.getValue().getVrstaPismena());
+        verify(sealer).seal("obavijest".getBytes(), "kljuc-0000000001", "529-06-03/TUREGBROJ-26-2");
+        ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
+        assertArrayEquals(PECACENI, dokument.getValue().getAttachment());
+        assertTrue(obavijestOOpozivu.isSealed());
+        verify(kpOtprema).otpremi(obavijestOOpozivu.getId());
+    }
+
+    /**
+     * Oba pismena istog opoziva idu u predmet koji bira predmetZaPostupak — zasad isti predmet
+     * akata RB-a: zahtjev ga otvara, obavijest ga zatječe i ne otvara drugi.
+     */
+    @Test
+    void fileAct_revocation_bothPismenaGoToTheSamePredmet() throws Exception {
+        givenOpoziv();
+        AtomicReference<FilingReference> obavijestFiling = new AtomicReference<>();
+
+        service.fileAct(zahtjevOpoziva, submission, lessor, "MINT\\str-svc", filing -> Optional.empty());
+        service.fileAct(obavijestOOpozivu, submission, lessor, "MINT\\str-svc", filing -> {
+            obavijestFiling.set(filing);
+            return Optional.empty();
+        });
+
+        verify(egopClient, org.mockito.Mockito.times(1)).kreirajPredmet2(any());
+        ArgumentCaptor<KreirajPismeno2> ulazno = ArgumentCaptor.forClass(KreirajPismeno2.class);
+        verify(egopClient).kreirajPismeno2(ulazno.capture());
+        ArgumentCaptor<KreirajIzlaznoPismeno> izlazno = ArgumentCaptor.forClass(KreirajIzlaznoPismeno.class);
+        verify(egopClient).kreirajIzlaznoPismeno(izlazno.capture());
+        assertEquals(78, ulazno.getValue().getRbrSpisa());
+        assertEquals(78, izlazno.getValue().getRbrSpisa());
+        assertEquals(new FilingReference("334-06/11-26/78", "529-06-03/TUREGBROJ-26-2", 1007),
+                obavijestFiling.get());
+        org.mockito.InOrder redoslijed = org.mockito.Mockito.inOrder(egopClient);
+        redoslijed.verify(egopClient).kreirajPismeno2(any());
+        redoslijed.verify(egopClient).kreirajIzlaznoPismeno(any());
     }
 
     /** Svi kasniji akti istog RB-a idu u već otvoren predmet akata. */
@@ -563,6 +641,107 @@ class EgopFilingServiceTest {
     }
 
     /** Isti PDF za oba pismena — testovima koji ne provjeravaju sadržaj dokumenta. */
+    // --- prilozi uz pismena (T17) --------------------------------------------------------
+
+    private EgopPrilozi priloziService() {
+        EgopPrilozi prilozi = mock(EgopPrilozi.class);
+        service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, sealer, properties("MINT", "str-svc"),
+                "", "NP", prilozi);
+        return prilozi;
+    }
+
+    /**
+     * Prilozi zahtjeva idu uz ulazno pismeno, tek nakon što je dodjela urudžbirana (SYNCED), a prije
+     * otpreme u KP; obavijest o dodjeli ih nema.
+     */
+    @Test
+    void fileRegistration_attachesPriloziToZahtjevPismeno_afterRegistrationIsSynced() throws Exception {
+        EgopPrilozi prilozi = priloziService();
+        givenSubjektAndPredmetCreated();
+
+        service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
+
+        ArgumentCaptor<EgopPismenoEntity> pismeno = ArgumentCaptor.forClass(EgopPismenoEntity.class);
+        verify(prilozi).prilozi(pismeno.capture(), eq("MINT\\str-svc"));
+        assertEquals(EgopPismenoEntity.Smjer.ULAZNO, pismeno.getValue().getSmjer());
+        assertEquals(1001, pismeno.getValue().getJop());
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, store, prilozi, kpOtprema);
+        order.verify(egopClient, times(2)).kreirajDokumentZaPismeno(any());
+        order.verify(store).saveSuccess(any(), any(), any());
+        order.verify(prilozi).prilozi(any(), any());
+        order.verify(kpOtprema).otpremi(any());
+    }
+
+    /**
+     * Dodjela ne čeka na priloge zahtjeva: prilozi se bilježe i ponavljaju sami (PrilogEgopService ne
+     * baca), pa je registracija SYNCED i obavijest otpremljena i kad nijedan prilog nije prošao.
+     */
+    @Test
+    void fileRegistration_isSynced_evenWhenAttachmentsDoNotGoThrough() throws Exception {
+        EgopPrilozi prilozi = priloziService();
+        givenSubjektAndPredmetCreated();
+
+        service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
+
+        assertEquals(EgopSyncStatus.SYNCED, submission.getEgopSyncStatus());
+        verify(prilozi).prilozi(any(), any());
+        verify(kpOtprema).otpremi(any());
+    }
+
+    private EgopPismenoEntity givenActReadyToFile() throws Exception {
+        lessor.assignEgopSubjekt(42);
+        submission.applyEgopPredmet(2026, 55, "334-01/26-01/55");
+        submission.applyEgopAktiPredmet(2026, 77, "334-06/11-26/77");
+        PredmetInfo postoji = new PredmetInfo();
+        postoji.setOperationSucceeded(true);
+        when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
+        when(egopClient.getVrstePismena()).thenReturn(Map.of("Obavijest o suspenziji registracijskog broja", "103"));
+        when(egopClient.kreirajIzlaznoPismeno(any())).thenReturn(izlazno(1003, "529-06/26-3"));
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        return EgopPismenoEntity.forAct(submission.getSubmissionId(), "HR1", UUID.randomUUID().toString(),
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "pdf".getBytes());
+    }
+
+    /**
+     * Akt ne čeka na priloge: glavni dokument se prilaže prvi (akt je tada SYNCED), pa prilozi, pa KP
+     * otprema — u pretinac idu prilozi koji su do tada priloženi.
+     */
+    @Test
+    void fileAct_mainDocumentFirst_thenAttachments_thenKp() throws Exception {
+        EgopPrilozi prilozi = priloziService();
+        EgopPismenoEntity akt = givenActReadyToFile();
+        boolean[] syncedWhenAttaching = {false};
+        org.mockito.Mockito.doAnswer(inv -> {
+            syncedWhenAttaching[0] = inv.<EgopPismenoEntity>getArgument(0).isSynced();
+            return null;
+        }).when(prilozi).prilozi(any(), any());
+
+        service.fileAct(akt, submission, lessor, "ana.sluzbenica", filing -> Optional.empty());
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, prilozi, kpOtprema);
+        order.verify(egopClient).kreirajIzlaznoPismeno(any());
+        order.verify(egopClient).kreirajDokumentZaPismeno(any());
+        order.verify(prilozi).prilozi(akt, "ana.sluzbenica");
+        order.verify(kpOtprema).otpremi(akt.getId());
+        assertTrue(syncedWhenAttaching[0]);
+        assertTrue(akt.isSynced());
+    }
+
+    /** Pad glavnog dokumenta: prilozi se ne pokušavaju (pismeno nije urudžbirano do kraja), ni KP. */
+    @Test
+    void fileAct_mainDocumentFails_noAttachmentsNoKp() throws Exception {
+        EgopPrilozi prilozi = priloziService();
+        EgopPismenoEntity akt = givenActReadyToFile();
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenThrow(new EgopBadRequestException("dokument"));
+
+        assertThrows(EgopBadRequestException.class,
+                () -> service.fileAct(akt, submission, lessor, "ana.sluzbenica", filing -> Optional.empty()));
+
+        assertFalse(akt.isSynced());
+        verify(prilozi, never()).prilozi(any(), any());
+        verify(kpOtprema, never()).otpremi(any());
+    }
+
     private static EgopDocumentSupplier documents(byte[] pdf) {
         return new EgopDocumentSupplier() {
             @Override
