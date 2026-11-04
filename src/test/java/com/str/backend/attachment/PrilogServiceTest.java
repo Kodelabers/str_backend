@@ -1,0 +1,256 @@
+package com.str.backend.attachment;
+
+import com.str.backend.exception.ResourceNotFoundException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.util.unit.DataSize;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class PrilogServiceTest {
+
+    private static final String ANA = Ucitao.nias("12345678903");
+    private static final String IVO = Ucitao.nias("98765432106");
+    private static final byte[] PDF = "%PDF-1.7 sadrzaj".getBytes();
+
+    private PrilogRepository repository;
+    private PrilogService service;
+
+    @BeforeEach
+    void setUp() {
+        repository = mock(PrilogRepository.class);
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // Mali limit veličine i nevezanih, da testovi ne trebaju 10 MB.
+        service = new PrilogService(repository, 5, DataSize.ofBytes(100), 3);
+    }
+
+    // --- stage -----------------------------------------------------------------------------
+
+    @Test
+    void stage_pdf_isStoredUnboundWithDetectedTypeAndHash() {
+        PrilogResponse response = service.stage(ANA,
+                new MockMultipartFile("datoteka", "C:\\put\\zapisnik.pdf", "image/png", PDF));
+
+        ArgumentCaptor<PismenoPrilogEntity> saved = ArgumentCaptor.forClass(PismenoPrilogEntity.class);
+        verify(repository).save(saved.capture());
+        PismenoPrilogEntity e = saved.getValue();
+        assertThat(e.getUcitao()).isEqualTo(ANA);
+        assertThat(e.getNazivDatoteke()).isEqualTo("zapisnik.pdf");
+        // Tip iz sadržaja, ne iz klijentova headera (image/png).
+        assertThat(e.getContentType()).isEqualTo("application/pdf");
+        assertThat(e.getVelicina()).isEqualTo(PDF.length);
+        assertThat(e.getSha256()).hasSize(64).isEqualTo(PrilogService.sha256(PDF));
+        assertThat(e.isVezan()).isFalse();
+        assertThat(response.naziv()).isEqualTo("zapisnik.pdf");
+        assertThat(response.contentType()).isEqualTo("application/pdf");
+    }
+
+    @Test
+    void stage_imagesAndWord_areAccepted() {
+        service.stage(ANA, new MockMultipartFile("datoteka", "foto.jpg", null,
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 1}));
+        service.stage(ANA, new MockMultipartFile("datoteka", "dopis.docx", null, new byte[]{0x50, 0x4B, 0x03, 0x04}));
+
+        ArgumentCaptor<PismenoPrilogEntity> saved = ArgumentCaptor.forClass(PismenoPrilogEntity.class);
+        verify(repository, org.mockito.Mockito.times(2)).save(saved.capture());
+        assertThat(saved.getAllValues()).extracting(PismenoPrilogEntity::getContentType)
+                .containsExactly("image/jpeg", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    }
+
+    @Test
+    void stage_empty_is400() {
+        assertCode(() -> service.stage(ANA, new MockMultipartFile("datoteka", "a.pdf", null, new byte[0])),
+                HttpStatus.BAD_REQUEST, PrilogException.EMPTY);
+        assertCode(() -> service.stage(ANA, null), HttpStatus.BAD_REQUEST, PrilogException.EMPTY);
+    }
+
+    @Test
+    void stage_tooLarge_is413() {
+        byte[] velik = new byte[101];
+        System.arraycopy(PDF, 0, velik, 0, 4);
+        assertCode(() -> service.stage(ANA, new MockMultipartFile("datoteka", "a.pdf", null, velik)),
+                HttpStatus.PAYLOAD_TOO_LARGE, PrilogException.TOO_LARGE);
+        verify(repository, never()).save(any());
+    }
+
+    /** Tekst preimenovan u .pdf i ZIP preimenovan u .docx-u sličnu arhivu: odlučuje sadržaj. */
+    @Test
+    void stage_wrongContent_is415() {
+        assertCode(() -> service.stage(ANA, new MockMultipartFile("datoteka", "lazni.pdf", "application/pdf",
+                "nije pdf".getBytes())), HttpStatus.UNSUPPORTED_MEDIA_TYPE, PrilogException.TYPE);
+        assertCode(() -> service.stage(ANA, new MockMultipartFile("datoteka", "arhiva.zip", null,
+                new byte[]{0x50, 0x4B, 0x03, 0x04})), HttpStatus.UNSUPPORTED_MEDIA_TYPE, PrilogException.TYPE);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void stage_tooManyUnbound_is409() {
+        when(repository.countByUcitaoAndVlasnikIdIsNull(ANA)).thenReturn(3L);
+
+        assertCode(() -> service.stage(ANA, new MockMultipartFile("datoteka", "a.pdf", null, PDF)),
+                HttpStatus.CONFLICT, PrilogException.STAGED_LIMIT);
+        verify(repository, never()).save(any());
+    }
+
+    // --- bind ------------------------------------------------------------------------------
+
+    @Test
+    void bind_ownUnbound_bindsAll() {
+        UUID logId = UUID.randomUUID();
+        when(repository.findSazeci(List.of(1L, 2L)))
+                .thenReturn(List.of(TestPrilog.nevezan(1, ANA), TestPrilog.nevezan(2, ANA)));
+        when(repository.bind(any(), eq(ANA), eq(VrstaVlasnika.RN_LOG), eq(logId), any())).thenReturn(2);
+
+        service.bind(ANA, List.of(1L, 2L, 1L), PrilogVlasnik.prijelaz(logId));
+
+        verify(repository).bind(eq(List.of(1L, 2L)), eq(ANA),
+                eq(VrstaVlasnika.RN_LOG), eq(logId), any());
+    }
+
+    @Test
+    void bind_nullOrEmpty_doesNothing() {
+        assertThat(service.bind(ANA, null, PrilogVlasnik.zahtjev(UUID.randomUUID()))).isEmpty();
+        assertThat(service.bind(ANA, List.of(), PrilogVlasnik.zahtjev(UUID.randomUUID()))).isEmpty();
+        verify(repository, never()).bind(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void bind_foreignAttachment_is403() {
+        when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, IVO)));
+
+        assertCode(() -> service.bind(ANA, List.of(1L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
+                HttpStatus.FORBIDDEN, PrilogException.FORBIDDEN);
+        verify(repository, never()).bind(any(), any(), any(), any(), any());
+    }
+
+    /** Tvrtkin prilog (NIAS:<OIB tvrtke>) se ne veže uz radnju iste osobe „u svoje ime". */
+    @Test
+    void bind_companyAttachmentForPersonalAction_is403() {
+        when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, Ucitao.nias("11111111117"))));
+
+        assertCode(() -> service.bind(ANA, List.of(1L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
+                HttpStatus.FORBIDDEN, PrilogException.FORBIDDEN);
+    }
+
+    @Test
+    void bind_unknownId_is404() {
+        when(repository.findSazeci(List.of(1L, 2L))).thenReturn(List.of(TestPrilog.nevezan(1, ANA)));
+
+        assertCode(() -> service.bind(ANA, List.of(1L, 2L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
+                HttpStatus.NOT_FOUND, PrilogException.NOT_FOUND);
+    }
+
+    @Test
+    void bind_alreadyBound_is409() {
+        UUID submissionId = UUID.randomUUID();
+        when(repository.findSazeci(List.of(1L))).thenReturn(List.of(
+                TestPrilog.vezan(1, VrstaVlasnika.SUBMISSION, submissionId, "a.pdf", ANA)));
+
+        assertCode(() -> service.bind(ANA, List.of(1L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
+                HttpStatus.CONFLICT, PrilogException.ALREADY_BOUND);
+    }
+
+    /** Uvjetni UPDATE vezao je manje redaka: paralelna radnja je prilog u međuvremenu uzela. */
+    @Test
+    void bind_raceLost_is409() {
+        when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, ANA)));
+        when(repository.bind(any(), any(), any(), any(), any())).thenReturn(0);
+
+        assertCode(() -> service.bind(ANA, List.of(1L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
+                HttpStatus.CONFLICT, PrilogException.ALREADY_BOUND);
+    }
+
+    @Test
+    void bind_moreThanFive_is400() {
+        assertCode(() -> service.bind(ANA, List.of(1L, 2L, 3L, 4L, 5L, 6L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
+                HttpStatus.BAD_REQUEST, PrilogException.COUNT);
+        verify(repository, never()).findSazeci(anyCollection());
+    }
+
+    /** Ograničenje je po pismenu: zajedno s već vezanima uz istog vlasnika. */
+    @Test
+    void bind_togetherWithAlreadyBound_overFive_is400() {
+        UUID objectionId = UUID.randomUUID();
+        when(repository.findSazeci(List.of(1L, 2L))).thenReturn(List.of(TestPrilog.nevezan(1, ANA),
+                TestPrilog.nevezan(2, ANA)));
+        when(repository.countByVrstaVlasnikaAndVlasnikId(VrstaVlasnika.OBJECTION, objectionId)).thenReturn(4L);
+
+        assertCode(() -> service.bind(ANA, List.of(1L, 2L), PrilogVlasnik.prigovor(objectionId)),
+                HttpStatus.BAD_REQUEST, PrilogException.COUNT);
+        verify(repository, never()).bind(any(), any(), any(), any(), any());
+    }
+
+    // --- delete / read ---------------------------------------------------------------------
+
+    @Test
+    void deleteStaged_own_deletes() {
+        when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, ANA)));
+        when(repository.deleteStaged(1L, ANA)).thenReturn(1);
+
+        service.deleteStaged(ANA, 1L);
+
+        verify(repository).deleteStaged(1L, ANA);
+    }
+
+    @Test
+    void deleteStaged_foreignOrBound_isRefused() {
+        when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, IVO)));
+        assertCode(() -> service.deleteStaged(ANA, 1L), HttpStatus.FORBIDDEN, PrilogException.FORBIDDEN);
+
+        when(repository.findSazeci(List.of(2L))).thenReturn(List.of(
+                TestPrilog.vezan(2, VrstaVlasnika.SUBMISSION, UUID.randomUUID(), "a.pdf", ANA)));
+        assertCode(() -> service.deleteStaged(ANA, 2L), HttpStatus.CONFLICT, PrilogException.ALREADY_BOUND);
+
+        when(repository.findSazeci(List.of(3L))).thenReturn(List.of());
+        assertCode(() -> service.deleteStaged(ANA, 3L), HttpStatus.NOT_FOUND, PrilogException.NOT_FOUND);
+        verify(repository, never()).deleteStaged(anyLong(), any());
+    }
+
+    @Test
+    void zaPreuzimanje_unboundOrOtherRn_is404() {
+        PismenoPrilogEntity nevezan = PismenoPrilogEntity.staged(ANA, "a.pdf", "application/pdf", PDF, "x");
+        when(repository.findById(1L)).thenReturn(Optional.of(nevezan));
+
+        assertThatThrownBy(() -> service.zaPreuzimanje("HR180000123456789001", 1L))
+                .isInstanceOf(ResourceNotFoundException.class);
+        when(repository.findById(2L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.zaPreuzimanje("HR180000123456789001", 2L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void pripadaPismenu_officialToOutgoing_partyToIncoming() {
+        TestPrilog sluzbenik = TestPrilog.nevezan(1, "INTERNAL:12345678903");
+        TestPrilog stranka = TestPrilog.nevezan(2, Ucitao.lessor(UUID.randomUUID()));
+
+        assertThat(PrilogService.pripadaPismenu(sluzbenik, true)).isTrue();
+        assertThat(PrilogService.pripadaPismenu(sluzbenik, false)).isFalse();
+        assertThat(PrilogService.pripadaPismenu(stranka, false)).isTrue();
+        assertThat(PrilogService.pripadaPismenu(stranka, true)).isFalse();
+    }
+
+    private static void assertCode(org.assertj.core.api.ThrowableAssert.ThrowingCallable call,
+                                   HttpStatus status, String code) {
+        assertThatThrownBy(call)
+                .isInstanceOfSatisfying(PrilogException.class, e -> {
+                    assertThat(e.getStatus()).isEqualTo(status);
+                    assertThat(e.getCode()).isEqualTo(code);
+                });
+    }
+}

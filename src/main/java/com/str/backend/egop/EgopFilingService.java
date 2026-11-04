@@ -27,6 +27,7 @@ import hr.infodom.egov.subjekt.KreirajSubjekta;
 import hr.infodom.egov.subjekt.SubjektInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -71,6 +72,7 @@ public class EgopFilingService {
     private final EgopVrstaResolver vrste;
     private final EgopKpOtpremaService kpOtprema;
     private final PdfSealer sealer;
+    private final EgopPrilozi prilozi;
 
     private final String appUsername;
     private final String rjesavatelj;
@@ -84,6 +86,7 @@ public class EgopFilingService {
     private static final String ULAZNO_PISMENO_NAZIV = StrDocumentType.ZAHTJEV.vrstaPismenaNaziv();
     private static final String IZLAZNO_PISMENO_NAZIV = StrDocumentType.DODJELA.vrstaPismenaNaziv();
 
+    @Autowired
     public EgopFilingService(EgopClient egopClient,
                              EgopFilingStore store,
                              EgopVrstaResolver vrste,
@@ -93,12 +96,14 @@ public class EgopFilingService {
                              @Value("${str.egop.rjesavatelj:}") String rjesavatelj,
                              // Konfigurabilna jer posudbena vrsta predmeta ne mora biti dopuštena
                              // u neupravnoj knjizi — tada se bez rebuilda proba UP/I.
-                             @Value("${str.egop.upisna-knjiga:NP}") String upisnaKnjiga) {
+                             @Value("${str.egop.upisna-knjiga:NP}") String upisnaKnjiga,
+                             EgopPrilozi prilozi) {
         this.egopClient = egopClient;
         this.store = store;
         this.vrste = vrste;
         this.kpOtprema = kpOtprema;
         this.sealer = sealer;
+        this.prilozi = prilozi;
         this.appUsername = properties.qualifiedAppUsername();
         // InfoDom (26.07.2026): rješavatelj mora biti osoba s username-om; probna
         // vrijednost je servisni račun, a property dopušta zamjenu bez rebuilda.
@@ -106,6 +111,13 @@ public class EgopFilingService {
                 ? this.appUsername
                 : rjesavatelj;
         this.upisnaKnjiga = VrstaUpisneKnjige.getByCode(upisnaKnjiga);
+    }
+
+    /** Bez priloga ({@link EgopPrilozi#NONE}) — za testove toka koji priloge ne trebaju. */
+    public EgopFilingService(EgopClient egopClient, EgopFilingStore store, EgopVrstaResolver vrste,
+                             EgopKpOtpremaService kpOtprema, PdfSealer sealer, EgopProperties properties,
+                             String rjesavatelj, String upisnaKnjiga) {
+        this(egopClient, store, vrste, kpOtprema, sealer, properties, rjesavatelj, upisnaKnjiga, EgopPrilozi.NONE);
     }
 
     /**
@@ -135,6 +147,9 @@ public class EgopFilingService {
         FilingReference ulaznaOznaka = filing(submission, ulazno);
         byte[] zahtjevPdf = documents.zahtjev(ulaznaOznaka);
         attachPdfOnce(ulazno, zahtjevPdf, appUsername);
+        // Prilozi zahtjeva (T17). Retry registracije ide po submissionu, pa pad ovdje ponavlja i
+        // ovaj korak; već priloženi se preskaču.
+        prilozi.prilozi(ulazno, appUsername);
         advance(submission, EgopSyncStatus.PISMENO_OK);
 
         // Smjer (ulazno/izlazno) ne šaljemo — eGOP ga određuje sam iz konfiguracije vrste
@@ -481,6 +496,11 @@ public class EgopFilingService {
                 store.replacePdf(akt.getId(), konacni.get());
             }
         }
+
+        // Prilozi (T17) idu PRIJE glavnog dokumenta: markDocumentAttached postavlja SYNCED, a SYNCED akt
+        // retry više ne dira — pad priloga nakon toga ne bi se nikad ponovio. Prije KP otpreme su i zato
+        // da u pretinac odu s aktom. Priloženi se na retryju preskaču.
+        prilozi.prilozi(akt, korisnik);
 
         // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
         if (!akt.isDocumentAttached()) {

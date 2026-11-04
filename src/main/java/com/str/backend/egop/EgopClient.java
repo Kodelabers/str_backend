@@ -171,8 +171,8 @@ public interface EgopClient {
 
     /**
      * OtpremiPismenoUKorisnickiPretinac — otprema urudžbiranog izlaznog pismena u korisnički
-     * pretinac primatelja, po konfiguraciji slanja iz eGOP-a. Prilozi se ne otpremaju: STR
-     * pismenu prilaže samo glavni dokument.
+     * pretinac primatelja, po konfiguraciji slanja iz eGOP-a. Otprema nosi i priloge pismena
+     * (prilozi službenika uz akt, T17).
      *
      * <p>Potpis je domenski, ne generirani DTO: metode nisu u specifikaciji v1.11 nego u
      * zasebnom opisu InfoDoma, pa preslikavanje na WSDL tipove ostaje unutar implementacije.

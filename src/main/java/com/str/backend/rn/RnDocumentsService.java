@@ -1,5 +1,10 @@
 package com.str.backend.rn;
 
+import com.str.backend.attachment.PrilogDto;
+import com.str.backend.attachment.PrilogRepository.PrilogSazetak;
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.egop.EgopPismenoEntity;
@@ -18,6 +23,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,6 +42,9 @@ import java.util.UUID;
  *       {@code RnLifecycleFilingListener} pri svakom prijelazu koji
  *       {@link StrDocumentType#forTransition} mapira na akt, i kad je eGOP ugašen.</li>
  * </ol>
+ *
+ * <p>Uz svako pismeno idu i njegovi prilozi (T17): uz zahtjev prilozi zahtjeva, uz akt prijelaza
+ * prilozi tog prijelaza — uz ulazno pismeno stranke, uz izlazni akt službenika.
  *
  * <p>Servis samo čita i sastavlja podatke; sam render i download rade endpointi na
  * {@code RnController}.
@@ -58,15 +67,18 @@ public class RnDocumentsService {
     private final RnRepository rnRepository;
     private final SubmissionRepository submissionRepository;
     private final EgopPismenoRepository egopPismenoRepository;
+    private final PrilogService prilogService;
     private final boolean zahtjevVisible;
 
     public RnDocumentsService(RnRepository rnRepository,
                               SubmissionRepository submissionRepository,
                               EgopPismenoRepository egopPismenoRepository,
+                              PrilogService prilogService,
                               @Value("${str.rn.documents.zahtjev-visible:true}") boolean zahtjevVisible) {
         this.rnRepository = rnRepository;
         this.submissionRepository = submissionRepository;
         this.egopPismenoRepository = egopPismenoRepository;
+        this.prilogService = prilogService;
         this.zahtjevVisible = zahtjevVisible;
     }
 
@@ -86,7 +98,8 @@ public class RnDocumentsService {
                     ? submission.getFilingDate() : submission.getCreatedAt());
             out.add(new RnDocumentDto(null, StrDocumentType.ZAHTJEV.slug(),
                     StrDocumentType.ZAHTJEV.vrstaPismenaNaziv(), StrDocumentType.ZAHTJEV.smjer().name(),
-                    izdano, href(rn, StrDocumentType.ZAHTJEV.slug())));
+                    izdano, href(rn, StrDocumentType.ZAHTJEV.slug()),
+                    prilozi(rn, prilogService.zaVlasnika(PrilogVlasnik.zahtjev(entity.getSubmissionId())))));
         }
 
         // Obavijest o dodjeli — svaki izdani RB je ima; renderira se on-demand.
@@ -94,15 +107,24 @@ public class RnDocumentsService {
                 StrDocumentType.DODJELA.vrstaPismenaNaziv(), StrDocumentType.DODJELA.smjer().name(),
                 entity.getIssueDate(), href(rn, StrDocumentType.DODJELA.slug())));
 
-        for (EgopPismenoEntity akt : egopPismenoRepository.findByRnOrderByCreatedAtAsc(rn)) {
+        List<EgopPismenoEntity> akti = egopPismenoRepository.findByRnOrderByCreatedAtAsc(rn);
+        // Prilozi prijelaza, jednim upitom: akt nosi act_ref = log_id prijelaza.
+        Map<UUID, List<PrilogSazetak>> priloziPrijelaza = prilogService.zaVlasnike(VrstaVlasnika.RN_LOG,
+                akti.stream().map(RnDocumentsService::logId).flatMap(Optional::stream).toList());
+        for (EgopPismenoEntity akt : akti) {
             if (akt.getPdfContent() == null) {
                 continue; // akt bez pohranjenog dokumenta se ne može ponuditi na preuzimanje
             }
             String slug = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv())
                     .map(StrDocumentType::slug).orElse(null);
+            boolean izlazno = akt.getSmjer() == EgopPismenoEntity.Smjer.IZLAZNO;
+            List<PrilogSazetak> prilozi = logId(akt).map(id -> priloziPrijelaza.getOrDefault(id, List.of()))
+                    .orElse(List.of()).stream()
+                    .filter(p -> PrilogService.pripadaPismenu(p, izlazno))
+                    .toList();
             out.add(new RnDocumentDto(akt.getId(), slug, akt.getVrstaPismenaNaziv(),
                     akt.getSmjer().name(), toLocalDate(akt.getCreatedAt()),
-                    href(rn, "pohranjeno/" + akt.getId())));
+                    href(rn, "pohranjeno/" + akt.getId()), prilozi(rn, prilozi)));
         }
 
         out.sort(Comparator.comparing(RnDocumentDto::izdano,
@@ -182,6 +204,19 @@ public class RnDocumentsService {
         String slug = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv())
                 .map(StrDocumentType::slug).orElse("akt");
         return slug + "-" + rn + ".pdf";
+    }
+
+    private static List<PrilogDto> prilozi(String rn, List<PrilogSazetak> prilozi) {
+        return prilozi.stream().map(p -> PrilogDto.of(rn, p)).toList();
+    }
+
+    /** {@code log_id} prijelaza iz {@code act_ref}; prazno za akte koji nisu prijelaz RB-a. */
+    private static Optional<UUID> logId(EgopPismenoEntity akt) {
+        try {
+            return Optional.of(UUID.fromString(akt.getActRef()));
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return Optional.empty();
+        }
     }
 
     private static String href(String rn, String segment) {

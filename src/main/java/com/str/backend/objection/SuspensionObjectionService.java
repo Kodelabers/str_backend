@@ -1,6 +1,7 @@
 package com.str.backend.objection;
 
 import com.str.backend.common.Strings;
+import com.str.backend.common.VrstaDatoteke;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ConflictException;
@@ -19,7 +20,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Set;
@@ -35,14 +35,13 @@ import java.util.UUID;
 @Service
 public class SuspensionObjectionService {
 
-    private static final byte[] MAGIC_PDF = {0x25, 0x50, 0x44, 0x46};                                  // %PDF
-    private static final byte[] MAGIC_OLE2 = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0,
-            (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1};                                               // .doc
-    private static final byte[] MAGIC_ZIP = {0x50, 0x4B, 0x03, 0x04};                                   // .docx
+    /** Vrste dokumenta prigovora — isto što frontend nudi u dropzoneu. */
+    private static final Set<VrstaDatoteke> DOPUSTENE_VRSTE =
+            EnumSet.of(VrstaDatoteke.PDF, VrstaDatoteke.DOC, VrstaDatoteke.DOCX);
 
-    static final String CONTENT_TYPE_PDF = "application/pdf";
-    static final String CONTENT_TYPE_DOC = "application/msword";
-    static final String CONTENT_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    static final String CONTENT_TYPE_PDF = VrstaDatoteke.PDF.contentType();
+    static final String CONTENT_TYPE_DOC = VrstaDatoteke.DOC.contentType();
+    static final String CONTENT_TYPE_DOCX = VrstaDatoteke.DOCX.contentType();
 
     /** Parcijalni unique index iz changeseta 145 — jedan neobrađeni prigovor po RB-u. */
     static final String SUBMITTED_OBJECTION_INDEX = "uq_suspension_objection_rn_submitted";
@@ -155,22 +154,13 @@ public class SuspensionObjectionService {
     }
 
     /**
-     * Tip se određuje iz sadržaja, ne iz {@code Content-Type} headera — header postavlja klijent i
-     * može lagati. Dopušteni su PDF, DOC i DOCX, isto što frontend nudi u dropzoneu. Potpisi Worda
-     * nisu jedinstveni (DOCX je ZIP arhiva, DOC je OLE2 kao i stari Excel), pa se uz potpis traži
-     * i odgovarajuća ekstenzija — inače bi prošla bilo koja arhiva ili Office datoteka.
+     * Tip se određuje iz sadržaja, ne iz {@code Content-Type} headera ({@link VrstaDatoteke}).
+     * Dopušteni su PDF, DOC i DOCX, isto što frontend nudi u dropzoneu.
      */
     static String detectContentType(byte[] content, String fileName) {
-        if (startsWith(content, MAGIC_PDF)) return CONTENT_TYPE_PDF;
-        String name = fileName.toLowerCase(Locale.ROOT);
-        if (startsWith(content, MAGIC_OLE2) && name.endsWith(".doc")) return CONTENT_TYPE_DOC;
-        if (startsWith(content, MAGIC_ZIP) && name.endsWith(".docx")) return CONTENT_TYPE_DOCX;
-        throw new BusinessException("error.objection.file.type");
-    }
-
-    private static boolean startsWith(byte[] content, byte[] magic) {
-        return content.length >= magic.length
-                && Arrays.equals(content, 0, magic.length, magic, 0, magic.length);
+        return VrstaDatoteke.odredi(content, fileName, DOPUSTENE_VRSTE)
+                .map(VrstaDatoteke::contentType)
+                .orElseThrow(() -> new BusinessException("error.objection.file.type"));
     }
 
     private static byte[] readBytes(MultipartFile file) {

@@ -128,7 +128,8 @@ class EgopClientMock implements EgopClient {
 
     @Override
     public Map<String, Integer> getVrstePriloga() {
-        return Map.of();
+        // Zadani str.egop.prilog.vrsta-naziv, da prilozi lokalno prolaze isti tok kao na eGOP-u.
+        return Map.of("Prilog", 1);
     }
 
     @Override
@@ -276,7 +277,13 @@ class EgopClientMock implements EgopClient {
 
     @Override
     public DokumentInfo kreirajPrilogIPridruziDokument(KreirajPrilogIPridruziDokument request) {
-        return null;
+        log.info("Mock eGOP kreirajPrilogIPridruziDokument called: jop={}, rbr={}, vrsta={}, naziv={}, size={}",
+                request.getJop(), request.getRbrPriloga(), request.getIdVrstaPriloga(), request.getNazivPriloga(),
+                request.getAttachment() == null ? 0 : request.getAttachment().length);
+        DokumentInfo mockResponse = new DokumentInfo();
+        mockResponse.setOperationSucceeded(true);
+        mockResponse.setJop(request.getJop());
+        return mockResponse;
     }
 
     @Override

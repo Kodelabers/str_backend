@@ -156,8 +156,8 @@ class EgopCodebooks {
     }
 
     /**
-     * Prazan šifrarnik <b>vrsta priloga</b> se ne računa: nijedan poziv u toku urudžbiranja ga
-     * ne koristi (prilozi se ne kreiraju, vidi {@code EgopFilingService}). Kad bi se računao,
+     * Prazan šifrarnik <b>vrsta priloga</b> se ne računa: treba samo pismenima s prilozima (T17), i
+     * to samo kad {@code str.egop.prilog.vrsta-sifra} nije zadana. Kad bi se računao,
      * okolina na kojoj je taj šifrarnik prazan bila bi trajno „nekompletna" — uz
      * {@code fail-fast=true} servis se ne bi digao zbog podatka koji nam ne treba, a uz
      * {@code false} bi svaki dohvat vrste pokretao novi (throttlan) krug od pet MDM zahtjeva.
