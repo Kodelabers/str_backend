@@ -195,6 +195,51 @@ class StrDocumentServiceTest {
         assertThat(text).contains("dokumentacija je dopunjena");
     }
 
+    /**
+     * Zahtjev za opoziv je podnesak stranke: tijelo je adresat (naslov), stranka ga potpisuje, a
+     * pečata tijela nema — ni kad je e-pečat uključen.
+     */
+    @Test
+    void revocationRequest_isPartySubmissionWithReason() throws IOException {
+        String text = textOf(service(PROPERTIES_S_PECATOM).render(StrDocumentType.ZAHTJEV_OPOZIVA, RN,
+                "prodajem stan"));
+
+        assertThat(text).contains("ZAHTJEV ZA OPOZIV REGISTRACIJSKOG BROJA");
+        assertThat(text).contains("Podnositelj: Ana Anić, OIB: 98765432109");
+        assertThat(text).contains("Predmet: zahtjev za opoziv registracijskog broja " + RN);
+        assertThat(text).contains("Podnositelj traži opoziv registracijskog broja " + RN);
+        assertThat(text).contains("„Apartman Sunce\"");
+        assertThat(text).contains("Kao razlog opoziva podnositelj navodi: prodajem stan");
+        assertThat(text).doesNotContain("REPUBLIKA HRVATSKA");
+        assertThat(text).doesNotContain("KVALIFICIRANI ELEKTRONIČKI PEČAT");
+        assertThat(text).doesNotContain("${");
+    }
+
+    /** Bez razloga stranke redak otpada — natpis okidača ne smije joj se podmetnuti kao razlog. */
+    @Test
+    void revocationRequest_withoutReason_omitsReasonLine() throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "ACTIVE", "REVOKED", "REVOCATION",
+                        "NIAS:98765432109", null)));
+
+        String text = textOf(service.render(StrDocumentType.ZAHTJEV_OPOZIVA, RN, null));
+
+        assertThat(text).contains("Podnositelj traži opoziv");
+        assertThat(text).doesNotContain("Kao razlog opoziva");
+        assertThat(text).doesNotContain("na zahtjev iznajmljivača");
+        assertThat(text).doesNotContain("razlog nije naveden");
+    }
+
+    /** Obavijest o opozivu ostaje akt tijela s grbom i pečatom (izlazno pismeno od T15). */
+    @Test
+    void revocationNotice_isActOfTheAuthority() throws IOException {
+        String text = textOf(service(PROPERTIES_S_PECATOM).render(StrDocumentType.OPOZIV, RN, null));
+
+        assertThat(text).contains("REPUBLIKA HRVATSKA");
+        assertThat(text).contains("OBAVIJEST O OPOZIVU REGISTRACIJSKOG BROJA");
+        assertThat(text).contains("opozvan je registracijski broj " + RN);
+    }
+
     /** Razlog iz revizijskog traga za okidače uvedene uz dvofaznu suspenziju. */
     @Test
     void render_fallsBackToLabelsForTwoPhaseTriggers() throws IOException {

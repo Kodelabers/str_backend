@@ -66,14 +66,18 @@ class EmailTemplateTest {
         assertThat(templates.subject(MailTemplate.RB_IZDAN, values)).doesNotContain("\r", "\n");
     }
 
-    /** Opoziv je ulazno pismeno i ne ide u pretinac — poruka ne smije tvrditi ni jednu dostavu. */
+    /**
+     * Obavijest o opozivu je od T15 izlazni akt i ide u pretinac, pa poruka nosi klauzulu kao i
+     * ostale. Bez klauzule (ulazno pismeno) ne tvrdi ni jednu dostavu — grana ostaje kao zaštita.
+     */
     @Test
-    void revocation_withoutDeliveryClause_mentionsNeitherChannel() {
-        String html = templates.body(MailTemplate.OPOZIV, values(), Dostava.BEZ_KLAUZULE);
+    void revocation_carriesDeliveryClause_likeOtherNotices() {
+        assertThat(templates.body(MailTemplate.OPOZIV, values(), Dostava.PRETINAC))
+                .contains("opozvan").contains("korisnički pretinac");
 
-        assertThat(html).contains("opozvan");
-        assertThat(html).doesNotContain("korisnički pretinac");
-        assertThat(html).doesNotContain("elektroničkom poštom");
+        String bez = templates.body(MailTemplate.OPOZIV, values(), Dostava.BEZ_KLAUZULE);
+        assertThat(bez).doesNotContain("korisnički pretinac");
+        assertThat(bez).doesNotContain("elektroničkom poštom");
     }
 
     /** Non-EU poruka nosi akt, pa mora reći da je to dostava i da rokovi teku od nje. */

@@ -65,6 +65,26 @@ class EgopVrstaResolverTest {
         assertThat(resolver.vrstaPismena(OBUSTAVA).sifra()).isEqualTo("57");
     }
 
+    /**
+     * application.properties zadaje prazne override-e za zahtjev za opoziv (T15): prazan naziv i
+     * šifra ne smiju preoteti razrješavanje — vrijedi naziv iz StrDocumentType, a vlastita vrsta
+     * nije posudbena ni uz privremene=true. Zadani naziv (npr. „Zahtjev" na predprodukciji) ima prednost.
+     */
+    @Test
+    void zahtjevZaOpoziv_prazniOverrideiPadajuNaNazivIzEnuma() throws Exception {
+        String zahtjevOpoziva = StrDocumentType.ZAHTJEV_OPOZIVA.vrstaPismenaNaziv();
+        when(client.getVrstePismena()).thenReturn(Map.of(
+                "Zahtjev za opoziv registracijskog broja", "208", "Zahtjev", "100"));
+
+        EgopVrstaResolver prazno = new EgopVrstaResolver(client, props(
+                sifre(Map.of("zahtjev-opoziva", ""), "57", true), nazivi(Map.of("zahtjev-opoziva", ""), null)));
+        assertThat(prazno.vrstaPismena(zahtjevOpoziva)).isEqualTo(new EgopVrstaResolver.Vrsta("208", false));
+
+        EgopVrstaResolver zadano = new EgopVrstaResolver(client, props(
+                sifre(Map.of(), "57", true), nazivi(Map.of("zahtjev-opoziva", "Zahtjev"), null)));
+        assertThat(zadano.vrstaPismena(zahtjevOpoziva)).isEqualTo(new EgopVrstaResolver.Vrsta("100", true));
+    }
+
     @Test
     void vlastitiNazivIzSifrarnika_nijePosudben() throws Exception {
         when(client.getVrstePismena()).thenReturn(Map.of(SUSPENZIJA, "777"));

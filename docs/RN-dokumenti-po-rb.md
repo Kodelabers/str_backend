@@ -13,7 +13,7 @@ suspendiran, opozvan itd.), niti ima jedinstvenu listu.
 |---|---|---|
 | Zahtjev (ulazni) | `submission.pdf_content` | `/api/generateRegistrationNumber/{submissionId}/pdf` |
 | Obavijest o dodjeli | on-demand render (ZUP predložak, `StrDocumentType.DODJELA`) | `GET /api/rn/{rn}/documents/dodjela` |
-| Akti životnog ciklusa (suspenzija, opoziv, povlačenje, reaktivacija, prijedlog suspenzije, prigovor) | `egop_pismeno` retci s `rn` + `pdf_content` (sprema `RnLifecycleFilingListener` **prije** slanja, i kad je eGOP ugašen) | — |
+| Akti životnog ciklusa (suspenzija, zahtjev za opoziv i obavijest o opozivu, povlačenje, reaktivacija, prijedlog suspenzije, prigovor) | `egop_pismeno` retci s `rn` + `pdf_content` (sprema `RnLifecycleFilingListener` **prije** slanja, i kad je eGOP ugašen) | — |
 | „Moji RB-ovi" lista | — | `GET /api/lessor/registrations`, `GET /api/nias/registrations` → `List<LessorRnSummaryDto>` (bez dokumenata) |
 
 Ključni nalaz: **`egop_pismeno` je već ležer dokumenata s pohranjenim PDF-om po aktu**, vezan uz

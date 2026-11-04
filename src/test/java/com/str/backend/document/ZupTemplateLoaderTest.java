@@ -155,6 +155,7 @@ class ZupTemplateLoaderTest {
                         "Zahtjev za dodjelu registracijskog broja",
                         "Obavijest o dodjeli registracijskog broja",
                         "Obavijest o opozivu registracijskog broja",
+                        "Zahtjev za opoziv registracijskog broja",
                         "Obavijest o prijedlogu suspenzije registracijskog broja",
                         "Obavijest o obustavi postupka suspenzije registracijskog broja",
                         "Obavijest o suspenziji registracijskog broja",
@@ -176,6 +177,8 @@ class ZupTemplateLoaderTest {
                 "Zahtjev za dodjelu registracijskog broja",
                 "Obavijest o dodjeli registracijskog broja",
                 "Obavijest o opozivu registracijskog broja",
+                // T15: novu vrstu MINT mora unijeti na svakoj okolini (docs/eGOP-endpoint-analiza.md).
+                "Zahtjev za opoziv registracijskog broja",
                 "Obavijest o prijedlogu suspenzije registracijskog broja",
                 "Obavijest o obustavi postupka suspenzije registracijskog broja",
                 "Obavijest o suspenziji registracijskog broja",

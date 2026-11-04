@@ -522,7 +522,8 @@ Očekivano: `startup_eseal enabled=true … api_key=postavljen … allow_http=tr
 Uz `enabled=true` bez URL-a, ključa ili projekta backend namjerno ne krene (poruka navodi što fali).
 
 **4. Okidači:** nova registracija (obavijest o dodjeli) i radnja nad RB-om (prijedlog suspenzije,
-povlačenje…). Pečatiraju se samo izlazni akti; zahtjev, opoziv i prigovor stranke ne.
+povlačenje, opoziv…). Pečatiraju se samo izlazni akti, od T15 i obavijest o opozivu; podnesci
+stranke (zahtjev, zahtjev za opoziv, prigovor) ne.
 
 ```bash
 docker logs str-backend-cdu 2>&1 | grep -E "eseal_seal|eseal_pismeno|not_sealed" | tail -20

@@ -184,26 +184,48 @@ class RnLifecycleEmailListenerTest {
     }
 
     /**
-     * Opoziv je u eGOP-u ulazno pismeno i ne ide u korisnički pretinac (MINT, 22.10.2026.), pa
-     * poruka ne smije tvrditi dostavu u pretinac — ni korisniku s OIB-om ni non-EU korisniku.
+     * Obavijest o opozivu je od T15 izlazni akt tijela i ide u korisnički pretinac, pa poruka nosi
+     * klauzulu o dostavi kao i ostale obavijesti.
      */
     @Test
-    void revocation_hasNoDeliveryClause_forEuLessor() {
+    void revocation_deliveredToMailbox_forEuLessor() {
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
                 RnTrigger.REVOCATION, "NIAS:12345678903", null));
 
-        assertThat(captured().dostava()).isEqualTo(Dostava.BEZ_KLAUZULE);
+        assertThat(captured().dostava()).isEqualTo(Dostava.PRETINAC);
         assertThat(captured().pdf()).isNotEmpty();
     }
 
     @Test
-    void revocation_hasNoDeliveryClause_forNonEuLessor() {
+    void revocation_deliveredByEmail_forNonEuLessor() {
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
 
         listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.REVOKED,
                 RnTrigger.REVOCATION, "LESSOR:" + UUID.randomUUID(), null));
 
-        assertThat(captured().dostava()).isEqualTo(Dostava.BEZ_KLAUZULE);
+        assertThat(captured().dostava()).isEqualTo(Dostava.EPOSTA);
+    }
+
+    /**
+     * Non-EU uz eSeal: opoziv daje dva pismena istog prijelaza (zahtjev i obavijest), a mail mora
+     * nositi pečaćenu obavijest — traži se po vrsti, ne prvo pismeno tog prijelaza.
+     */
+    @Test
+    void revocation_nonEu_sealingEnabled_attachesSealedNotice() {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.REVOKED, RnTrigger.REVOCATION,
+                "LESSOR:" + UUID.randomUUID(), null);
+        EgopPismenoEntity obavijest = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, event.logId().toString(),
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
+        obavijest.applySeal("%PDF-opoziv".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv())).thenReturn(Optional.of(obavijest));
+
+        listener.onLifecycleChange(event);
+
+        assertThat(captured().template()).isEqualTo(MailTemplate.OPOZIV);
+        assertThat(captured().pdf()).isEqualTo("%PDF-opoziv".getBytes());
     }
 
     /** Pad rendera akta ne smije progutati obavijest — status je već promijenjen. */
@@ -300,7 +322,8 @@ class RnLifecycleEmailListenerTest {
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), RN, event.logId().toString(),
                 "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "snimak".getBytes());
         akt.applySeal("%PDF-pecaceni".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
-        when(pismenoRepository.findFirstByRnAndActRef(RN, event.logId().toString())).thenReturn(Optional.of(akt));
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv())).thenReturn(Optional.of(akt));
 
         listener.onLifecycleChange(event);
 
@@ -315,7 +338,8 @@ class RnLifecycleEmailListenerTest {
         when(lookup.findDetail(RN)).thenReturn(Optional.of(detail("ana@example.com", null)));
         RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENDED, RnTrigger.INCOMPLETE_DOCUMENTATION,
                 null, null);
-        when(pismenoRepository.findFirstByRnAndActRef(RN, event.logId().toString())).thenReturn(Optional.empty());
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv())).thenReturn(Optional.empty());
 
         listener.onLifecycleChange(event);
 
@@ -332,7 +356,7 @@ class RnLifecycleEmailListenerTest {
                 RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
 
         assertThat(captured().pdf()).isEqualTo("pdf".getBytes());
-        verify(pismenoRepository, never()).findFirstByRnAndActRef(any(), any());
+        verify(pismenoRepository, never()).findFirstByRnAndActRefAndVrstaPismenaNaziv(any(), any(), any());
     }
 
     private RnLifecycleMail captured() {

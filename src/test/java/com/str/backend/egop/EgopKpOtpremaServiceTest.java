@@ -134,16 +134,33 @@ class EgopKpOtpremaServiceTest {
         verify(store).register(akt.getId(), OIB, akt.getCreatedAt());
     }
 
-    /** Opoziv je ulazno pismeno (MINT, 22.10.2026.) — eGOP ulazno ne otprema u KP, pa nema ni zapisa. */
+    /**
+     * Zahtjev za opoziv je ulazno pismeno (podnesak stranke) — eGOP ulazno ne otprema u KP, pa nema
+     * ni zapisa. Isto vrijedi za opozive zapisane kao jedno ulazno pismeno prije T15.
+     */
     @Test
-    void registerForAkt_incomingRevocation_writesNothing() {
+    void registerForAkt_incomingRevocationRequest_writesNothing() {
         EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", "log-1",
-                "Obavijest o opozivu registracijskog broja", EgopPismenoEntity.Smjer.ULAZNO, "pdf".getBytes());
+                "Zahtjev za opoziv registracijskog broja", EgopPismenoEntity.Smjer.ULAZNO, "pdf".getBytes());
 
         service().registerForAkt(akt);
 
         verify(filingStore, never()).findSubmission(any());
         verify(store, never()).register(any(), anyString(), any());
+    }
+
+    /** Obavijest o opozivu je od T15 izlazni akt tijela i ide u KP kao ostale obavijesti. */
+    @Test
+    void registerForAkt_outgoingRevocationNotice_isRegistered() {
+        EgopPismenoEntity akt = EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", "log-1",
+                "Obavijest o opozivu registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, "pdf".getBytes());
+        SubmissionEntity submission = SubmissionEntity.create(null, lessor.getLessorId(), null, null, null, null);
+        when(filingStore.findSubmission(akt.getSubmissionId())).thenReturn(Optional.of(submission));
+        when(lessorRepository.findById(lessor.getLessorId())).thenReturn(Optional.of(lessor));
+
+        service().registerForAkt(akt);
+
+        verify(store).register(akt.getId(), OIB, akt.getCreatedAt());
     }
 
     @Test
