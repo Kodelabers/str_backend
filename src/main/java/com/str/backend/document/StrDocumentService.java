@@ -133,6 +133,9 @@ public class StrDocumentService {
      * obustava postupka suspenzije", a suspenzija „zbog sljedećeg razloga: istek roka za
      * očitovanje" — procesni okidač na mjestu na kojem čl. 98. st. 3 i 5 traže materijalni razlog.
      * Zato ta dva akta razlog čitaju s prijedloga, a ostali sa svog (zadnjeg) prijelaza.
+     *
+     * <p>Zahtjev za opoziv je podnesak stranke: dobiva samo slobodan tekst koji je iznajmljivač
+     * upisao, nikad natpis okidača.
      */
     private String razlogIzTraga(StrDocumentType type, String rn) {
         Optional<RegistrationNumberLogEntity> zapisi = switch (type) {
@@ -149,6 +152,11 @@ public class StrDocumentService {
         RegistrationNumberLogEntity zapis = zapisi.get();
         if (zapis.getReason() != null && !zapis.getReason().isBlank()) {
             return zapis.getReason();
+        }
+        if (type == StrDocumentType.ZAHTJEV_OPOZIVA) {
+            // Podnesak stranke navodi samo njezin razlog — natpis okidača bi joj podmetnuo tekst
+            // koji nije napisala.
+            return null;
         }
         try {
             return labels.trigger(RnTrigger.valueOf(zapis.getTriggerName()));

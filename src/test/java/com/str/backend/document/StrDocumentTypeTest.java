@@ -1,5 +1,7 @@
 package com.str.backend.document;
 
+import com.str.backend.domain.RnStatus;
+import com.str.backend.domain.RnTrigger;
 import org.junit.jupiter.api.Test;
 
 import static com.str.backend.document.StrDocumentType.Smjer.IZLAZNO;
@@ -21,28 +23,46 @@ class StrDocumentTypeTest {
         assertThat(StrDocumentType.DODJELA.smjer()).isEqualTo(IZLAZNO);
     }
 
-    /** Predmet 334-06/11 „Suspenzija, povlačenje i reaktiviranje…". */
+    /**
+     * Predmet 334-06/11 „Suspenzija, povlačenje i reaktiviranje…". Od T15 su sve obavijesti
+     * izlazne, i opoziv; ulazan je samo zahtjev za opoziv, podnesak stranke.
+     */
     @Test
-    void actsPredmet_onlyRevocationIsIncoming() {
+    void actsPredmet_onlyRevocationRequestIsIncoming() {
         assertThat(StrDocumentType.PRIJEDLOG_SUSPENZIJE.smjer()).isEqualTo(IZLAZNO);
         assertThat(StrDocumentType.OBUSTAVA_SUSPENZIJE.smjer()).isEqualTo(IZLAZNO);
         assertThat(StrDocumentType.SUSPENZIJA.smjer()).isEqualTo(IZLAZNO);
         assertThat(StrDocumentType.REAKTIVACIJA.smjer()).isEqualTo(IZLAZNO);
         assertThat(StrDocumentType.POVLACENJE.smjer()).isEqualTo(IZLAZNO);
-        assertThat(StrDocumentType.OPOZIV.smjer()).isEqualTo(ULAZNO);
+        assertThat(StrDocumentType.OPOZIV.smjer()).isEqualTo(IZLAZNO);
+        assertThat(StrDocumentType.ZAHTJEV_OPOZIVA.smjer()).isEqualTo(ULAZNO);
     }
 
-    /**
-     * Autorstvo dokumenta ne slijedi smjer: opoziv je ulazno pismeno, a PDF je i dalje akt
-     * tijela (zaglavlje, potpis, ePečat). Podnesci stranke nisu akti tijela.
-     */
+    /** Smjer i autorstvo se poklapaju: podnesci stranke su ulazni i nisu akti tijela. */
     @Test
-    void revocationIsIncomingButStillAnActOfTheAuthority() {
+    void partySubmissions_areIncomingAndNotActsOfTheAuthority() {
         assertThat(StrDocumentType.OPOZIV.aktTijela()).isTrue();
         assertThat(StrDocumentType.values())
                 .filteredOn(t -> !t.aktTijela())
                 .containsExactlyInAnyOrder(StrDocumentType.ZAHTJEV, StrDocumentType.PRIGOVOR,
-                        StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA);
+                        StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA, StrDocumentType.ZAHTJEV_OPOZIVA)
+                .allMatch(t -> t.smjer() == ULAZNO);
+    }
+
+    /** Opoziv: zahtjev stranke pa obavijest tijela; ostali prijelazi daju samo akt. */
+    @Test
+    void revocation_yieldsRequestThenNotice() {
+        assertThat(StrDocumentType.forTransition(RnStatus.REVOKED, RnTrigger.REVOCATION))
+                .contains(StrDocumentType.OPOZIV);
+        assertThat(StrDocumentType.pismenaForTransition(RnStatus.REVOKED, RnTrigger.REVOCATION))
+                .containsExactly(StrDocumentType.ZAHTJEV_OPOZIVA, StrDocumentType.OPOZIV);
+        assertThat(StrDocumentType.pismenaForTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL))
+                .containsExactly(StrDocumentType.POVLACENJE);
+        assertThat(StrDocumentType.pismenaForTransition(RnStatus.ACTIVE, RnTrigger.INSPECTION)).isEmpty();
+        assertThat(StrDocumentType.values())
+                .filteredOn(t -> t.podnesak().isPresent())
+                .containsExactly(StrDocumentType.OPOZIV);
+        assertThat(StrDocumentType.fromSlug("zahtjev-opoziva")).contains(StrDocumentType.ZAHTJEV_OPOZIVA);
     }
 
     /** Svako izlazno pismeno je akt tijela — inače bi u KP otišao dokument bez pečata tijela. */

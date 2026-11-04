@@ -139,7 +139,7 @@ public class RnLifecycleEmailListener {
         if (dostava == Dostava.EPOSTA && sealer.isEnabled()) {
             // Non-EU iznajmljivaču je mail dostava akta, pa nosi samo pečaćeni — onaj iz eGOP-a. Dok
             // pečata nema, poruka čeka u redu ponovnog slanja (MailRetryJob), umjesto da ode bez njega.
-            pdf = pecaceniAkt(event).orElse(null);
+            pdf = pecaceniAkt(event, akt.get()).orElse(null);
             if (pdf == null) {
                 log.warn("rn_lifecycle_mail_deferred reason=not_sealed rn={} template={}", event.rn(), template);
                 retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "not_sealed");
@@ -207,16 +207,18 @@ public class RnLifecycleEmailListener {
     }
 
     /** Pečaćeni akt ovog prijelaza, kad je eGOP tok stigao do pečata ({@code act_ref} = {@code log_id}). */
-    private Optional<byte[]> pecaceniAkt(RnLifecycleEvent event) {
-        return pismenoRepository.findFirstByRnAndActRef(event.rn(), event.logId().toString())
+    private Optional<byte[]> pecaceniAkt(RnLifecycleEvent event, StrDocumentType type) {
+        return pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(event.rn(), event.logId().toString(),
+                        type.vrstaPismenaNaziv())
                 .filter(EgopPismenoEntity::isSealed)
                 .map(EgopPismenoEntity::getPdfContent);
     }
 
     /**
-     * Ulazno pismeno (opoziv) eGOP ne otprema u korisnički pretinac i nije akt koji se stranci
-     * dostavlja, pa poruka o dostavi ne govori ništa. Inače: non-EU iznajmljivač nema OIB pa ni
-     * pristup pretincu — njemu je e-pošta kanal dostave, a ne samo obavijest.
+     * Non-EU iznajmljivač nema OIB pa ni pristup pretincu — njemu je e-pošta kanal dostave, a ne
+     * samo obavijest. Ulazno pismeno eGOP ne otprema u korisnički pretinac i nije akt koji se
+     * stranci dostavlja, pa poruka o dostavi ne bi govorila ništa; od T15 (opoziv je izlazni akt)
+     * iz prijelaza takvo više ne nastaje, grana ostaje kao zaštita.
      */
     private static Dostava dostava(StrDocumentType type, RnDetailDto detail) {
         if (type.smjer() == StrDocumentType.Smjer.ULAZNO) {

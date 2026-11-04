@@ -99,6 +99,7 @@ class AktPreviewGenerator {
                 case SUSPENZIJA, PRIJEDLOG_SUSPENZIJE -> "istek suglasnosti suvlasnika";
                 case POVLACENJE -> "utvrđeno oglašavanje bez važećeg registracijskog broja";
                 case PRIGOVOR -> "suglasnost suvlasnika je pribavljena i dostavlja se u privitku";
+                case ZAHTJEV_OPOZIVA -> "smještajnu jedinicu više ne iznajmljujem";
                 default -> null;
             };
             // Urudžbene oznake u obliku iz predloška; JOP i URBROJ ima samo dodjela, jer se akti

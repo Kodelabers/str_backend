@@ -122,6 +122,11 @@ public class ZupContextFactory {
         ctx.put("rn.datumIzdavanja", date(d.issueDate()));
         ctx.put("rn.razlog", (razlog == null || razlog.isBlank())
                 ? labels.get("razlog.nijeNaveden") : razlog.strip());
+        // Zahtjev za opoziv ispisuje samo razlog koji je stranka sama upisala; bez njega redak
+        // ostaje prazan i renderer ga izbacuje. StrDocumentService mu zato ne podmeće natpis okidača.
+        ctx.put("opoziv.razlogRedak", type == StrDocumentType.ZAHTJEV_OPOZIVA
+                ? prefiks("Kao razlog opoziva podnositelj navodi: ", razlog == null ? null : razlog.strip())
+                : "");
 
         ctx.put("objekt.naziv", fallback(d.accommodationName()));
         ctx.put("objekt.adresa", objektAdresa(d));
@@ -140,7 +145,6 @@ public class ZupContextFactory {
         // Pečat je pečat tijela: podnesak stranke (prigovor) ga ne dobiva, pa mu se podaci ni ne
         // grade — inače bi se za svaki takav render generirao broj zapisa i, uz nekonfiguriran
         // certifikat, upisao ERROR za blok koji se nikad ne ispisuje.
-        // Po autorstvu, ne po smjeru: opoziv je ulazno pismeno, a dokument je akt tijela.
         if (type.aktTijela()) {
             putEpecat(ctx, naziv);
         }

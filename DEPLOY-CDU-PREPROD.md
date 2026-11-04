@@ -404,6 +404,10 @@ S tim postavkama otvaranje oba predmeta, pismena i otprema u KP prošli su na te
    `SLUZBENIK` MINT mora dati službeniku pravo otvaranja predmeta 334-06/11 (vidi tablicu gore).
 6. Jesu li MINT-ove vrste pismena na predprodukciji u `DohvatiVrstePismenaActive` za `strservis4`.
    Dok nisu, pismena idu pod općenitim „Zahtjev"/„Obavijest" (`egop_vrsta_privremena=true`).
+7. **T15:** postoji li ulazna vrsta pismena „Zahtjev za opoziv registracijskog broja" i smije li
+   „Obavijest o opozivu registracijskog broja" biti izlazna. Dok vrste zahtjeva nema, uz posudbene
+   vrste postaviti `EGOP_NAZIV_PISMENA_ZAHTJEV_OPOZIVA=Zahtjev` (inače bi ulazni zahtjev otišao
+   pod fallbackom „Obavijest"); bez ičega urudžba zahtjeva pada, a obavijest o opozivu čeka iza njega.
 
 ### B5a.2 Paljenje
 
@@ -496,7 +500,9 @@ LEFT JOIN str_rn.egop_kp_otprema o ON o.pismeno_id = p.id
 ORDER BY p.created_at;
 ```
 
-Očekivano: zahtjev i opoziv `ULAZNO` bez otpreme; ostala pismena `IZLAZNO`, otprema `SENT`;
+Očekivano: zahtjev i zahtjev za opoziv `ULAZNO` bez otpreme, zahtjev za opoziv odmah ispred
+obavijesti o opozivu i s istom `egop_akti_klasa`; ostala pismena (i obavijest o opozivu, od T15)
+`IZLAZNO`, otprema `SENT`;
 klasa registracije počinje s `334-06/10`, klasa akata s `334-06/11`.
 
 ### B5a.5 Povratak (bez rebuilda)

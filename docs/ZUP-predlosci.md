@@ -54,7 +54,8 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | :--- | :--- | :--- | :--- | :--- |
 | `zahtjev` | Zahtjev za registracijski broj | ulazno | čl. 71. — vlastiti generator | registracija |
 | `dodjela` | Obavijest o dodjeli registracijskog broja | izlazno | uvod, izreka | registracija |
-| `opoziv` | Obavijest o opozivu registracijskog broja | **ulazno** (PDF je akt tijela) | uvod, izreka | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
+| `zahtjev-opoziva` | Zahtjev za opoziv registracijskog broja | **ulazno** | kao `prigovor` | isti prijelaz kao `opoziv`, urudžbira se prije njega |
+| `opoziv` | Obavijest o opozivu registracijskog broja | izlazno (od T15) | uvod, izreka | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
 | `prijedlog-suspenzije` | Obavijest o prijedlogu suspenzije registracijskog broja | izlazno | + obrazloženje; **rok u izreci** | `RnService.suspend` |
 | `suspenzija` | Obavijest o suspenziji registracijskog broja | izlazno | **+ uputa o pravnom lijeku** | `SuspensionDeadlineJob` (istek roka) |
 | `obustava-suspenzije` | Obavijest o obustavi postupka suspenzije registracijskog broja | izlazno | kao `opoziv` | `RnService.revokeProposal` |
@@ -68,10 +69,16 @@ izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku
 `SUSPENDED` i šalje `suspenzija`. Ispravi li stranka nedostatak, `revokeProposal` vraća RB u
 `ACTIVE` uz `obustava-suspenzije`.
 
-Smjer je onaj koji je propisao MINT (22.10.2026.). Samo izlazna pismena idu u korisnički pretinac.
-**`opoziv` je ulazno pismeno** (radnju pokreće stranka), pa ne ide u KP, ali dokument ostaje akt
-tijela s grbom, potpisom i ePečatom: zaglavlje i pečat ovise o `StrDocumentType.aktTijela()`, ne o
-smjeru. Mail o opozivu zato nema klauzulu o dostavi.
+Smjer je onaj koji je propisao MINT (22.10.2026.), uz T15 za opoziv. Samo izlazna pismena idu u
+korisnički pretinac. **Opoziv su dva pismena** istog prijelaza
+(`StrDocumentType.pismenaForTransition`): `zahtjev-opoziva` je podnesak stranke (ulazno, potpisuje ga
+iznajmljivač, bez pečata i KP-a), a `opoziv` obavijest tijela (izlazno, e-pečat, KP, mail s
+klauzulom o dostavi). Zaglavlje i pečat i dalje ovise o `StrDocumentType.aktTijela()`, ne o smjeru;
+danas se to dvoje poklapa. Do T15 opoziv je bio jedno ulazno pismeno s PDF-om akta tijela.
+
+Zahtjev za opoziv ispisuje razlog samo ako ga je iznajmljivač upisao (`${opoziv.razlogRedak}`);
+natpis okidača („opoziv registracijskog broja na zahtjev iznajmljivača") mu se ne podmeće —
+`StrDocumentService` za taj tip iz revizijskog traga čita samo slobodan tekst.
 
 `reaktivacija` i `obustava-suspenzije` nisu bile među 7 vrsta pismena iz InfoDomovog maila (obje
 su nastale uz dvofaznu suspenziju). MINT ih je unio 22.10.2026., pa se urudžbiraju i otpremaju u
@@ -224,13 +231,14 @@ i mora biti izričito u kontekstu.
 | `${stranka.postanskiBroj}` | — | **uvijek prazno**, vidi niže |
 | `${rn.broj}`, `${rn.status}`, `${rn.datumIzdavanja}` | `RnDetailDto` | |
 | `${rn.razlog}` | parametar → revizijski trag → natpis okidača | |
+| `${opoziv.razlogRedak}` | slobodan tekst iznajmljivača (parametar → revizijski trag, bez natpisa okidača) | samo `zahtjev-opoziva`; „Kao razlog opoziva podnositelj navodi: …", prazno bez razloga |
 | `${objekt.naziv}`, `${objekt.adresa}`, `${objekt.mjesto}`, `${objekt.zupanija}`, `${objekt.vrsta}`, `${objekt.kapacitet}` | `RnDetailDto` | |
 | `${objekt.skupina}` | šifra skupine **iz RB-a** → `labels.properties` (`objekt.skupina.<kod>`) | danas samo `00` = domaćinstvo; nepoznata šifra daje vidljivu oznaku + ERROR, ne tiho domaćinstvo |
 | `${rok.ispravak}` | `RnEntity.suspensionDeadline` | rok je obvezan pri prijedlogu; bez roka (stariji predmeti, RB koji je napustio prijedlog) → `rok.default` iz `labels.properties` |
 | `${uputa.tekst}` | `str.documents.uputa.<slug>` | vidi §6 |
 
-**Adresni placeholderi su ostali samo prigovoru.** `${stranka.zastupnik}`, `${stranka.adresa}`,
-`${stranka.postanskiBroj}` i `${stranka.mjesto}` koristi još samo podnesak stranke — obavijesti
+**Adresni placeholderi su ostali samo podnescima.** `${stranka.zastupnik}`, `${stranka.adresa}`,
+`${stranka.postanskiBroj}` i `${stranka.mjesto}` koriste još samo podnesci stranke — obavijesti
 nemaju adresata (§3). Ključevi ostaju u katalogu jer ih predložak smije vratiti.
 
 **`${stranka.postanskiBroj}` je uvijek prazan.** `LessorEntity` nema poštanski broj — poznata rupa
@@ -298,7 +306,7 @@ odjednom poslati sve obavijesti iz razdoblja kad je bio ugašen.
 | `obustava-suspenzije` | prijelaz → `ACTIVE` uz `REVOKE_PROPOSAL` |
 | `reaktivacija` | prijelaz → `ACTIVE` uz `REACTIVATE` |
 | `povlacenje` | prijelaz → `WITHDRAWN` uz `WITHDRAWAL` (po službenoj dužnosti) |
-| `opoziv` | prijelaz → `REVOKED` uz `REVOCATION` (na zahtjev iznajmljivača) |
+| `opoziv` | prijelaz → `REVOKED` uz `REVOCATION` (na zahtjev iznajmljivača); privitak je obavijest, ne zahtjev |
 
 Događaj `RnLifecycleEvent` objavljuje se iz **`RnStatusTransitionService.transition()`** — jedine
 točke kroz koju status smije proći (pravilo iz `CLAUDE.md`). Time obavijest ne može promaknuti

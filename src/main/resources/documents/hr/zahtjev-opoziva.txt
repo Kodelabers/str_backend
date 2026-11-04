@@ -1,0 +1,35 @@
+# Zahtjev za opoziv registracijskog broja
+# Vrsta pismena (eGOP): „Zahtjev za opoziv registracijskog broja" — ULAZNO
+#
+# Podnesak stranke kao i prigovor (čl. 71. st. 2 ZUP-a): naziv tijela, naznaka upravne stvari,
+# ime i adresa te OIB stranke, potpis stranke. Nastaje kad iznajmljivač sam opozove svoj
+# registracijski broj (LessorRnActionService). Urudžbira se prije Obavijesti o opozivu, u isti
+# predmet (EgopFilingService.predmetZaPostupak); ne pečati se i ne ide u korisnički pretinac.
+#
+# ${opoziv.razlogRedak} je razlog koji je iznajmljivač upisao pri opozivu. Kad ga nije upisao,
+# redak je prazan i renderer ga izbacuje — natpis okidača ovdje se namjerno ne ispisuje.
+# Datum podneska je datum u urudžbenom bloku zaglavlja (${akt.mjestoDatum}).
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[NASLOV]
+${tijelo.naziv}
+${tijelo.ustrojstvenaJedinica}
+${tijelo.adresa}
+${tijelo.mjesto}
+
+[UVOD]
+Podnositelj: ${stranka.naziv}, ${stranka.identifikator}
+
+${stranka.zastupnik}
+
+${stranka.adresaRedak}
+
+Predmet: zahtjev za opoziv registracijskog broja ${rn.broj}
+
+[OBRAZLOZENJE]
+Podnositelj traži opoziv registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}" na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
+
+${opoziv.razlogRedak}
+
+Zahtjev je podnesen elektroničkim putem.

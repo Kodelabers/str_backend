@@ -4,11 +4,12 @@ import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * Sedam vrsta pismena koje STR urudžbira u eGOP predmet, prema mailu InfoDoma od 22.07.2026.
+ * Vrste pismena koje STR urudžbira u eGOP predmet, prema mailu InfoDoma od 22.07.2026.
  *
  * <p>{@link #vrstaPismenaNaziv()} je naš kanonski naziv: zapisuje se na {@code egop_pismeno}
  * (dio unique ključa, filter retry joba, popis dokumenata) i ide u {@code nazivPismena}.
@@ -18,7 +19,9 @@ import java.util.Set;
  * {@code EgopClientMock}); ovaj enum je od sada jedini izvor.
  *
  * <p>{@link #smjer()} je smjer u urudžbenom zapisniku, a {@link #aktTijela()} tko je autor
- * dokumenta. Razilaze se samo kod {@link #OPOZIV}: PDF je akt tijela, a pismeno je ulazno.
+ * dokumenta. Danas se poklapaju: podnesci stranke su ulazni, akti tijela izlazni. Do T15
+ * (studeni 2026.) opoziv je bio ulazno pismeno s PDF-om akta tijela; sada su to dva pismena,
+ * {@link #ZAHTJEV_OPOZIVA} i {@link #OPOZIV}.
  *
  * <p>{@link #requiredSections()} je <b>pravni minimum</b> koji {@link ZupTemplateLoader}
  * provjerava na startu. Sadržaj sekcije određuje predložak; ovaj popis samo brani da akt
@@ -55,16 +58,29 @@ public enum StrDocumentType {
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
-     * Opoziv na zahtjev samog iznajmljivača ({@code REVOKED}) — evidencijska obavijest, bez
+     * Opoziv na zahtjev samog iznajmljivača ({@code REVOKED}): evidencijska obavijest, bez
      * pravnog lijeka.
      *
-     * <p>U eGOP-u je <b>ulazno</b> pismeno (MINT, 22. 10. 2026.): radnju je pokrenula stranka,
-     * pa ide kroz {@code KreirajPismeno2} sa subjektom i ne otprema se u korisnički pretinac.
-     * Dokument ostaje akt tijela (zaglavlje, potpis, ePečat), zato {@code aktTijela=true}.
+     * <p>Izlazni akt tijela (T15, studeni 2026.): pečati se kvalificiranim e-pečatom, otprema u
+     * korisnički pretinac i dostavlja e-poštom kao i ostale obavijesti. Zahtjev stranke kojim je
+     * opoziv pokrenut zasebno je, ulazno pismeno ({@link #ZAHTJEV_OPOZIVA}) i urudžbira se prije
+     * ovog akta, u isti predmet. Od 22. 10. 2026. do T15 opoziv je bio jedno ulazno pismeno s PDF-om
+     * akta tijela; takvi zapisi ostaju u {@code egop_pismeno} kao {@code ULAZNO} i retry ih šalje
+     * po zapisanom smjeru.
      */
-    OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.ULAZNO, true, null,
+    OPOZIV("opoziv", "Obavijest o opozivu registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O OPOZIVU REGISTRACIJSKOG BROJA", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
+     * Podnesak stranke (čl. 71. ZUP-a), kao {@link #PRIGOVOR}: iznajmljivač je sam zatražio opoziv
+     * svog registracijskog broja ({@code LessorRnActionService}). Ulazno pismeno, potpisuje ga
+     * stranka; ne pečati se i ne otprema u korisnički pretinac. Nastaje iz istog prijelaza kao
+     * {@link #OPOZIV} i urudžbira se prije njega ({@link #podnesak()}).
+     */
+    ZAHTJEV_OPOZIVA("zahtjev-opoziva", "Zahtjev za opoziv registracijskog broja", Smjer.ULAZNO, false,
+            null, "ZAHTJEV ZA OPOZIV REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.OBRAZLOZENJE)),
 
     /**
      * Poziv na izjašnjavanje prije nepovoljne odluke (čl. 30. st. 2). Nije rješenje, pa nema
@@ -273,6 +289,26 @@ public enum StrDocumentType {
             return Optional.of(POVLACENJE);
         }
         return Optional.empty();
+    }
+
+    /**
+     * Podnesak stranke kojim je postupak ovog akta pokrenut i koji se urudžbira <b>prije</b> njega,
+     * u isti predmet. Zasad samo opoziv: zahtjev iznajmljivača pa obavijest tijela. Ostali akti
+     * nastaju po službenoj dužnosti i podnesak nemaju.
+     */
+    public Optional<StrDocumentType> podnesak() {
+        return this == OPOZIV ? Optional.of(ZAHTJEV_OPOZIVA) : Optional.empty();
+    }
+
+    /**
+     * Sva pismena koja nastaju iz prijelaza, redom urudžbiranja: podnesak stranke (ako postoji) pa
+     * akt iz {@link #forTransition}. Urudžba i popis dokumenata čitaju ovo; obavijest e-poštom ide
+     * samo za akt.
+     */
+    public static List<StrDocumentType> pismenaForTransition(RnStatus to, RnTrigger trigger) {
+        return forTransition(to, trigger)
+                .map(akt -> akt.podnesak().map(podnesak -> List.of(podnesak, akt)).orElse(List.of(akt)))
+                .orElse(List.of());
     }
 
     /** Tipovi koji se renderiraju iz predloška — ono što {@link ZupTemplateLoader} učitava. */

@@ -184,8 +184,9 @@ class RnDocumentsServiceTest {
 
     /**
      * Sekcija „Dokumenti" na detalju RB-a mora nositi svaki akt koji nastaje iz prijelaza
-     * statusa. Vrste se izvode iz {@link StrDocumentType#forTransition}, pa nova vrsta akta
-     * automatski ulazi u provjeru; popis šest obavijesti brani da neka ne ispadne iz mapiranja.
+     * statusa. Vrste se izvode iz {@link StrDocumentType#pismenaForTransition}, pa nova vrsta akta
+     * automatski ulazi u provjeru; popis šest obavijesti i zahtjeva za opoziv brani da neki ne
+     * ispadne iz mapiranja.
      */
     @Test
     void listForRn_allLifecycleNotices_listedAfterZahtjevAndDodjela() {
@@ -194,13 +195,13 @@ class RnDocumentsServiceTest {
         Set<StrDocumentType> lifecycleTypes = new LinkedHashSet<>();
         for (RnStatus to : RnStatus.values()) {
             for (RnTrigger trigger : RnTrigger.values()) {
-                StrDocumentType.forTransition(to, trigger).ifPresent(lifecycleTypes::add);
+                lifecycleTypes.addAll(StrDocumentType.pismenaForTransition(to, trigger));
             }
         }
         assertThat(lifecycleTypes).containsExactlyInAnyOrder(
                 StrDocumentType.PRIJEDLOG_SUSPENZIJE, StrDocumentType.OBUSTAVA_SUSPENZIJE,
                 StrDocumentType.SUSPENZIJA, StrDocumentType.REAKTIVACIJA,
-                StrDocumentType.POVLACENJE, StrDocumentType.OPOZIV);
+                StrDocumentType.POVLACENJE, StrDocumentType.ZAHTJEV_OPOZIVA, StrDocumentType.OPOZIV);
 
         List<EgopPismenoEntity> akti = new ArrayList<>();
         for (StrDocumentType type : lifecycleTypes) {
@@ -223,6 +224,32 @@ class RnDocumentsServiceTest {
             assertThat(doc.smjer()).isEqualTo(akt.getSmjer().name());
             assertThat(doc.href()).isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + akt.getId());
         }
+    }
+
+    /**
+     * Opoziv: zahtjev (ulazno) i obavijest (izlazno) su dva retka s vlastitim slugom; pečaćena
+     * obavijest se preuzima pohranjena, dakle s pečatom (applySeal zamjenjuje pdf_content).
+     */
+    @Test
+    void listForRn_revocation_listsRequestAndSealedNotice() {
+        stubRn(submissionId, LocalDate.now().minusDays(2));
+        stubSubmission("pdf".getBytes(), Instant.now().minus(3, ChronoUnit.DAYS));
+        EgopPismenoEntity zahtjev = EgopPismenoEntity.forAct(submissionId, RN, "log-1",
+                StrDocumentType.ZAHTJEV_OPOZIVA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.ULAZNO, new byte[]{1});
+        EgopPismenoEntity obavijest = EgopPismenoEntity.forAct(submissionId, RN, "log-1",
+                StrDocumentType.OPOZIV.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, new byte[]{2});
+        obavijest.applySeal("%PDF-pecaceni".getBytes(), UUID.randomUUID(), "7K3M", "B-LT", "sha-256=:x:");
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN)).thenReturn(List.of(zahtjev, obavijest));
+        when(egopPismenoRepository.findById(obavijest.getId())).thenReturn(java.util.Optional.of(obavijest));
+
+        List<RnDocumentDto> docs = service.listForRn(RN);
+
+        assertThat(docs).extracting(RnDocumentDto::slug)
+                .containsExactly("zahtjev", "dodjela", "zahtjev-opoziva", "opoziv");
+        assertThat(docs).extracting(RnDocumentDto::smjer).endsWith("ULAZNO", "IZLAZNO");
+        RnDocumentsService.StoredDocument preuzeto = service.storedAktPdf(RN, obavijest.getId());
+        assertThat(preuzeto.pdf()).isEqualTo("%PDF-pecaceni".getBytes());
+        assertThat(preuzeto.filename()).isEqualTo("opoziv-" + RN + ".pdf");
     }
 
     @Test
