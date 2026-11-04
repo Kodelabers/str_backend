@@ -35,10 +35,10 @@ public class LoggingEmailService implements EmailService {
 
     /** {@code false} iz istog razloga kao {@link #sendRnIssuedNotification}. */
     @Override
-    public boolean sendRnLifecycleNotification(RnLifecycleMail mail) {
+    public IshodSlanja sendRnLifecycleNotification(RnLifecycleMail mail) {
         log.info("[mail/mock] RN_LIFECYCLE {} → to={}, rn={}, razlog={}, pdf_bytes={}, prilozi={}, prilozi_izvan={}",
                 mail.template(), mail.to(), mail.rn(), mail.razlog(),
                 mail.pdf() == null ? 0 : mail.pdf().length, mail.prilozi().size(), mail.priloziIzvanPoruke().size());
-        return false;
+        return IshodSlanja.NEUSPJELA;
     }
 }

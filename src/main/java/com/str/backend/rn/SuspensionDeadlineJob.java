@@ -22,33 +22,38 @@ import java.util.List;
  * <p>Iznimka je RB uz koji čeka prigovor ({@code SUBMITTED}) predan do kraja dana roka: stranka
  * se u roku očitovala, pa o suspenziji prvo odlučuje službenik — uvažavanje obustavlja postupak,
  * a neuvažavanje odmah suspendira ({@code RnService#suspendIfDeadlineExpired}). Prigovor predan
- * nakon roka suspenziju ne zaustavlja.
+ * nakon roka suspenziju ne zaustavlja, a ni prigovor na neki raniji prijedlog istog RB-a.
+ *
+ * <p>Sve po hrvatskom vremenu (kontejner je UTC): „danas", kraj dana roka i sam cron.
  */
 @Component
 public class SuspensionDeadlineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SuspensionDeadlineJob.class);
-    /** Rok je datum po hrvatskom vremenu, neovisno o zoni poslužitelja. */
-    private static final ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
+    /** Rok je datum po hrvatskom vremenu, neovisno o zoni poslužitelja (kontejner je UTC). */
+    static final ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
     /** Bilješka uz prijelaz istekom roka — ista za job i za suspenziju nakon neuvažena prigovora. */
     static final String DEADLINE_EXCEEDED_NOTE = "Rok za rješavanje nepravilnosti istekao.";
 
     private final RnRepository rnRepository;
     private final RnStatusTransitionService transitionService;
     private final SuspensionObjectionRepository objectionRepository;
+    private final RegistrationNumberLogRepository logRepository;
 
     public SuspensionDeadlineJob(RnRepository rnRepository,
                                  RnStatusTransitionService transitionService,
-                                 SuspensionObjectionRepository objectionRepository) {
+                                 SuspensionObjectionRepository objectionRepository,
+                                 RegistrationNumberLogRepository logRepository) {
         this.rnRepository = rnRepository;
         this.transitionService = transitionService;
         this.objectionRepository = objectionRepository;
+        this.logRepository = logRepository;
     }
 
-    @Scheduled(cron = "0 0 1 * * *")
+    @Scheduled(cron = "0 0 1 * * *", zone = "Europe/Zagreb")
     @Transactional
     public void run() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZAGREB);
         List<String> expired = rnRepository.findRnsWithSuspensionDeadlineBefore(today);
         if (expired.isEmpty()) return;
         log.info("suspension_deadline_job processing={}", expired.size());
@@ -64,8 +69,7 @@ public class SuspensionDeadlineJob {
                 continue;
             }
             LocalDate deadline = rn.getSuspensionDeadline();
-            if (objectionRepository.existsByRnAndStatusAndSubmittedAtBefore(id,
-                    SuspensionObjectionStatus.SUBMITTED, endOfDay(deadline))) {
+            if (imaPrigovorURoku(id, deadline)) {
                 log.info("suspension_deadline_skipped_objection rn={} deadline={}", id, deadline);
                 continue;
             }
@@ -73,6 +77,18 @@ public class SuspensionDeadlineJob {
                     "SYSTEM", DEADLINE_EXCEEDED_NOTE);
             log.info("suspension_deadline_exceeded rn={} deadline={}", id, deadline);
         }
+    }
+
+    /**
+     * Prigovor na trenutni prijedlog (zadnji prijelaz u {@code SUSPENSION_PROPOSED}), predan do kraja
+     * dana roka. Bez zapisa prijedloga (stariji podaci) vrijedi svaki neobrađen prigovor u roku.
+     */
+    private boolean imaPrigovorURoku(String rn, LocalDate deadline) {
+        return logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, RnStatus.SUSPENSION_PROPOSED.name())
+                .map(prijedlog -> objectionRepository.existsSubmittedForProposal(rn, prijedlog.getLogId(),
+                        prijedlog.getOccurredAt(), endOfDay(deadline)))
+                .orElseGet(() -> objectionRepository.existsByRnAndStatusAndSubmittedAtBefore(rn,
+                        SuspensionObjectionStatus.SUBMITTED, endOfDay(deadline)));
     }
 
     /** Prvi trenutak nakon dana roka — prigovor predan prije njega je predan u roku. */

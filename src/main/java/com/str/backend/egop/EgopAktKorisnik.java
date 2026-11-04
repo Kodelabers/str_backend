@@ -1,6 +1,7 @@
 package com.str.backend.egop;
 
 import com.str.backend.auth.internal.InternalUserRepository;
+import com.str.backend.common.Uuids;
 import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import org.slf4j.Logger;
@@ -86,12 +87,7 @@ public class EgopAktKorisnik {
 
     /** Akter prijelaza iz revizijskog traga; {@code actRef} akta je {@code log_id} prijelaza. */
     private Optional<String> actor(EgopPismenoEntity akt) {
-        UUID logId;
-        try {
-            logId = UUID.fromString(akt.getActRef());
-        } catch (IllegalArgumentException | NullPointerException e) {
-            return Optional.empty();
-        }
-        return lookup.findEvent(logId).map(RnLifecycleEvent::actor).filter(a -> !a.isBlank());
+        return Uuids.parse(akt.getActRef()).flatMap(lookup::findEvent)
+                .map(RnLifecycleEvent::actor).filter(a -> !a.isBlank());
     }
 }

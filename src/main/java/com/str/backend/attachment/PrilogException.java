@@ -15,7 +15,10 @@ public class PrilogException extends RuntimeException {
     public static final String TOO_LARGE = "ATTACHMENT_TOO_LARGE";
     /** Sadržaj nije PDF, JPG, PNG, DOC ni DOCX (415). */
     public static final String TYPE = "ATTACHMENT_TYPE";
-    /** Previše nevezanih priloga istog učitavatelja (409) — staging nije pohrana. */
+    /**
+     * Kvota nevezanih priloga istog učitavatelja (409) — broj ({@code max-staged-per-uploader}) ili
+     * ukupna veličina ({@code max-staged-total-per-uploader}); staging nije pohrana.
+     */
     public static final String STAGED_LIMIT = "ATTACHMENT_STAGED_LIMIT";
     /** Više od dopuštenog broja priloga uz jedno pismeno (400). */
     public static final String COUNT = "ATTACHMENT_COUNT";
@@ -24,9 +27,12 @@ public class PrilogException extends RuntimeException {
      * je e-pošta pravna dostava akta, pa svi prilozi moraju stati u jednu poruku.
      */
     public static final String TOTAL_TOO_LARGE = "ATTACHMENT_TOTAL_TOO_LARGE";
-    /** Prilog ne postoji — npr. obrisan noćnim čišćenjem nevezanih (404). */
+    /** Prilog ne postoji ili ga je učitao netko drugi — npr. obrisan noćnim čišćenjem nevezanih (404). */
     public static final String NOT_FOUND = "ATTACHMENT_NOT_FOUND";
-    /** Prilog je učitao netko drugi (403). */
+    /**
+     * Prilozi uz radnju bez identificiranog učitavatelja (403). Tuđi prilog nije 403 nego
+     * {@link #NOT_FOUND} — odgovor ne otkriva da id postoji.
+     */
     public static final String FORBIDDEN = "ATTACHMENT_FORBIDDEN";
     /** Prilog je već vezan uz pismeno (409). */
     public static final String ALREADY_BOUND = "ATTACHMENT_ALREADY_BOUND";

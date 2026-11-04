@@ -27,7 +27,6 @@ import hr.infodom.egov.subjekt.KreirajSubjekta;
 import hr.infodom.egov.subjekt.SubjektInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -48,6 +47,8 @@ import java.util.UUID;
  *   <li>izlazno pismeno (obavijest o dodjeli) + PDF dokument;</li>
  *   <li>izlazni akt se prije prilaganja pečatira kvalificiranim e-pečatom ({@link PdfSealer}) — iza
  *       {@code str.eseal.enabled}; bez pečata se ne prilaže ni ne otprema;</li>
+ *   <li>prilozi uz pismena (T17) — nakon glavnog dokumenta, bez utjecaja na ishod urudžbe
+ *       ({@link EgopPrilozi}; neuspjele ponavlja {@link EgopRetryJob});</li>
  *   <li>otprema izlaznog pismena u korisnički pretinac ({@link EgopKpOtpremaService}) — iza
  *       {@code str.egop.kp.enabled}, i bez utjecaja na ishod urudžbe.</li>
  * </ol>
@@ -86,7 +87,6 @@ public class EgopFilingService {
     private static final String ULAZNO_PISMENO_NAZIV = StrDocumentType.ZAHTJEV.vrstaPismenaNaziv();
     private static final String IZLAZNO_PISMENO_NAZIV = StrDocumentType.DODJELA.vrstaPismenaNaziv();
 
-    @Autowired
     public EgopFilingService(EgopClient egopClient,
                              EgopFilingStore store,
                              EgopVrstaResolver vrste,
@@ -111,13 +111,6 @@ public class EgopFilingService {
                 ? this.appUsername
                 : rjesavatelj;
         this.upisnaKnjiga = VrstaUpisneKnjige.getByCode(upisnaKnjiga);
-    }
-
-    /** Bez priloga ({@link EgopPrilozi#NONE}) — za testove toka koji priloge ne trebaju. */
-    public EgopFilingService(EgopClient egopClient, EgopFilingStore store, EgopVrstaResolver vrste,
-                             EgopKpOtpremaService kpOtprema, PdfSealer sealer, EgopProperties properties,
-                             String rjesavatelj, String upisnaKnjiga) {
-        this(egopClient, store, vrste, kpOtprema, sealer, properties, rjesavatelj, upisnaKnjiga, EgopPrilozi.NONE);
     }
 
     /**
@@ -147,9 +140,6 @@ public class EgopFilingService {
         FilingReference ulaznaOznaka = filing(submission, ulazno);
         byte[] zahtjevPdf = documents.zahtjev(ulaznaOznaka);
         attachPdfOnce(ulazno, zahtjevPdf, appUsername);
-        // Prilozi zahtjeva (T17). Retry registracije ide po submissionu, pa pad ovdje ponavlja i
-        // ovaj korak; već priloženi se preskaču.
-        prilozi.prilozi(ulazno, appUsername);
         advance(submission, EgopSyncStatus.PISMENO_OK);
 
         // Smjer (ulazno/izlazno) ne šaljemo — eGOP ga određuje sam iz konfiguracije vrste
@@ -174,6 +164,11 @@ public class EgopFilingService {
         submission.applyEgopSyncStatus(EgopSyncStatus.SYNCED);
         log.info("egop_filing_ok submission={} klasa={} urbroj_ulazno={} urbroj_izlazno={}",
                 submission.getSubmissionId(), submission.getEgopKlasa(), ulazno.getUrBroj(), izlazno.getUrBroj());
+
+        // Prilozi zahtjeva (T17) idu uz ulazno pismeno, tek kad je dodjela urudžbirana: ne bacaju
+        // iznimke i ne mijenjaju ishod urudžbe — neuspjeli se bilježe na prilogu i ponavlja ih
+        // EgopRetryJob. Dodjela ne smije čekati na priloge zahtjeva.
+        prilozi.prilozi(ulazno, appUsername);
 
         // Dostava u korisnički pretinac (EU/OIB). Ne baca iznimke: pad otpreme ne mijenja ishod
         // urudžbe, a ponavlja ga EgopRetryJob.
@@ -499,18 +494,18 @@ public class EgopFilingService {
             }
         }
 
-        // Prilozi (T17) idu PRIJE glavnog dokumenta: markDocumentAttached postavlja SYNCED, a SYNCED akt
-        // retry više ne dira — pad priloga nakon toga ne bi se nikad ponovio. Prije KP otpreme su i zato
-        // da u pretinac odu s aktom. Priloženi se na retryju preskaču.
-        prilozi.prilozi(akt, korisnik);
-
-        // markDocumentAttached ujedno postavlja SYNCED — prilaganje dokumenta je zadnji korak.
+        // markDocumentAttached ujedno postavlja SYNCED — akt je urudžbiran kad ima glavni dokument.
         if (!akt.isDocumentAttached()) {
             attachPdfOnce(akt, sealOnce(akt, akt.getPdfContent()), korisnik);
         }
 
         log.info("egop_akt_filed akt={} rn={} vrsta='{}' klasa={} urbroj={} korisnik={}",
                 akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), predmet.klasa(), akt.getUrBroj(), korisnik);
+
+        // Prilozi (T17) idu NAKON glavnog dokumenta i ne zaustavljaju akt: pad priloga ne baca
+        // iznimku, bilježi se na prilogu i ponavlja ga EgopRetryJob. Prije KP otpreme su da u
+        // pretinac odu s aktom oni koji su do tada priloženi; otprema ne čeka na neuspjele.
+        prilozi.prilozi(akt, korisnik);
 
         // Otpremu je zapisao RnLifecycleFilingListener kad je akt nastao (ako je KP tada bio uključen).
         kpOtprema.otpremi(akt.getId());

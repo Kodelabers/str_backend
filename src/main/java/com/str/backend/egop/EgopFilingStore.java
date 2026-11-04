@@ -206,6 +206,15 @@ public class EgopFilingStore {
         }).orElse(0);
     }
 
+    /** Odgađa akt bez trošenja pokušaja ({@link EgopPismenoEntity#defer}); dovršeni akt ne dira. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void deferAkt(UUID aktId, String reason, Instant nextAttemptAt) {
+        egopPismenoRepository.findById(aktId).filter(akt -> !akt.isSynced()).ifPresent(akt -> {
+            akt.defer(reason, nextAttemptAt);
+            egopPismenoRepository.save(akt);
+        });
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markDocumentAttached(UUID pismenoId) {
         egopPismenoRepository.findById(pismenoId).ifPresent(pismeno -> {

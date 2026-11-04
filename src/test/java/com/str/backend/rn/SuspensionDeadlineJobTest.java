@@ -34,6 +34,7 @@ class SuspensionDeadlineJobTest {
     private RnRepository rnRepository;
     private RnStatusTransitionService transitionService;
     private SuspensionObjectionRepository objectionRepository;
+    private RegistrationNumberLogRepository logRepository;
     private SuspensionDeadlineJob job;
 
     @BeforeEach
@@ -41,7 +42,8 @@ class SuspensionDeadlineJobTest {
         rnRepository = mock(RnRepository.class);
         transitionService = mock(RnStatusTransitionService.class);
         objectionRepository = mock(SuspensionObjectionRepository.class);
-        job = new SuspensionDeadlineJob(rnRepository, transitionService, objectionRepository);
+        logRepository = mock(RegistrationNumberLogRepository.class);
+        job = new SuspensionDeadlineJob(rnRepository, transitionService, objectionRepository, logRepository);
     }
 
     @Test
@@ -104,6 +106,62 @@ class SuspensionDeadlineJobTest {
 
         verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
                 "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
+    }
+
+    /**
+     * Zaostali prigovor na raniji prijedlog istog RB-a ne drži novi prijedlog zauvijek: job pita samo
+     * za prigovor na trenutni prijedlog (zadnji prijelaz u SUSPENSION_PROPOSED).
+     */
+    @Test
+    void objectionOnEarlierProposal_doesNotHoldCurrentProposal() {
+        LocalDate deadline = LocalDate.now(ZoneId.of("Europe/Zagreb")).minusDays(1);
+        RnEntity rn = proposed(deadline);
+        RegistrationNumberLogEntity prijedlog = mock(RegistrationNumberLogEntity.class);
+        UUID prijedlogId = UUID.randomUUID();
+        Instant prijedlogAt = Instant.parse("2026-07-01T08:00:00Z");
+        when(prijedlog.getLogId()).thenReturn(prijedlogId);
+        when(prijedlog.getOccurredAt()).thenReturn(prijedlogAt);
+        when(rnRepository.findRnsWithSuspensionDeadlineBefore(any())).thenReturn(List.of(RN));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, RnStatus.SUSPENSION_PROPOSED.name()))
+                .thenReturn(Optional.of(prijedlog));
+        // Postoji SUBMITTED prigovor u roku, ali na raniji prijedlog.
+        when(objectionRepository.existsByRnAndStatusAndSubmittedAtBefore(any(), any(), any())).thenReturn(true);
+        when(objectionRepository.existsSubmittedForProposal(RN, prijedlogId, prijedlogAt,
+                SuspensionDeadlineJob.endOfDay(deadline))).thenReturn(false);
+
+        job.run();
+
+        verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
+                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
+    }
+
+    @Test
+    void objectionOnCurrentProposal_holdsSuspension() {
+        LocalDate deadline = LocalDate.now(ZoneId.of("Europe/Zagreb")).minusDays(1);
+        RnEntity rn = proposed(deadline);
+        RegistrationNumberLogEntity prijedlog = mock(RegistrationNumberLogEntity.class);
+        UUID prijedlogId = UUID.randomUUID();
+        when(prijedlog.getLogId()).thenReturn(prijedlogId);
+        when(rnRepository.findRnsWithSuspensionDeadlineBefore(any())).thenReturn(List.of(RN));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, RnStatus.SUSPENSION_PROPOSED.name()))
+                .thenReturn(Optional.of(prijedlog));
+        when(objectionRepository.existsSubmittedForProposal(eq(RN), eq(prijedlogId), any(), any())).thenReturn(true);
+
+        job.run();
+
+        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+    }
+
+    /** „Danas" joba je po hrvatskom vremenu (kontejner je UTC): upit roka dobiva datum u Europe/Zagreb. */
+    @Test
+    void today_isZagrebDate() {
+        when(rnRepository.findRnsWithSuspensionDeadlineBefore(any())).thenReturn(List.of());
+
+        job.run();
+
+        verify(rnRepository).findRnsWithSuspensionDeadlineBefore(LocalDate.now(ZoneId.of("Europe/Zagreb")));
     }
 
     /** Kraj dana roka je ponoć po hrvatskom vremenu, ne po zoni poslužitelja. */

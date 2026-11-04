@@ -288,7 +288,7 @@ class RegistrationServiceReissueTest {
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE,
                 false, "2", false, true,
                 null, null, null, null, null, null, facilityId,
-                "ana@example.com", "0991234567", null, null, null, null, previousRn);
+                "ana@example.com", "0991234567", null, null, null, null, previousRn, null);
     }
 
     private static RegistrationExternalRequest externalRequest(String previousRn, String facilityId) {
@@ -296,7 +296,7 @@ class RegistrationServiceReissueTest {
                 "Apartman Riva", null, 7L, "Split", "Split", "Riva", "1", null, "21000", 4,
                 OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, "2", false, true,
                 null, null, null, null, null, null, facilityId,
-                null, "0991234567", null, null, null, previousRn);
+                null, "0991234567", null, null, null, previousRn, null);
     }
 
     private static CountyEntity county(Long id, String name) {

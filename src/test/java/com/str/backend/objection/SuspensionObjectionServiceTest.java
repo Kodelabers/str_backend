@@ -59,14 +59,14 @@ class SuspensionObjectionServiceTest {
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
     private final PrilogService prilogService = mock(PrilogService.class);
     private final SuspensionObjectionService service =
-            new SuspensionObjectionService(repository, rnRepository, logRepository, lessorRepository, prilogService, 5);
+            new SuspensionObjectionService(repository, rnRepository, logRepository, lessorRepository, prilogService);
 
     private final RnEntity rn = mock(RnEntity.class);
 
     @BeforeEach
     void ownedRnProposedForSuspension() {
         when(rnRepository.isOwnedByOib(RN, OIB)).thenReturn(true);
-        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
         when(rn.getStatus()).thenReturn(RnStatus.SUSPENSION_PROPOSED);
         RegistrationNumberLogEntity proposal = mock(RegistrationNumberLogEntity.class);
         when(proposal.getLogId()).thenReturn(LOG_ID);
@@ -222,6 +222,9 @@ class SuspensionObjectionServiceTest {
                 .mapToObj(i -> (org.springframework.web.multipart.MultipartFile)
                         new MockMultipartFile("datoteke", "d" + i + ".pdf", null, PDF))
                 .toList());
+        // Pravilo broja je jedno, u PrilogService (dijeli ga s prilozima uz pismena).
+        org.mockito.Mockito.doThrow(new PrilogException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                "error.attachment.count", PrilogException.COUNT)).when(prilogService).requireBroj(6);
 
         assertThatThrownBy(() -> service.submit(OWNER, SUBMITTED_BY, req))
                 .isInstanceOfSatisfying(PrilogException.class, e -> assertThat(e.getCode()).isEqualTo("ATTACHMENT_COUNT"));

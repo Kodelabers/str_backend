@@ -74,23 +74,6 @@ public record RegistrationRequest(
         List<Long> prilogIds
 ) implements AccommodationRequest {
 
-    /** Zahtjev bez priloga. */
-    public RegistrationRequest(String oib, String name, String typeId, Long countyId, String cityId,
-                               String settlementId, String street, String streetNumber, Long kucniBrojId,
-                               String postalCode, Integer maxBeds, OfferType offerType, Offering offering,
-                               Boolean building, String floor, Boolean apartments, Boolean legalized,
-                               Boolean lessorResidence, Boolean coOwnerConsent, LocalDate consentDate,
-                               LocalDate consentWithdrawalDate, Boolean host, Boolean confirmDuplicateLocation,
-                               String facilityId, String kontaktEmail, String kontaktMobitel,
-                               String kontaktTelefon, String kontaktOsoba, String kcBroj,
-                               PodnositeljUnos podnositelj, String prethodniRb) {
-        this(oib, name, typeId, countyId, cityId, settlementId, street, streetNumber, kucniBrojId,
-                postalCode, maxBeds, offerType, offering, building, floor, apartments, legalized,
-                lessorResidence, coOwnerConsent, consentDate, consentWithdrawalDate, host,
-                confirmDuplicateLocation, facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon,
-                kontaktOsoba, kcBroj, podnositelj, prethodniRb, null);
-    }
-
     /** Zahtjev bez ponovnog zahtjeva nakon opoziva. */
     public RegistrationRequest(String oib, String name, String typeId, Long countyId, String cityId,
                                String settlementId, String street, String streetNumber, Long kucniBrojId,
@@ -105,7 +88,7 @@ public record RegistrationRequest(
                 postalCode, maxBeds, offerType, offering, building, floor, apartments, legalized,
                 lessorResidence, coOwnerConsent, consentDate, consentWithdrawalDate, host,
                 confirmDuplicateLocation, facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon,
-                kontaktOsoba, kcBroj, podnositelj, null);
+                kontaktOsoba, kcBroj, podnositelj, null, null);
     }
 
     /** Zahtjev bez podataka o podnositelju s obrasca — registar ih je vratio. */
@@ -121,7 +104,7 @@ public record RegistrationRequest(
                 postalCode, maxBeds, offerType, offering, building, floor, apartments, legalized,
                 lessorResidence, coOwnerConsent, consentDate, consentWithdrawalDate, host,
                 confirmDuplicateLocation, facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon,
-                kontaktOsoba, kcBroj, null, null);
+                kontaktOsoba, kcBroj, (PodnositeljUnos) null);
     }
 
     public static RegistrationRequest withOib(RegistrationRequest orig, String oib) {

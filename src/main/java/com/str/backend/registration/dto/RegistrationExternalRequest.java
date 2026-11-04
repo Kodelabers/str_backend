@@ -73,23 +73,6 @@ public record RegistrationExternalRequest(
         List<Long> prilogIds
 ) implements AccommodationRequest {
 
-    /** Zahtjev bez priloga. */
-    public RegistrationExternalRequest(String name, String typeId, Long countyId, String cityId,
-                                       String settlementId, String street, String streetNumber,
-                                       Long kucniBrojId, String postalCode, Integer maxBeds,
-                                       OfferType offerType, Offering offering, Boolean building, String floor,
-                                       Boolean apartments, Boolean legalized, Boolean lessorResidence,
-                                       Boolean coOwnerConsent, LocalDate consentDate,
-                                       LocalDate consentWithdrawalDate, Boolean host,
-                                       Boolean confirmDuplicateLocation, String facilityId,
-                                       String kontaktEmail, String kontaktMobitel, String kontaktTelefon,
-                                       String kontaktOsoba, String kcBroj, String prethodniRb) {
-        this(name, typeId, countyId, cityId, settlementId, street, streetNumber, kucniBrojId, postalCode,
-                maxBeds, offerType, offering, building, floor, apartments, legalized, lessorResidence,
-                coOwnerConsent, consentDate, consentWithdrawalDate, host, confirmDuplicateLocation,
-                facilityId, kontaktEmail, kontaktMobitel, kontaktTelefon, kontaktOsoba, kcBroj, prethodniRb, null);
-    }
-
     /** Zahtjev bez ponovnog zahtjeva nakon opoziva. */
     public RegistrationExternalRequest(String name, String typeId, Long countyId, String cityId,
                                        String settlementId, String street, String streetNumber,

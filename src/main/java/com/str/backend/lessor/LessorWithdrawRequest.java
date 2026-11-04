@@ -15,8 +15,4 @@ public record LessorWithdrawRequest(
         @Size(max = 1024) String reason,
         List<Long> prilogIds
 ) {
-
-    public LessorWithdrawRequest(String reason) {
-        this(reason, null);
-    }
 }

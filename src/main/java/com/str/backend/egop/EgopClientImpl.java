@@ -327,7 +327,11 @@ class EgopClientImpl implements EgopClient {
         var response = ((DohvatiListuPrilogaPismenaResponse) call(
                 egopPismenoWebServiceTemplate, request, PISMENO_DOHVATI_LISTU_PRILOGA_PISMENA_SOAP_ACTION))
                 .getDohvatiListuPrilogaPismenaResult();
-        return ((ListaPriloziPismenaInfo) handleErrors(response)).getLista().getPriloziPismenaInfo();
+        // Pismeno bez priloga: eGOP smije izostaviti listu — to je prazan popis, ne greška.
+        ListaPriloziPismenaInfo lista = (ListaPriloziPismenaInfo) handleErrors(response);
+        return lista.getLista() == null || lista.getLista().getPriloziPismenaInfo() == null
+                ? List.of()
+                : lista.getLista().getPriloziPismenaInfo();
     }
 
     @Override

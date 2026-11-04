@@ -30,6 +30,7 @@ class PrilogServiceTest {
     private static final byte[] PDF = "%PDF-1.7 sadrzaj".getBytes();
 
     private PrilogRepository repository;
+    private PrilogStagingLock stagingLock;
     private PrilogService service;
 
     @BeforeEach
@@ -37,7 +38,9 @@ class PrilogServiceTest {
         repository = mock(PrilogRepository.class);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // Mali limit veličine i nevezanih, da testovi ne trebaju 10 MB.
-        service = new PrilogService(repository, 5, DataSize.ofBytes(100), 3, DataSize.ofBytes(150));
+        stagingLock = mock(PrilogStagingLock.class);
+        service = new PrilogService(repository, stagingLock, 5, DataSize.ofBytes(100), 3, DataSize.ofBytes(250),
+                DataSize.ofBytes(150));
     }
 
     // --- stage -----------------------------------------------------------------------------
@@ -108,6 +111,42 @@ class PrilogServiceTest {
         verify(repository, never()).save(any());
     }
 
+    /** M-BE5: staging istog učitavatelja je serijaliziran prije prebrojavanja kvote. */
+    @Test
+    void stage_locksUploaderBeforeCountingQuota() {
+        service.stage(ANA, new MockMultipartFile("datoteka", "a.pdf", null, PDF));
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(stagingLock, repository);
+        order.verify(stagingLock).zakljucaj(ANA);
+        order.verify(repository).countByUcitaoAndVlasnikIdIsNull(ANA);
+        order.verify(repository).sumVelicinaNevezanih(ANA);
+        order.verify(repository).save(any());
+    }
+
+    /** Kvota ukupne veličine nevezanih (250 B u testu): 240 već učitano + 16 je preko. */
+    @Test
+    void stage_overTotalUnboundBytes_is409() {
+        when(repository.sumVelicinaNevezanih(ANA)).thenReturn(240L);
+
+        assertCode(() -> service.stage(ANA, new MockMultipartFile("datoteka", "a.pdf", null, PDF)),
+                HttpStatus.CONFLICT, PrilogException.STAGED_LIMIT);
+        verify(repository, never()).save(any());
+    }
+
+    /** L-names: ekstenzija naziva je ona koju je potvrdio sadržaj; osnovni naziv ostaje. */
+    @Test
+    void stage_rewritesExtensionToDetectedType_andStripsControlChars() {
+        PrilogResponse lazna = service.stage(ANA, new MockMultipartFile("datoteka", "ugovor.exe", null, PDF));
+        PrilogResponse jpeg = service.stage(ANA, new MockMultipartFile("datoteka", "foto.JPEG", null,
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 1}));
+        PrilogResponse kontrolni = service.stage(ANA, new MockMultipartFile("datoteka",
+                "ra\u010dun\r\n\u202Efdp.pdf", null, PDF));
+
+        assertThat(lazna.naziv()).isEqualTo("ugovor.pdf");
+        assertThat(jpeg.naziv()).isEqualTo("foto.JPEG");
+        assertThat(kontrolni.naziv()).isEqualTo("ra\u010dunfdp.pdf");
+    }
+
     // --- bind ------------------------------------------------------------------------------
 
     @Test
@@ -130,22 +169,23 @@ class PrilogServiceTest {
         verify(repository, never()).bind(any(), any(), any(), any(), any());
     }
 
+    /** Tuđi prilog je 404, kao i nepostojeći — odgovor ne otkriva da id postoji. */
     @Test
-    void bind_foreignAttachment_is403() {
+    void bind_foreignAttachment_is404() {
         when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, IVO)));
 
         assertCode(() -> service.bind(ANA, List.of(1L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
-                HttpStatus.FORBIDDEN, PrilogException.FORBIDDEN);
+                HttpStatus.NOT_FOUND, PrilogException.NOT_FOUND);
         verify(repository, never()).bind(any(), any(), any(), any(), any());
     }
 
     /** Tvrtkin prilog (NIAS:<OIB tvrtke>) se ne veže uz radnju iste osobe „u svoje ime". */
     @Test
-    void bind_companyAttachmentForPersonalAction_is403() {
+    void bind_companyAttachmentForPersonalAction_is404() {
         when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, Ucitao.nias("11111111117"))));
 
         assertCode(() -> service.bind(ANA, List.of(1L), PrilogVlasnik.zahtjev(UUID.randomUUID())),
-                HttpStatus.FORBIDDEN, PrilogException.FORBIDDEN);
+                HttpStatus.NOT_FOUND, PrilogException.NOT_FOUND);
     }
 
     @Test
@@ -211,7 +251,7 @@ class PrilogServiceTest {
     @Test
     void deleteStaged_foreignOrBound_isRefused() {
         when(repository.findSazeci(List.of(1L))).thenReturn(List.of(TestPrilog.nevezan(1, IVO)));
-        assertCode(() -> service.deleteStaged(ANA, 1L), HttpStatus.FORBIDDEN, PrilogException.FORBIDDEN);
+        assertCode(() -> service.deleteStaged(ANA, 1L), HttpStatus.NOT_FOUND, PrilogException.NOT_FOUND);
 
         when(repository.findSazeci(List.of(2L))).thenReturn(List.of(
                 TestPrilog.vezan(2, VrstaVlasnika.SUBMISSION, UUID.randomUUID(), "a.pdf", ANA)));
@@ -279,8 +319,7 @@ class PrilogServiceTest {
         UUID logId = UUID.randomUUID();
         when(repository.findSazeci(List.of(2L))).thenReturn(List.of(TestPrilog.nevezan(2, SLUZBENIK).withVelicina(80)));
         when(repository.countByVrstaVlasnikaAndVlasnikId(VrstaVlasnika.RN_LOG, logId)).thenReturn(1L);
-        when(repository.findSazeciVlasnika(VrstaVlasnika.RN_LOG, logId)).thenReturn(List.of(
-                TestPrilog.vezan(1, VrstaVlasnika.RN_LOG, logId, "a.pdf", SLUZBENIK).withVelicina(80)));
+        when(repository.sumVelicinaVlasnika(VrstaVlasnika.RN_LOG, logId)).thenReturn(80L);
 
         assertCode(() -> service.bind(SLUZBENIK, List.of(2L), PrilogVlasnik.prijelaz(logId)),
                 HttpStatus.BAD_REQUEST, PrilogException.TOTAL_TOO_LARGE);

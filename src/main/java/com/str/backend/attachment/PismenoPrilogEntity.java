@@ -25,6 +25,7 @@ import java.util.UUID;
  *
  * <p>{@link #egopJop} je oznaka da je prilog priložen u eGOP: eGOP nema idempotentno prilaganje,
  * pa retry preskače priloge koji je već imaju (kao {@code egop_pismeno.document_attached}).
+ * Neuspjelo prilaganje ima vlastiti brojač i backoff ({@link #egopPokusaji}).
  */
 @Entity
 @Getter
@@ -78,6 +79,19 @@ public class PismenoPrilogEntity {
 
     @Column(name = "egop_prilozeno_u")
     private Instant egopPrilozenoU;
+
+    /**
+     * Stanje ponovnog pokušaja prilaganja u eGOP (changeset 149). Akt ne čeka na priloge, pa
+     * prilog koji ne prođe ponavlja {@code EgopRetryJob} po istoj politici kao urudžbu.
+     */
+    @Column(name = "egop_pokusaji", nullable = false)
+    private int egopPokusaji;
+
+    @Column(name = "egop_sljedeci_pokusaj_u")
+    private Instant egopSljedeciPokusajU;
+
+    @Column(name = "egop_greska", length = 1000)
+    private String egopGreska;
 
     /** Nevezan prilog — vlasnika dobiva tek radnjom uz koju je učitan. */
     public static PismenoPrilogEntity staged(String ucitao, String nazivDatoteke, String contentType,

@@ -274,4 +274,7 @@
     <!-- Prilozi uz pismena: zahtjev, opoziv, akti službenika i prigovor (staging, pa vezanje). -->
     <include file="db/changelog/changes/148-pismeno-prilog.xml"/>
 
+    <!-- Stanje ponovnog pokušaja prilaganja priloga u eGOP: akt i dodjela ne čekaju na priloge. -->
+    <include file="db/changelog/changes/149-pismeno-prilog-egop-retry.xml"/>
+
 </databaseChangeLog>

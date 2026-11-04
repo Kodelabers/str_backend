@@ -10,8 +10,8 @@
 # registration_number_log.reason, a StrDocumentService ga čita odande.
 #
 # MINTS, studeni 2026.: propis o nadležnosti čl. 48. st. 2.; stranka se ne imenuje u uvodu nego u
-# točki 1. („dodijeljen na zahtjev stranke: …"); točka 2. s danom povlačenja (= datum obavijesti,
-# ${akt.datum}); nove točke 3. i 4. (čl. 6. st. 6. Uredbe, prigovor); izbrisani obrazloženje i
+# točki 1. („dodijeljen na zahtjev stranke: …"); točka 2. s danom povlačenja (datum prijelaza statusa,
+# ${prijelaz.datum}, ne datum rendera); nove točke 3. i 4. (čl. 6. st. 6. Uredbe, prigovor); izbrisani obrazloženje i
 # uputa. Akt potpisuje službenik koji je broj povukao (naziv službene dužnosti i ime).
 #
 # Katalog placeholdera: docs/ZUP-predlosci.md
@@ -22,7 +22,7 @@ ${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po slu
 [IZREKA]
 1. Povlači se registracijski broj ${rn.broj}, dodijeljen na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, zbog sljedećeg razloga: ${rn.razlog}.
 
-2. Registracijski broj prestaje važiti danom povlačenja i briše se iz integriranog informacijskog sustava turizma s danom ${akt.datum}
+2. Registracijski broj prestaje važiti danom povlačenja i briše se iz integriranog informacijskog sustava turizma s danom ${prijelaz.datum}
 
 3. Sukladno članku 6. stavku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća od 11. travnja 2024. o prikupljanju i razmjeni podataka o uslugama kratkoročnog iznajmljivanja smještaja i izmjeni Uredbe (EU) 2018/1724 (SL L, 2024/1028, 29.4.2024.), ako iznajmljivač namjerno ili krajnjom nepažnjom nije ispravio tražene informacije ili je dostavio nevjerodostojne ili nevaljane informacije, nadležna tijela ovlaštena su povući registracijski broj i izdati nalog kojim se od internetskih platformi za kratkoročno iznajmljivanje smještaja zahtijeva da bez nepotrebne odgode uklone sve ponude koje se odnose na predmetni smještajni objekt.
 

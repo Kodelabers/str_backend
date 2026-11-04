@@ -59,7 +59,7 @@ class LessorRnActionServiceTest {
         when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
 
-        LessorRnActionResponse response = service.withdrawOwn(RN, lessorId, "  vise ne iznajmljujem  ");
+        LessorRnActionResponse response = service.withdrawOwn(RN, lessorId, "  vise ne iznajmljujem  ", List.of());
 
         assertThat(response.rn()).isEqualTo(RN);
         verify(transitionService).transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION,
@@ -77,7 +77,7 @@ class LessorRnActionServiceTest {
         when(submissionRepository.findById(submissionId)).thenReturn(Optional.of(submission(submissionId, lessorId)));
         when(lessorRepository.findById(lessorId)).thenReturn(Optional.of(lessor));
 
-        service.withdrawOwnByOib(RN, "12312312316", null);
+        service.withdrawOwnByOib(RN, "12312312316", null, List.of());
 
         verify(transitionService).transition(rn, RnStatus.REVOKED, RnTrigger.REVOCATION,
                 "NIAS:12312312316", null);
@@ -140,7 +140,7 @@ class LessorRnActionServiceTest {
         when(submissionRepository.findById(submissionId))
                 .thenReturn(Optional.of(submission(submissionId, UUID.randomUUID()))); // different lessor
 
-        assertThatThrownBy(() -> service.withdrawOwn(RN, lessorId, null))
+        assertThatThrownBy(() -> service.withdrawOwn(RN, lessorId, null, List.of()))
                 .isInstanceOf(ResourceNotFoundException.class);
         verify(transitionService, never()).transition(any(), any(), any(), any(), any());
     }
@@ -149,7 +149,7 @@ class LessorRnActionServiceTest {
     void withdrawOwn_throwsNotFound_whenRnMissing() {
         when(rnRepository.findForUpdate(RN)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.withdrawOwn(RN, UUID.randomUUID(), null))
+        assertThatThrownBy(() -> service.withdrawOwn(RN, UUID.randomUUID(), null, List.of()))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

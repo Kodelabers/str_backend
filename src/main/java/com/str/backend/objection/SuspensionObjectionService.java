@@ -1,6 +1,5 @@
 package com.str.backend.objection;
 
-import com.str.backend.attachment.PrilogException;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.attachment.Ucitao;
@@ -17,9 +16,7 @@ import com.str.backend.rn.RegistrationNumberLogEntity;
 import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -63,20 +60,17 @@ public class SuspensionObjectionService {
     private final RegistrationNumberLogRepository rnLogRepository;
     private final LessorRepository lessorRepository;
     private final PrilogService prilogService;
-    private final int maxDatoteka;
 
     public SuspensionObjectionService(SuspensionObjectionRepository repository,
                                       RnRepository rnRepository,
                                       RegistrationNumberLogRepository rnLogRepository,
                                       LessorRepository lessorRepository,
-                                      PrilogService prilogService,
-                                      @Value("${app.attachments.max-per-owner:5}") int maxDatoteka) {
+                                      PrilogService prilogService) {
         this.repository = repository;
         this.rnRepository = rnRepository;
         this.rnLogRepository = rnLogRepository;
         this.lessorRepository = lessorRepository;
         this.prilogService = prilogService;
-        this.maxDatoteka = maxDatoteka;
     }
 
     /**
@@ -97,7 +91,9 @@ public class SuspensionObjectionService {
         if (rn == null || !isOwned(rn, owner)) {
             throw new ResourceNotFoundException("error.rn.notFound");
         }
-        RnEntity rnEntity = rnRepository.findById(rn)
+        // Zaključano, kao kod promjene statusa: paralelna obustava prijedloga inače može proći između
+        // provjere statusa i upisa, pa bi SUBMITTED prigovor ostao uz ACTIVE RB.
+        RnEntity rnEntity = rnRepository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
 
         RnStatus rnStatus = rnEntity.getStatus();
@@ -113,12 +109,13 @@ public class SuspensionObjectionService {
             throw new BusinessException("error.objection.file.empty");
         }
         List<MultipartFile> dodatne = dodatneDatoteke(req);
-        if (1 + dodatne.size() > maxDatoteka) {
-            throw new PrilogException(HttpStatus.BAD_REQUEST, "error.attachment.count", PrilogException.COUNT);
-        }
+        // Dokument prigovora + dodatne; isto pravilo kao uz pismena, provjereno prije čitanja datoteka.
+        prilogService.requireBroj(1 + dodatne.size());
         byte[] content = readBytes(file);
-        String fileName = Strings.safeFileName(file.getOriginalFilename(), "prigovor");
-        String contentType = detectContentType(content, fileName);
+        String imeDatoteke = Strings.safeFileName(file.getOriginalFilename(), "prigovor");
+        VrstaDatoteke vrsta = detectType(content, imeDatoteke);
+        String fileName = vrsta.nazivSEkstenzijom(imeDatoteke);
+        String contentType = vrsta.contentType();
 
         // Akt koji se pobija: prijelaz u trenutni status (prijedlog ili suspenzija).
         UUID rnLogId = rnLogRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, rnStatus.name())
@@ -196,9 +193,8 @@ public class SuspensionObjectionService {
      * Tip se određuje iz sadržaja, ne iz {@code Content-Type} headera ({@link VrstaDatoteke}).
      * Dopušteni su PDF, DOC i DOCX, isto što frontend nudi u dropzoneu.
      */
-    static String detectContentType(byte[] content, String fileName) {
+    static VrstaDatoteke detectType(byte[] content, String fileName) {
         return VrstaDatoteke.odredi(content, fileName, DOPUSTENE_VRSTE)
-                .map(VrstaDatoteke::contentType)
                 .orElseThrow(() -> new BusinessException("error.objection.file.type"));
     }
 

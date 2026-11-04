@@ -2,6 +2,7 @@ package com.str.backend.rn;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.attachment.PrilogException;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.address.CountyNames;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -141,17 +143,14 @@ public class RnService {
      *
      * <p>{@code actor} je službenik ({@code INTERNAL:<oib>}) — zapisuje se u revizijski trag, kao i
      * kod obustave, reaktivacije i povlačenja.
-     */
-    @Transactional
-    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor) {
-        return suspend(rn, trigger, suspensionDeadline, note, actor, List.of());
-    }
-
-    /**
-     * Kao {@link #suspend(String, RnTrigger, LocalDate, String, String)}, uz priloge službenika
-     * ({@code prilogIds} iz staginga, T17). Vežu se uz novi zapis {@code registration_number_log} u
-     * istoj transakciji, pa ih AFTER_COMMIT listeneri (eGOP, e-pošta) prilažu uz akt; neispravan
-     * prilog (tuđi, istekao, previše, ukupno preko 15 MB) poništava i prijedlog.
+     *
+     * <p>U {@code registration_number_log.reason} ide natpis razloga, a bilješka službenika samo uz
+     * {@link RnTrigger#OTHER} (kao kod {@link #withdraw}): akt i obavijest razlog čitaju odande, pa bi
+     * bilješka uz kodirani razlog zamijenila natpis koji MINTS traži.
+     *
+     * <p>Prilozi službenika ({@code prilogIds} iz staginga, T17) vežu se uz novi zapis
+     * {@code registration_number_log} u istoj transakciji, pa ih AFTER_COMMIT listeneri (eGOP, e-pošta)
+     * prilažu uz akt; neispravan prilog (tuđi, istekao, previše, ukupno preko 15 MB) poništava i prijedlog.
      */
     @Transactional
     public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor,
@@ -168,12 +167,12 @@ public class RnService {
         // Rok u prošlosti nije rok: SuspensionDeadlineJob bi ga pokupio već iduće noći i RB bi bio
         // suspendiran a da se stranka nije imala kad očitovati — a upravo joj to čl. 30. st. 2
         // ZUP-a jamči. Tipfeler u godini ne smije proći kao valjan poziv na očitovanje.
-        if (suspensionDeadline.isBefore(LocalDate.now(clock))) {
+        if (suspensionDeadline.isBefore(danas())) {
             throw new BusinessException("error.rn.suspend.deadline.past");
         }
+        String logged = trigger == RnTrigger.OTHER ? Strings.blankToNull(note) : labels.trigger(trigger);
         RnEntity e = loadForUpdate(rn);
-        UUID logId = transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor,
-                Strings.blankToNull(note));
+        UUID logId = transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, logged);
         e.setSuspensionDeadline(suspensionDeadline);
         bindPrilozi(actor, prilogIds, logId);
         return e;
@@ -195,7 +194,7 @@ public class RnService {
     public boolean suspendIfDeadlineExpired(String rn, String actor) {
         RnEntity e = loadForUpdate(rn);
         if (e.getStatus() != RnStatus.SUSPENSION_PROPOSED || e.getSuspensionDeadline() == null
-                || !e.getSuspensionDeadline().isBefore(LocalDate.now(clock))) {
+                || !e.getSuspensionDeadline().isBefore(danas())) {
             return false;
         }
         transitionService.transition(e, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED, actor,
@@ -230,16 +229,12 @@ public class RnService {
      * službenika (obvezan). Opis uz kodirani razlog se ne upisuje — kao ni bilješka uz kodirani
      * razlog suspenzije, frontend ga tada ni ne šalje.
      *
+     * <p>Prilozi službenika (T17) vežu se uz novi zapis prijelaza kao kod {@link #suspend}.
+     *
      * <p>TODO (zasebni epic, "Zajedničke backend teme"): obavijest Internetskim platformama
-     * (mail/M2M) + dostava potvrde u KP. Retencija (18 mj.) se računa iz {@code valid_to}
+     * (mail/M2M); akt o povlačenju ide u KP kroz eGOP tok. Retencija (18 mj.) se računa iz {@code valid_to}
      * koji {@link RnEntity#applyStatus} postavlja na dan povlačenja.
      */
-    @Transactional
-    public RnEntity withdraw(String rn, WithdrawalReason reason, String note, String actor) {
-        return withdraw(rn, reason, note, actor, List.of());
-    }
-
-    /** Kao {@link #withdraw(String, WithdrawalReason, String, String)}, uz priloge službenika (T17). */
     @Transactional
     public RnEntity withdraw(String rn, WithdrawalReason reason, String note, String actor,
                              Collection<Long> prilogIds) {
@@ -259,16 +254,23 @@ public class RnService {
 
     /**
      * Prilozi službenika uz upravo nastali prijelaz. Bez priloga ne radi ništa — ni ne traži
-     * službenika, pa radnja bez priloga radi i bez aktera (testovi bez sigurnosnog lanca).
+     * službenika, pa radnja bez priloga radi i bez aktera (testovi bez sigurnosnog lanca). Prilozi
+     * bez identificiranog službenika su 403 {@code ATTACHMENT_FORBIDDEN}: nevezani prilog pripada
+     * učitavatelju, a njega ovdje nema — i radnja se poništava.
      */
     private void bindPrilozi(String actor, Collection<Long> prilogIds, UUID logId) {
         if (prilogIds == null || prilogIds.isEmpty()) {
             return;
         }
         if (actor == null) {
-            throw new IllegalStateException("prilozi bez službenika");
+            throw new PrilogException(HttpStatus.FORBIDDEN, "error.attachment.forbidden", PrilogException.FORBIDDEN);
         }
         prilogService.bind(actor, prilogIds, PrilogVlasnik.prijelaz(logId));
+    }
+
+    /** Današnji dan za rokove suspenzije — po hrvatskom vremenu, kao {@link SuspensionDeadlineJob}. */
+    private LocalDate danas() {
+        return LocalDate.now(clock.withZone(SuspensionDeadlineJob.ZAGREB));
     }
 
     @Transactional(readOnly = true)
@@ -394,7 +396,7 @@ public class RnService {
         }
         int days = Math.clamp(deadlineWithinDays.longValue(),
                 -MAX_DEADLINE_WINDOW_DAYS, MAX_DEADLINE_WINDOW_DAYS);
-        return LocalDate.now(clock).plusDays(days);
+        return danas().plusDays(days);
     }
 
     /** STR wireframe §12 / §13: full detail for a single RN (joined accommodation + lessor). */

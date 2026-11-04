@@ -80,7 +80,7 @@ class EgopFilingServiceTest {
                 "Obavijest o dodjeli registracijskog broja", "102"));
 
         service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, sealer, properties("MINT", "str-svc"),
-                "", "NP");
+                "", "NP", mock(EgopPrilozi.class));
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb", "ana@example.com");
         lessor.setLessorOib("12345678901");
@@ -217,7 +217,7 @@ class EgopFilingServiceTest {
     @Test
     void fileRegistration_usesConfiguredRjesavateljWhenSet() throws Exception {
         service = new EgopFilingService(egopClient, store, resolver(), kpOtprema, sealer, properties("MINT", "str-svc"),
-                "MINT\\ivan.ivic", "NP");
+                "MINT\\ivan.ivic", "NP", mock(EgopPrilozi.class));
         givenSubjektAndPredmetCreated();
 
         service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
@@ -650,9 +650,12 @@ class EgopFilingServiceTest {
         return prilozi;
     }
 
-    /** Prilozi zahtjeva idu uz ulazno pismeno, nakon njegova PDF-a; obavijest o dodjeli ih nema. */
+    /**
+     * Prilozi zahtjeva idu uz ulazno pismeno, tek nakon što je dodjela urudžbirana (SYNCED), a prije
+     * otpreme u KP; obavijest o dodjeli ih nema.
+     */
     @Test
-    void fileRegistration_attachesPriloziToZahtjevPismeno() throws Exception {
+    void fileRegistration_attachesPriloziToZahtjevPismeno_afterRegistrationIsSynced() throws Exception {
         EgopPrilozi prilozi = priloziService();
         givenSubjektAndPredmetCreated();
 
@@ -662,25 +665,27 @@ class EgopFilingServiceTest {
         verify(prilozi).prilozi(pismeno.capture(), eq("MINT\\str-svc"));
         assertEquals(EgopPismenoEntity.Smjer.ULAZNO, pismeno.getValue().getSmjer());
         assertEquals(1001, pismeno.getValue().getJop());
-        org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, prilozi, kpOtprema);
-        order.verify(egopClient).kreirajDokumentZaPismeno(any());
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, store, prilozi, kpOtprema);
+        order.verify(egopClient, times(2)).kreirajDokumentZaPismeno(any());
+        order.verify(store).saveSuccess(any(), any(), any());
         order.verify(prilozi).prilozi(any(), any());
         order.verify(kpOtprema).otpremi(any());
     }
 
-    /** Pad priloga zahtjeva ostavlja registraciju nedovršenom — retry je ponavlja po submissionu. */
+    /**
+     * Dodjela ne čeka na priloge zahtjeva: prilozi se bilježe i ponavljaju sami (PrilogEgopService ne
+     * baca), pa je registracija SYNCED i obavijest otpremljena i kad nijedan prilog nije prošao.
+     */
     @Test
-    void fileRegistration_priloziFail_registrationNotSynced() throws Exception {
+    void fileRegistration_isSynced_evenWhenAttachmentsDoNotGoThrough() throws Exception {
         EgopPrilozi prilozi = priloziService();
         givenSubjektAndPredmetCreated();
-        org.mockito.Mockito.doThrow(new EgopBadRequestException("prilog")).when(prilozi).prilozi(any(), any());
 
-        assertThrows(EgopBadRequestException.class,
-                () -> service.fileRegistration(submission, lessor, documents("pdf".getBytes())));
+        service.fileRegistration(submission, lessor, documents("pdf".getBytes()));
 
-        assertFalse(submission.getEgopSyncStatus() == EgopSyncStatus.SYNCED);
-        verify(store, never()).saveSuccess(any(), any(), any());
-        verify(kpOtprema, never()).otpremi(any());
+        assertEquals(EgopSyncStatus.SYNCED, submission.getEgopSyncStatus());
+        verify(prilozi).prilozi(any(), any());
+        verify(kpOtprema).otpremi(any());
     }
 
     private EgopPismenoEntity givenActReadyToFile() throws Exception {
@@ -698,48 +703,43 @@ class EgopFilingServiceTest {
     }
 
     /**
-     * Prilozi akta idu prije glavnog dokumenta: on postavlja SYNCED, a SYNCED akt retry ne dira. I prije
-     * KP otpreme, da u pretinac odu s aktom.
+     * Akt ne čeka na priloge: glavni dokument se prilaže prvi (akt je tada SYNCED), pa prilozi, pa KP
+     * otprema — u pretinac idu prilozi koji su do tada priloženi.
      */
     @Test
-    void fileAct_attachesPriloziBeforeMainDocumentAndKp() throws Exception {
+    void fileAct_mainDocumentFirst_thenAttachments_thenKp() throws Exception {
         EgopPrilozi prilozi = priloziService();
         EgopPismenoEntity akt = givenActReadyToFile();
+        boolean[] syncedWhenAttaching = {false};
+        org.mockito.Mockito.doAnswer(inv -> {
+            syncedWhenAttaching[0] = inv.<EgopPismenoEntity>getArgument(0).isSynced();
+            return null;
+        }).when(prilozi).prilozi(any(), any());
 
         service.fileAct(akt, submission, lessor, "ana.sluzbenica", filing -> Optional.empty());
 
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, prilozi, kpOtprema);
         order.verify(egopClient).kreirajIzlaznoPismeno(any());
-        order.verify(prilozi).prilozi(akt, "ana.sluzbenica");
         order.verify(egopClient).kreirajDokumentZaPismeno(any());
+        order.verify(prilozi).prilozi(akt, "ana.sluzbenica");
         order.verify(kpOtprema).otpremi(akt.getId());
+        assertTrue(syncedWhenAttaching[0]);
         assertTrue(akt.isSynced());
     }
 
-    /** Pad priloga: akt ostaje nedovršen (ne SYNCED), bez glavnog dokumenta i otpreme; retry ga dovršava. */
+    /** Pad glavnog dokumenta: prilozi se ne pokušavaju (pismeno nije urudžbirano do kraja), ni KP. */
     @Test
-    void fileAct_priloziFail_leavesActForRetry_thenRetryCompletes() throws Exception {
+    void fileAct_mainDocumentFails_noAttachmentsNoKp() throws Exception {
         EgopPrilozi prilozi = priloziService();
         EgopPismenoEntity akt = givenActReadyToFile();
-        org.mockito.Mockito.doThrow(new EgopBadRequestException("prilog"))
-                .doNothing()
-                .when(prilozi).prilozi(any(), any());
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenThrow(new EgopBadRequestException("dokument"));
 
         assertThrows(EgopBadRequestException.class,
                 () -> service.fileAct(akt, submission, lessor, "ana.sluzbenica", filing -> Optional.empty()));
 
         assertFalse(akt.isSynced());
-        assertFalse(akt.isDocumentAttached());
-        verify(egopClient, never()).kreirajDokumentZaPismeno(any());
+        verify(prilozi, never()).prilozi(any(), any());
         verify(kpOtprema, never()).otpremi(any());
-
-        service.fileAct(akt, submission, lessor, "ana.sluzbenica", filing -> Optional.empty());
-
-        verify(prilozi, times(2)).prilozi(akt, "ana.sluzbenica");
-        verify(egopClient, times(1)).kreirajIzlaznoPismeno(any());
-        verify(egopClient, times(1)).kreirajDokumentZaPismeno(any());
-        verify(kpOtprema).otpremi(akt.getId());
-        assertTrue(akt.isSynced());
     }
 
     private static EgopDocumentSupplier documents(byte[] pdf) {

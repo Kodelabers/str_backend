@@ -61,4 +61,25 @@ class VrstaDatotekeTest {
         assertThat(VrstaDatoteke.JPEG.ekstenzija()).isEqualTo("jpg");
         assertThat(VrstaDatoteke.poContentType("text/plain")).isEqualTo(Optional.empty());
     }
+
+    /** L-names: ekstenzija postaje ona koju je potvrdio sadržaj; osnovni naziv ostaje. */
+    @Test
+    void nazivSEkstenzijom_rewritesToDetectedExtension() {
+        assertThat(VrstaDatoteke.PDF.nazivSEkstenzijom("ugovor.exe")).isEqualTo("ugovor.pdf");
+        assertThat(VrstaDatoteke.PDF.nazivSEkstenzijom("ugovor.PDF")).isEqualTo("ugovor.PDF");
+        assertThat(VrstaDatoteke.PDF.nazivSEkstenzijom("bez")).isEqualTo("bez.pdf");
+        assertThat(VrstaDatoteke.JPEG.nazivSEkstenzijom("a.jpeg")).isEqualTo("a.jpeg");
+        assertThat(VrstaDatoteke.PNG.nazivSEkstenzijom("a.jpg")).isEqualTo("a.png");
+        assertThat(VrstaDatoteke.PDF.nazivSEkstenzijom("x".repeat(260) + ".exe"))
+                .hasSize(255).endsWith(".pdf");
+    }
+
+    /** L-names: kontrolni znakovi i bidi nadjačavanja ne ulaze u spremljeni naziv. */
+    @Test
+    void safeFileName_stripsControlAndBidiChars() {
+        assertThat(Strings.safeFileName("ra\u010dun\r\n\u202Efdp.exe\u2066.pdf", "x"))
+                .isEqualTo("ra\u010dunfdp.exe.pdf");
+        assertThat(Strings.safeFileName("\u202E\t", "prilog")).isEqualTo("prilog");
+        assertThat(Strings.safeFileName("C:\\put\\a\u0000.pdf", "x")).isEqualTo("a.pdf");
+    }
 }

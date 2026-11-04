@@ -112,9 +112,10 @@ public class CategorizationDecisionService {
             throw new BusinessException("error.categorization.file.empty");
         }
         byte[] content = readBytes(file);
-        String contentType = detectContentType(content);
+        VrstaDatoteke vrsta = detectType(content);
+        String contentType = vrsta.contentType();
 
-        String fileName = safeFileName(file.getOriginalFilename());
+        String fileName = vrsta.nazivSEkstenzijom(safeFileName(file.getOriginalFilename()));
         CategorizationDecisionMetadata metadata = metadataOf(accommodation);
         CategorizationDecisionEntity entity = owner.oib() != null
                 ? CategorizationDecisionEntity.create(owner.oib(), rn, fileName, contentType, content, metadata)
@@ -211,9 +212,8 @@ public class CategorizationDecisionService {
      * klijent i može lagati, a ovdje pohranjujemo datoteku koju će kasnije otvarati
      * nadležno tijelo. Dopušteni su PDF, JPEG i PNG, isto što frontend nudi u dropzoneu.
      */
-    private static String detectContentType(byte[] content) {
+    private static VrstaDatoteke detectType(byte[] content) {
         return VrstaDatoteke.odredi(content, null, DOPUSTENE_VRSTE)
-                .map(VrstaDatoteke::contentType)
                 .orElseThrow(() -> new BusinessException("error.categorization.file.type"));
     }
 

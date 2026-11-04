@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -107,6 +108,11 @@ public class ZupContextFactory {
         ctx.put("akt.urbroj", optional(filing.urBroj()));
         String datumAkta = datumAkta(type, d).format(DATE);
         ctx.put("akt.datum", datumAkta);
+        // Pravni dan učinka („prestaje važiti … s danom …"): dan prijelaza statusa, ne dan rendera.
+        // Konačni dokument se renderira nakon urudžbe, i na retryju do str.egop.retry.max-age kasnije,
+        // pa bi datum rendera pomaknuo dan prestanka. Puni ga StrDocumentService (putDatumPrijelaza);
+        // bez zapisa prijelaza ostaje datum akta.
+        ctx.put("prijelaz.datum", datumAkta);
         // Gotovi redci zaglavlja: prije urudžbiranja KLASA i URBROJ ne postoje, a „KLASA:" bez
         // vrijednosti nije prazan redak pa ga renderer ne bi izbacio.
         ctx.put("akt.klasaRedak", prefiks("KLASA: ", filing.klasa()));
@@ -169,13 +175,21 @@ public class ZupContextFactory {
      * ({@code GET /api/rn/{rn}/documents/dodjela}), pa mora nositi datum izdavanja RB-a — inače
      * ista obavijest svaki dan izlazi s novim datumom, različitim od verzije urudžbirane u
      * eGOP-u. Akti životnog ciklusa nastaju u trenutku prijelaza i PDF im se sprema, pa im je
-     * datum rendera i datum akta.
+     * datum rendera i datum akta (zaglavlje, „mjesto, datum"). Dan od kojeg akt djeluje je
+     * {@code prijelaz.datum}. Po hrvatskom vremenu, neovisno o zoni poslužitelja (kontejner je UTC).
      */
     private static LocalDate datumAkta(StrDocumentType type, RnDetailDto d) {
         if (type == StrDocumentType.DODJELA && d.issueDate() != null) {
             return d.issueDate();
         }
-        return LocalDate.now();
+        return LocalDate.now(ZAGREB);
+    }
+
+    /** Dan prijelaza statusa koji je akt izazvao ({@code registration_number_log.occurred_at}), po hrvatskom vremenu. */
+    public static void putDatumPrijelaza(Map<String, String> ctx, Instant occurredAt) {
+        if (occurredAt != null) {
+            ctx.put("prijelaz.datum", occurredAt.atZone(ZAGREB).toLocalDate().format(DATE));
+        }
     }
 
     /**

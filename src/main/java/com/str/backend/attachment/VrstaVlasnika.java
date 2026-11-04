@@ -8,7 +8,8 @@ public enum VrstaVlasnika {
 
     /**
      * Prijelaz RB-a ({@code registration_number_log.log_id}): opoziv iznajmljivača ili prijedlog
-     * suspenzije, suspenzija i povlačenje službenika. U eGOP ide uz pismeno tog prijelaza.
+     * suspenzije i povlačenje službenika (suspenzija istekom roka priloge nema). U eGOP ide uz
+     * pismeno tog prijelaza.
      */
     RN_LOG,
 

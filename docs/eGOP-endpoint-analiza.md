@@ -453,7 +453,7 @@ Miješanje dviju generacija na istom pismenu nema smisla — biramo jednu, i to 
 | `DohvatiDokumentZaPismenoPoUredbi` | str. 62–63 | STR već ima izvorni PDF u `submission.pdf_content`; nema potrebe dohvaćati ga natrag. |
 | `ObrisiPrilogPoUredbi` | str. 66 | Isto — bez brisanja. |
 | `ObrisiDokumentPrilogaPoUredbi` | str. 69–70 | Isto. |
-| `DohvatiListuPrilogaPismenaPoUredbi` | str. 70–71 | U prvoj fazi ne šaljemo priloge, pa nema što listati. |
+| `DohvatiListuPrilogaPismenaPoUredbi` | str. 70–71 | Od T17 priloge šaljemo, ali listamo ih starijom `DohvatiListuPrilogaPismena` (po `jop`, kao i `KreirajPrilogIPridruziDokument`) — prije slanja, da se prilog čiji se upis izgubio preuzme po `rbrPriloga` umjesto da se pošalje drugi put. |
 | `DohvatiDokumentZaPrilogPoUredbi` | str. 71–73 | Isto. |
 
 **Kontrola zbroja:** 6 (§5) + 5 (§6) + 30 (§7) = **41** dokumentirana metoda. ✔
@@ -1928,7 +1928,8 @@ InfoDom je mailom opisao tri metode **izvan specifikacije v1.11**: `OtpremiPisme
 zamijenjen verzijom s `egopeaitest.mint.hr/ServicePismeno.asmx?wsdl`; strukturna usporedba sa starim:
 ništa uklonjeno ni promijenjeno, dodano 5 operacija (tri KP + `DohvatiDodatnePodatkePismenaComplex`,
 `PostaviUpozorenjeNaPismenu`, koje ne koristimo). Primatelj se zadaje OIB-om (`subjektOznakaPrimatelja`
-ide kao `xsi:nil`), `otpremaPriloga=false`.
+ide kao `xsi:nil`), `otpremaPriloga=true` (od T17: prilozi službenika dio su akta koji se dostavlja;
+pismeno bez priloga ih nema, pa zastavica tada ništa ne mijenja).
 
 Vremena iz `OtpremnicaKPInfo` bez oznake zone čitaju se kao Europe/Zagreb, a `0001-01-01` (.NET
 `DateTime.MinValue` za ne-nillable polje) kao prazno (`EgopDates.toInstant`). **Provjeriti na prvom
@@ -1974,7 +1975,23 @@ Otvoreno prema InfoDomu / MINT-u:
 6. Smije li se akt koji glasi na tvrtku dostaviti u KP zastupnika?
 7. Je li status 1 konačan za poruke bez potvrde primitka; posljedice statusa 0 i 3?
 8. Ograničenje učestalosti za `DohvatiKPStatusPoruke*`.
-9. Potvrda `otpremaPriloga=false` (priloge ne šaljemo, PDF je glavni dokument).
+9. Potvrda `otpremaPriloga=true`: idu li prilozi pismena u KP s glavnim dokumentom, i u kojem obliku.
+10. Najveći SOAP zahtjev koji eGOP prima: prilog od 10 MB putuje kao ~13,4 MB base64 u jednom
+    `KreirajPrilogIPridruziDokument`.
+
+**Prilozi (T17).** Prilozi uz pismena idu u eGOP `KreirajPrilogIPridruziDokument`, jedan poziv po
+prilogu, **nakon** glavnog dokumenta: akt (i dodjela) se urudžbira, pečatira, postaje `SYNCED` i
+otprema u KP s prilozima koji su do tada priloženi — pad priloga ne zaustavlja akt. Neuspjeli prilog
+ima vlastiti retry (`pismeno_prilog.egop_pokusaji` / `egop_sljedeci_pokusaj_u` / `egop_greska`,
+changeset 149; ista politika kao urudžba), a iscrpljen daje ERROR `egop_prilog_retry_exhausted`.
+Prilog priložen nakon otpreme u KP ostaje samo u eGOP-u. Prije slanja se pismeno pita za postojeće
+priloge (`DohvatiListuPrilogaPismena`); prilog s našim `rbrPriloga` se preuzima, ne šalje ponovo.
+
+**Poznato ograničenje (M5):** prvi pokušaj urudžbe i priloga ide sinkrono, iz `AFTER_COMMIT`
+listenera na niti zahtjeva (izdavanje RB-a, opoziv, prijedlog suspenzije, povlačenje). Radnja s
+nekoliko priloga od po 10 MB zato može trajati dulje od timeouta klijenta ili proxyja: radnja je tada
+već spremljena (commit je prošao), korisnik vidi grešku, a urudžba i prilozi se dovrše ili ih
+dovrši `EgopRetryJob`. Asinkrono slanje je svjesno odgođeno.
 
 Popravljeno uz KP: kad je render obavijesti o dodjeli pao, `EgopRegistrationDispatcher` je izlaznom
 pismenu prilagao PDF **zahtjeva**, koji bi uz KP otišao stranci kao akt. Sada greška propagira:

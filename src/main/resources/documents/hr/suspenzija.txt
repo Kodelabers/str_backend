@@ -6,8 +6,8 @@
 # ${uputa.tekst} ovdje više nije u upotrebi.
 #
 # MINTS, studeni 2026.: propis o nadležnosti čl. 48. st. 2.; stranka se ne imenuje u uvodu nego u
-# točki 1. („dodijeljen na zahtjev stranke: …"); točka 2. s danom suspenzije (= datum obavijesti,
-# ${akt.datum}); nove točke 3. do 5. (čl. 6. st. 8. Uredbe, ponovna aktivacija, prigovor);
+# točki 1. („dodijeljen na zahtjev stranke: …"); točka 2. s danom suspenzije (datum prijelaza statusa,
+# ${prijelaz.datum}, ne datum rendera); nove točke 3. do 5. (čl. 6. st. 8. Uredbe, ponovna aktivacija, prigovor);
 # izbrisani troškovi, obrazloženje i uputa. Akt potpisuje službenik (naziv službene dužnosti i
 # ime); suspenziju istekom roka radi sustav, pa je potpisuje službenik koji je postupak pokrenuo.
 #
@@ -22,7 +22,7 @@ ${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po slu
 [IZREKA]
 1. Suspendira se registracijski broj ${rn.broj}, dodijeljen na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, zbog sljedećeg razloga: ${rn.razlog}.
 
-2. Registracijski broj prestaje važiti danom suspenzije i briše se iz integriranog informacijskog sustava turizma s danom ${akt.datum}
+2. Registracijski broj prestaje važiti danom suspenzije i briše se iz integriranog informacijskog sustava turizma s danom ${prijelaz.datum}
 
 3. Sukladno članku 6. stavku 8. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća od 11. travnja 2024. o prikupljanju i razmjeni podataka o uslugama kratkoročnog iznajmljivanja smještaja i izmjeni Uredbe (EU) 2018/1724 (SL L, 2024/1028, 29.4.2024.) valjanost registracijskog broja ostaje suspendirana sve dok iznajmljivač nadležnom tijelu putem integriranog informacijskog sustava turizma ne dostavi ispravljene relevantne informacije i dokumentaciju.
 

@@ -25,13 +25,14 @@ class EgopRetryJobTest {
     private final EgopAktDispatcher aktDispatcher = mock(EgopAktDispatcher.class);
     private final EgopKpOtpremaRepository kpOtpremaRepository = mock(EgopKpOtpremaRepository.class);
     private final EgopKpOtpremaService kpOtprema = mock(EgopKpOtpremaService.class);
+    private final EgopPrilozi prilozi = mock(EgopPrilozi.class);
 
     private final EgopRetryPolicy retryPolicy =
             new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2));
 
     private EgopRetryJob job(int batchSize) {
         return new EgopRetryJob(submissionRepository, pismenoRepository, dispatcher, aktDispatcher,
-                retryPolicy, new EgopAktiBezSifre(java.util.Set.of()), kpOtpremaRepository, kpOtprema,
+                retryPolicy, new EgopAktiBezSifre(java.util.Set.of()), kpOtpremaRepository, kpOtprema, prilozi,
                 Duration.ofMinutes(5), Duration.ofDays(7), batchSize);
     }
 

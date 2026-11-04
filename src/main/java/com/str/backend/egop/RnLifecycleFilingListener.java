@@ -92,9 +92,12 @@ public class RnLifecycleFilingListener {
         // Prvo se sva pismena prijelaza zapišu, pa tek onda šalju — redom: podnesak stranke pa akt
         // tijela (opoziv: zahtjev pa obavijest). Zapisani podnesak je ono po čemu EgopAktDispatcher
         // akt drži iza njega i kad ga šalje retry job.
+        // act_ref jednom po prijelazu: pismena istog prijelaza (zahtjev i obavijest o opozivu) dijele
+        // ga i po njemu se drže zajedno — i kad nema log_id-a pa je oznaka izvedena iz vremena.
+        String actRef = actRef(event);
         List<UrudzbaAkta> zapisani = new ArrayList<>();
         for (StrDocumentType vrsta : vrste) {
-            zapisi(event, submissionId, vrsta).ifPresent(akt -> zapisani.add(new UrudzbaAkta(vrsta, akt)));
+            zapisi(event, submissionId, vrsta, actRef).ifPresent(akt -> zapisani.add(new UrudzbaAkta(vrsta, akt)));
         }
         for (UrudzbaAkta u : zapisani) {
             posalji(event, u.vrsta(), u.akt());
@@ -103,11 +106,12 @@ public class RnLifecycleFilingListener {
 
     private record UrudzbaAkta(StrDocumentType vrsta, EgopPismenoEntity akt) {}
 
-    private Optional<EgopPismenoEntity> zapisi(RnLifecycleEvent event, UUID submissionId, StrDocumentType type) {
+    private Optional<EgopPismenoEntity> zapisi(RnLifecycleEvent event, UUID submissionId, StrDocumentType type,
+                                               String actRef) {
         try {
             byte[] pdf = documentService.render(type, event.rn(), event.reason());
             return Optional.of(store.saveAkt(EgopPismenoEntity.forAct(
-                    submissionId, event.rn(), actRef(event), type.vrstaPismenaNaziv(),
+                    submissionId, event.rn(), actRef, type.vrstaPismenaNaziv(),
                     smjer(type), pdf)));
         } catch (RuntimeException e) {
             // Bez dokumenta nema urudžbe (uredsko poslovanje traži zapisnik uz svaki akt), a
@@ -141,7 +145,7 @@ public class RnLifecycleFilingListener {
     /**
      * Identitet akta je {@code log_id} prijelaza — po njemu se ponovljena suspenzija istog
      * RB-a razlikuje od prethodne. Ako ga nema (prijelaz bez zapisa), pada se na RB + vrijeme,
-     * što je lošije ali i dalje jedinstveno.
+     * što je lošije ali i dalje jedinstveno. Računa se jednom po prijelazu ({@link #onLifecycleChange}).
      */
     private static String actRef(RnLifecycleEvent event) {
         return event.logId() != null

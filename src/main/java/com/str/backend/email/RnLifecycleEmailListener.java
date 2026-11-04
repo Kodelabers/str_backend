@@ -3,11 +3,13 @@ package com.str.backend.email;
 import com.str.backend.attachment.PrilogRepository.PrilogSazetak;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.common.Strings;
 import com.str.backend.document.DocumentLabels;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.egop.EgopAktiBezSifre;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
 import com.str.backend.eseal.PdfSealer;
@@ -56,7 +58,8 @@ public class RnLifecycleEmailListener {
     private final PdfSealer sealer;
     private final EgopPismenoRepository pismenoRepository;
     private final PrilogService prilogService;
-    private final long priloziMaxUkupno;
+    private final EgopAktiBezSifre bezSifre;
+    private final long maxPoruka;
 
     public RnLifecycleEmailListener(RnLifecycleLookup lookup,
                                     StrDocumentService documentService,
@@ -66,7 +69,8 @@ public class RnLifecycleEmailListener {
                                     PdfSealer sealer,
                                     EgopPismenoRepository pismenoRepository,
                                     PrilogService prilogService,
-                                    @Value("${app.mail.attachments-max-total:15MB}") DataSize priloziMaxUkupno) {
+                                    EgopAktiBezSifre bezSifre,
+                                    @Value("${app.mail.max-message-size:20MB}") DataSize maxPoruka) {
         this.lookup = lookup;
         this.documentService = documentService;
         this.labels = labels;
@@ -75,7 +79,8 @@ public class RnLifecycleEmailListener {
         this.sealer = sealer;
         this.pismenoRepository = pismenoRepository;
         this.prilogService = prilogService;
-        this.priloziMaxUkupno = priloziMaxUkupno.toBytes();
+        this.bezSifre = bezSifre;
+        this.maxPoruka = maxPoruka.toBytes();
     }
 
     /**
@@ -133,13 +138,13 @@ public class RnLifecycleEmailListener {
             return;
         }
 
-        String razlog = razlog(event);
+        String razlog = razlog(akt.get(), event);
         Dostava dostava = dostava(akt.get(), detail);
         byte[] pdf;
         if (dostava == Dostava.EPOSTA && sealer.isEnabled()) {
             // Non-EU iznajmljivaču je mail dostava akta, pa nosi samo pečaćeni — onaj iz eGOP-a. Dok
             // pečata nema, poruka čeka u redu ponovnog slanja (MailRetryJob), umjesto da ode bez njega.
-            pdf = pecaceniAkt(event, akt.get()).orElse(null);
+            pdf = aktZaDostavu(event, akt.get()).orElse(null);
             if (pdf == null) {
                 log.warn("rn_lifecycle_mail_deferred reason=not_sealed rn={} template={}", event.rn(), template);
                 retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "not_sealed");
@@ -148,8 +153,8 @@ public class RnLifecycleEmailListener {
         } else {
             pdf = aktPdf(akt.get(), event.rn(), razlog);
         }
-        PriloziAkta prilozi = priloziAkta(event);
-        boolean sent = emailService.sendRnLifecycleNotification(new RnLifecycleMail(
+        PriloziAkta prilozi = priloziAkta(event, pdf);
+        RnLifecycleMail mail = new RnLifecycleMail(
                 template,
                 detail.lessorEmail(),
                 ime(detail),
@@ -160,11 +165,21 @@ public class RnLifecycleEmailListener {
                 pdf,
                 dostava,
                 prilozi.uPrivitku(),
-                prilozi.izvanPoruke()));
-        if (sent) {
+                prilozi.izvanPoruke());
+        IshodSlanja ishod = emailService.sendRnLifecycleNotification(mail);
+        if (ishod == IshodSlanja.PREVELIKA && !mail.prilozi().isEmpty()) {
+            // Procjena je prošla, a poslužitelj ima manji limit: ista poruka bi se odbijala do
+            // odustajanja, pa odmah ide varijanta s popisom priloga — non-EU stranci je to dostava.
+            log.warn("rn_lifecycle_mail_too_large rn={} template={} prilozi={} — šalje se s popisom priloga"
+                    + " umjesto privitaka; uskladiti app.mail.max-message-size s limitom poslužitelja",
+                    event.rn(), template, mail.prilozi().size());
+            ishod = emailService.sendRnLifecycleNotification(mail.bezPrivitakaPriloga());
+        }
+        if (ishod == IshodSlanja.POSLANA) {
             retryStore.markSent(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId());
         } else {
-            retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(), "smtp_failed");
+            retryStore.recordFailure(MailRetryEntity.Kind.RN_LIFECYCLE, event.logId(),
+                    ishod == IshodSlanja.PREVELIKA ? "message_too_large" : "smtp_failed");
         }
     }
 
@@ -174,12 +189,18 @@ public class RnLifecycleEmailListener {
     }
 
     /**
-     * Prilozi službenika uz akt ovog prijelaza (T17). Ukupno do {@code app.mail.attachments-max-total}
-     * idu u privitak; iznad toga poruka ih samo navodi — 5 × 10 MB premašuje uobičajeni limit
-     * poštanskog poslužitelja, pa bi poruka inače pala cijela. Prilozi stranke (opoziv) se ne
-     * vraćaju. Pad čitanja ne smije spriječiti obavijest: ide bez priloga.
+     * Procjena veličine poruke iznad privitaka: HTML tijelo, zaglavlja i MIME granice. Tijelo je
+     * nekoliko KB; rezerva pokriva i dugačke nazive datoteka u zaglavljima.
      */
-    private PriloziAkta priloziAkta(RnLifecycleEvent event) {
+    static final long ZAGLAVLJA_I_TIJELO = 64 * 1024;
+
+    /**
+     * Prilozi službenika uz akt ovog prijelaza (T17). Idu u privitak dok cijela poruka — akt i prilozi
+     * kodirani u base64 (~4/3 sirove veličine) uz tijelo — stane u {@code app.mail.max-message-size};
+     * iznad toga poruka ih samo navodi, jer bi je poslužitelj odbio cijelu. Prilozi stranke (opoziv)
+     * se ne vraćaju. Pad čitanja ne smije spriječiti obavijest: ide bez priloga.
+     */
+    private PriloziAkta priloziAkta(RnLifecycleEvent event, byte[] aktPdf) {
         if (event.logId() == null) {
             return PriloziAkta.NEMA;
         }
@@ -190,10 +211,11 @@ public class RnLifecycleEmailListener {
             if (prilozi.isEmpty()) {
                 return PriloziAkta.NEMA;
             }
-            long ukupno = prilozi.stream().mapToLong(PrilogSazetak::getVelicina).sum();
-            if (ukupno > priloziMaxUkupno) {
-                log.info("rn_lifecycle_mail_attachments_listed rn={} count={} bytes={} limit={}",
-                        event.rn(), prilozi.size(), ukupno, priloziMaxUkupno);
+            long procjena = procjenaPoruke(aktPdf == null ? 0 : aktPdf.length,
+                    prilozi.stream().mapToLong(PrilogSazetak::getVelicina).sum());
+            if (procjena > maxPoruka) {
+                log.info("rn_lifecycle_mail_attachments_listed rn={} count={} estimated_bytes={} limit={}",
+                        event.rn(), prilozi.size(), procjena, maxPoruka);
                 return new PriloziAkta(List.of(), prilozi.stream().map(PrilogSazetak::getNazivDatoteke).toList());
             }
             return new PriloziAkta(prilozi.stream()
@@ -206,12 +228,41 @@ public class RnLifecycleEmailListener {
         }
     }
 
-    /** Pečaćeni akt ovog prijelaza, kad je eGOP tok stigao do pečata ({@code act_ref} = {@code log_id}). */
-    private Optional<byte[]> pecaceniAkt(RnLifecycleEvent event, StrDocumentType type) {
-        return pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(event.rn(), event.logId().toString(),
-                        type.vrstaPismenaNaziv())
-                .filter(EgopPismenoEntity::isSealed)
-                .map(EgopPismenoEntity::getPdfContent);
+    /** Kodirana veličina poruke: base64 s prijelomom retka svakih 76 znakova, plus tijelo i zaglavlja. */
+    static long procjenaPoruke(long aktBajtova, long priloziBajtova) {
+        return base64(aktBajtova) + base64(priloziBajtova) + ZAGLAVLJA_I_TIJELO;
+    }
+
+    private static long base64(long bajtova) {
+        long znakova = (bajtova + 2) / 3 * 4;
+        return znakova + znakova / 76 * 2;
+    }
+
+    /**
+     * Akt ovog prijelaza za dostavu e-poštom uz uključen eSeal ({@code act_ref} = {@code log_id}):
+     * pečaćeni, kad je eGOP tok stigao do pečata. Akt koji se <b>nikad</b> neće pečatirati ide
+     * nepečaćen, inače bi poruka čekala do odustajanja: ulazni opoziv zapisan prije T15 (ulazna
+     * pismena se ne pečate) i vrsta s popisa {@code str.egop.akti-bez-sifre} (ne urudžbira se, pa ni
+     * ne pečatira).
+     */
+    private Optional<byte[]> aktZaDostavu(RnLifecycleEvent event, StrDocumentType type) {
+        Optional<EgopPismenoEntity> pismeno = pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(
+                event.rn(), event.logId().toString(), type.vrstaPismenaNaziv());
+        if (pismeno.isEmpty()) {
+            return Optional.empty();
+        }
+        EgopPismenoEntity p = pismeno.get();
+        if (p.isSealed()) {
+            return Optional.ofNullable(p.getPdfContent());
+        }
+        boolean nikadPecat = p.getSmjer() == EgopPismenoEntity.Smjer.ULAZNO || !bezSifre.urudzbiv(type);
+        if (nikadPecat && p.getPdfContent() != null) {
+            log.warn("rn_lifecycle_mail_unsealed_act rn={} akt={} vrsta='{}' reason={} — akt se ne pečatira,"
+                            + " dostavlja se nepečaćen", event.rn(), p.getId(), p.getVrstaPismenaNaziv(),
+                    p.getSmjer() == EgopPismenoEntity.Smjer.ULAZNO ? "ulazno_pismeno" : "vrsta_bez_sifre");
+            return Optional.of(p.getPdfContent());
+        }
+        return Optional.empty();
     }
 
     /**
@@ -254,11 +305,14 @@ public class RnLifecycleEmailListener {
         }
     }
 
-    private String razlog(RnLifecycleEvent event) {
-        if (event.reason() != null && !event.reason().isBlank()) {
-            return event.reason().strip();
-        }
-        return labels.trigger(event.trigger());
+    /**
+     * Razlog po istom pravilu kao akt u privitku ({@link StrDocumentService#razlogAkta}): suspenzija i
+     * obustava navode razlog s prijedloga suspenzije, ne procesnu bilješku svog prijelaza („Rok za
+     * rješavanje nepravilnosti istekao.", „obustava postupka suspenzije").
+     */
+    private String razlog(StrDocumentType akt, RnLifecycleEvent event) {
+        String razlog = documentService.razlogAkta(akt, event.rn(), Strings.blankToNull(event.reason()));
+        return razlog != null && !razlog.isBlank() ? razlog.strip() : labels.trigger(event.trigger());
     }
 
     private String rok(RnDetailDto detail) {

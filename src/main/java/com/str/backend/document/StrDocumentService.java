@@ -102,9 +102,10 @@ public class StrDocumentService {
         FilingReference oznake = filing != null ? filing
                 : new FilingReference(klasaZa(type, detail), null);
 
-        Map<String, String> ctx = contextFactory.forRn(type, detail, razlog(type, rn, razlog), oznake);
+        Map<String, String> ctx = contextFactory.forRn(type, detail, razlogAkta(type, rn, razlog), oznake);
         dopuniAdresu(ctx, detail);
         dopuniSluzbenika(ctx, type, rn);
+        dopuniDatumPrijelaza(ctx, type, rn);
 
         byte[] pdf = renderer.render(templates.get(type), ctx);
         log.info("document_rendered type={} rn={} klasa={} bytes={}",
@@ -136,8 +137,15 @@ public class StrDocumentService {
      * prijelaza, a za suspenziju istekom roka to je bilješka joba („Rok za rješavanje nepravilnosti
      * istekao.") — procesni okidač na mjestu materijalnog razloga, kao na aktu koji je MINTS
      * komentirao. Zato za te akte vrijedi revizijski trag (vidi {@link #razlogIzTraga}).
+     *
+     * <p><b>Jedino pravilo razloga akta</b> — po njemu ga ispisuje i obavijest e-poštom
+     * ({@code RnLifecycleEmailListener}), da poruka i akt u privitku ne navode različit razlog.
+     * {@code REQUIRES_NEW} kao {@link #render(StrDocumentType, String, String, FilingReference)}.
+     *
+     * @return razlog za ispis; {@code null} kad ga nema (akt tada piše „razlog nije naveden")
      */
-    private String razlog(StrDocumentType type, String rn, String razlog) {
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public String razlogAkta(StrDocumentType type, String rn, String razlog) {
         if (razlog == null || razlogSPrijedloga(type)) {
             return razlogIzTraga(type, rn);
         }
@@ -189,6 +197,27 @@ public class StrDocumentService {
             log.warn("document_unknown_trigger rn={} trigger={}", rn, zapis.getTriggerName());
             return null;
         }
+    }
+
+    /**
+     * Dan od kojeg akt djeluje ({@code ${prijelaz.datum}}): prijelaz u status koji akt izriče, a ne
+     * zadnji zapis traga — akt se renderira i kasnije (konačni dokument nakon urudžbe, na zahtjev).
+     */
+    private void dopuniDatumPrijelaza(Map<String, String> ctx, StrDocumentType type, String rn) {
+        statusPrijelaza(type)
+                .flatMap(status -> logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, status.name()))
+                .ifPresent(zapis -> ZupContextFactory.putDatumPrijelaza(ctx, zapis.getOccurredAt()));
+    }
+
+    private static Optional<RnStatus> statusPrijelaza(StrDocumentType type) {
+        return switch (type) {
+            case PRIJEDLOG_SUSPENZIJE -> Optional.of(RnStatus.SUSPENSION_PROPOSED);
+            case SUSPENZIJA -> Optional.of(RnStatus.SUSPENDED);
+            case OBUSTAVA_SUSPENZIJE, REAKTIVACIJA -> Optional.of(RnStatus.ACTIVE);
+            case POVLACENJE -> Optional.of(RnStatus.WITHDRAWN);
+            case OPOZIV, ZAHTJEV_OPOZIVA -> Optional.of(RnStatus.REVOKED);
+            default -> Optional.empty();
+        };
     }
 
     private Optional<RegistrationNumberLogEntity> prijedlog(String rn) {

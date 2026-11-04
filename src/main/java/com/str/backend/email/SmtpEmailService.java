@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public class SmtpEmailService implements EmailService {
 
@@ -55,7 +56,7 @@ public class SmtpEmailService implements EmailService {
     }
 
     @Override
-    public boolean sendRnLifecycleNotification(RnLifecycleMail mail) {
+    public IshodSlanja sendRnLifecycleNotification(RnLifecycleMail mail) {
         Map<String, String> values = new HashMap<>();
         values.put("ime", nn(mail.ime()));
         values.put("rn", nn(mail.rn()));
@@ -70,10 +71,39 @@ public class SmtpEmailService implements EmailService {
         }
         mail.prilozi().forEach(p -> privitci.add(new Privitak(p.naziv(), p.sadrzaj(), p.contentType())));
         if (privitci.isEmpty()) {
-            return send(mail.to(), mail.template(), values, mail.dostava());
+            return send(mail.to(), mail.template(), values, mail.dostava()) ? IshodSlanja.POSLANA : IshodSlanja.NEUSPJELA;
         }
-        return sendWithAttachments(mail.to(), mail.template(), values, privitci, mail.dostava());
+        try {
+            deliverWithAttachments(mail.to(), mail.template(), values, privitci, mail.dostava());
+            return IshodSlanja.POSLANA;
+        } catch (MessagingException | MailException e) {
+            boolean prevelika = isMessageTooLarge(e);
+            log.error("Failed to send email to {} with subject '{}'{}: {}", mail.to(),
+                    templates.subject(mail.template(), values), prevelika ? " (message too large)" : "",
+                    e.getMessage(), e);
+            return prevelika ? IshodSlanja.PREVELIKA : IshodSlanja.NEUSPJELA;
+        }
     }
+
+    /**
+     * Je li poslužitelj odbio poruku zbog veličine. JavaMail kod vraća samo u tekstu iznimke
+     * ({@code SMTPSendFailedException} je u implementaciji, ne u API-ju), pa se čita odgovor
+     * poslužitelja: {@code 552} / {@code 5.3.4} (RFC 1870, RFC 3463) ili uobičajeni opis. Lanac uzroka
+     * pokriva i {@code MessagingException#getNextException}, koji je ondje {@code getCause}.
+     */
+    static boolean isMessageTooLarge(Throwable e) {
+        for (Throwable c = e; c != null; c = c.getCause() == c ? null : c.getCause()) {
+            String poruka = c.getMessage();
+            if (poruka != null && PREVELIKA.matcher(poruka).find()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final Pattern PREVELIKA = Pattern.compile(
+            "(^|\\D)552(\\D|$)|5\\.3\\.4|message size|too large|too big|size exceeds|exceeds .*size",
+            Pattern.CASE_INSENSITIVE);
 
     /**
      * Rečenica o prilozima akta (T17); prazno kad ih nema. Prilozi preveliki za e-poštu samo se
@@ -140,30 +170,36 @@ public class SmtpEmailService implements EmailService {
     /** @return je li poruka predana SMTP poslužitelju; greška se bilježi, ne propagira. */
     private boolean sendWithAttachments(String to, MailTemplate template, Map<String, String> values,
                                         List<Privitak> privitci, Dostava dostava) {
-        String subject = templates.subject(template, values);
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
-            helper.setFrom(properties.from());
-            String recipient = address(helper, to, subject);
-            helper.setText(templates.body(template, values, dostava), true);
-            for (Privitak privitak : privitci) {
-                ByteArrayResource resource = new ByteArrayResource(privitak.sadrzaj());
-                if (privitak.contentType() == null) {
-                    helper.addAttachment(privitak.naziv(), resource);
-                } else {
-                    helper.addAttachment(privitak.naziv(), resource, privitak.contentType());
-                }
-            }
-            mailSender.send(message);
-            log.info("Sent email to {} with subject '{}' and attachments {} ({} bytes)",
-                    recipient, subject, privitci.stream().map(Privitak::naziv).toList(),
-                    privitci.stream().mapToLong(p -> p.sadrzaj().length).sum());
+            deliverWithAttachments(to, template, values, privitci, dostava);
             return true;
         } catch (MessagingException | MailException e) {
-            log.error("Failed to send email to {} with subject '{}': {}", to, subject, e.getMessage(), e);
+            log.error("Failed to send email to {} with subject '{}': {}", to, templates.subject(template, values),
+                    e.getMessage(), e);
             return false;
         }
+    }
+
+    private void deliverWithAttachments(String to, MailTemplate template, Map<String, String> values,
+                                        List<Privitak> privitci, Dostava dostava) throws MessagingException {
+        String subject = templates.subject(template, values);
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
+        helper.setFrom(properties.from());
+        String recipient = address(helper, to, subject);
+        helper.setText(templates.body(template, values, dostava), true);
+        for (Privitak privitak : privitci) {
+            ByteArrayResource resource = new ByteArrayResource(privitak.sadrzaj());
+            if (privitak.contentType() == null) {
+                helper.addAttachment(privitak.naziv(), resource);
+            } else {
+                helper.addAttachment(privitak.naziv(), resource, privitak.contentType());
+            }
+        }
+        mailSender.send(message);
+        log.info("Sent email to {} with subject '{}' and attachments {} ({} bytes)",
+                recipient, subject, privitci.stream().map(Privitak::naziv).toList(),
+                privitci.stream().mapToLong(p -> p.sadrzaj().length).sum());
     }
 
     /**

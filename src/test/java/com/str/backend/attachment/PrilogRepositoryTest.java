@@ -8,6 +8,10 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.util.unit.DataSize;
@@ -28,8 +32,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Upiti {@link PrilogRepository} i CHECK ograničenja iz changeseta 148 nad pravom pohranom. Test profil
  * gradi shemu iz entiteta, pa se ograničenja primjenjuju <b>iz samog changeseta</b>
  * (kao {@code LessorLegalEntityCheckConstraintTest}).
+ *
+ * <p>Bez obuhvatne transakcije testa ({@code NOT_SUPPORTED}): čitanja i upisi koje eGOP tok zove iz
+ * {@code AFTER_COMMIT} listenera su {@code REQUIRES_NEW} i ne bi vidjeli nepotvrđene retke testa.
+ * Radnja ({@code bind}, {@code MANDATORY}) ide u vlastitoj transakciji, kao u produkciji.
  */
 @DataJpaTest
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class PrilogRepositoryTest {
@@ -45,16 +54,21 @@ class PrilogRepositoryTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private PrilogService service;
 
     @BeforeEach
     void applyConstraintsFromChangeset() throws Exception {
+        repository.deleteAll();
         jdbc.execute("ALTER TABLE str_rn.pismeno_prilog DROP CONSTRAINT IF EXISTS ck_pismeno_prilog_vrsta_vlasnika");
         jdbc.execute("ALTER TABLE str_rn.pismeno_prilog DROP CONSTRAINT IF EXISTS ck_pismeno_prilog_vlasnik");
         for (String sql : addConstraintSql()) {
             jdbc.execute(sql);
         }
-        service = new PrilogService(repository, 5, DataSize.ofMegabytes(10), 20, DataSize.ofMegabytes(15));
+        service = new PrilogService(repository, new PrilogStagingLock(jdbc), 5, DataSize.ofMegabytes(10), 20,
+                DataSize.ofMegabytes(100), DataSize.ofMegabytes(15));
     }
 
     @Test
@@ -64,15 +78,16 @@ class PrilogRepositoryTest {
         Long tudi = stage(IVO);
         UUID submissionId = UUID.randomUUID();
 
-        service.bind(ANA, List.of(a, b), PrilogVlasnik.zahtjev(submissionId));
+        bind(List.of(a, b), PrilogVlasnik.zahtjev(submissionId));
 
         assertThat(repository.findSazeciVlasnika(VrstaVlasnika.SUBMISSION, submissionId))
                 .extracting(PrilogRepository.PrilogSazetak::getId).containsExactly(a, b);
         assertThat(repository.countByUcitaoAndVlasnikIdIsNull(ANA)).isZero();
         assertThat(repository.countByUcitaoAndVlasnikIdIsNull(IVO)).isEqualTo(1);
         // Uvjetni UPDATE ne dira tuđe ni već vezane.
-        assertThat(repository.bind(List.of(a, tudi), ANA, VrstaVlasnika.RN_LOG, UUID.randomUUID(), Instant.now()))
-                .isZero();
+        Integer vezano = new TransactionTemplate(transactionManager).execute(s -> repository.bind(List.of(a, tudi),
+                ANA, VrstaVlasnika.RN_LOG, UUID.randomUUID(), Instant.now()));
+        assertThat(vezano).isZero();
         assertThat(repository.findSadrzaj(a)).isEqualTo(PDF);
     }
 
@@ -80,7 +95,7 @@ class PrilogRepositoryTest {
     void cleanup_deletesOnlyOldUnbound() {
         Long star = stage(ANA);
         Long vezan = stage(ANA);
-        service.bind(ANA, List.of(vezan), PrilogVlasnik.prijelaz(UUID.randomUUID()));
+        bind(List.of(vezan), PrilogVlasnik.prijelaz(UUID.randomUUID()));
         jdbc.update("UPDATE str_rn.pismeno_prilog SET ucitano_u = ? WHERE id IN (?, ?)",
                 java.sql.Timestamp.from(Instant.now().minus(Duration.ofHours(25))), star, vezan);
         Long svjez = stage(ANA);
@@ -103,7 +118,7 @@ class PrilogRepositoryTest {
     void markEgopPrilozeno_isVisibleInSummary() {
         Long a = stage(ANA);
         UUID logId = UUID.randomUUID();
-        service.bind(ANA, List.of(a), PrilogVlasnik.prijelaz(logId));
+        bind(List.of(a), PrilogVlasnik.prijelaz(logId));
 
         repository.markEgopPrilozeno(a, 1003, 1, Instant.now());
 
@@ -126,10 +141,52 @@ class PrilogRepositoryTest {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    /**
+     * C1: oznaka prilaganja i neuspjeh upisuju se i bez transakcije pozivatelja (AFTER_COMMIT), a
+     * neuspjeh ne dira već priloženi prilog.
+     */
+    @Test
+    void egopMarks_workWithoutCallerTransaction() {
+        Long a = stage(ANA);
+        UUID logId = UUID.randomUUID();
+        bind(List.of(a), PrilogVlasnik.prijelaz(logId));
+        Instant sljedeci = Instant.now().plusSeconds(120);
+
+        assertThat(repository.markEgopNeuspjeh(a, "timeout", sljedeci)).isEqualTo(1);
+        PrilogRepository.PrilogSazetak pao = repository.findSazeciVlasnika(VrstaVlasnika.RN_LOG, logId).get(0);
+        assertThat(pao.getEgopPokusaji()).isEqualTo(1);
+        assertThat(pao.getEgopSljedeciPokusajU()).isNotNull();
+
+        assertThat(repository.markEgopPrilozeno(a, 1003, 1, Instant.now())).isEqualTo(1);
+        assertThat(repository.markEgopNeuspjeh(a, "kasni pad", sljedeci)).isZero();
+        PismenoPrilogEntity prilozen = repository.findById(a).orElseThrow();
+        assertThat(prilozen.getEgopJop()).isEqualTo(1003);
+        assertThat(prilozen.getEgopGreska()).isNull();
+        assertThat(prilozen.getEgopSljedeciPokusajU()).isNull();
+    }
+
+    /** M-BE5: kvota ukupne veličine nevezanih po učitavatelju (409 ATTACHMENT_STAGED_LIMIT). */
+    @Test
+    void stage_overTotalUnboundBytes_isRefused() {
+        service = new PrilogService(repository, new PrilogStagingLock(jdbc), 5, DataSize.ofMegabytes(10), 20,
+                DataSize.ofBytes(PDF.length * 2L), DataSize.ofMegabytes(15));
+        stage(ANA);
+        stage(ANA);
+
+        assertThatThrownBy(() -> stage(ANA))
+                .isInstanceOfSatisfying(PrilogException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(PrilogException.STAGED_LIMIT));
+        assertThat(repository.countByUcitaoAndVlasnikIdIsNull(ANA)).isEqualTo(2);
+        // Kvota je po učitavatelju.
+        stage(IVO);
+    }
+
     private Long stage(String ucitao) {
-        Long id = service.stage(ucitao, new MockMultipartFile("datoteka", "a.pdf", null, PDF)).id();
-        repository.flush();
-        return id;
+        return service.stage(ucitao, new MockMultipartFile("datoteka", "a.pdf", null, PDF)).id();
+    }
+
+    private void bind(List<Long> ids, PrilogVlasnik vlasnik) {
+        new TransactionTemplate(transactionManager).executeWithoutResult(s -> service.bind(ANA, ids, vlasnik));
     }
 
     /** {@code ADD CONSTRAINT} naredbe iz {@code <sql>} bloka changeseta (parcijalni indeks H2 ne zna). */

@@ -43,33 +43,48 @@ public class PrilogService {
     static final Set<VrstaDatoteke> DOPUSTENE_VRSTE = EnumSet.allOf(VrstaDatoteke.class);
 
     private final PrilogRepository repository;
+    private final PrilogStagingLock stagingLock;
     private final int maxPoVlasniku;
     private final long maxVelicina;
     private final int maxNevezanih;
+    private final long maxNevezanihUkupno;
     private final long maxUkupnoSluzbenik;
 
     public PrilogService(PrilogRepository repository,
+                         PrilogStagingLock stagingLock,
                          @Value("${app.attachments.max-per-owner:5}") int maxPoVlasniku,
                          @Value("${app.attachments.max-file-size:10MB}") DataSize maxVelicina,
                          @Value("${app.attachments.max-staged-per-uploader:20}") int maxNevezanih,
+                         @Value("${app.attachments.max-staged-total-per-uploader:100MB}") DataSize maxNevezanihUkupno,
                          @Value("${app.attachments.official-max-total:15MB}") DataSize maxUkupnoSluzbenik) {
         this.repository = repository;
+        this.stagingLock = stagingLock;
         this.maxPoVlasniku = maxPoVlasniku;
         this.maxVelicina = maxVelicina.toBytes();
         this.maxNevezanih = maxNevezanih;
+        this.maxNevezanihUkupno = maxNevezanihUkupno.toBytes();
         this.maxUkupnoSluzbenik = maxUkupnoSluzbenik.toBytes();
     }
 
     /**
      * Sprema nevezan prilog. Redoslijed provjera: prazno (400), veličina (413), vrsta po sadržaju
-     * (415), pa broj nevezanih istog učitavatelja (409) — staging nije pohrana, pa je ograničen.
+     * (415), pa kvota nevezanih istog učitavatelja — broj i ukupna veličina (409) — staging nije
+     * pohrana, pa je ograničen.
+     *
+     * <p>Kvota je „prebroji pa upiši", pa se staging istog učitavatelja serijalizira
+     * ({@link PrilogStagingLock}): inače bi paralelni zahtjevi svi vidjeli isti broj i kvotu zaobišli.
      */
     @Transactional
     public PrilogResponse stage(String ucitao, MultipartFile datoteka) {
         Objects.requireNonNull(ucitao, "ucitao");
         Datoteka d = procitaj(datoteka);
+        stagingLock.zakljucaj(ucitao);
         if (repository.countByUcitaoAndVlasnikIdIsNull(ucitao) >= maxNevezanih) {
             throw new PrilogException(HttpStatus.CONFLICT, "error.attachment.stagedLimit",
+                    PrilogException.STAGED_LIMIT);
+        }
+        if (repository.sumVelicinaNevezanih(ucitao) + d.sadrzaj().length > maxNevezanihUkupno) {
+            throw new PrilogException(HttpStatus.CONFLICT, "error.attachment.stagedTotal",
                     PrilogException.STAGED_LIMIT);
         }
         PismenoPrilogEntity saved = repository.save(
@@ -96,9 +111,7 @@ public class PrilogService {
             return List.of();
         }
         long vec = repository.countByVrstaVlasnikaAndVlasnikId(vlasnik.vrsta(), vlasnik.id());
-        if (vecPrilozeno + vec + datoteke.size() > maxPoVlasniku) {
-            throw tooMany();
-        }
+        requireBroj(vecPrilozeno + vec + datoteke.size());
         // Sve provjere prije prve pohrane: neispravna peta datoteka ne ostavlja spremljene prve četiri.
         List<Datoteka> procitane = datoteke.stream().map(this::procitaj).toList();
         return procitane.stream()
@@ -126,7 +139,8 @@ public class PrilogService {
      * prije AFTER_COMMIT listenera.
      *
      * <p>Provjere: broj (najviše {@code max-per-owner} uz vlasnika, zajedno s već vezanima),
-     * postojanje (404), učitavatelj (403), nevezanost (409), a za službenika i ukupna veličina
+     * postojanje i učitavatelj (404 i za tuđi prilog — kao i nepostojeći, da se ne otkriva što
+     * postoji), nevezanost (409), a za službenika i ukupna veličina
      * ({@code app.attachments.official-max-total}, 400 {@code ATTACHMENT_TOTAL_TOO_LARGE}).
      * Ponovljeni id se računa jednom.
      *
@@ -146,9 +160,7 @@ public class PrilogService {
         if (jedinstveni.isEmpty()) {
             return List.of();
         }
-        if (jedinstveni.size() > maxPoVlasniku) {
-            throw tooMany();
-        }
+        requireBroj(jedinstveni.size());
         List<PrilogSazetak> prilozi = repository.findSazeci(jedinstveni);
         if (prilozi.size() != jedinstveni.size()) {
             throw notFound();
@@ -157,12 +169,10 @@ public class PrilogService {
             requireUnbound(ucitao, prilog);
         }
         long vec = repository.countByVrstaVlasnikaAndVlasnikId(vlasnik.vrsta(), vlasnik.id());
-        if (vec + jedinstveni.size() > maxPoVlasniku) {
-            throw tooMany();
-        }
+        requireBroj(vec + jedinstveni.size());
         if (Ucitao.jeSluzbenik(ucitao)) {
             requireUkupnoSluzbenika(prilozi,
-                    vec > 0 ? repository.findSazeciVlasnika(vlasnik.vrsta(), vlasnik.id()) : List.of());
+                    vec > 0 ? repository.sumVelicinaVlasnika(vlasnik.vrsta(), vlasnik.id()) : 0);
         }
         int vezano = repository.bind(jedinstveni, ucitao, vlasnik.vrsta(), vlasnik.id(), Instant.now());
         if (vezano != jedinstveni.size()) {
@@ -172,8 +182,21 @@ public class PrilogService {
         return repository.findSazeci(jedinstveni);
     }
 
-    /** Prilozi vlasnika bez sadržaja, redom učitavanja. */
-    @Transactional(readOnly = true)
+    /**
+     * Najviše {@code app.attachments.max-per-owner} datoteka uz jedno pismeno (400 {@code ATTACHMENT_COUNT}).
+     * Jedino mjesto te provjere — i za prigovor, čiji je prvi dokument izvan {@code pismeno_prilog}.
+     */
+    public void requireBroj(long ukupnoDatoteka) {
+        if (ukupnoDatoteka > maxPoVlasniku) {
+            throw tooMany();
+        }
+    }
+
+    /**
+     * Prilozi vlasnika bez sadržaja, redom učitavanja. {@code REQUIRES_NEW}: zove ga i obavijest
+     * e-poštom iz {@code AFTER_COMMIT} listenera, gdje je izvorna transakcija već dovršena.
+     */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public List<PrilogSazetak> zaVlasnika(PrilogVlasnik vlasnik) {
         return repository.findSazeciVlasnika(vlasnik.vrsta(), vlasnik.id());
     }
@@ -188,7 +211,8 @@ public class PrilogService {
                 .collect(Collectors.groupingBy(PrilogSazetak::getVlasnikId));
     }
 
-    @Transactional(readOnly = true)
+    /** Sadržaj priloga; {@code REQUIRES_NEW} kao {@link #zaVlasnika}. */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public byte[] sadrzaj(Long id) {
         byte[] sadrzaj = repository.findSadrzaj(id);
         if (sadrzaj == null) {
@@ -225,9 +249,10 @@ public class PrilogService {
         };
     }
 
+    /** Tuđi prilog je 404, kao i nepostojeći — odgovor ne smije otkriti da id postoji. */
     private static void requireUnbound(String ucitao, PrilogSazetak prilog) {
         if (!ucitao.equals(prilog.getUcitao())) {
-            throw new PrilogException(HttpStatus.FORBIDDEN, "error.attachment.forbidden", PrilogException.FORBIDDEN);
+            throw notFound();
         }
         if (prilog.getVlasnikId() != null) {
             throw alreadyBound();
@@ -239,12 +264,9 @@ public class PrilogService {
      * Non-EU iznajmljivaču je e-pošta pravna dostava akta ({@code RnLifecycleEmailListener}), pa svi
      * prilozi moraju stati u jednu poruku — iznad limita poruka bi ih samo navela.
      */
-    private void requireUkupnoSluzbenika(List<PrilogSazetak> novi, List<PrilogSazetak> vezani) {
-        long ukupno = 0;
+    private void requireUkupnoSluzbenika(List<PrilogSazetak> novi, long vecVezano) {
+        long ukupno = vecVezano;
         for (PrilogSazetak p : novi) {
-            ukupno += p.getVelicina();
-        }
-        for (PrilogSazetak p : vezani) {
             ukupno += p.getVelicina();
         }
         if (ukupno > maxUkupnoSluzbenik) {
@@ -253,7 +275,11 @@ public class PrilogService {
         }
     }
 
-    /** Sadržaj i vrsta datoteke nakon provjera: prazno (400), veličina (413), vrsta po sadržaju (415). */
+    /**
+     * Sadržaj i vrsta datoteke nakon provjera: prazno (400), veličina (413), vrsta po sadržaju (415).
+     * Ekstenzija naziva postaje ona koju je potvrdio sadržaj ({@link VrstaDatoteke#nazivSEkstenzijom}),
+     * da preuzeti prilog ne otvori program koji naziv laže.
+     */
     private Datoteka procitaj(MultipartFile datoteka) {
         if (datoteka == null || datoteka.isEmpty()) {
             throw new PrilogException(HttpStatus.BAD_REQUEST, "error.attachment.file.empty", PrilogException.EMPTY);
@@ -267,7 +293,7 @@ public class PrilogService {
         VrstaDatoteke vrsta = VrstaDatoteke.odredi(sadrzaj, naziv, DOPUSTENE_VRSTE)
                 .orElseThrow(() -> new PrilogException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
                         "error.attachment.file.type", PrilogException.TYPE));
-        return new Datoteka(naziv, vrsta.contentType(), sadrzaj);
+        return new Datoteka(vrsta.nazivSEkstenzijom(naziv), vrsta.contentType(), sadrzaj);
     }
 
     private record Datoteka(String naziv, String contentType, byte[] sadrzaj) {}

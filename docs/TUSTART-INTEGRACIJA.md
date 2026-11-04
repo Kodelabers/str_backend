@@ -222,9 +222,11 @@ Upload prihvaća PDF/JPEG/PNG do 10 MB, a tip određuje iz sadržaja (magic byte
 `Content-Type` headera. Prevelika datoteka daje **413** `error.upload.file.tooLarge`; neispravan
 sadržaj 400 `error.categorization.file.type`.
 
-> Preduvjet za CDU: reverse proxy pred aplikacijom mora dopustiti tijelo od 10 MB
-> (`client_max_body_size`), inače zahtjev nikad ne dođe do Springa i korisnik dobije 413 od proxyja
-> bez našeg tijela greške.
+> Preduvjet za CDU: reverse proxy pred aplikacijom mora dopustiti tijelo od **52 MB**
+> (`client_max_body_size 52m`, isto kao `spring.servlet.multipart.max-request-size`; frontend nginx
+> je već na 52m). Pojedina datoteka je i dalje do 10 MB, ali prigovor nosi do 5 datoteka u jednom
+> multipart zahtjevu (T17). Manji limit znači da zahtjev nikad ne dođe do Springa i korisnik dobije
+> 413 od proxyja bez našeg tijela greške.
 
 ## 7. Napomene za STR frontend
 

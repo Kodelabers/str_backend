@@ -8,6 +8,7 @@ import com.str.backend.domain.Offering;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.domain.WithdrawalReason;
+import com.str.backend.egop.EgopClient;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
 import com.str.backend.lessor.LessorEntity;
@@ -31,11 +32,15 @@ import com.str.backend.rn.dto.RnDocumentDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import hr.infodom.egov.pismeno.DohvatiListuPrilogaPismena;
+import hr.infodom.egov.pismeno.PriloziPismenaInfo;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -49,8 +54,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * T17/B-2 nad stvarnom pohranom i stvarnim transakcijama: prilozi se vežu u transakciji radnje
  * ({@code PrilogService#bind} je {@code MANDATORY}), neispravan prilog poništava radnju, prilozi
  * opoziva idu uz ulazno pismeno „Zahtjev za opoziv", a prigovor nosi više datoteka.
+ *
+ * <p>Mock eGOP-a ovdje ima šifru vrste predmeta akata, pa akti prolaze <b>stvarni</b> AFTER_COMMIT tok
+ * ({@code RnLifecycleFilingListener} → {@code EgopAktDispatcher} → {@code EgopFilingService.fileAct} →
+ * {@code PrilogEgopService}) — bez transakcije pozivatelja, kao u produkciji.
  */
-@SpringBootTest
+@SpringBootTest(properties = "str.egop.vrste.sifre.predmet-akti=9300")
 @ActiveProfiles("test")
 class PriloziUgradnjaIntegrationTest {
 
@@ -75,6 +84,9 @@ class PriloziUgradnjaIntegrationTest {
     @Autowired private AccommodationRepository accommodationRepository;
     @Autowired private SubmissionRepository submissionRepository;
     @Autowired private LessorRepository lessorRepository;
+    @Autowired private EgopClient egopClient;
+    @Autowired private PrilogEgopService prilogEgopService;
+    @Autowired private JdbcTemplate jdbc;
 
     @BeforeEach
     void seed() {
@@ -101,7 +113,7 @@ class PriloziUgradnjaIntegrationTest {
         assertThat(prilog.getVlasnikId()).isEqualTo(logId);
     }
 
-    /** Prilog stranke ne može ići uz akt službenika: 403, a prijedlog suspenzije se poništava. */
+    /** Prilog stranke ne može ići uz akt službenika: 404 (tuđi id se ne otkriva), a prijedlog se poništava. */
     @Test
     void suspend_foreignAttachment_rollsBackTheAction() {
         Long tudi = prilogService.stage(STRANKA, pdf("tudi.pdf")).id();
@@ -109,7 +121,7 @@ class PriloziUgradnjaIntegrationTest {
         assertThatThrownBy(() -> rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null,
                 SLUZBENIK, List.of(tudi)))
                 .isInstanceOfSatisfying(PrilogException.class,
-                        e -> assertThat(e.getCode()).isEqualTo(PrilogException.FORBIDDEN));
+                        e -> assertThat(e.getCode()).isEqualTo(PrilogException.NOT_FOUND));
 
         assertThat(rnRepository.findById(RN).orElseThrow().getStatus()).isEqualTo(RnStatus.ACTIVE);
         assertThat(rnLogRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, RnStatus.SUSPENSION_PROPOSED.name()))
@@ -148,17 +160,68 @@ class PriloziUgradnjaIntegrationTest {
                 .satisfies(d -> assertThat(d.prilozi()).extracting(PrilogDto::naziv).containsExactly("izjava.pdf"));
         assertThat(docs).filteredOn(d -> obavijest.equals(d.naziv())).singleElement()
                 .satisfies(d -> assertThat(d.prilozi()).isEmpty());
-        // Prilaganje u eGOP po smjeru pismena pokriva PrilogEgopServiceTest — mock eGOP u testnom
-        // profilu nema šifru vrste predmeta akata, pa pismena ovdje ostaju neurudžbirana.
-        assertThat(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN))
-                .filteredOn(p -> zahtjev.equals(p.getVrstaPismenaNaziv()))
-                .extracting(EgopPismenoEntity::getSmjer).containsExactly(EgopPismenoEntity.Smjer.ULAZNO);
+        // Stvarni AFTER_COMMIT tok: prilog stranke priložen je uz ulazni zahtjev, ne uz obavijest.
+        EgopPismenoEntity zahtjevPismeno = egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN).stream()
+                .filter(p -> zahtjev.equals(p.getVrstaPismenaNaziv())).findFirst().orElseThrow();
+        assertThat(zahtjevPismeno.getSmjer()).isEqualTo(EgopPismenoEntity.Smjer.ULAZNO);
+        assertThat(zahtjevPismeno.isSynced()).isTrue();
+        assertThat(prilogRepository.findById(id).orElseThrow().getEgopJop()).isEqualTo(zahtjevPismeno.getJop());
+    }
+
+    /**
+     * C1: prilaganje ide iz AFTER_COMMIT listenera, bez transakcije pozivatelja. Oznaka {@code egop_jop}
+     * mora se upisati (REQUIRES_NEW) — ranije je upis pao nakon uspješnog SOAP poziva, pa bi retry prilog
+     * poslao drugi put. Svaki prilog je u eGOP-u točno jednom, i nakon ponovljenih retryja.
+     */
+    @Test
+    void suspend_afterCommit_filesAct_andAttachesEachAttachmentExactlyOnce() {
+        Long zapisnik = prilogService.stage(SLUZBENIK, pdf("zapisnik.pdf")).id();
+        Long foto = prilogService.stage(SLUZBENIK, new MockMultipartFile("datoteka", "foto.png", null, PNG)).id();
+
+        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK,
+                List.of(zapisnik, foto));
+
+        EgopPismenoEntity akt = egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN).stream()
+                .filter(p -> StrDocumentType.PRIJEDLOG_SUSPENZIJE.vrstaPismenaNaziv().equals(p.getVrstaPismenaNaziv()))
+                .findFirst().orElseThrow();
+        assertThat(akt.isSynced()).isTrue();
+        assertThat(akt.getJop()).isNotNull();
+        PismenoPrilogEntity prvi = prilogRepository.findById(zapisnik).orElseThrow();
+        PismenoPrilogEntity drugi = prilogRepository.findById(foto).orElseThrow();
+        assertThat(prvi.getEgopJop()).isEqualTo(akt.getJop());
+        assertThat(prvi.getEgopRbr()).isEqualTo(1);
+        assertThat(drugi.getEgopJop()).isEqualTo(akt.getJop());
+        assertThat(drugi.getEgopRbr()).isEqualTo(2);
+        assertThat(uEgopu(akt.getJop())).extracting(PriloziPismenaInfo::getRbrPriloga).containsExactly(1, 2);
+
+        // Retry bez ičega za poslati ne šalje ništa.
+        prilogEgopService.ponovi(Instant.now().plusSeconds(3600));
+        assertThat(uEgopu(akt.getJop())).hasSize(2);
+
+        // Izgubljena oznaka (poziv je prošao, upis nije): retry job prilog preuzima iz eGOP-a, ne šalje ga
+        // drugi put. Ujedno prolazi upit kandidata (findPismenaZaPonovnoPrilaganje) nad stvarnom bazom.
+        jdbc.update("UPDATE str_rn.pismeno_prilog SET egop_jop = NULL, egop_rbr = NULL, egop_pokusaji = 1,"
+                + " egop_sljedeci_pokusaj_u = ? WHERE id = ?", Timestamp.from(Instant.now().minusSeconds(60)), zapisnik);
+        prilogEgopService.ponovi(Instant.now());
+
+        assertThat(prilogRepository.findById(zapisnik).orElseThrow().getEgopJop()).isEqualTo(akt.getJop());
+        assertThat(uEgopu(akt.getJop())).extracting(PriloziPismenaInfo::getRbrPriloga).containsExactly(1, 2);
+    }
+
+    private List<PriloziPismenaInfo> uEgopu(int jop) {
+        DohvatiListuPrilogaPismena request = new DohvatiListuPrilogaPismena();
+        request.setJop(jop);
+        try {
+            return egopClient.dohvatiListuPrilogaPismena(request);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /** Prigovor s 3 datoteke: prva u prigovoru, dvije u prilozima prigovora; službenik vidi sve. */
     @Test
     void objection_withThreeFiles_storesAllAndListsThemForOfficial() {
-        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK);
+        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK, List.of());
         SuspensionObjectionRequest req = objectionRequest(2);
 
         UUID objectionId = objectionService.submit(RnOwner.byOib(OIB), "NIAS:" + OIB, req).objectionId();
@@ -178,7 +241,7 @@ class PriloziUgradnjaIntegrationTest {
     /** Dokument + 5 dodatnih = 6 datoteka: prigovor se ne sprema. */
     @Test
     void objection_withSixFiles_isRejected_andNothingStored() {
-        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK);
+        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK, List.of());
 
         assertThatThrownBy(() -> objectionService.submit(RnOwner.byOib(OIB), "NIAS:" + OIB, objectionRequest(5)))
                 .isInstanceOfSatisfying(PrilogException.class,
@@ -191,7 +254,7 @@ class PriloziUgradnjaIntegrationTest {
     /** Neispravna dodatna datoteka poništava i prigovor (ista transakcija). */
     @Test
     void objection_withInvalidExtraFile_rollsBackObjection() {
-        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK);
+        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK, List.of());
         SuspensionObjectionRequest req = objectionRequest(0);
         req.setDatoteke(List.of(new MockMultipartFile("datoteke", "lazni.pdf", null, "nije pdf".getBytes())));
 

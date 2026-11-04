@@ -64,6 +64,25 @@ public enum VrstaDatoteke {
         return Optional.empty();
     }
 
+    /**
+     * Naziv datoteke s ekstenzijom ove vrste: osnovni naziv ostaje, a ekstenzija postaje ona koju je
+     * potvrdio sadržaj ({@code ugovor.exe} sa sadržajem PDF-a → {@code ugovor.pdf}). Ispravna
+     * ekstenzija (i {@code .jpeg} za JPEG) ostaje kakva jest. Najviše 255 znakova, kao stupci naziva.
+     */
+    public String nazivSEkstenzijom(String naziv) {
+        int tocka = naziv.lastIndexOf('.');
+        String postojeca = tocka >= 0 ? naziv.substring(tocka + 1).toLowerCase(Locale.ROOT) : "";
+        if (postojeca.equals(ekstenzija) || (this == JPEG && postojeca.equals("jpeg"))) {
+            return naziv;
+        }
+        String osnova = tocka > 0 ? naziv.substring(0, tocka) : naziv;
+        int maxOsnova = 255 - ekstenzija.length() - 1;
+        if (osnova.length() > maxOsnova) {
+            osnova = osnova.substring(0, maxOsnova);
+        }
+        return osnova + "." + ekstenzija;
+    }
+
     /** Vrsta po spremljenom MIME tipu; prazno za nepoznati. */
     public static Optional<VrstaDatoteke> poContentType(String contentType) {
         for (VrstaDatoteke vrsta : values()) {

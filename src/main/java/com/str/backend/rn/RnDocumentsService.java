@@ -5,6 +5,7 @@ import com.str.backend.attachment.PrilogRepository.PrilogSazetak;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.attachment.VrstaVlasnika;
+import com.str.backend.common.Uuids;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.egop.EgopPismenoEntity;
@@ -110,7 +111,7 @@ public class RnDocumentsService {
         List<EgopPismenoEntity> akti = egopPismenoRepository.findByRnOrderByCreatedAtAsc(rn);
         // Prilozi prijelaza, jednim upitom: akt nosi act_ref = log_id prijelaza.
         Map<UUID, List<PrilogSazetak>> priloziPrijelaza = prilogService.zaVlasnike(VrstaVlasnika.RN_LOG,
-                akti.stream().map(RnDocumentsService::logId).flatMap(Optional::stream).toList());
+                akti.stream().map(a -> Uuids.parse(a.getActRef())).flatMap(Optional::stream).toList());
         for (EgopPismenoEntity akt : akti) {
             if (akt.getPdfContent() == null) {
                 continue; // akt bez pohranjenog dokumenta se ne može ponuditi na preuzimanje
@@ -118,7 +119,7 @@ public class RnDocumentsService {
             String slug = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv())
                     .map(StrDocumentType::slug).orElse(null);
             boolean izlazno = akt.getSmjer() == EgopPismenoEntity.Smjer.IZLAZNO;
-            List<PrilogSazetak> prilozi = logId(akt).map(id -> priloziPrijelaza.getOrDefault(id, List.of()))
+            List<PrilogSazetak> prilozi = Uuids.parse(akt.getActRef()).map(id -> priloziPrijelaza.getOrDefault(id, List.of()))
                     .orElse(List.of()).stream()
                     .filter(p -> PrilogService.pripadaPismenu(p, izlazno))
                     .toList();
@@ -208,15 +209,6 @@ public class RnDocumentsService {
 
     private static List<PrilogDto> prilozi(String rn, List<PrilogSazetak> prilozi) {
         return prilozi.stream().map(p -> PrilogDto.of(rn, p)).toList();
-    }
-
-    /** {@code log_id} prijelaza iz {@code act_ref}; prazno za akte koji nisu prijelaz RB-a. */
-    private static Optional<UUID> logId(EgopPismenoEntity akt) {
-        try {
-            return Optional.of(UUID.fromString(akt.getActRef()));
-        } catch (IllegalArgumentException | NullPointerException e) {
-            return Optional.empty();
-        }
     }
 
     private static String href(String rn, String segment) {

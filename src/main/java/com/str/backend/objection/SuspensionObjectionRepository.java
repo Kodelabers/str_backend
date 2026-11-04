@@ -17,12 +17,25 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
     @Transactional(readOnly = true)
     boolean existsByRnAndStatus(String rn, SuspensionObjectionStatus status);
 
-    /**
-     * Postoji li uz RB prigovor u zadanom statusu predan prije {@code before} — za
-     * {@code SuspensionDeadlineJob}: prigovor predan do kraja dana roka zadržava suspenziju.
-     */
+    /** Postoji li uz RB prigovor u zadanom statusu predan prije {@code before}, bez obzira na prijedlog. */
     @Transactional(readOnly = true)
     boolean existsByRnAndStatusAndSubmittedAtBefore(String rn, SuspensionObjectionStatus status, Instant before);
+
+    /**
+     * Postoji li neobrađen ({@code SUBMITTED}) prigovor na <b>ovaj</b> prijedlog suspenzije, predan prije
+     * {@code before} — za {@code SuspensionDeadlineJob}: prigovor predan do kraja dana roka zadržava
+     * suspenziju. Prigovor pripada prijedlogu po {@code rn_log_id}; stariji bez njega po vremenu predaje
+     * (nakon prijedloga). Zaostali prigovor na raniji prijedlog ne smije zauvijek zadržati novi.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT COUNT(o) > 0 FROM SuspensionObjectionEntity o
+            WHERE o.rn = :rn AND o.status = com.str.backend.objection.SuspensionObjectionStatus.SUBMITTED
+              AND o.submittedAt < :before
+              AND (o.rnLogId = :prijedlogId OR (o.rnLogId IS NULL AND o.submittedAt >= :prijedlogAt))
+            """)
+    boolean existsSubmittedForProposal(@Param("rn") String rn, @Param("prijedlogId") UUID prijedlogId,
+                                       @Param("prijedlogAt") Instant prijedlogAt, @Param("before") Instant before);
 
     /** Prigovori uz RB u zadanom statusu — za zatvaranje kad RB napusti prijedlog/suspenziju. */
     List<SuspensionObjectionEntity> findByRnAndStatus(String rn, SuspensionObjectionStatus status);

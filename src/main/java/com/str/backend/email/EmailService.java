@@ -27,7 +27,9 @@ public interface EmailService {
      * povlačenje, opoziv). Jedna metoda umjesto četiri jer se razlikuju samo predloškom;
      * {@link RnLifecycleMail#template()} bira tekst.
      *
-     * @return je li poruka predana SMTP poslužitelju; neuspjeh ide u {@link MailRetryStore}
+     * @return ishod predaje SMTP poslužitelju; neuspjeh ide u {@link MailRetryStore}, a poruku
+     *         odbijenu zbog veličine ({@link IshodSlanja#PREVELIKA}) pozivatelj odmah šalje bez
+     *         privitaka priloga
      */
-    boolean sendRnLifecycleNotification(RnLifecycleMail mail);
+    IshodSlanja sendRnLifecycleNotification(RnLifecycleMail mail);
 }

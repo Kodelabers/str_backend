@@ -109,10 +109,10 @@ class SuspensionObjectionIntegrationTest {
     @Test
     void withdrawingRn_closesSubmittedObjection() {
         rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null,
-                "INTERNAL:12345678903");
+                "INTERNAL:12345678903", List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
 
-        rnService.withdraw("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, null, "INTERNAL:12345678903");
+        rnService.withdraw("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, null, "INTERNAL:12345678903", List.of());
 
         SuspensionObjectionEntity closed = objectionRepository.findById(id).orElseThrow();
         assertThat(closed.getStatus()).isEqualTo(SuspensionObjectionStatus.CLOSED);
@@ -127,13 +127,18 @@ class SuspensionObjectionIntegrationTest {
     @Test
     void rejectAfterDeadline_suspendsOnce_andKeepsRejection() {
         String official = "INTERNAL:12345678903";
-        rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now(), null, official);
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now(), null, official, List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
         LocalDate yesterday = LocalDate.now().minusDays(1);
         jdbc.update("UPDATE str_rn.registration_number SET suspension_deadline = ? WHERE rn = ?",
                 yesterday, "HR00000021");
         jdbc.update("UPDATE str_rn.suspension_objection SET submitted_at = ? WHERE objection_id = ?",
                 Timestamp.from(yesterday.atTime(12, 0).atZone(ZoneId.of("Europe/Zagreb")).toInstant()), id);
+
+        // Prigovor se odnosi na ovaj prijedlog (servis to upisuje sam; helper ga stvara bez veze).
+        jdbc.update("UPDATE str_rn.suspension_objection SET rn_log_id = (SELECT log_id FROM"
+                + " str_rn.registration_number_log WHERE rn = ? AND to_status = 'SUSPENSION_PROPOSED')"
+                + " WHERE objection_id = ?", "HR00000021", id);
 
         deadlineJob.run();
         assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus())
@@ -158,7 +163,7 @@ class SuspensionObjectionIntegrationTest {
     /** Dok rok teče, neuvažavanje RB ostavlja pred suspenzijom. */
     @Test
     void rejectBeforeDeadline_keepsProposal() {
-        rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now(), null, "INTERNAL:12345678903");
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now(), null, "INTERNAL:12345678903", List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
 
         adminService.reject("HR00000021", id, "INTERNAL:12345678903", null);
@@ -184,6 +189,39 @@ class SuspensionObjectionIntegrationTest {
                 Timestamp.from(endOfDay), id);
         assertThat(objectionRepository.existsByRnAndStatusAndSubmittedAtBefore(
                 "HR00000022", SuspensionObjectionStatus.SUBMITTED, endOfDay)).isFalse();
+    }
+
+    /**
+     * Upit joba drži prijedlog samo prigovorom na <b>taj</b> prijedlog: po {@code rn_log_id}, a stariji
+     * prigovor bez njega po vremenu predaje. Zaostali prigovor na raniji prijedlog ga ne drži.
+     */
+    @Test
+    void submittedForProposalQuery_matchesOnlyCurrentProposal() {
+        Instant prijedlogAt = Instant.parse("2026-07-01T08:00:00Z");
+        Instant before = Instant.parse("2026-07-11T00:00:00Z");
+        UUID prijedlog = UUID.randomUUID();
+        UUID raniji = UUID.randomUUID();
+
+        UUID naRaniji = objectionRepository.saveAndFlush(SuspensionObjectionEntity.createForOib(OIB, "HR00000022",
+                RnStatus.SUSPENSION_PROPOSED, raniji, "NIAS:" + OIB, "p.pdf", "application/pdf", PDF)).getObjectionId();
+        jdbc.update("UPDATE str_rn.suspension_objection SET submitted_at = ? WHERE objection_id = ?",
+                Timestamp.from(prijedlogAt.plusSeconds(60)), naRaniji);
+        assertThat(objectionRepository.existsSubmittedForProposal("HR00000022", prijedlog, prijedlogAt, before))
+                .as("prigovor na raniji prijedlog").isFalse();
+
+        jdbc.update("UPDATE str_rn.suspension_objection SET rn_log_id = ? WHERE objection_id = ?", prijedlog, naRaniji);
+        assertThat(objectionRepository.existsSubmittedForProposal("HR00000022", prijedlog, prijedlogAt, before))
+                .as("prigovor na ovaj prijedlog").isTrue();
+
+        jdbc.update("UPDATE str_rn.suspension_objection SET rn_log_id = NULL, submitted_at = ? WHERE objection_id = ?",
+                Timestamp.from(prijedlogAt.minusSeconds(60)), naRaniji);
+        assertThat(objectionRepository.existsSubmittedForProposal("HR00000022", prijedlog, prijedlogAt, before))
+                .as("stari prigovor bez rn_log_id, predan prije prijedloga").isFalse();
+
+        jdbc.update("UPDATE str_rn.suspension_objection SET submitted_at = ? WHERE objection_id = ?",
+                Timestamp.from(prijedlogAt.plusSeconds(60)), naRaniji);
+        assertThat(objectionRepository.existsSubmittedForProposal("HR00000022", prijedlog, prijedlogAt, before))
+                .as("stari prigovor bez rn_log_id, predan nakon prijedloga").isTrue();
     }
 
     @Test

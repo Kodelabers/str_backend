@@ -157,6 +157,10 @@ class EgopAktDispatcherTest {
             p.markFailed(inv.getArgument(1), inv.getArgument(2));
             return p.getSyncAttempts();
         });
+        org.mockito.Mockito.doAnswer(inv -> {
+            obavijestOOpozivu.defer(inv.getArgument(1), inv.getArgument(2));
+            return null;
+        }).when(store).deferAkt(eq(obavijestOOpozivu.getId()), any(), any());
     }
 
     /** Uobičajeni tok: listener je zahtjev već urudžbirao, obavijest ide odmah iza njega. */
@@ -191,9 +195,12 @@ class EgopAktDispatcherTest {
         redoslijed.verify(filingService).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
     }
 
-    /** Zahtjev ne prolazi: obavijest se ne šalje, nego čeka sljedeći pokušaj iza zahtjeva. */
+    /**
+     * Zahtjev ne prolazi: obavijest se ne šalje, nego čeka sljedeći pokušaj iza zahtjeva — bez trošenja
+     * vlastitog pokušaja i bez statusa FAILED (čekanje nije kvar obavijesti).
+     */
     @Test
-    void opoziv_requestFails_defersNotice() throws Exception {
+    void opoziv_requestFails_defersNotice_withoutConsumingAttempt() throws Exception {
         opoziv();
         doThrow(new EgopBadRequestException("eGOP down"))
                 .when(filingService).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
@@ -202,21 +209,42 @@ class EgopAktDispatcherTest {
 
         verify(filingService, never()).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
         assertThat(zahtjevOpoziva.getSyncAttempts()).isEqualTo(1);
-        assertThat(obavijestOOpozivu.getStatus()).isEqualTo(EgopSyncStatus.FAILED);
-        assertThat(obavijestOOpozivu.getNextAttemptAt()).isNotNull();
+        assertThat(obavijestOOpozivu.getSyncAttempts()).isZero();
+        assertThat(obavijestOOpozivu.getStatus()).isNotEqualTo(EgopSyncStatus.FAILED);
+        assertThat(obavijestOOpozivu.getNextAttemptAt()).isEqualTo(zahtjevOpoziva.getNextAttemptAt());
+        verify(store, never()).markAktFailed(eq(obavijestOOpozivu.getId()), any(), any());
     }
 
-    /** Zahtjev u backoffu se ne pokušava izvan reda — samo se obavijest odgađa. */
+    /** Zahtjev u backoffu se ne pokušava izvan reda — obavijest se odgađa do njegova sljedećeg pokušaja. */
     @Test
     void opoziv_requestInBackoff_isNotRetriedEarly() throws Exception {
         opoziv();
-        zahtjevOpoziva.markFailed("eGOP down", Instant.now().plus(Duration.ofMinutes(30)));
+        Instant sljedeci = Instant.now().plus(Duration.ofMinutes(30));
+        zahtjevOpoziva.markFailed("eGOP down", sljedeci);
 
         dispatcher.dispatch(obavijestOOpozivu.getId());
 
         verify(filingService, never()).fileAct(any(), any(), any(), any(), any());
         assertThat(zahtjevOpoziva.getSyncAttempts()).isEqualTo(1);
-        assertThat(obavijestOOpozivu.getSyncAttempts()).isEqualTo(1);
+        assertThat(obavijestOOpozivu.getSyncAttempts()).isZero();
+        assertThat(obavijestOOpozivu.getNextAttemptAt()).isEqualTo(sljedeci);
+    }
+
+    /**
+     * Zahtjev je iscrpio pokušaje: obavijest se više ne drži iza njega (i dostava e-poštom, koja čeka
+     * njezin pečat, ne ostaje zauvijek zaglavljena) — urudžbira se, uz glasan ERROR.
+     */
+    @Test
+    void opoziv_requestExhausted_filesNoticeAnyway() throws Exception {
+        opoziv();
+        for (int i = 0; i < 10; i++) {
+            zahtjevOpoziva.markFailed("eGOP down", Instant.now().minusSeconds(1));
+        }
+
+        dispatcher.dispatch(obavijestOOpozivu.getId());
+
+        verify(filingService, never()).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
+        verify(filingService).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
     }
 
     /** Opoziv zapisan prije T15 (jedno pismeno) nema zahtjev — ne čeka ništa. */

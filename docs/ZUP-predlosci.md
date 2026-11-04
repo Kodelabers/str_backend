@@ -240,7 +240,8 @@ i mora biti izričito u kontekstu.
 | `${akt.klasa}`, `${akt.urbroj}` | `submission.egop_klasa` + `egop_pismeno.ur_broj` | prazno prije urudžbiranja |
 | `${akt.klasaRedak}`, `${akt.urbrojRedak}`, `${akt.mjestoDatum}` | izvedeno | gotovi redci zaglavlja; prazni kad nema oznaka |
 | `${akt.jopRedak}` | `egop_pismeno.jop` | „P/21748084"; prazno prije urudžbiranja (akti životnog ciklusa ga zato nemaju) |
-| `${akt.datum}` | datum izdavanja RB-a za dodjelu, inače današnji | svi datumi u obliku „10. rujna 2026." (genitiv, `ZupContextFactoryTest`) |
+| `${akt.datum}` | datum izdavanja RB-a za dodjelu, inače današnji (Europe/Zagreb) | datum akta u zaglavlju; svi datumi u obliku „10. rujna 2026." (genitiv, `ZupContextFactoryTest`) |
+| `${prijelaz.datum}` | `registration_number_log.occurred_at` prijelaza u status koji akt izriče, u Europe/Zagreb (`StrDocumentService.dopuniDatumPrijelaza`) | pravni dan učinka („prestaje važiti … s danom …" u suspenziji, povlačenju i opozivu). Ne datum rendera: konačni dokument se renderira nakon urudžbe, i na retryju danima kasnije; bez zapisa prijelaza = `${akt.datum}` |
 | `${stranka.naziv}` | `lessorLegalEntityName` → `firstName lastName` | |
 | `${stranka.identifikator}` | OIB ili „bez dodijeljenog OIB-a" | non-EU iznajmljivač nema OIB |
 | `${stranka.oib}` | `RnDetailDto.lessorOib` | sirova vrijednost |

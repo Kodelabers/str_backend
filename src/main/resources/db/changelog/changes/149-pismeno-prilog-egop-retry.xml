@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Vlastito stanje ponovnog pokušaja za prilaganje priloga u eGOP.
+
+        Akt (i dodjela) više ne čeka na priloge: glavni dokument se prilaže, pečatira, pismeno
+        postaje SYNCED i otprema se u korisnički pretinac neovisno o prilozima. Prilog koji pri
+        prvom pokušaju ne prođe pamti broj pokušaja, vrijeme sljedećeg i zadnju grešku, a
+        ponavlja ga EgopRetryJob (ista politika i backoff kao urudžba, str.egop.retry.*).
+        Iscrpljen prilog ostaje bez egop_jop, uz ERROR u logu (egop_prilog_retry_exhausted).
+
+        Djelomični indeks drži upit retry joba jeftinim: kandidati su samo vezani, a u eGOP još
+        nepriloženi prilozi.
+    -->
+    <changeSet id="149-pismeno-prilog-egop-retry" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="pismeno_prilog">
+            <column name="egop_pokusaji" type="INT" defaultValueNumeric="0"
+                    remarks="Broj neuspjelih pokušaja prilaganja u eGOP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="egop_sljedeci_pokusaj_u" type="TIMESTAMPTZ"
+                    remarks="Kad retry job smije ponovo pokušati; NULL dok nije bilo neuspjeha"/>
+            <column name="egop_greska" type="VARCHAR(1000)" remarks="Zadnja greška prilaganja u eGOP"/>
+        </addColumn>
+
+        <sql>
+            CREATE INDEX idx_pismeno_prilog_egop_retry
+                ON str_rn.pismeno_prilog (vrsta_vlasnika, vlasnik_id)
+                WHERE egop_jop IS NULL AND vlasnik_id IS NOT NULL;
+        </sql>
+
+        <rollback>
+            <sql>DROP INDEX IF EXISTS str_rn.idx_pismeno_prilog_egop_retry;</sql>
+            <dropColumn schemaName="str_rn" tableName="pismeno_prilog" columnName="egop_greska"/>
+            <dropColumn schemaName="str_rn" tableName="pismeno_prilog" columnName="egop_sljedeci_pokusaj_u"/>
+            <dropColumn schemaName="str_rn" tableName="pismeno_prilog" columnName="egop_pokusaji"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -280,6 +280,17 @@ public class EgopPismenoEntity {
         this.updatedAt = Instant.now();
     }
 
+    /**
+     * Akt čeka drugo pismeno (podnesak istog postupka): sljedeći pokušaj se pomiče, ali se <b>ne
+     * troši</b> pokušaj — čekanje nije neuspjeh akta, a potrošeni pokušaji bi ga iscrpili prije
+     * nego što podnesak uopće prođe.
+     */
+    public void defer(String reason, Instant nextAttemptAt) {
+        this.syncError = reason;
+        this.nextAttemptAt = nextAttemptAt;
+        this.updatedAt = Instant.now();
+    }
+
     public boolean isSynced() {
         return status == EgopSyncStatus.SYNCED;
     }

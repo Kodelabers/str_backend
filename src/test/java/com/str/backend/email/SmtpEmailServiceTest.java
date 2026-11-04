@@ -144,7 +144,7 @@ class SmtpEmailServiceTest {
     /** T17: akt i prilozi službenika idu u privitak, a poruka ih navodi iznad klauzule o dostavi. */
     @Test
     void rnLifecycle_withAttachments_attachesActAndAttachments() throws Exception {
-        boolean ok = service(null).sendRnLifecycleNotification(new RnLifecycleMail(MailTemplate.SUSPENZIJA,
+        IshodSlanja ok = service(null).sendRnLifecycleNotification(new RnLifecycleMail(MailTemplate.SUSPENZIJA,
                 LESSOR, "Ana", "HR123456789012345678", "Apartman Sunce", "nepotpuna dokumentacija", "rok",
                 new byte[]{1, 2, 3}, Dostava.PRETINAC,
                 List.of(new MailPrilog("zapisnik.pdf", "application/pdf", new byte[]{4}),
@@ -153,7 +153,7 @@ class SmtpEmailServiceTest {
 
         MimeMessage sent = sent();
         sent.saveChanges();
-        assertThat(ok).isTrue();
+        assertThat(ok).isEqualTo(IshodSlanja.POSLANA);
         assertThat(attachmentNames((MimeMultipart) sent.getContent()))
                 .containsExactly("suspenzija-HR123456789012345678.pdf", "zapisnik.pdf", "fotografija.jpg");
         String html = html(sent.getContent());
@@ -183,11 +183,46 @@ class SmtpEmailServiceTest {
     void rnLifecycle_withoutAttachments_hasNoAttachmentSentence() throws Exception {
         service(null).sendRnLifecycleNotification(new RnLifecycleMail(MailTemplate.SUSPENZIJA,
                 LESSOR, "Ana", "HR123456789012345678", "Apartman Sunce", "razlog", "rok",
-                new byte[]{1, 2, 3}, Dostava.PRETINAC));
+                new byte[]{1, 2, 3}, Dostava.PRETINAC, List.of(), List.of()));
 
         MimeMessage sent = sent();
         sent.saveChanges();
         assertThat(html(sent.getContent())).doesNotContain("prilozi akta").doesNotContain("Prilozi akta");
+    }
+
+    /** Relay odbije poruku zbog veličine (552 / 5.3.4): ishod je PREVELIKA, ne obični neuspjeh. */
+    @Test
+    void rnLifecycle_sizeRejection_isTooLarge() {
+        doThrow(new MailSendException("Failed messages",
+                new jakarta.mail.MessagingException("552 5.3.4 Message size exceeds fixed limit")))
+                .when(mailSender).send(any(MimeMessage.class));
+
+        IshodSlanja ishod = service(null).sendRnLifecycleNotification(lifecycleWithAttachment());
+
+        assertThat(ishod).isEqualTo(IshodSlanja.PREVELIKA);
+    }
+
+    @Test
+    void rnLifecycle_otherFailure_isFailed() {
+        doThrow(new MailSendException("Connection refused")).when(mailSender).send(any(MimeMessage.class));
+
+        assertThat(service(null).sendRnLifecycleNotification(lifecycleWithAttachment()))
+                .isEqualTo(IshodSlanja.NEUSPJELA);
+    }
+
+    @Test
+    void isMessageTooLarge_recognizesServerReplies() {
+        assertThat(SmtpEmailService.isMessageTooLarge(new RuntimeException("552 Message too large"))).isTrue();
+        assertThat(SmtpEmailService.isMessageTooLarge(new RuntimeException("x",
+                new RuntimeException("5.3.4 Message size exceeds fixed maximum message size")))).isTrue();
+        assertThat(SmtpEmailService.isMessageTooLarge(new RuntimeException("550 5.1.1 User unknown"))).isFalse();
+        assertThat(SmtpEmailService.isMessageTooLarge(new RuntimeException("timeout after 15520 ms"))).isFalse();
+    }
+
+    private static RnLifecycleMail lifecycleWithAttachment() {
+        return new RnLifecycleMail(MailTemplate.SUSPENZIJA, LESSOR, "Ana", "HR123456789012345678", "Apartman Sunce",
+                "razlog", "rok", new byte[]{1, 2, 3}, Dostava.PRETINAC,
+                List.of(new MailPrilog("zapisnik.pdf", "application/pdf", new byte[]{4})), List.of());
     }
 
     /** Prazna env varijabla ({@code APP_MAIL_REDIRECT_TO=}) ne smije preusmjeriti na praznu adresu. */

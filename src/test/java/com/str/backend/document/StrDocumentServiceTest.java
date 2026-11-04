@@ -590,6 +590,34 @@ class StrDocumentServiceTest {
         assertThat(text).doesNotContain("Rok za rješavanje");
     }
 
+    /** M-BE1: isto pravilo razloga za akt i obavijest e-poštom — suspenzija čita prijedlog. */
+    @Test
+    void razlogAkta_suspension_isProposalReason_notJobNote() {
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "SUSPENSION_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE",
+                        "SUSPENSION_PROPOSED", "INSPECTION", "INTERNAL:12345678903", null)));
+
+        assertThat(service.razlogAkta(StrDocumentType.SUSPENZIJA, RN, "Rok za rješavanje nepravilnosti istekao."))
+                .isEqualTo("nalaz inspekcijskog nadzora");
+        assertThat(service.razlogAkta(StrDocumentType.POVLACENJE, RN, "drugi razlozi")).isEqualTo("drugi razlozi");
+    }
+
+    /**
+     * M-BE2: „prestaje važiti … s danom" je dan prijelaza (po hrvatskom vremenu), ne dan rendera —
+     * konačni dokument se renderira nakon urudžbe, na retryju i danima kasnije.
+     */
+    @Test
+    void withdrawal_effectiveDate_isDayOfTransition() throws IOException {
+        RegistrationNumberLogEntity povlacenje = org.mockito.Mockito.mock(RegistrationNumberLogEntity.class);
+        when(povlacenje.getOccurredAt()).thenReturn(java.time.Instant.parse("2026-09-09T23:30:00Z"));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "WITHDRAWN"))
+                .thenReturn(Optional.of(povlacenje));
+
+        String text = textOf(service.render(StrDocumentType.POVLACENJE, RN, "drugi razlozi"));
+
+        assertThat(text.replaceAll("\\s+", " ")).contains("s danom 10. rujna 2026");
+    }
+
     /** Nedostupna shema str ne smije srušiti akt — potpis tada ostaje naziv tijela. */
     @Test
     void officialAct_withoutReadableOfficial_isSignedByTheAuthority() throws IOException {

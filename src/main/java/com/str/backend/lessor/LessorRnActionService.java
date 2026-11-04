@@ -56,19 +56,14 @@ public class LessorRnActionService {
      * STR-1.3-001. The officer's withdrawal (povlačenje) is a separate final status,
      * {@code WITHDRAWN} — see {@code RnService#withdraw}.
      *
-     * <p>TODO (zasebni epic, "Zajedničke backend teme"): potvrda u KP + obavijest Internetskim
-     * platformama. 18-mj. retencijski/brisaći brojač računa se iz {@code valid_to} koji
-     * {@link RnEntity#applyStatus} postavlja na dan opoziva.
-     */
-    @Transactional
-    public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason) {
-        return withdrawOwn(rn, lessorId, reason, List.of());
-    }
-
-    /**
-     * Opoziv s prilozima stranke ({@code prilogIds} iz {@code /api/lessor/attachments}, T17). Prilozi
-     * se vežu uz novi zapis prijelaza u istoj transakciji; kao prilozi stranke idu uz ulazno pismeno
+     * <p>Prilozi stranke ({@code prilogIds} iz {@code /api/lessor/attachments}, T17; neobavezni) vežu
+     * se uz novi zapis prijelaza u istoj transakciji; kao prilozi stranke idu uz ulazno pismeno
      * „Zahtjev za opoziv", ne uz obavijest o opozivu ({@code PrilogService#pripadaPismenu}).
+     *
+     * <p>Obavijest o opozivu je izlazni akt (T15) i ide u korisnički pretinac kroz eGOP tok.
+     * TODO (zasebni epic, "Zajedničke backend teme"): obavijest Internetskim platformama.
+     * 18-mj. retencijski/brisaći brojač računa se iz {@code valid_to} koji
+     * {@link RnEntity#applyStatus} postavlja na dan opoziva.
      */
     @Transactional
     public LessorRnActionResponse withdrawOwn(String rn, UUID lessorId, String reason, Collection<Long> prilogIds) {
@@ -84,14 +79,9 @@ public class LessorRnActionService {
     /**
      * NIAS varijanta: vlasništvo se provjerava po OIB-u jer svaki NIAS submission
      * kreira novi LessorEntity snapshot — fiksan lessorId ne pokriva starije RB-ove
-     * istog korisnika. Provjera: submission.lessorId → LessorEntity.lessorOib == oib.
+     * istog korisnika. Provjera: submission.lessorId → LessorEntity.lessorOib == oib. {@code oib} je
+     * vlasnik (efektivni OIB), isti kao kod staginga priloga.
      */
-    @Transactional
-    public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason) {
-        return withdrawOwnByOib(rn, oib, reason, List.of());
-    }
-
-    /** NIAS opoziv s prilozima; {@code oib} je vlasnik (efektivni OIB), isti kao kod staginga. */
     @Transactional
     public LessorRnActionResponse withdrawOwnByOib(String rn, String oib, String reason, Collection<Long> prilogIds) {
         RnEntity entity = loadOwnedByOib(rn, oib);
