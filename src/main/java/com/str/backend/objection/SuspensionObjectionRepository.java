@@ -17,6 +17,13 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
     @Transactional(readOnly = true)
     boolean existsByRnAndStatus(String rn, SuspensionObjectionStatus status);
 
+    /**
+     * Postoji li uz RB prigovor u zadanom statusu predan prije {@code before} — za
+     * {@code SuspensionDeadlineJob}: prigovor predan do kraja dana roka zadržava suspenziju.
+     */
+    @Transactional(readOnly = true)
+    boolean existsByRnAndStatusAndSubmittedAtBefore(String rn, SuspensionObjectionStatus status, Instant before);
+
     /** Prigovori uz RB u zadanom statusu — za zatvaranje kad RB napusti prijedlog/suspenziju. */
     List<SuspensionObjectionEntity> findByRnAndStatus(String rn, SuspensionObjectionStatus status);
 

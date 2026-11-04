@@ -2,6 +2,7 @@ package com.str.backend.lookup;
 
 import com.str.backend.document.DocumentLabels;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.domain.WithdrawalReason;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,19 +33,16 @@ import java.util.List;
 @RequestMapping("/api/lookups")
 class RnTriggerLookupController {
 
-    /** Razlozi koje {@code RnService.suspend} prihvaća — popis mora ostati u koraku s njim. */
-    static final List<RnTrigger> SUSPENSION_REASONS = List.of(
-            RnTrigger.CONSENT_EXPIRY,
-            RnTrigger.INSPECTION,
-            RnTrigger.INCOMPLETE_DOCUMENTATION,
-            RnTrigger.OTHER);
+    /** Razlozi koje {@code RnService.suspend} prihvaća — isti popis, ne kopija. */
+    static final List<RnTrigger> SUSPENSION_REASONS = RnTrigger.SUSPENSION_REASONS;
 
     /**
-     * Povlačenje ima jedan razlog; slobodan tekst se šalje kao {@code reason}. Namjerno bez
+     * Razlozi povlačenja (MINTS). Prijelaz uvijek nosi okidač {@link RnTrigger#WITHDRAWAL}, a
+     * razlog je zasebna šifra koju {@code RnService.withdraw} pretvara u tekst akta. Namjerno bez
      * {@link RnTrigger#REVOCATION}: opoziv pokreće iznajmljivač sam, bez razloga i bez ovog
      * obrasca, pa ga službenik ne smije moći odabrati.
      */
-    static final List<RnTrigger> WITHDRAWAL_REASONS = List.of(RnTrigger.WITHDRAWAL);
+    static final List<WithdrawalReason> WITHDRAWAL_REASONS = List.of(WithdrawalReason.values());
 
     private final DocumentLabels labels;
 
@@ -54,18 +52,8 @@ class RnTriggerLookupController {
 
     /** Kontekst u kojem se razlog nudi; ne postoji zajednički popis jer se obrasci razlikuju. */
     enum TriggerContext {
-        SUSPENZIJA(SUSPENSION_REASONS),
-        POVLACENJE(WITHDRAWAL_REASONS);
-
-        private final List<RnTrigger> triggers;
-
-        TriggerContext(List<RnTrigger> triggers) {
-            this.triggers = triggers;
-        }
-
-        List<RnTrigger> triggers() {
-            return triggers;
-        }
+        SUSPENZIJA,
+        POVLACENJE
     }
 
     record RnTriggerResponse(String sifra, String naziv, boolean traziBiljesku) {
@@ -74,9 +62,14 @@ class RnTriggerLookupController {
     @GetMapping("/rn-triggers")
     ResponseEntity<List<RnTriggerResponse>> triggers(
             @RequestParam(defaultValue = "SUSPENZIJA") TriggerContext kontekst) {
-        List<RnTriggerResponse> body = kontekst.triggers().stream()
-                .map(t -> new RnTriggerResponse(t.name(), labels.trigger(t), t == RnTrigger.OTHER))
-                .toList();
+        List<RnTriggerResponse> body = switch (kontekst) {
+            case SUSPENZIJA -> SUSPENSION_REASONS.stream()
+                    .map(t -> new RnTriggerResponse(t.name(), labels.trigger(t), t == RnTrigger.OTHER))
+                    .toList();
+            case POVLACENJE -> WITHDRAWAL_REASONS.stream()
+                    .map(r -> new RnTriggerResponse(r.name(), labels.withdrawalReason(r), r.requiresNote()))
+                    .toList();
+        };
         return ResponseEntity.ok(body);
     }
 }

@@ -2,16 +2,22 @@ package com.str.backend.rn;
 
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.objection.SuspensionObjectionRepository;
+import com.str.backend.objection.SuspensionObjectionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -27,13 +33,15 @@ class SuspensionDeadlineJobTest {
 
     private RnRepository rnRepository;
     private RnStatusTransitionService transitionService;
+    private SuspensionObjectionRepository objectionRepository;
     private SuspensionDeadlineJob job;
 
     @BeforeEach
     void setUp() {
         rnRepository = mock(RnRepository.class);
         transitionService = mock(RnStatusTransitionService.class);
-        job = new SuspensionDeadlineJob(rnRepository, transitionService);
+        objectionRepository = mock(SuspensionObjectionRepository.class);
+        job = new SuspensionDeadlineJob(rnRepository, transitionService, objectionRepository);
     }
 
     @Test
@@ -58,6 +66,53 @@ class SuspensionDeadlineJobTest {
         job.run();
 
         verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+    }
+
+    /**
+     * Prigovor predan do kraja dana roka: stranka se očitovala u roku, pa o suspenziji prvo
+     * odlučuje službenik — job RB preskače.
+     */
+    @Test
+    void skipsRnWithObjectionSubmittedInTime() {
+        LocalDate deadline = LocalDate.now().minusDays(1);
+        RnEntity rn = proposed(deadline);
+        when(rnRepository.findRnsWithSuspensionDeadlineBefore(any())).thenReturn(List.of(RN));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        when(objectionRepository.existsByRnAndStatusAndSubmittedAtBefore(
+                RN, SuspensionObjectionStatus.SUBMITTED, SuspensionDeadlineJob.endOfDay(deadline)))
+                .thenReturn(true);
+
+        job.run();
+
+        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+    }
+
+    /**
+     * Prigovor predan nakon roka suspenziju ne zaustavlja: upit traži samo prigovor predan prije
+     * kraja dana roka, pa ga kasni prigovor ne zadovoljava.
+     */
+    @Test
+    void suspendsDespiteObjectionSubmittedAfterDeadline() {
+        LocalDate deadline = LocalDate.now().minusDays(1);
+        RnEntity rn = proposed(deadline);
+        when(rnRepository.findRnsWithSuspensionDeadlineBefore(any())).thenReturn(List.of(RN));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        when(objectionRepository.existsByRnAndStatusAndSubmittedAtBefore(
+                eq(RN), eq(SuspensionObjectionStatus.SUBMITTED), any())).thenReturn(false);
+
+        job.run();
+
+        verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
+                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
+    }
+
+    /** Kraj dana roka je ponoć po hrvatskom vremenu, ne po zoni poslužitelja. */
+    @Test
+    void endOfDay_isMidnightAfterDeadlineInZagreb() {
+        assertThat(SuspensionDeadlineJob.endOfDay(LocalDate.of(2026, 7, 10)))
+                .isEqualTo(Instant.parse("2026-07-10T22:00:00Z"));
+        assertThat(SuspensionDeadlineJob.endOfDay(LocalDate.of(2026, 12, 10)))
+                .isEqualTo(LocalDate.of(2026, 12, 11).atStartOfDay(ZoneId.of("Europe/Zagreb")).toInstant());
     }
 
     private static RnEntity proposed(LocalDate deadline) {

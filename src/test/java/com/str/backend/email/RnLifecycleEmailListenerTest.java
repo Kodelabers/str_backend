@@ -62,10 +62,10 @@ class RnLifecycleEmailListenerTest {
         RnLifecycleMail mail = captured();
         assertThat(mail.template()).isEqualTo(MailTemplate.SUSPENZIJA);
         assertThat(mail.to()).isEqualTo("ana@example.com");
-        assertThat(mail.razlog()).isEqualTo("nepotpuna dokumentacija");
+        assertThat(mail.razlog()).isEqualTo("nepotpuni i/ili netočni podaci");
         assertThat(mail.rok()).isEqualTo("najkasnije do 15.08.2026.");
         assertThat(mail.pdf()).isNotEmpty();
-        verify(documentService).render(StrDocumentType.SUSPENZIJA, RN, "nepotpuna dokumentacija");
+        verify(documentService).render(StrDocumentType.SUSPENZIJA, RN, "nepotpuni i/ili netočni podaci");
     }
 
     /**
@@ -122,7 +122,7 @@ class RnLifecycleEmailListenerTest {
 
         RnLifecycleMail mail = captured();
         assertThat(mail.template()).isEqualTo(MailTemplate.PRIJEDLOG_SUSPENZIJE);
-        assertThat(mail.razlog()).isEqualTo("nepotpuna dokumentacija");
+        assertThat(mail.razlog()).isEqualTo("nepotpuni i/ili netočni podaci");
         assertThat(mail.rok()).isEqualTo("najkasnije do 15.08.2026.");
         assertThat(mail.pdf()).isNotEmpty();
     }

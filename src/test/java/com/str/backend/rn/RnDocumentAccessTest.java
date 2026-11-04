@@ -164,7 +164,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/rn/{rn}/withdraw", RN)).andExpect(status().isUnauthorized());
 
-        verify(service, never()).withdraw(any(), any(), any());
+        verify(service, never()).withdraw(any(), any(), any(), any());
     }
 
     /**
@@ -188,7 +188,7 @@ class RnDocumentAccessTest {
                         .with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).withdraw(any(), any(), any());
+        verify(service, never()).withdraw(any(), any(), any(), any());
         verify(service, never()).suspend(any(), any(), any(), any(), any());
         verifyNoInteractions(registrySearch, exportService);
     }
@@ -270,10 +270,12 @@ class RnDocumentAccessTest {
 
         when(internalAccess.actorFor(any())).thenReturn(java.util.Optional.of("INTERNAL:" + OFFICIAL_OIB));
 
-        mvc.perform(post("/api/rn/{rn}/withdraw", RN).with(authentication(official())).with(ajax()))
+        mvc.perform(post("/api/rn/{rn}/withdraw", RN).param("reason", "DATA_NOT_CORRECTED")
+                        .with(authentication(official())).with(ajax()))
                 .andExpect(status().isOk());
 
-        verify(service).withdraw(RN, null, "INTERNAL:" + OFFICIAL_OIB);
+        verify(service).withdraw(RN, com.str.backend.domain.WithdrawalReason.DATA_NOT_CORRECTED, null,
+                "INTERNAL:" + OFFICIAL_OIB);
     }
 
     /** CSRF: bez X-Requested-With mutirajuća radnja ne prolazi ni službeniku s rolom. */
@@ -284,7 +286,7 @@ class RnDocumentAccessTest {
         mvc.perform(post("/api/rn/{rn}/withdraw", RN).with(authentication(official())))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).withdraw(any(), any(), any());
+        verify(service, never()).withdraw(any(), any(), any(), any());
     }
 
     /**

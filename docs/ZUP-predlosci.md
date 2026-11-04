@@ -226,7 +226,7 @@ i mora biti izričito u kontekstu.
 | `${rn.razlog}` | parametar → revizijski trag → natpis okidača | |
 | `${objekt.naziv}`, `${objekt.adresa}`, `${objekt.mjesto}`, `${objekt.zupanija}`, `${objekt.vrsta}`, `${objekt.kapacitet}` | `RnDetailDto` | |
 | `${objekt.skupina}` | šifra skupine **iz RB-a** → `labels.properties` (`objekt.skupina.<kod>`) | danas samo `00` = domaćinstvo; nepoznata šifra daje vidljivu oznaku + ERROR, ne tiho domaćinstvo |
-| `${rok.ispravak}` | `RnEntity.suspensionDeadline` | bez roka → `rok.default` iz `labels.properties` |
+| `${rok.ispravak}` | `RnEntity.suspensionDeadline` | rok je obvezan pri prijedlogu; bez roka (stariji predmeti, RB koji je napustio prijedlog) → `rok.default` iz `labels.properties` |
 | `${uputa.tekst}` | `str.documents.uputa.<slug>` | vidi §6 |
 
 **Adresni placeholderi su ostali samo prigovoru.** `${stranka.zastupnik}`, `${stranka.adresa}`,

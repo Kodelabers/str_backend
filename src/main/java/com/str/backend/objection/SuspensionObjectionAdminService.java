@@ -106,12 +106,26 @@ public class SuspensionObjectionAdminService {
         auditService.record(actor, "OBJECTION_ACCEPT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
     }
 
-    /** Neuvažavanje: prigovor → {@code REJECTED}; RB ostaje gdje jest, rok za očitovanje teče dalje. */
+    /**
+     * Neuvažavanje: prigovor → {@code REJECTED}. Ako je RB i dalje pred suspenzijom, a rok je već
+     * istekao, odmah se suspendira u ime službenika ({@link RnService#suspendIfDeadlineExpired}):
+     * prigovor predan u roku zadržao je {@code SuspensionDeadlineJob}, pa bi suspenzija inače
+     * čekala noćni job. Dok rok teče, RB ostaje gdje jest. Prigovor je u tom trenutku već
+     * {@code REJECTED}, a suspenzija ga ni ne zatvara ({@link SuspensionObjectionLifecycleListener}),
+     * pa odluka službenika ostaje zapisana.
+     *
+     * <p>RB se zaključava prije svega, kao kod uvažavanja, da se ne utrka s noćnim jobom.
+     */
     @Transactional
     public void reject(String rn, UUID id, String actor, String note) {
+        RnEntity rnEntity = rnRepository.findForUpdate(rn)
+                .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
         SuspensionObjectionEntity e = findOrThrow(rn, id);
         String cleanNote = Strings.blankToNull(note);
         e.reject(actor, cleanNote);
+        if (rnEntity.getStatus() == RnStatus.SUSPENSION_PROPOSED) {
+            rnService.suspendIfDeadlineExpired(rn, actor);
+        }
         auditService.record(actor, "OBJECTION_REJECT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
     }
 

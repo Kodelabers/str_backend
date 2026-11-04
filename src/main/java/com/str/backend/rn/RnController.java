@@ -9,6 +9,7 @@ import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.domain.WithdrawalReason;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.rn.dto.RnDetailResponse;
 import com.str.backend.rn.dto.RnDocumentDto;
@@ -151,6 +152,13 @@ public class RnController {
      * opsega službenika (druga županija) je 404, kao nepostojeći.
      */
 
+    /*
+     * Rok za očitovanje (suspend) i razlog povlačenja (withdraw) su obvezni, ali ih provjerava
+     * servis, ne `required = true`: nedostajući parametar bi završio u generičkom handleru kao
+     * 500, a servis vraća 400 s prevedenom porukom (error.rn.suspend.deadline.required,
+     * error.rn.withdraw.reason.required).
+     */
+
     @PostMapping("/{rn}/suspend")
     public RnResponse suspend(
             @PathVariable String rn,
@@ -176,10 +184,11 @@ public class RnController {
 
     @PostMapping("/{rn}/withdraw")
     public RnResponse withdraw(@PathVariable String rn,
-                              @RequestParam(required = false) String reason,
+                              @RequestParam(required = false) WithdrawalReason reason,
+                              @RequestParam(required = false) String note,
                               Authentication authentication) {
         requireInScope(rn, authentication);
-        return mapper.toResponse(service.withdraw(rn, reason, actor(authentication)));
+        return mapper.toResponse(service.withdraw(rn, reason, note, actor(authentication)));
     }
 
     /**

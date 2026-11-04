@@ -468,7 +468,7 @@ class StrDocumentServiceTest {
 
         String text = textOf(service.render(StrDocumentType.OBUSTAVA_SUSPENZIJE, RN, null));
 
-        assertThat(text).contains("pokrenut zbog sljedećeg razloga: nepotpuna dokumentacija");
+        assertThat(text).contains("pokrenut zbog sljedećeg razloga: nepotpuni i/ili netočni podaci");
         assertThat(text).doesNotContain("obustava postupka suspenzije");
     }
 
@@ -554,7 +554,22 @@ class StrDocumentServiceTest {
 
         String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN, null));
 
-        assertThat(text).contains("nepotpuna dokumentacija");
+        assertThat(text).contains("nepotpuni i/ili netočni podaci");
+    }
+
+    /**
+     * Razlog povlačenja (MINTS) nije okidač — prijelaz nosi WITHDRAWAL, a natpis razloga stoji u
+     * {@code reason} zapisa ({@code RnService.withdraw}). Akt ga ispisuje umjesto natpisa okidača.
+     */
+    @Test
+    void withdrawalAct_citesReasonFromLog_notTheTrigger() throws IOException {
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "ACTIVE", "WITHDRAWN", "WITHDRAWAL", null,
+                        "namjerno ili krajnjom nepažnjom nisu ispravljeni podaci")));
+
+        String text = textOf(service.render(StrDocumentType.POVLACENJE, RN, null));
+
+        assertThat(text).contains("zbog sljedećeg razloga: namjerno ili krajnjom nepažnjom nisu ispravljeni podaci");
     }
 
     /**

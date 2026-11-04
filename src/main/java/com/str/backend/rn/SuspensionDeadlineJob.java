@@ -2,31 +2,47 @@ package com.str.backend.rn;
 
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
+import com.str.backend.objection.SuspensionObjectionRepository;
+import com.str.backend.objection.SuspensionObjectionStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
  * Svaki dan provjerava RB-ove u statusu SUSPENSION_PROPOSED čiji je rok istekao
  * i automatski ih prebacuje u SUSPENDED (trigger: DEADLINE_EXCEEDED).
+ *
+ * <p>Iznimka je RB uz koji čeka prigovor ({@code SUBMITTED}) predan do kraja dana roka: stranka
+ * se u roku očitovala, pa o suspenziji prvo odlučuje službenik — uvažavanje obustavlja postupak,
+ * a neuvažavanje odmah suspendira ({@code RnService#suspendIfDeadlineExpired}). Prigovor predan
+ * nakon roka suspenziju ne zaustavlja.
  */
 @Component
 public class SuspensionDeadlineJob {
 
     private static final Logger log = LoggerFactory.getLogger(SuspensionDeadlineJob.class);
+    /** Rok je datum po hrvatskom vremenu, neovisno o zoni poslužitelja. */
+    private static final ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
+    /** Bilješka uz prijelaz istekom roka — ista za job i za suspenziju nakon neuvažena prigovora. */
+    static final String DEADLINE_EXCEEDED_NOTE = "Rok za rješavanje nepravilnosti istekao.";
 
     private final RnRepository rnRepository;
     private final RnStatusTransitionService transitionService;
+    private final SuspensionObjectionRepository objectionRepository;
 
     public SuspensionDeadlineJob(RnRepository rnRepository,
-                                 RnStatusTransitionService transitionService) {
+                                 RnStatusTransitionService transitionService,
+                                 SuspensionObjectionRepository objectionRepository) {
         this.rnRepository = rnRepository;
         this.transitionService = transitionService;
+        this.objectionRepository = objectionRepository;
     }
 
     @Scheduled(cron = "0 0 1 * * *")
@@ -48,9 +64,19 @@ public class SuspensionDeadlineJob {
                 continue;
             }
             LocalDate deadline = rn.getSuspensionDeadline();
+            if (objectionRepository.existsByRnAndStatusAndSubmittedAtBefore(id,
+                    SuspensionObjectionStatus.SUBMITTED, endOfDay(deadline))) {
+                log.info("suspension_deadline_skipped_objection rn={} deadline={}", id, deadline);
+                continue;
+            }
             transitionService.transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
-                    "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
+                    "SYSTEM", DEADLINE_EXCEEDED_NOTE);
             log.info("suspension_deadline_exceeded rn={} deadline={}", id, deadline);
         }
+    }
+
+    /** Prvi trenutak nakon dana roka — prigovor predan prije njega je predan u roku. */
+    static Instant endOfDay(LocalDate deadline) {
+        return deadline.plusDays(1).atStartOfDay(ZAGREB).toInstant();
     }
 }
