@@ -277,4 +277,10 @@
     <!-- Stanje ponovnog pokušaja prilaganja priloga u eGOP: akt i dodjela ne čekaju na priloge. -->
     <include file="db/changelog/changes/149-pismeno-prilog-egop-retry.xml"/>
 
+    <!-- Outbox zahtjeva za žurnu verifikaciju (T8): RB izdan za neverificiran eTurizam objekt. -->
+    <include file="db/changelog/changes/150-eturizam-verifikacija.xml"/>
+
+    <!-- Mock str.verification_request / str.korisnicka_obavijest i stupci nadležne jedinice. Samo local. -->
+    <include file="db/changelog/changes/151-str-verifikacija-obavijest-local.xml"/>
+
 </databaseChangeLog>

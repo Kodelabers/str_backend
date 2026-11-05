@@ -102,6 +102,7 @@ User `shorttermrental`, mjereno uz `PGOPTIONS=-c role=str_owner` (isto što radi
 | `SELECT` na `str.facility`, `str.subject`, `str.country` | `t` | popis objekata, OIB lookup i izbornik država rade |
 | `SELECT` na `rpj_dgu.zupanije`, `eturizam_test.ar_ulice` | `t` | **adresna kaskada radi** — InfoDom blokada ovdje ne postoji |
 | `UPDATE` na `str.facility` | `f` | RB se ne upisuje natrag u eTurizam → tuStart handoff nije testabilan end-to-end |
+| `INSERT` na `str.verification_request`, `str.korisnicka_obavijest` (V11, 5. 11. 2026.) | `f` (samo `SELECT`) | žurna verifikacija (T8) ne može upisati zahtjev ni obavijest → grant u §B5b |
 
 ## Tri okoline jedna uz drugu
 
@@ -538,6 +539,83 @@ i dalje dodjeljuju (bez `MOCK-` prefiksa), ništa ne odlazi MINT-u, ostatak okol
 3. `PKIX path building failed` u `egop_codebook_load_failed` → JDK `cacerts` ne vjeruje MINT-ovom
    CA-u. Ne dirati globalni truststore (o njemu ovise NIAS i OIB sustav); CA se dodaje samo eGOP
    klijentu, kao kod e-Ovlaštenja (`cacerts` + PEM) — mala izmjena koda. Do tada vratiti `http://`.
+
+## B5b. Žurna verifikacija (T8) — ugašena do granta
+
+RB izdan za **neverificiran** objekt iz eTurizma daje zahtjev u `str.verification_request` i (uz
+uključene obavijesti) obavijesti službenicima nadležne jedinice u `str.korisnicka_obavijest`
+(`docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md`). **`str_owner` na obje tablice ima samo `SELECT`**, pa
+prije uključivanja treba grant (Darko Bosnar):
+
+```sql
+-- izvršava vlasnik sheme str (tustart_owner) ili superuser
+GRANT INSERT, UPDATE ON str.verification_request TO str_owner;
+GRANT INSERT, UPDATE ON str.korisnicka_obavijest TO str_owner;
+```
+
+STR danas koristi samo `SELECT` (već postoji) i `INSERT`; `UPDATE` je u dogovoru s eTurizmom
+(5. 11. 2026.), ali ga kod ne koristi — STR postojeći zahtjev nikad ne mijenja. `id` je
+`identity` stupac, pa zasebno pravo na sekvencu ne bi trebalo; ako INSERT ipak padne s
+`permission denied for sequence`, dodati `GRANT USAGE ON SEQUENCE <sekvenca stupca id> TO str_owner`
+(naziv daje `select pg_get_serial_sequence('str.verification_request','id')`).
+
+Isto pitanje kao A1/6: preživljava li tablični grant noćni reset. Ako ne, ujutro u logu stoji
+`startup_eturizam_verifikacija … INSERT=false` i upisi padaju (`eturizam_verifikacija_failed`) dok
+se grant ne vrati — RB se i dalje izdaje. Outbox (`str_rn.eturizam_verifikacija`) se resetom briše
+kao i ostatak `str_rn`.
+
+**`.env.cdupreprod`:** `STR_ETURIZAM_VERIFIKACIJA_ENABLED=true` tek nakon granta; obavijesti
+(`STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_ENABLED=true`) tek kad eTurizam potvrdi vrijednosti.
+
+**Provjera:**
+
+```bash
+docker logs str-backend-cdupreprod 2>&1 | grep -E "startup_eturizam_verifikacija|eturizam_verifikacija_" | tail -20
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `startup_eturizam_verifikacija enabled=… obavijesti=… nedostaje=[]` | potrebna prava postoje (SELECT/INSERT na zahtjevu; uz obavijesti i SELECT na `str.document`, `str.application_user` te INSERT na obavijesti). Uz `enabled=true` i nepraznu listu je WARN |
+| `eturizam_verifikacija_config …` (**ERROR**) | `vrsta` ili `objekt-tip` dulji od 64 znaka — svaki upis obavijesti će pasti |
+| `eturizam_verifikacija_duplicate_key rn=… (…)` | sukob ključa pri upisu, pokušaj se ponavlja jednom; „zahtjev za dokument upisan istodobno” je očekivana utrka s eTurizmom |
+| `eturizam_verifikacija_zabiljezeno rn=… document=…` | RB je izdan za neverificiran objekt, outbox redak je nastao (i uz `enabled=false`) |
+| `eturizam_verifikacija_upisano … verification_request=… obavijesti=N` | zahtjev je upisan u eTurizam, `N` obavijesti službenicima |
+| `eturizam_verifikacija_postojao …` | zahtjev za taj dokument je već postojao; STR ga nije dirao ni obavještavao |
+| `eturizam_verifikacija_bez_jedinice` / `_bez_primatelja` (WARN) | zahtjev je upisan, ali obavijesti nema komu poslati |
+| `eturizam_verifikacija_bez_dokumenta` (WARN) | objekt nema `document_id` — zahtjev se ne može upisati, outbox retka nema |
+| `eturizam_verifikacija_failed … reason=…` (WARN) | pokušaj je pao (najčešće `permission denied`); retry job ponavlja s backoffom |
+| `eturizam_verifikacija_exhausted …` (**ERROR**) | iscrpljeni pokušaji, redak `ABANDONED` — ručna intervencija |
+
+```sql
+SELECT 'Z1' AS blok, has_table_privilege('str.verification_request','INSERT') AS zahtjev_insert,
+       has_table_privilege('str.korisnicka_obavijest','INSERT') AS obavijest_insert;
+
+SELECT 'Z2' AS blok, e.rn, e.status, e.attempts, e.document_id, e.verification_request_id,
+       e.obavijesti_poslano, e.next_attempt_at, e.last_error, e.created_at
+FROM str_rn.eturizam_verifikacija e ORDER BY e.created_at DESC LIMIT 20;
+
+SELECT 'Z3' AS blok, vr.*
+FROM str.verification_request vr
+JOIN str_rn.eturizam_verifikacija e ON e.verification_request_id = vr.id
+ORDER BY vr.id DESC LIMIT 20;
+
+SELECT 'Z4' AS blok, o.id, o.application_user_id, o.vrsta, o.objekt_tip, o.objekt_id, o.stvoreno, o.procitano, o.tekst
+FROM str.korisnicka_obavijest o
+WHERE o.objekt_tip = 'VERIFICATION_REQUEST'
+  AND o.objekt_id IN (SELECT e.verification_request_id FROM str_rn.eturizam_verifikacija e)
+ORDER BY o.id DESC LIMIT 50;
+```
+
+(`'VERIFICATION_REQUEST'` je zadani `objekt_tip`; uz `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` upisati tu vrijednost.)
+
+**Povrat `ABANDONED` retka u red** (nakon otklanjanja uzroka, npr. granta): retry job ga uzme u
+sljedećem prolasku (`STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON`, zadano svakih 5 min) s punim brojem pokušaja.
+
+```sql
+UPDATE str_rn.eturizam_verifikacija
+   SET status = 'PENDING', attempts = 0, next_attempt_at = now(), last_error = NULL, updated_at = now()
+ WHERE rn = '<RB>' AND status = 'ABANDONED';
+```
 
 ## B6. Kako privatni repozitoriji dolaze na kutiju
 

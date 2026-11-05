@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      Lokalni mock eTurizmovih tablica u koje STR upisuje zahtjev za žurnu verifikaciju (T8):
+      str.verification_request i str.korisnicka_obavijest, struktura 1:1 kao na CDU testu
+      (5. 11. 2026., docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md § 3a). Na dev/CDU/preprod/prod tablice
+      postoje i vodi ih eTurizam — ondje se svaki changeset preskače (preconditions).
+
+      Uz njih stupci koje čita odabir primatelja: str.document.jurisdiction_organizational_unit_id
+      (nadležna jedinica dokumenta) i str.application_user.organizational_unit_id (jedinica
+      službenika). Lokalno: službenik 900001 (seed 138) je u jedinici 9136 (seed 146), a ona je
+      nadležna za dokumente seeda 123, pa lokalno izdan RB za neverificiran objekt daje jednu
+      obavijest.
+
+      Gated context="local".
+    -->
+
+    <changeSet id="151-str-document-jurisdiction-unit" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="document" columnName="jurisdiction_organizational_unit_id"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="document">
+            <column name="jurisdiction_organizational_unit_id" type="BIGINT"/>
+        </addColumn>
+        <sql>
+            UPDATE str.document SET jurisdiction_organizational_unit_id = 9136;
+        </sql>
+        <rollback>
+            <dropColumn schemaName="str" tableName="document" columnName="jurisdiction_organizational_unit_id"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="151-str-application-user-unit" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><columnExists schemaName="str" tableName="application_user" columnName="organizational_unit_id"/></not>
+        </preConditions>
+        <addColumn schemaName="str" tableName="application_user">
+            <column name="organizational_unit_id" type="BIGINT"/>
+        </addColumn>
+        <sql>
+            UPDATE str.application_user SET organizational_unit_id = 9136 WHERE id = 900001;
+        </sql>
+        <rollback>
+            <dropColumn schemaName="str" tableName="application_user" columnName="organizational_unit_id"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="151-str-verification-request" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="verification_request"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="verification_request">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_verification_request" nullable="false"/>
+            </column>
+            <column name="created_by" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="created_date" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="last_modified_by" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="last_modified_date" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="active" type="BOOLEAN" defaultValueBoolean="true"><constraints nullable="false"/></column>
+            <column name="source_document_id" type="BIGINT">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_verification_request_source_document"
+                             foreignKeyName="fk_verification_request_on_source_document"
+                             referencedTableSchemaName="str" referencedTableName="document" referencedColumnNames="id"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="151-str-korisnicka-obavijest" author="str-backend" context="local">
+        <preConditions onFail="MARK_RAN">
+            <not><tableExists schemaName="str" tableName="korisnicka_obavijest"/></not>
+        </preConditions>
+        <createTable schemaName="str" tableName="korisnicka_obavijest">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" primaryKeyName="pk_korisnicka_obavijest" nullable="false"/>
+            </column>
+            <column name="application_user_id" type="BIGINT">
+                <constraints nullable="false" foreignKeyName="fk_korisnicka_obavijest_application_user"
+                             referencedTableSchemaName="str" referencedTableName="application_user"
+                             referencedColumnNames="id"/>
+            </column>
+            <column name="vrsta" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="tekst" type="VARCHAR(1000)"><constraints nullable="false"/></column>
+            <column name="objekt_tip" type="VARCHAR(64)"/>
+            <column name="objekt_id" type="BIGINT"/>
+            <column name="podaci" type="JSONB"/>
+            <column name="stvoreno" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="procitano" type="TIMESTAMP"/>
+        </createTable>
+        <createIndex schemaName="str" tableName="korisnicka_obavijest" indexName="korisnicka_obavijest_korisnik_index">
+            <column name="application_user_id"/>
+            <column name="id"/>
+        </createIndex>
+        <createIndex schemaName="str" tableName="korisnicka_obavijest" indexName="korisnicka_obavijest_objekt_index">
+            <column name="objekt_tip"/>
+            <column name="objekt_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

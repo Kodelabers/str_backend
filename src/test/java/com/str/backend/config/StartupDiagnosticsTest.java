@@ -99,9 +99,62 @@ class StartupDiagnosticsTest {
                 .contains("potpisnik=nije postavljen (neobavezno)"));
     }
 
+    @Test
+    @DisplayName("zurna verifikacija: nedostajuce pravo uz ukljucenu zastavicu je WARN s popisom")
+    void verifikacija_warnsWithMissingPrivileges() {
+        List<ILoggingEvent> zapisi = uhvatiLogPostgres(env()
+                .withProperty("str.eturizam.verifikacija.enabled", "true")
+                .withProperty("str.eturizam.verifikacija.obavijesti.enabled", "true"),
+                "select has_table_privilege('str.korisnicka_obavijest','INSERT')");
+
+        assertThat(zapisi).anyMatch(e -> e.getLevel() == Level.WARN
+                && e.getFormattedMessage().startsWith("startup_eturizam_verifikacija enabled=true")
+                && e.getFormattedMessage().contains("nedostaje=[str.korisnicka_obavijest:INSERT]"));
+    }
+
+    @Test
+    @DisplayName("zurna verifikacija: bez obavijesti provjeravaju se samo prava zahtjeva")
+    void verifikacija_withoutNotifications_checksOnlyRequestTable() {
+        List<ILoggingEvent> zapisi = uhvatiLogPostgres(env()
+                .withProperty("str.eturizam.verifikacija.enabled", "true"),
+                "select has_table_privilege('str.korisnicka_obavijest','INSERT')",
+                "select has_table_privilege('str.application_user','SELECT')");
+
+        assertThat(zapisi).anyMatch(e -> e.getLevel() == Level.INFO
+                && e.getFormattedMessage().equals(
+                        "startup_eturizam_verifikacija enabled=true obavijesti=false nedostaje=[]"));
+    }
+
+    @Test
+    @DisplayName("zurna verifikacija: ugasena zastavica ne dize WARN ni bez prava")
+    void verifikacija_disabled_onlyInfo() {
+        List<ILoggingEvent> zapisi = uhvatiLogPostgres(env(),
+                "select has_table_privilege('str.verification_request','SELECT')",
+                "select has_table_privilege('str.verification_request','INSERT')");
+
+        assertThat(zapisi).anyMatch(e -> e.getLevel() == Level.INFO
+                && e.getFormattedMessage().contains("startup_eturizam_verifikacija enabled=false")
+                && e.getFormattedMessage().contains("str.verification_request:SELECT, str.verification_request:INSERT"));
+        assertThat(zapisi).noneMatch(e -> e.getLevel() == Level.WARN
+                && e.getFormattedMessage().startsWith("startup_eturizam_verifikacija"));
+    }
+
+    /** PostgreSQL baza na kojoj su sva prava osim {@code bezPrava} (te sonde vraćaju false). */
+    private static List<ILoggingEvent> uhvatiLogPostgres(MockEnvironment env, String... bezPrava) {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.execute(any(ConnectionCallback.class))).thenReturn("PostgreSQL");
+        when(jdbc.queryForObject(anyString(), eq(Boolean.class))).thenAnswer(inv ->
+                !List.of(bezPrava).contains(inv.<String>getArgument(0)));
+        return uhvati(env, jdbc);
+    }
+
     private static List<ILoggingEvent> uhvatiLog(MockEnvironment env) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         when(jdbc.execute(any(ConnectionCallback.class))).thenReturn("H2");
+        return uhvati(env, jdbc);
+    }
+
+    private static List<ILoggingEvent> uhvati(MockEnvironment env, JdbcTemplate jdbc) {
         Logger logger = (Logger) LoggerFactory.getLogger(StartupDiagnostics.class);
         ListAppender<ILoggingEvent> appender = new ListAppender<>();
         appender.start();

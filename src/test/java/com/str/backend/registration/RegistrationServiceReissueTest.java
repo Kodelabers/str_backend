@@ -31,6 +31,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -96,7 +97,7 @@ class RegistrationServiceReissueTest {
                 mock(AccommodationTypeRepository.class), mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class), reissueService, mock(PrilogService.class));
+                mock(SubmissionDraftService.class), reissueService, mock(PrilogService.class), mock(VerifikacijaOutbox.class));
 
         lenient().when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(county(7L, "Splitsko-dalmatinska županija")));

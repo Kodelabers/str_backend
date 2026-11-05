@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Outbox zahtjeva za žurnu verifikaciju (T8): jedan redak po RB-u izdanom za NEVERIFICIRAN
+        objekt iz eTurizma. Upisuje ga RegistrationService u istoj transakciji kao izdavanje RB-a,
+        pa RB bez retka (ili redak bez RB-a) ne može nastati.
+
+        Iz retka EturizamVerifikacijaService upisuje str.verification_request i obavijesti
+        službenicima (str.korisnicka_obavijest) — inline nakon commita, a ono što ne prođe ponavlja
+        EturizamVerifikacijaRetryJob. Redak nastaje i dok je integracija ugašena
+        (str.eturizam.verifikacija.enabled=false): ostaje PENDING i obradi se kad se uključi.
+
+        Statusi: PENDING → ZAHTJEV_UPISAN (STR je upisao zahtjev) / ZAHTJEV_POSTOJAO (zahtjev za
+        dokument je već postojao, STR ga nije dirao) / ABANDONED (iscrpljeni pokušaji).
+
+        Postojeći RB-ovi ovdje nemaju redak — backfilla nema.
+    -->
+    <changeSet id="150-eturizam-verifikacija" author="str-backend">
+        <createTable schemaName="str_rn" tableName="eturizam_verifikacija"
+                     remarks="Outbox zahtjeva za žurnu verifikaciju neverificiranog eTurizam objekta nakon izdavanja RB-a">
+            <column name="verifikacija_id" type="UUID" remarks="PK">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="rn" type="VARCHAR(20)" remarks="Izdani RB (registration_number.rn)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="submission_id" type="UUID" remarks="Zahtjev uz koji je RB izdan">
+                <constraints nullable="false"/>
+            </column>
+            <column name="facility_id" type="VARCHAR(64)" remarks="str.facility.id (accommodation.facility_id)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="document_id" type="BIGINT"
+                    remarks="str.facility.document_id = str.verification_request.source_document_id">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(32)"
+                    remarks="PENDING → ZAHTJEV_UPISAN / ZAHTJEV_POSTOJAO / ABANDONED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="verification_request_id" type="BIGINT"
+                    remarks="str.verification_request.id — upisani ili zatečeni zahtjev"/>
+            <column name="obavijesti_poslano" type="INTEGER"
+                    remarks="Broj upisanih redaka str.korisnicka_obavijest; NULL dok redak nije obrađen"/>
+            <column name="attempts" type="INTEGER" defaultValueNumeric="0" remarks="Broj neuspjelih pokušaja">
+                <constraints nullable="false"/>
+            </column>
+            <column name="next_attempt_at" type="TIMESTAMPTZ" remarks="Kad retry job smije pokušati; NULL kad je obrađen"/>
+            <column name="last_error" type="VARCHAR(500)" remarks="Razlog zadnjeg neuspjeha ili odustajanja"/>
+            <column name="created_at" type="TIMESTAMPTZ" remarks="Izdavanje RB-a">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint schemaName="str_rn" tableName="eturizam_verifikacija"
+                             columnNames="rn" constraintName="uq_eturizam_verifikacija_rn"/>
+
+        <createIndex schemaName="str_rn" tableName="eturizam_verifikacija" indexName="idx_eturizam_verifikacija_due">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="eturizam_verifikacija"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

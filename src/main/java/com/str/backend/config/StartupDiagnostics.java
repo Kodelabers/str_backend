@@ -202,6 +202,44 @@ public class StartupDiagnostics {
         } else if (Boolean.TRUE.equals(canWrite)) {
             log.info("startup_schema_writeback str.facility UPDATE=true");
         }
+
+        probeVerifikacija();
+    }
+
+    /**
+     * Prava koja trebaju zahtjevu za zurnu verifikaciju (T8, EturizamVerifikacijaWriter): uvijek
+     * SELECT i INSERT na str.verification_request; uz obavijesti jos SELECT na str.document (nadlezna
+     * jedinica) i str.application_user (primatelji) te INSERT na str.korisnicka_obavijest. Bez njih RB
+     * se svejedno izda, ali svaki pokusaj upisa padne i nakon retry.max-attempts redak ide u ABANDONED.
+     * Samo log, i kad je zastavica ukljucena: grant moze stici nakon deploya.
+     */
+    private void probeVerifikacija() {
+        boolean enabled = env.getProperty("str.eturizam.verifikacija.enabled", Boolean.class, false);
+        boolean obavijesti = env.getProperty("str.eturizam.verifikacija.obavijesti.enabled", Boolean.class, false);
+        List<String[]> potrebna = new ArrayList<>(List.of(
+                new String[]{"str.verification_request", "SELECT"},
+                new String[]{"str.verification_request", "INSERT"}));
+        if (obavijesti) {
+            potrebna.add(new String[]{"str.document", "SELECT"});
+            potrebna.add(new String[]{"str.application_user", "SELECT"});
+            potrebna.add(new String[]{"str.korisnicka_obavijest", "INSERT"});
+        }
+        List<String> nedostaje = new ArrayList<>();
+        for (String[] pravo : potrebna) {
+            // Tablica koja ne postoji baca gresku — i to je „nedostaje".
+            Boolean ima = queryBoolean("select has_table_privilege('" + pravo[0] + "','" + pravo[1] + "')");
+            if (!Boolean.TRUE.equals(ima)) {
+                nedostaje.add(pravo[0] + ":" + pravo[1]);
+            }
+        }
+        if (enabled && !nedostaje.isEmpty()) {
+            log.warn("startup_eturizam_verifikacija enabled=true obavijesti={} nedostaje={} — upis zahtjeva za "
+                    + "zurnu verifikaciju ce padati (eturizam_verifikacija_failed u logu); RB ostaje valjan. "
+                    + "GRANT trazi od vlasnika sheme str (DEPLOY-PREPROD.md 2e)", obavijesti, nedostaje);
+        } else {
+            log.info("startup_eturizam_verifikacija enabled={} obavijesti={} nedostaje={}",
+                    enabled, obavijesti, nedostaje);
+        }
     }
 
     private void probeOne(SchemaProbe probe) {

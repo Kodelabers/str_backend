@@ -154,6 +154,10 @@ izvučen iz kompiliranih `@Query` anotacija).
 - **Legacy registracijski brojevi.** `facility.registration_number` je na CDU popunjen u 4 zapisa —
   kolona je odredište write-backa iz STR-a, a povlačenjem se iz nje briše (v.
   `docs/TUSTART-INTEGRACIJA.md` §6).
+- **Veza zahtjeva za verifikaciju s objektom.** `str.verification_request` nema ni objekt ni RB,
+  nego `source_document_id` (UNIQUE) = `facility.document_id`. STR ga upisuje za RB izdan
+  neverificiranom objektu (T8, `docs/TUSTART-INTEGRACIJA.md` §6e); vezu RB → zahtjev drži
+  `str_rn.eturizam_verifikacija`.
 - **Strukturirana adresa migriranih objekata.** Migrirani zapisi nemaju ulicu ni kućni broj, nego
   samo `full_address` u obliku „Ulica 12" (bez naselja). Verificirani imaju ulicu i kućni broj preko
   ID-eva hijerarhije, a `full_address` im je često prazna (B-3). Imena se razrješavaju joinovima, a
@@ -189,6 +193,12 @@ UNION ALL SELECT 'settlement',                 count(*) FROM str.settlement WHER
 UNION ALL SELECT 'street',                     count(*) FROM str.street WHERE false
 UNION ALL SELECT 'house_number',               count(*) FROM str.house_number WHERE false;
 ```
+
+Pisanje u `str` (ne treba za popis, samo za tokove nakon dodjele RB-a): `UPDATE` na
+`str.facility.registration_number` (write-back, `docs/TUSTART-INTEGRACIJA.md` §6) i `INSERT` na
+`str.verification_request` i `str.korisnicka_obavijest` (žurna verifikacija, §6e). Na CDU testu
+postoje; na preprod/cdupreprod `str_owner` ima samo `SELECT` — grant u `DEPLOY-PREPROD.md` §2e.
+Stanje u logu: `startup_schema_writeback` i `startup_eturizam_verifikacija`.
 
 Shema mora biti **str2** (`document.subtype_code` + `sif_podvrsta_dokumenta`); stara shema (str1,
 `document.document_subtype_id`) nije podržana — `m1-dijagnostika.sql` Q0 to provjerava.

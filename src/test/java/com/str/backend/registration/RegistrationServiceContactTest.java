@@ -31,6 +31,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -96,7 +97,7 @@ class RegistrationServiceContactTest {
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 eventPublisher,
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                prilogService);
+                prilogService, mock(VerifikacijaOutbox.class));
 
         when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));
