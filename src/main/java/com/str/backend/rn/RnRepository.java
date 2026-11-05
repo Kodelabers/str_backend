@@ -4,6 +4,7 @@ import com.str.backend.domain.RnStatus;
 import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnDetailExtras;
+import com.str.backend.rn.dto.RnAccommodationStatsDto;
 import com.str.backend.rn.dto.RnPublicView;
 import com.str.backend.rn.dto.RnSummaryDto;
 import org.springframework.data.domain.Page;
@@ -441,6 +442,20 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             WHERE r.rn = :rn
             """)
     Optional<RnPublicView> findPublicView(@Param("rn") String rn);
+
+    /**
+     * STR-3.3 (T4): JLS (općina/grad) i najveći broj kreveta po RB-u, za mjesečnu dostavu DZS-u preko
+     * SDEP-a (čl. 9. st. 2. STR Uredbe). Bez podataka o iznajmljivaču. RB koji ne postoji jednostavno
+     * nije u rezultatu.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT new com.str.backend.rn.dto.RnAccommodationStatsDto(r.rn, a.city, a.maxBeds)
+            FROM RnEntity r
+            JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE r.rn IN :rns
+            """)
+    List<RnAccommodationStatsDto> findAccommodationStats(@Param("rns") Collection<String> rns);
 
     /** Non-EU popis. Stanje rješenja o kategorizaciji kao na NIAS popisu ({@link #findByLessorOib}). */
     @Transactional(readOnly = true)

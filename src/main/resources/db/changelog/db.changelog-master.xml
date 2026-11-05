@@ -277,4 +277,8 @@
     <!-- Stanje ponovnog pokušaja prilaganja priloga u eGOP: akt i dodjela ne čekaju na priloge. -->
     <include file="db/changelog/changes/149-pismeno-prilog-egop-retry.xml"/>
 
+    <!-- Aktivnosti iz SDEP-a: ispravci i otkazivanja (upsert), broj do 128 znakova s oznakom
+         valjanosti, URL/naziv/adresa oglasa, ISO kod države gosta i brisanje gostiju s aktivnošću. -->
+    <include file="db/changelog/changes/150-activity-sdep-upsert.xml"/>
+
 </databaseChangeLog>

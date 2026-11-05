@@ -1,5 +1,6 @@
 package com.str.backend.activity.dto;
 
+import com.str.backend.activity.RnCheck;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -21,4 +22,9 @@ public class ActivityResponse {
     private int numberOfGuests;
     private String guestCountries;
     private Instant receivedAt;
+    /** Valjanost prijavljenog broja pri primitku (T7). */
+    private RnCheck rnCheck;
+    private String url;
+    private String activityName;
+    private String fullAddress;
 }

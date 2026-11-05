@@ -1,15 +1,23 @@
 package com.str.backend.guest;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
 public interface GuestRepository extends JpaRepository<GuestEntity, UUID> {
 
     List<GuestEntity> findByActivityId(UUID activityId);
+
+    /** Gosti ispravljene aktivnosti zamjenjuju se cijeli (T6). */
+    @Modifying
+    @Query("DELETE FROM GuestEntity g WHERE g.activityId IN :activityIds")
+    int deleteByActivityIds(@Param("activityIds") Collection<UUID> activityIds);
 
     /**
      * STR-3.2: options for the "guest country" filter. Derived from the values actually present
