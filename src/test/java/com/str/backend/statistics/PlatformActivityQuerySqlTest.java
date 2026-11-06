@@ -50,7 +50,8 @@ class PlatformActivityQuerySqlTest {
         String sql = captureRowSql();
         assertThat(sql)
                 .contains("FROM str_rn.accommodation_activity aa")
-                .contains("WHERE (:platformId IS NULL")
+                .contains("WHERE NOT aa.cancelled")
+                .contains("AND (:platformId IS NULL")
                 .contains("GROUP BY aa.rn")
                 .contains("ORDER BY aa.period_from DESC");
         // A missing newline between fragments would produce "AS platformsFROM" / "...))GROUP BY".
@@ -149,7 +150,31 @@ class PlatformActivityQuerySqlTest {
         MapSqlParameterSource params = captureParams();
         assertThat(params.getValue("rnStatus")).isEqualTo("INVALID");
         assertThat(params.getValue("invalidStatuses")).isEqualTo(List.of("SUSPENDED", "REVOKED", "WITHDRAWN"));
-        assertThat(captureRowSql()).contains("OR (:rnStatus = 'INVALID' AND rn.status IN (:invalidStatuses)))");
+        assertThat(captureRowSql()).contains("OR (:rnStatus = 'INVALID' AND (rn.rn IS NULL OR rn.status IN (:invalidStatuses)))");
+    }
+
+    /** T7 (dogovoreno sa STR-om 3.11.): broj kojeg nema u registru vidi se u pregledu. */
+    @Test
+    void unknownNumbersAreShown() {
+        query.queryAll(PlatformActivityFilter.none(), null, ANY_LIMIT);
+
+        assertThat(captureRowSql())
+                .contains("LEFT JOIN str_rn.registration_number rn ON rn.rn = aa.rn")
+                .contains("LEFT JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id")
+                // Filtar inozemnih ostaje kakav je bio: broj bez registra nije inozemni iznajmljivač
+                .contains("(rn.rn IS NOT NULL AND l.lessor_oib IS NULL)");
+    }
+
+    /** Boravak preko granice mjeseca broji u razdoblju samo svoja noćenja (dogovoreno sa STR-om 3.11.). */
+    @Test
+    void nightsAreClippedToThePeriod() {
+        query.queryAll(PlatformActivityFilter.none(), null, ANY_LIMIT);
+
+        assertThat(captureRowSql())
+                .contains("LEAST(aa.period_to, COALESCE(CAST(:toDate AS DATE) + 1, aa.period_to))")
+                .contains("GREATEST(aa.period_from, COALESCE(CAST(:od AS DATE), aa.period_from))")
+                .contains("SUM(aa.guest_count) AS guests_total")
+                .doesNotContain("SUM(aa.overnight_stays) AS nights");
     }
 
     /** Stranica, broj redaka i zaglavlje (anomalije) dijele isti filtar, pa i istu granu „nevažeći". */

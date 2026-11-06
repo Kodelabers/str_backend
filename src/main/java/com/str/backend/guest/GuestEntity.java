@@ -28,12 +28,23 @@ public class GuestEntity {
     @Column(name = "country", length = 64, nullable = false)
     private String country;
 
+    /** ISO 3166-1 alpha-3 ili {@code N/A}, kako ga šalje SDEP (za Eurostat); NULL za stare retke. */
+    @Column(name = "country_code", length = 3)
+    private String countryCode;
+
     public static GuestEntity create(UUID activityId, int guestCount, String country) {
         GuestEntity g = new GuestEntity();
         g.guestId = UUID.randomUUID();
         g.activityId = activityId;
         g.guestCount = guestCount;
         g.country = country;
+        return g;
+    }
+
+    /** Gosti iz jedne države, kako ih šalje SDEP: kod za statistiku, naziv za prikaz i filtar. */
+    public static GuestEntity fromSdep(UUID activityId, int guestCount, String countryCode, String countryName) {
+        GuestEntity g = create(activityId, guestCount, countryName);
+        g.countryCode = countryCode;
         return g;
     }
 }

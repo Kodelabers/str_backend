@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Aktivnosti iz SDEP-a (T6, T7, T9; dogovoreno sa SDEP-om 3.11.2026.).
+
+        T6 — ispravci i otkazivanja: SDEP uz svaki unos šalje svoj ID aktivnosti i vrijeme verzije.
+        Novija verzija iste aktivnosti iste platforme zamjenjuje redak (i goste), ista ili starija ne
+        mijenja ništa. Otkazana aktivnost ostaje zapisana s cancelled=true, ali je izvan pregleda i
+        statistike. Ključ je djelomičan: stari unosi i ručni ingest nemaju sdep_activity_id.
+
+        T7 — registracijski broj: platforma smije prijaviti i broj koji nije naš (do 128 znakova,
+        EU model). Takav broj se sprema i označava u rn_check (INVALID_FORMAT, UNKNOWN, NOT_ACTIVE,
+        VALID), umjesto da CHECK ruši cijeli paket kao 500. Iz tih oznaka nastaje popis nevažećih
+        brojeva.
+
+        T9 — URL, naziv i adresa oglasa, za provjeru oglasa i usporedbu adrese s objektom. Brišu se
+        s retkom, nakon 18 mjeseci.
+
+        Gosti po državama idu u postojeću tablicu guest; country_code je ISO 3166-1 alpha-3 ili N/A
+        (Eurostat), a country ostaje naziv za prikaz i filtar. Strani ključ prema aktivnosti dobiva
+        ON DELETE CASCADE: brisanje nakon 18 mjeseci (purgeExpired) i zamjena gostiju pri ispravku
+        inače padaju na fk_guest_activity.
+    -->
+    <changeSet id="150-activity-sdep-upsert" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="accommodation_activity">
+            <column name="sdep_activity_id" type="VARCHAR(64)"
+                    remarks="ID aktivnosti u SDEP-u; NULL za unose bez SDEP-a"/>
+            <column name="sdep_version" type="TIMESTAMPTZ"
+                    remarks="Vrijeme verzije aktivnosti u SDEP-u; novija zamjenjuje stariju"/>
+            <column name="cancelled" type="BOOLEAN" defaultValueBoolean="false"
+                    remarks="Platforma je otkazala aktivnost; izvan pregleda i statistike">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rn_check" type="VARCHAR(16)" defaultValue="VALID"
+                    remarks="Valjanost prijavljenog broja pri primitku: VALID, INVALID_FORMAT, UNKNOWN, NOT_ACTIVE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="url" type="VARCHAR(2048)" remarks="URL oglasa"/>
+            <column name="activity_name" type="VARCHAR(64)" remarks="Naziv oglasa"/>
+            <column name="full_address" type="VARCHAR(328)" remarks="Adresa iz oglasa"/>
+        </addColumn>
+
+        <modifyDataType schemaName="str_rn" tableName="accommodation_activity"
+                        columnName="rn" newDataType="VARCHAR(128)"/>
+        <!-- Popis država bez ponavljanja; s 1024 gosta (EU model) to je do 4096 znakova, ne 64 -->
+        <modifyDataType schemaName="str_rn" tableName="accommodation_activity"
+                        columnName="guest_country" newDataType="VARCHAR(4096)"/>
+        <sql>ALTER TABLE str_rn.accommodation_activity DROP CONSTRAINT chk_activity_rn_format</sql>
+        <sql>
+            ALTER TABLE str_rn.accommodation_activity
+                ADD CONSTRAINT chk_activity_rn_check
+                    CHECK (rn_check IN ('VALID', 'INVALID_FORMAT', 'UNKNOWN', 'NOT_ACTIVE'))
+        </sql>
+
+        <!-- Postojeći retci: format je bio prisiljen, pa ostaje samo broj kojeg nema u registru -->
+        <sql>
+            UPDATE str_rn.accommodation_activity aa
+               SET rn_check = 'UNKNOWN'
+             WHERE NOT EXISTS (SELECT 1 FROM str_rn.registration_number r WHERE r.rn = aa.rn)
+        </sql>
+
+        <sql>
+            CREATE UNIQUE INDEX uq_activity_platform_sdep_activity
+                ON str_rn.accommodation_activity (platform_id, sdep_activity_id)
+             WHERE sdep_activity_id IS NOT NULL
+        </sql>
+
+        <addColumn schemaName="str_rn" tableName="guest">
+            <column name="country_code" type="VARCHAR(3)"
+                    remarks="ISO 3166-1 alpha-3 ili N/A, kako ga šalje SDEP; NULL za stare retke"/>
+        </addColumn>
+        <sql>ALTER TABLE str_rn.guest DROP CONSTRAINT fk_guest_activity</sql>
+        <sql>
+            ALTER TABLE str_rn.guest
+                ADD CONSTRAINT fk_guest_activity
+                    FOREIGN KEY (activity_id) REFERENCES str_rn.accommodation_activity (activity_id)
+                    ON DELETE CASCADE
+        </sql>
+
+        <rollback>
+            <sql>ALTER TABLE str_rn.guest DROP CONSTRAINT fk_guest_activity</sql>
+            <sql>
+                ALTER TABLE str_rn.guest
+                    ADD CONSTRAINT fk_guest_activity
+                        FOREIGN KEY (activity_id) REFERENCES str_rn.accommodation_activity (activity_id)
+            </sql>
+            <dropColumn schemaName="str_rn" tableName="guest" columnName="country_code"/>
+            <sql>DROP INDEX str_rn.uq_activity_platform_sdep_activity</sql>
+            <sql>ALTER TABLE str_rn.accommodation_activity DROP CONSTRAINT chk_activity_rn_check</sql>
+            <dropColumn schemaName="str_rn" tableName="accommodation_activity" columnName="full_address"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation_activity" columnName="activity_name"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation_activity" columnName="url"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation_activity" columnName="rn_check"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation_activity" columnName="cancelled"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation_activity" columnName="sdep_version"/>
+            <dropColumn schemaName="str_rn" tableName="accommodation_activity" columnName="sdep_activity_id"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -15,7 +15,8 @@ public interface AccommodationActivityRepository extends JpaRepository<Accommoda
 
     @Query("""
             SELECT a FROM AccommodationActivityEntity a
-            WHERE (:platformId IS NULL OR a.platformId = :platformId)
+            WHERE a.cancelled = false
+              AND (:platformId IS NULL OR a.platformId = :platformId)
               AND (:rn IS NULL OR a.rn = :rn)
               AND (:od IS NULL OR a.periodTo >= :od)
               AND (:toDate IS NULL OR a.periodFrom <= :toDate)
@@ -28,7 +29,8 @@ public interface AccommodationActivityRepository extends JpaRepository<Accommoda
     /** Kao {@link #search}, samo za RB-ove smještaja u zadanim županijama (opseg službenika). */
     @Query("""
             SELECT a FROM AccommodationActivityEntity a
-            WHERE (:platformId IS NULL OR a.platformId = :platformId)
+            WHERE a.cancelled = false
+              AND (:platformId IS NULL OR a.platformId = :platformId)
               AND (:rn IS NULL OR a.rn = :rn)
               AND (:od IS NULL OR a.periodTo >= :od)
               AND (:toDate IS NULL OR a.periodFrom <= :toDate)
@@ -43,6 +45,11 @@ public interface AccommodationActivityRepository extends JpaRepository<Accommoda
                                                        @Param("toDate") LocalDate toDate,
                                                        @Param("counties") Collection<String> counties);
 
+    /** Već zapisane verzije aktivnosti iz SDEP-a, za upsert (T6). */
+    List<AccommodationActivityEntity> findByPlatformIdAndSdepActivityIdIn(Long platformId,
+                                                                          Collection<String> sdepActivityIds);
+
+    /** Gosti se brišu s aktivnošću ({@code fk_guest_activity ON DELETE CASCADE}, changeset 150). */
     @Modifying
     @Query("DELETE FROM AccommodationActivityEntity a WHERE a.purgeAfter <= :now")
     int purgeExpired(@Param("now") Instant now);
