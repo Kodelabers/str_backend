@@ -25,7 +25,7 @@
       Gated context="local".
     -->
 
-    <changeSet id="151-str-document-jurisdiction-unit" author="str-backend" context="local">
+    <changeSet id="152-str-document-jurisdiction-unit" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><columnExists schemaName="str" tableName="document" columnName="jurisdiction_organizational_unit_id"/></not>
             <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->
@@ -43,7 +43,7 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="151-str-application-user-unit" author="str-backend" context="local">
+    <changeSet id="152-str-application-user-unit" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><columnExists schemaName="str" tableName="application_user" columnName="organizational_unit_id"/></not>
             <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->
@@ -60,7 +60,7 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="151-str-verification-request" author="str-backend" context="local">
+    <changeSet id="152-str-verification-request" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><tableExists schemaName="str" tableName="verification_request"/></not>
             <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->
@@ -83,7 +83,7 @@
         </createTable>
     </changeSet>
 
-    <changeSet id="151-str-korisnicka-obavijest" author="str-backend" context="local">
+    <changeSet id="152-str-korisnicka-obavijest" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><tableExists schemaName="str" tableName="korisnicka_obavijest"/></not>
             <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->

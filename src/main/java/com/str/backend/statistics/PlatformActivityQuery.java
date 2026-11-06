@@ -54,6 +54,16 @@ class PlatformActivityQuery {
     private static final String INVALID_STATUS = "INVALID";
 
     /**
+     * Noćenja boravka unutar odabranog razdoblja: boravak preko granice mjeseca broji se u svakom
+     * mjesecu samo s noćima tog mjeseca, a ne cijeli u oba (dogovoreno sa SDEP-om 3.11.2026.).
+     * Bez razdoblja ostaje zapisani broj noćenja.
+     */
+    private static final String NIGHTS_IN_RANGE =
+            "CASE WHEN CAST(:od AS DATE) IS NULL AND CAST(:toDate AS DATE) IS NULL THEN aa.overnight_stays\n"
+          + "     ELSE GREATEST(0, LEAST(aa.period_to, COALESCE(CAST(:toDate AS DATE) + 1, aa.period_to))\n"
+          + "                    - GREATEST(aa.period_from, COALESCE(CAST(:od AS DATE), aa.period_from))) END";
+
+    /**
      * Statusi filtra „nevažeći", isti kao u registru ({@link RnRegistryView#INVALID}). Vežu se kao
      * parametar, ne lijepe u SQL.
      */
@@ -63,8 +73,8 @@ class PlatformActivityQuery {
     private static final String FROM_JOINS = """
             FROM str_rn.accommodation_activity aa
             JOIN str_rn.online_platform p ON p.platform_id = aa.platform_id
-            JOIN str_rn.registration_number rn ON rn.rn = aa.rn
-            JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id
+            LEFT JOIN str_rn.registration_number rn ON rn.rn = aa.rn
+            LEFT JOIN str_rn.accommodation a ON a.accommodation_id = rn.accommodation_id
             LEFT JOIN str_rn.submission s ON s.submission_id = rn.submission_id
             LEFT JOIN str_rn.lessor l ON l.lessor_id = s.lessor_id
             """;
@@ -75,7 +85,9 @@ class PlatformActivityQuery {
      * still cover the whole activity, not just that country's share.
      */
     private static final String WHERE_FILTERS =
-            "WHERE (:platformId IS NULL OR aa.platform_id = :platformId)\n"
+            // Otkazana aktivnost ostaje zapisana, ali nije u pregledu ni statistici (T6)
+            "WHERE NOT aa.cancelled\n"
+          + "  AND (:platformId IS NULL OR aa.platform_id = :platformId)\n"
           + "  AND (:od IS NULL OR aa.period_to >= :od)\n"
           + "  AND (:toDate IS NULL OR aa.period_from <= :toDate)\n"
           + "  AND (:county IS NULL OR a.county = :county)\n"
@@ -85,7 +97,7 @@ class PlatformActivityQuery {
           // 'nevažeći' (INVALID) nije status nego skupina — RnRegistryView.INVALID: suspendirani,
           // opozvani i povučeni. Uspoređivao se s nepostojećim statusom INVALID i vraćao prazno.
           + "  AND (:rnStatus IS NULL OR rn.status = :rnStatus\n"
-          + "       OR (:rnStatus = '" + INVALID_STATUS + "' AND rn.status IN (:invalidStatuses)))\n"
+          + "       OR (:rnStatus = '" + INVALID_STATUS + "' AND (rn.rn IS NULL OR rn.status IN (:invalidStatuses))))\n"
           // Partial match, matching the public registry's `rb` filter — the same field behaving
           // differently on two screens was an accident, not a design decision.
           + "  AND (:rn IS NULL OR aa.rn ILIKE :rnLike)\n"
@@ -99,13 +111,13 @@ class PlatformActivityQuery {
           + "       OR (COALESCE(l.first_name,'') || ' ' || COALESCE(l.last_name,'')) ILIKE :qLike\n"
           + "       OR COALESCE(l.legal_entity_name,'') ILIKE :qLike)\n"
           + "  AND (:anomaliesOnly = FALSE OR " + ANOMALY_PREDICATE + ")\n"
-          + "  AND (:foreignOnly = FALSE OR l.lessor_oib IS NULL)\n"
+          + "  AND (:foreignOnly = FALSE OR (rn.rn IS NOT NULL AND l.lessor_oib IS NULL))\n"
           + "  AND (:guestCountry IS NULL OR EXISTS (\n"
           + "          SELECT 1 FROM str_rn.guest g\n"
           + "          WHERE g.activity_id = aa.activity_id\n"
           + "            AND LOWER(g.country) = LOWER(:guestCountry)))\n";
 
-    private static final String BASE_SQL = """
+    private static final String BASE_SQL = ("""
             SELECT
                 aa.rn || '|' || aa.period_from::text || '|' || aa.period_to::text AS id,
                 aa.rn AS rb,
@@ -117,7 +129,7 @@ class PlatformActivityQuery {
                 rn.status AS rn_status,
                 aa.period_from,
                 aa.period_to,
-                SUM(aa.overnight_stays) AS nights,
+                SUM({NIGHTS}) AS nights,
                 SUM(aa.guest_count) AS guests_total,
                 MAX(aa.received_at) AS reported_at,
                 JSON_AGG(DISTINCT jsonb_build_object(
@@ -131,7 +143,7 @@ class PlatformActivityQuery {
             GROUP BY aa.rn, a.street, a.street_number, a.city, a.county,
                      rn.status, l.first_name, l.last_name, aa.period_from, aa.period_to
             ORDER BY aa.period_from DESC, aa.rn
-            """;
+            """).replace("{NIGHTS}", NIGHTS_IN_RANGE);
 
     private static final String COUNT_SQL = "SELECT COUNT(*) FROM (" + BASE_SQL + ") AS sub";
 
@@ -139,7 +151,7 @@ class PlatformActivityQuery {
             "SELECT\n"
           + "    COUNT(DISTINCT aa.rn) AS accommodations_with_activities,\n"
           + "    COUNT(DISTINCT aa.platform_id) AS platforms_reporting,\n"
-          + "    COALESCE(SUM(aa.overnight_stays), 0) AS total_nights,\n"
+          + "    COALESCE(SUM(" + NIGHTS_IN_RANGE + "), 0) AS total_nights,\n"
           + "    COALESCE(SUM(aa.guest_count), 0) AS total_guests,\n"
           + "    COUNT(DISTINCT CASE WHEN " + ANOMALY_PREDICATE + " THEN aa.rn END) AS anomalies\n"
           + FROM_JOINS
@@ -301,6 +313,7 @@ class PlatformActivityQuery {
             WHERE aa.rn = :rn
               AND aa.period_from = :periodFrom
               AND aa.period_to   = :periodTo
+              AND NOT aa.cancelled
             GROUP BY p.platform_id, p.name
             ORDER BY p.name
             """;
@@ -316,6 +329,7 @@ class PlatformActivityQuery {
             WHERE aa.rn = :rn
               AND aa.period_from = :periodFrom
               AND aa.period_to   = :periodTo
+              AND NOT aa.cancelled
             GROUP BY aa.platform_id, g.country
             """;
 

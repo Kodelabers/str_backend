@@ -13,7 +13,7 @@
         Status PRESKOCENO (bez promjene sheme, status je varchar): RB opozvan/povučen ili objekt
         verificiran prije obrade retka.
     -->
-    <changeSet id="152-eturizam-verifikacija-objekt" author="str-backend">
+    <changeSet id="153-eturizam-verifikacija-objekt" author="str-backend">
         <addColumn schemaName="str_rn" tableName="eturizam_verifikacija">
             <column name="objekt_naziv" type="VARCHAR(255)" remarks="Naziv objekta iz eTurizma pri izdavanju RB-a"/>
             <column name="objekt_mjesto" type="VARCHAR(255)" remarks="Naselje ili općina objekta iz eTurizma pri izdavanju RB-a"/>

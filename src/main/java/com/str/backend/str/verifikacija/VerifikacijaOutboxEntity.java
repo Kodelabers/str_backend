@@ -15,7 +15,7 @@ import java.util.UUID;
 
 /**
  * Zahtjev za žurnu verifikaciju koji STR duguje eTurizmu za jedan izdani RB
- * ({@code str_rn.eturizam_verifikacija}, changeset 150). Nastaje u transakciji izdavanja RB-a,
+ * ({@code str_rn.eturizam_verifikacija}, changeset 151). Nastaje u transakciji izdavanja RB-a,
  * a zatvara ga {@link EturizamVerifikacijaWriter} kad upiše (ili zatekne) zahtjev u
  * {@code str.verification_request}.
  */

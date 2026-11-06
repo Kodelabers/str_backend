@@ -203,7 +203,7 @@ para).
 | `VerifikacijaObavijest` | tekst, čišćenje i opis objekta, `podaci` JSON, skraćivanje (čiste funkcije) |
 | `VerifikacijaGreska` | razvrstavanje neuspjeha (bez prava / infrastruktura / podaci) i siguran opis |
 
-### 4.3 Outbox `str_rn.eturizam_verifikacija` (changeseti 150, 152)
+### 4.3 Outbox `str_rn.eturizam_verifikacija` (changeseti 151, 153)
 
 | Stupac | Tip | Napomena |
 |---|---|---|
@@ -221,7 +221,7 @@ para).
 | `last_error` | varchar(500) | razlog neuspjeha, preskakanja ili odustajanja; `bez_prava: …` dok čeka GRANT |
 | `created_at`, `updated_at` | timestamptz NOT NULL | |
 
-Indeks `(status, next_attempt_at)`. Lokalno (changeset 151, `context="local"` i uvjet da je
+Indeks `(status, next_attempt_at)`. Lokalno (changeset 152, `context="local"` i uvjet da je
 `str.application_user` lokalni mock bez `created_by`): mock `str.verification_request` i
 `str.korisnicka_obavijest` 1:1 kao na CDU-u, plus `str.document.jurisdiction_organizational_unit_id`
 (postavljen samo seedanim dokumentima 900–999) i `str.application_user.organizational_unit_id`.

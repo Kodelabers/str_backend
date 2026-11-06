@@ -2,6 +2,9 @@ package com.str.backend.activity;
 
 import com.str.backend.activity.dto.SdepIngestRequest;
 import com.str.backend.admin.AdminAuditService;
+import com.str.backend.guest.GuestCountryNames;
+import com.str.backend.guest.GuestRepository;
+import com.str.backend.rn.RnRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -30,7 +33,8 @@ class AccommodationActivityServiceTest {
     void setUp() {
         repository = mock(AccommodationActivityRepository.class);
         auditService = mock(AdminAuditService.class);
-        service = new AccommodationActivityService(repository, auditService);
+        service = new AccommodationActivityService(repository, auditService, mock(RnRepository.class),
+                mock(GuestRepository.class), mock(GuestCountryNames.class));
     }
 
     @Test

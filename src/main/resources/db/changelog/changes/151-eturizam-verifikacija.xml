@@ -20,7 +20,7 @@
 
         Postojeći RB-ovi ovdje nemaju redak — backfilla nema.
     -->
-    <changeSet id="150-eturizam-verifikacija" author="str-backend">
+    <changeSet id="151-eturizam-verifikacija" author="str-backend">
         <createTable schemaName="str_rn" tableName="eturizam_verifikacija"
                      remarks="Outbox zahtjeva za žurnu verifikaciju neverificiranog eTurizam objekta nakon izdavanja RB-a">
             <column name="verifikacija_id" type="UUID" remarks="PK">
