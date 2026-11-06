@@ -139,6 +139,33 @@ class StartupDiagnosticsTest {
                 && e.getFormattedMessage().startsWith("startup_eturizam_verifikacija"));
     }
 
+    @Test
+    @DisplayName("zurna verifikacija: preduga sifra i predlozak bez {rn} su ERROR, i bez PostgreSQL-a")
+    void verifikacija_invalidNotificationConfig_isError() {
+        List<ILoggingEvent> zapisi = uhvatiLog(env()
+                .withProperty("str.eturizam.verifikacija.obavijesti.enabled", "true")
+                .withProperty("str.eturizam.verifikacija.obavijesti.vrsta", "X".repeat(65))
+                .withProperty("str.eturizam.verifikacija.obavijesti.tekst", "Objekt {objekt} nije verificiran."));
+
+        assertThat(zapisi).filteredOn(e -> e.getLevel() == Level.ERROR
+                        && e.getFormattedMessage().startsWith("eturizam_verifikacija_config"))
+                .extracting(ILoggingEvent::getFormattedMessage)
+                .anyMatch(m -> m.contains("obavijesti.vrsta ima 65"))
+                .anyMatch(m -> m.contains("nema {rn}"))
+                .noneMatch(m -> m.contains("objekt-tip"));
+    }
+
+    @Test
+    @DisplayName("zurna verifikacija: zadane vrijednosti (prazni kljucevi) su ispravne")
+    void verifikacija_defaultNotificationConfig_noError() {
+        List<ILoggingEvent> zapisi = uhvatiLog(env()
+                .withProperty("str.eturizam.verifikacija.obavijesti.enabled", "true")
+                .withProperty("str.eturizam.verifikacija.obavijesti.vrsta", "")
+                .withProperty("str.eturizam.verifikacija.obavijesti.tekst", ""));
+
+        assertThat(zapisi).noneMatch(e -> e.getFormattedMessage().startsWith("eturizam_verifikacija_config"));
+    }
+
     /** PostgreSQL baza na kojoj su sva prava osim {@code bezPrava} (te sonde vraćaju false). */
     private static List<ILoggingEvent> uhvatiLogPostgres(MockEnvironment env, String... bezPrava) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);

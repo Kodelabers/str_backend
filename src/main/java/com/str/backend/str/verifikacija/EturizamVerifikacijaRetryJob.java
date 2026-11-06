@@ -21,6 +21,15 @@ import java.util.List;
  * ({@link EturizamVerifikacijaWriter}), pa zaključan redak ne zaustavlja ostale {@code @Scheduled} poslove
  * dulje od {@code str.eturizam.verifikacija.timeout}. Pokušaj nosi broj pokušaja iz ovog čitanja: redak
  * koji je u međuvremenu obradio drugi pokušaj (druga instanca, zakašnjeli inline) se preskače.
+ *
+ * <p><b>Prvi infrastrukturni neuspjeh prekida seriju</b> (istek vremena, zaključavanje, veza, nedostaje
+ * GRANT — {@link EturizamVerifikacijaService.Ishod#NEUSPJEH_INFRASTRUKTURA}): isto bi palo na svakom
+ * sljedećem retku, a serija od 50 redaka po 10 s zauzela bi zajedničku nit {@code @Scheduled} poslova
+ * (eGOP, mail retry) osam minuta. Ostatak čeka sljedeći prolazak. Neuspjeh jednog retka zbog podataka
+ * seriju ne prekida.
+ *
+ * <p>Cron ({@code str.eturizam.verifikacija.retry.cron}) ima zadanu vrijednost samo u
+ * {@code application.properties}: nije dio {@link EturizamVerifikacijaProperties}.
  */
 @Component
 @ConditionalOnProperty(name = "str.eturizam.verifikacija.enabled", havingValue = "true")
@@ -36,16 +45,23 @@ public class EturizamVerifikacijaRetryJob {
         this.service = service;
     }
 
-    @Scheduled(cron = "${str.eturizam.verifikacija.retry.cron:0 */5 * * * *}")
+    @Scheduled(cron = "${str.eturizam.verifikacija.retry.cron}")
     public void retryDue() {
         List<VerifikacijaOutboxEntity> due = outbox.due();
         if (due.isEmpty()) {
             return;
         }
         log.info("eturizam_verifikacija_retry_start due={}", due.size());
+        int obradeno = 0;
         for (VerifikacijaOutboxEntity zapis : due) {
-            service.obradi(EturizamVerifikacijaWriter.Pokusaj.izReda(zapis));
+            obradeno++;
+            if (service.obradi(EturizamVerifikacijaWriter.Pokusaj.izReda(zapis))
+                    == EturizamVerifikacijaService.Ishod.NEUSPJEH_INFRASTRUKTURA) {
+                log.warn("eturizam_verifikacija_retry_aborted processed={} remaining={} — infrastrukturni neuspjeh, "
+                        + "ostatak serije čeka sljedeći prolazak", obradeno, due.size() - obradeno);
+                return;
+            }
         }
-        log.info("eturizam_verifikacija_retry_done processed={}", due.size());
+        log.info("eturizam_verifikacija_retry_done processed={}", obradeno);
     }
 }

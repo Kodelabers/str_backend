@@ -11,6 +11,11 @@
       (5. 11. 2026., docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md § 3a). Na dev/CDU/preprod/prod tablice
       postoje i vodi ih eTurizam — ondje se svaki changeset preskače (preconditions).
 
+      Dvostruka zaštita uz context="local": svaki changeset traži i da je str.application_user lokalni
+      mock (bez audit stupca created_by, kao uvjet seeda 138), pa ni pogrešno postavljeni konteksti ne
+      mogu izvršiti DDL nad pravom eTurizmovom shemom. Jedinica se upisuje samo seedanim dokumentima
+      (900–999: seedovi 123, 131, 132).
+
       Uz njih stupci koje čita odabir primatelja: str.document.jurisdiction_organizational_unit_id
       (nadležna jedinica dokumenta) i str.application_user.organizational_unit_id (jedinica
       službenika). Lokalno: službenik 900001 (seed 138) je u jedinici 9136 (seed 146), a ona je
@@ -23,12 +28,15 @@
     <changeSet id="151-str-document-jurisdiction-unit" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><columnExists schemaName="str" tableName="document" columnName="jurisdiction_organizational_unit_id"/></not>
+            <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->
+            <not><columnExists schemaName="str" tableName="application_user" columnName="created_by"/></not>
+            <not><columnExists schemaName="str" tableName="document" columnName="created_by"/></not>
         </preConditions>
         <addColumn schemaName="str" tableName="document">
             <column name="jurisdiction_organizational_unit_id" type="BIGINT"/>
         </addColumn>
         <sql>
-            UPDATE str.document SET jurisdiction_organizational_unit_id = 9136;
+            UPDATE str.document SET jurisdiction_organizational_unit_id = 9136 WHERE id BETWEEN 900 AND 999;
         </sql>
         <rollback>
             <dropColumn schemaName="str" tableName="document" columnName="jurisdiction_organizational_unit_id"/>
@@ -38,6 +46,8 @@
     <changeSet id="151-str-application-user-unit" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><columnExists schemaName="str" tableName="application_user" columnName="organizational_unit_id"/></not>
+            <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->
+            <not><columnExists schemaName="str" tableName="application_user" columnName="created_by"/></not>
         </preConditions>
         <addColumn schemaName="str" tableName="application_user">
             <column name="organizational_unit_id" type="BIGINT"/>
@@ -53,6 +63,8 @@
     <changeSet id="151-str-verification-request" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><tableExists schemaName="str" tableName="verification_request"/></not>
+            <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->
+            <not><columnExists schemaName="str" tableName="application_user" columnName="created_by"/></not>
         </preConditions>
         <createTable schemaName="str" tableName="verification_request">
             <column name="id" type="BIGINT" autoIncrement="true">
@@ -74,6 +86,8 @@
     <changeSet id="151-str-korisnicka-obavijest" author="str-backend" context="local">
         <preConditions onFail="MARK_RAN">
             <not><tableExists schemaName="str" tableName="korisnicka_obavijest"/></not>
+            <!-- Lokalni mock, ne pravi eTurizam: pravi str.application_user ima audit stupce (v. seed 138). -->
+            <not><columnExists schemaName="str" tableName="application_user" columnName="created_by"/></not>
         </preConditions>
         <createTable schemaName="str" tableName="korisnicka_obavijest">
             <column name="id" type="BIGINT" autoIncrement="true">

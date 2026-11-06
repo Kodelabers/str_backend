@@ -36,7 +36,8 @@ Dogovor s eTurizmom (Simon, 5. 11. 2026.):
 | RB-ovi izdani prije puštanja | Bez backfilla. |
 | Dokument bez nadležne jedinice / jedinica bez aktivnih internih korisnika | Zahtjev se upisuje, obavijesti ne; WARN s RB-om i id-em dokumenta. |
 | Tekst obavijesti | „Smještajnom objektu „{naziv}“ ({mjesto}, ID {facilityId}) dodijeljen je registracijski broj {rn}. Objekt nije verificiran – potrebna je žurna verifikacija.“ |
-| Zastarjeli zaostatak | Retci nastali dok je zastavica ugašena obrade se kad se uključi (zahtjev ima smisla i kasno; obavijesti također). |
+| Zastarjeli zaostatak | Retci nastali dok je zastavica ugašena obrade se kad se uključi, osim kad je RB u međuvremenu opozvan ili povučen, ili objekt verificiran (`PRESKOCENO`). Suspendiran RB se obrađuje. |
+| Broj primatelja | Najviše 200 po zahtjevu (`max-primatelja`), iznad toga WARN i prvih 200 po id-u. |
 
 ## 3. Činjenice iz koda (stanje `develop`)
 
@@ -104,7 +105,7 @@ Rezultati su u `docs/sql/results/zurna_verifikacija/`.
 
 **Prava (V11):**
 - `shorttermrental` (CDU test) ima SELECT, INSERT i UPDATE na obje tablice.
-- **`str_owner` ima samo SELECT.** Preprod i cdupreprod rade pod ulogom `str_owner`, pa ondje upis ne prolazi. Treba `GRANT INSERT, UPDATE ON str.verification_request, str.korisnicka_obavijest TO str_owner` (Darko). Prava produkcijskog korisnika nisu provjerena.
+- **`str_owner` ima samo SELECT.** Preprod i cdupreprod rade pod ulogom `str_owner`, pa ondje upis ne prolazi. Treba (najmanje potrebno) `GRANT SELECT, INSERT ON str.verification_request` i `GRANT INSERT ON str.korisnicka_obavijest` za `str_owner` (Darko); v. § 4.5. Prava produkcijskog korisnika nisu provjerena.
 
 **Posljedice za dizajn:**
 - INSERT zahtjeva: prvo `SELECT` po `source_document_id`, pa `INSERT` i čitanje `id`-a po dokumentu (prenosivo na H2; v. § 4.1 — `ON CONFLICT … RETURNING` nije korišten).
@@ -117,67 +118,92 @@ Rezultati su u `docs/sql/results/zurna_verifikacija/`.
 ### 4.1 Tok
 
 1. **Izdavanje RB-a** (`RegistrationService.commitRegistration`, ista transakcija):
-   `VerifikacijaOutbox.zabiljezi(rn, submissionId, facilityId, facility)` upisuje redak u
-   `str_rn.eturizam_verifikacija` (`PENDING`) samo za neverificiran eTurizam objekt s `documentId`.
-   Bez `documentId` → WARN `eturizam_verifikacija_bez_dokumenta`, retka nema. Redak nastaje i dok je
-   zastavica ugašena. `verifyAndCompleteFacility` sada vraća provjereni `FacilityOwnershipRow`.
+   `VerifikacijaOutbox.zabiljezi(rn, submissionId, facilityId, facility)` (`MANDATORY`) upisuje redak u
+   `str_rn.eturizam_verifikacija` (`PENDING`) samo za neverificiran eTurizam objekt, s nazivom i mjestom
+   objekta **iz eTurizma** (`findOwnership`; naziv kroz `FacilityClaimVerifier.objectName`, koji odbacuje
+   popunjivače i ime vlasnika). `documentId` `null` ili `≤ 0` → WARN `eturizam_verifikacija_bez_dokumenta`,
+   retka nema (u praksi ne stiže: `findOwnership` dokument spaja obaveznim joinom). Redak nastaje i dok
+   je zastavica ugašena. `verifyAndCompleteFacility` vraća provjereni `FacilityOwnershipRow`.
 2. **Nakon commita** (`EturizamVerifikacijaListener`, `AFTER_COMMIT` na `RnIssuedEvent`, zaseban
-   slušatelj, ništa ne baca) → `EturizamVerifikacijaService.obradi(rn)`.
+   slušatelj, ništa ne baca, `@Order(LOWEST_PRECEDENCE)` — `RnIssuedListener` (write-back, eGOP) ide prvi)
+   → `EturizamVerifikacijaService.obradi(Pokusaj.inline(rn))`.
 3. **Jedan pokušaj = jedna `REQUIRES_NEW` transakcija** (`EturizamVerifikacijaWriter.upisi`):
-   outbox redak `SELECT … FOR UPDATE` (inline i job ne obrađuju isti RB istodobno) → postoji li zahtjev
-   za dokument → INSERT zahtjeva → (samo ako ga je upisao STR i obavijesti su uključene) po jedan
-   INSERT obavijesti za svakog primatelja → outbox `ZAHTJEV_UPISAN` / `ZAHTJEV_POSTOJAO`. Ista baza,
-   pa je sve atomarno: bilo koja greška poništava i zahtjev i obavijesti.
-4. **Neuspjeh** se bilježi u zasebnoj `REQUIRES_NEW` (`VerifikacijaOutbox.recordFailure`):
-   `attempts + 1`, `next_attempt_at` po `EgopRetryPolicy` (5 min, 10, 20 … do 2 h), `last_error` =
-   najdublji uzrok. Nakon `max-attempts` (10) → `ABANDONED` + ERROR `eturizam_verifikacija_exhausted`
-   s RB-om i id-em dokumenta.
-5. **Retry** (`EturizamVerifikacijaRetryJob`, samo uz `enabled=true`, cron
-   `str.eturizam.verifikacija.retry.cron`): dospjeli `PENDING` retci kroz isti put kao inline. Novi
-   redak dospijeva tek nakon `backoff-base`, da job ne preteče inline pokušaj.
+   outbox redak `SELECT … FOR UPDATE` → je li pokušaj još na redu (v. 6.) → **provjera pri obradi**:
+   RB opozvan/povučen (`str_rn.registration_number.status` `REVOKED`/`WITHDRAWN`), RB-a nema, ili je
+   objekt danas verificiran (`RnFacilityVerification`, isto pravilo kao stupac „Verificiran") →
+   `PRESKOCENO`, ništa se ne upisuje → postoji li zahtjev za dokument → INSERT zahtjeva → (samo ako ga
+   je upisao ovaj pokušaj i obavijesti su uključene) po jedan INSERT obavijesti za svakog primatelja
+   (najviše `max-primatelja`, 200) → outbox `ZAHTJEV_UPISAN` / `ZAHTJEV_POSTOJAO`. Ista baza, pa je sve
+   atomarno: bilo koja greška poništava i zahtjev i obavijesti.
+4. **Neuspjeh** se bilježi u zasebnoj `REQUIRES_NEW` s istim ograničenjem trajanja
+   (`VerifikacijaOutbox.recordFailure`): `attempts + 1`, `next_attempt_at` po `EgopRetryPolicy`
+   (5 min, 10, 20 … do 2 h), `last_error` = najdublji uzrok bez vrijednosti retka (odrezano od
+   `Detail:` / `Failing row contains` / H2 `SQL statement`). Nakon `max-attempts` (10) → `ABANDONED` +
+   ERROR `eturizam_verifikacija_exhausted`. **Bez prava** (`42501`): pokušaj se ne broji, redak ostaje
+   `PENDING`, sljedeći pokušaj za `backoff-max`, ERROR `eturizam_verifikacija_bez_prava` samo prvi put.
+   Kad i rollback padne (veza zatvorena nakon isteka), bilježi se izvorna greška.
+5. **Retry** (`EturizamVerifikacijaRetryJob`, samo uz `enabled=true`): dospjeli `PENDING` retci kroz
+   isti put kao inline. Novi redak dospijeva tek nakon `backoff-base`, da job ne preteče inline pokušaj.
+   **Prvi infrastrukturni neuspjeh** (istek, zaključavanje, veza, transakcijski sustav, bez prava)
+   prekida seriju (WARN `eturizam_verifikacija_retry_aborted`) — dijeljena nit `@Scheduled` poslova se
+   tako ne zauzima 50 × 10 s; neuspjeh jednog retka zbog podataka seriju ne prekida.
 6. **Tko smije pokušati.** Pokušaj nosi broj pokušaja koji je pozivatelj vidio (inline 0, job iz
    pročitanog retka). Nakon zaključavanja redak mora imati upravo toliko pokušaja, a za job i dospjeli
    rok; inline smije prije roka, ali samo kao prvi. `recordFailure` broji neuspjeh samo uz isti broj
    pokušaja. Tako dvije instance ili zakašnjeli inline pokušaj isti neuspjeh ne broje dvaput.
-7. **Vremensko ograničenje** (`str.eturizam.verifikacija.timeout`, zadano 10 s) na transakciji
-   pokušaja: inline radi na niti HTTP zahtjeva, job na jedinoj niti `@Scheduled` poslova (dijeli je s
+7. **Vremensko ograničenje** na transakciji pokušaja: inline (`inline-timeout`, zadano 3 s) radi na
+   niti HTTP zahtjeva, job (`timeout`, zadano 10 s) na jedinoj niti `@Scheduled` poslova (dijeli je s
    eGOP i mail retryjem). `JpaTransactionManager` ga prenosi na JDBC (`setQueryTimeout`) i JPA upite
    (uključujući `FOR UPDATE`); istek je običan neuspjeh.
 8. **Zaštita od pogrešnog konteksta.** `VerifikacijaOutbox.zabiljezi` je `MANDATORY` (samo u
-   transakciji izdavanja). `EturizamVerifikacijaRepository` je `MANDATORY` i uz to provjerava naziv
-   transakcije (`eturizam-verifikacija`) — `MANDATORY` sam bi se priključio i transakciji izdavanja RB-a.
-9. **Log:** svaki neuspjeh jednom (WARN `eturizam_verifikacija_failed` sa stack traceom, odnosno ERROR
-   `eturizam_verifikacija_exhausted`). Preduga `vrsta` / `objekt-tip` (> 64) uz uključene obavijesti:
-   ERROR `eturizam_verifikacija_config` pri startu.
+   transakciji izdavanja). `EturizamVerifikacijaRepository` (jedini upis u `str`) je vidljiv samo
+   unutar paketa `str.verifikacija`, pa ga transakcija izdavanja (`RegistrationService`, drugi paket)
+   ne može zvati; `MANDATORY` odbija poziv bez transakcije.
+9. **Log:** svaki neuspjeh jednom — WARN `eturizam_verifikacija_failed` (ERROR pri odustajanju) s
+   očišćenim razlogom; puni stack trace, koji može nositi vrijednosti retka, samo na DEBUG. Pri startu
+   (`StartupDiagnostics`, uz uključene obavijesti): ERROR `eturizam_verifikacija_config` za
+   `vrsta` / `objekt-tip` dulje od 64 znaka i za predložak bez `{rn}`.
 
 **UNIQUE `source_document_id` pod konkurencijom:** SELECT pa INSERT; ako eTurizam upiše zahtjev za
 isti dokument između ta dva koraka, INSERT na PostgreSQL-u čeka njegov commit i padne na
 `uq_verification_request_source_document` (`DuplicateKeyException`). Transakcija se poništi, a servis
-odmah ponovi pokušaj jednom — drugi pokušaj zatekne zahtjev (`ZAHTJEV_POSTOJAO`). `ON CONFLICT DO
-NOTHING RETURNING id` nije korišten jer ga H2 (testovi) nema; id se nakon INSERT-a čita po dokumentu.
+odmah ponovi pokušaj jednom — samo za taj sukob (prepoznaje se po imenu ograničenja); drugi pokušaj
+zatekne zahtjev (`ZAHTJEV_POSTOJAO`). Svaki drugi sukob ključa (npr. PK, sekvenca iza podataka) je
+obični neuspjeh. `ON CONFLICT DO NOTHING RETURNING id` nije korišten jer ga H2 (testovi) nema; id se
+nakon INSERT-a čita po dokumentu.
+
+**`ZAHTJEV_POSTOJAO`** znači da je zahtjev za dokument već postojao — upisao ga je eTurizam ili STR
+za drugi RB istog dokumenta (v. § 6, t. 8). Vlastiti zahtjev istog retka ondje ne može završiti: upis
+zahtjeva i zatvaranje outbox retka su u istoj transakciji, pa i kad ishod commita nije poznat, ili je
+prošlo oboje (redak je zatvoren i sljedeći pokušaj ga preskače) ili ništa.
 
 **Vrijeme:** `created_date`, `last_modified_date` i `stvoreno` su `LocalDateTime` u zoni
-Europe/Zagreb (projektni `Clock`), kao eTurizamovi retci (W0). Outbox drži `TIMESTAMPTZ`.
+Europe/Zagreb (projektni `Clock`) **u trenutku obrade**, ne izdavanja RB-a (v. § 6, P3). Outbox drži
+`TIMESTAMPTZ`.
 
-**Tekst:** predložak s `{rn}` i `{objekt}`; `{objekt}` = „naziv“ (mjesto, ID facilityId) iz STR
-smještaja nakon dopune iz eTurizma (bez naziva samo zagrada). Skraćuje se na 1000 znakova (s „…“, bez
-presijecanja surogatnog para).
+**Tekst:** predložak s `{rn}` i `{objekt}`; `{objekt}` = „naziv“ (mjesto, ID facilityId), naziv i
+mjesto iz eTurizma pri izdavanju RB-a (bez naziva samo zagrada). Naziv i mjesto su tuđi unos, a ne znamo
+prikazuje li eTurizam `tekst` kao HTML (§ 6, P5), pa se čiste: bez kontrolnih i formatnih znakova
+(prijelomi, bidi, nevidljivi), bez znakova `<`, `>`, `&`, `"`, `'` i obrnutog navodnika, sažeti razmaci, najviše 100 znakova svaki — RB i ID
+tako nikad ne ispadnu. Cijeli tekst se skraćuje na 1000 znakova (s „…“, bez presijecanja surogatnog
+para).
 
 ### 4.2 Paketi i razredi (`com.str.backend.str.verifikacija`)
 
 | Razred | Uloga |
 |---|---|
-| `EturizamVerifikacijaProperties` (+ `EturizamVerifikacijaConfig`) | `str.eturizam.verifikacija.*` |
+| `EturizamVerifikacijaProperties` (+ `EturizamVerifikacijaConfig`) | `str.eturizam.verifikacija.*`, jedino mjesto zadanih vrijednosti |
 | `VerifikacijaOutboxEntity`, `VerifikacijaOutboxRepository` | `str_rn.eturizam_verifikacija`, zaključavanje retka, dospjeli retci |
-| `VerifikacijaOutbox` | bilježenje (u transakciji izdavanja), neuspjeh/odustajanje, dospjeli retci |
-| `EturizamVerifikacijaRepository` | uski native SQL nad `str.verification_request`, `str.korisnicka_obavijest`, `str.document`, `str.application_user` (`Propagation.MANDATORY`) |
-| `EturizamVerifikacijaWriter` | jedan atomaran pokušaj (`REQUIRES_NEW`) |
-| `EturizamVerifikacijaService` | zastavica, utrka na UNIQUE, gutanje i bilježenje grešaka |
-| `EturizamVerifikacijaListener` | inline pokušaj nakon commita |
-| `EturizamVerifikacijaRetryJob` | ponavljanje |
-| `VerifikacijaObavijest` | tekst, opis objekta, `podaci` JSON, skraćivanje (čiste funkcije) |
+| `VerifikacijaOutbox` | bilježenje (u transakciji izdavanja), neuspjeh / bez prava / odustajanje, dospjeli retci |
+| `EturizamVerifikacijaRepository` (paketno vidljiv) | uski native SQL nad `str.verification_request`, `str.korisnicka_obavijest`, `str.document`, `str.application_user` (`MANDATORY`) |
+| `EturizamVerifikacijaWriter` | jedan atomaran pokušaj (`REQUIRES_NEW`, inline/job ograničenje), provjera pri obradi |
+| `EturizamVerifikacijaService` | zastavica, utrka na UNIQUE, gutanje i bilježenje grešaka, ishod za job |
+| `EturizamVerifikacijaListener` | inline pokušaj nakon commita (zadnji slušatelj) |
+| `EturizamVerifikacijaRetryJob` | ponavljanje, prekid serije na infrastrukturnom neuspjehu |
+| `VerifikacijaObavijest` | tekst, čišćenje i opis objekta, `podaci` JSON, skraćivanje (čiste funkcije) |
+| `VerifikacijaGreska` | razvrstavanje neuspjeha (bez prava / infrastruktura / podaci) i siguran opis |
 
-### 4.3 Outbox `str_rn.eturizam_verifikacija` (changeset 150)
+### 4.3 Outbox `str_rn.eturizam_verifikacija` (changeseti 150, 152)
 
 | Stupac | Tip | Napomena |
 |---|---|---|
@@ -186,30 +212,42 @@ presijecanja surogatnog para).
 | `submission_id` | UUID NOT NULL | |
 | `facility_id` | varchar(64) NOT NULL | `str.facility.id` |
 | `document_id` | bigint NOT NULL | = `source_document_id` |
-| `status` | varchar(32) NOT NULL | `PENDING` → `ZAHTJEV_UPISAN` / `ZAHTJEV_POSTOJAO` / `ABANDONED` |
+| `objekt_naziv`, `objekt_mjesto` | varchar(255) | iz eTurizma pri izdavanju (152) |
+| `status` | varchar(32) NOT NULL | `PENDING` → `ZAHTJEV_UPISAN` / `ZAHTJEV_POSTOJAO` / `PRESKOCENO` / `ABANDONED` |
 | `verification_request_id` | bigint | upisani ili zatečeni zahtjev |
 | `obavijesti_poslano` | integer | broj upisanih obavijesti; NULL dok nije obrađen |
-| `attempts` | integer NOT NULL | neuspjeli pokušaji |
+| `attempts` | integer NOT NULL | neuspjeli pokušaji (bez prava se ne broje) |
 | `next_attempt_at` | timestamptz | NULL kad je obrađen |
-| `last_error` | varchar(500) | |
+| `last_error` | varchar(500) | razlog neuspjeha, preskakanja ili odustajanja; `bez_prava: …` dok čeka GRANT |
 | `created_at`, `updated_at` | timestamptz NOT NULL | |
 
-Indeks `(status, next_attempt_at)`. Lokalno (changeset 151, `context="local"`): mock
-`str.verification_request` i `str.korisnicka_obavijest` 1:1 kao na CDU-u, plus
-`str.document.jurisdiction_organizational_unit_id` i `str.application_user.organizational_unit_id`.
+Indeks `(status, next_attempt_at)`. Lokalno (changeset 151, `context="local"` i uvjet da je
+`str.application_user` lokalni mock bez `created_by`): mock `str.verification_request` i
+`str.korisnicka_obavijest` 1:1 kao na CDU-u, plus `str.document.jurisdiction_organizational_unit_id`
+(postavljen samo seedanim dokumentima 900–999) i `str.application_user.organizational_unit_id`.
+
+**Liquibase konteksti:** `application-prod.properties` i `application-test.properties` (glavni, ne JUnit)
+sada imaju `spring.liquibase.contexts=prod` odnosno `test` i `default-schema=str_rn`, kao ostali
+profili. U changelogu postoje samo konteksti `local`, `dev` i `cdu`, pa produkcija vrti točno
+changesete bez konteksta — mockovi nad shemom `str` se ondje više ne mogu izvršiti.
 
 ### 4.4 Konfiguracija
+
+Zadane vrijednosti su samo u `EturizamVerifikacijaProperties`; `application.properties` ključeve veže na
+env s praznim defaultom (`${STR_…:}`), a prazno znači „zadano". Iznimka je cron, koji nije dio zapisa.
 
 | Ključ | Env | Zadano |
 |---|---|---|
 | `str.eturizam.verifikacija.enabled` | `STR_ETURIZAM_VERIFIKACIJA_ENABLED` | `false` |
 | `str.eturizam.verifikacija.korisnik` | `STR_ETURIZAM_VERIFIKACIJA_KORISNIK` | `STR` |
-| `str.eturizam.verifikacija.timeout` | `STR_ETURIZAM_VERIFIKACIJA_TIMEOUT` | `PT10S` |
+| `str.eturizam.verifikacija.timeout` | `STR_ETURIZAM_VERIFIKACIJA_TIMEOUT` | `PT10S` (job, bilježenje neuspjeha) |
+| `str.eturizam.verifikacija.inline-timeout` | `STR_ETURIZAM_VERIFIKACIJA_INLINE_TIMEOUT` | `PT3S` (prvi pokušaj, nit HTTP zahtjeva) |
 | `str.eturizam.verifikacija.obavijesti.enabled` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_ENABLED` | `false` |
 | `str.eturizam.verifikacija.obavijesti.vrsta` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_VRSTA` | `ZURNA_VERIFIKACIJA` |
 | `str.eturizam.verifikacija.obavijesti.objekt-tip` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` | `VERIFICATION_REQUEST` |
 | `str.eturizam.verifikacija.obavijesti.tekst` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_TEKST` | v. § 2a |
-| `str.eturizam.verifikacija.retry.cron` | `STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON` | `0 */5 * * * *` |
+| `str.eturizam.verifikacija.obavijesti.max-primatelja` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_MAX_PRIMATELJA` | `200` |
+| `str.eturizam.verifikacija.retry.cron` | `STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON` | `0 */5 * * * *` (u `application.properties`) |
 | `str.eturizam.verifikacija.retry.max-attempts` | `STR_ETURIZAM_VERIFIKACIJA_RETRY_MAX_ATTEMPTS` | `10` |
 | `str.eturizam.verifikacija.retry.backoff-base` / `-max` | `STR_ETURIZAM_VERIFIKACIJA_RETRY_BACKOFF_BASE` / `_MAX` | `PT5M` / `PT2H` |
 | `str.eturizam.verifikacija.retry.batch-size` | — | `50` |
@@ -219,31 +257,37 @@ SELECT i INSERT na `str.verification_request`, uz obavijesti još SELECT na `str
 `str.application_user` te INSERT na `str.korisnicka_obavijest` (WARN kad je uključeno, a prava nema;
 start nikad ne pada).
 
-**Povrat `ABANDONED` retka:** `UPDATE str_rn.eturizam_verifikacija SET status = 'PENDING', attempts = 0,
-next_attempt_at = now(), last_error = NULL, updated_at = now() WHERE rn = '<RB>' AND status = 'ABANDONED'`
-(`DEPLOY-CDU.md` § 8e).
+**Povrat u red:** jedan redak `UPDATE str_rn.eturizam_verifikacija SET status = 'PENDING', attempts = 0,
+next_attempt_at = now(), last_error = NULL, updated_at = now() WHERE rn = '<RB>' AND status = 'ABANDONED'`;
+svi retci koji su čekali prava — upit u `DEPLOY-CDU.md` § 8e (i preprod/cdupreprod).
 
 ### 4.5 Prava po okolinama
 
 - CDU test: `shorttermrental` ima SELECT/INSERT/UPDATE na obje tablice — smije se uključiti.
-- Preprod, cdupreprod (`str_owner`): samo SELECT → `GRANT INSERT, UPDATE ON str.verification_request,
-  str.korisnicka_obavijest TO str_owner` (Darko). STR koristi samo INSERT. Detalji i provjera:
+- Preprod, cdupreprod (`str_owner`): samo SELECT → najmanje potrebno:
+  `GRANT SELECT, INSERT ON str.verification_request TO str_owner; GRANT INSERT ON str.korisnicka_obavijest TO str_owner;`
+  (+ SELECT na `str.document`, `str.application_user`, ako ga nema). `UPDATE`/`DELETE` ne treba (STR
+  postojeće retke ne mijenja), sekvenca ne treba (`identity`, V2). Detalji i provjera:
   `DEPLOY-PREPROD.md` § 2e, `DEPLOY-CDU-PREPROD.md` § B5b, `DEPLOY-CDU.md` § 8e.
 - Produkcija: prava nisu provjerena.
 
 ### 4.6 Testovi
 
 `EturizamVerifikacijaIntegrationTest` (H2, tablice stvara sam, id-evi 951000–951999, ručno čišćenje),
-`EturizamVerifikacijaServiceTest`, `VerifikacijaObavijestTest`. Pokriveno: neverificiran objekt kroz
-cijelo izdavanje → outbox + zahtjev + obavijesti točno aktivnim internim korisnicima jedinice;
-verificiran i nov objekt → ništa; postojeći zahtjev → bez upisa, bez obavijesti, `ZAHTJEV_POSTOJAO`;
-bez jedinice / bez korisnika → zahtjev bez obavijesti; obavijesti ugašene → samo zahtjev; zastavica
-ugašena → `PENDING`, ništa upisano; pad obavijesti → zahtjev poništen, neuspjeh zabilježen s
-backoffom; retry backoff, uspjeh nakon otklanjanja uzroka i odustajanje; utrka na UNIQUE; skraćivanje
-na 1000; izdavanje RB-a ne trpi kad upis u eTurizam padne; zastario pokušaj (drugi je redak već
-obradio/odgodio) se preskače i ne broji dvaput; job ne pokušava prije roka; ograničenje trajanja stiže
-do JDBC veze i EntityManagera; čekanje na eTurizamov nepotvrđeni zahtjev za isti dokument završava kao
-zabilježen neuspjeh; repozitorij odbija tuđu transakciju; `zabiljezi` izvan transakcije pada.
+`EturizamVerifikacijaServiceTest`, `EturizamVerifikacijaRetryJobTest`, `VerifikacijaObavijestTest`,
+`StartupDiagnosticsTest`. Pokriveno: neverificiran objekt kroz cijelo izdavanje → outbox + zahtjev +
+obavijesti točno aktivnim internim korisnicima jedinice; verificiran i nov objekt → ništa; postojeći
+zahtjev → `ZAHTJEV_POSTOJAO` bez obavijesti; bez jedinice / bez korisnika → zahtjev bez obavijesti;
+obavijesti ugašene → samo zahtjev; granica primatelja; zastavica ugašena → `PENDING`; pad obavijesti →
+zahtjev poništen, neuspjeh s backoffom; **ponovna dodjela** (RB1 opozvan dok je integracija ugašena,
+RB2 za isti objekt → RB1 `PRESKOCENO`, RB2 upisuje); povučen RB, objekt u međuvremenu verificiran i RB
+koji ne postoji → `PRESKOCENO`; suspendiran RB i dalje upisuje; pad provjere verificiranosti → obični
+neuspjeh; bez prava → pokušaji se ne troše; retry backoff, uspjeh nakon otklanjanja uzroka, odustajanje,
+prekid serije na infrastrukturnom neuspjehu; utrka na UNIQUE (samo za UNIQUE dokumenta); zastario
+pokušaj se preskače i ne broji dvaput; job ne pokušava prije roka; **naš** timeout prekida čekanje na
+eTurizamov nepotvrđeni zahtjev (H2 lock timeout za taj test dignut na 20 s, pokušaj s 1 s završi za
+~1 s); čišćenje HTML/kontrolnih/bidi znakova i ograničenje naziva; siguran `last_error`; zadane
+vrijednosti iz zapisa; provjera konfiguracije pri startu; `zabiljezi` izvan transakcije pada.
 
 ### 4.7 Izvan opsega
 
@@ -281,6 +325,19 @@ zabilježen neuspjeh; repozitorij odbija tuđu transakciju; `zabiljezi` izvan tr
    jedinicu ipak obavijestiti službenike?
 9. **Obavijesti uključene naknadno:** za zahtjeve upisane dok su obavijesti bile ugašene obavijest se
    ne šalje ni poslije. Je li to u redu, ili treba jednokratno obavijestiti?
-10. **Zaostatak nakon povlačenja:** retci nastali dok je integracija ugašena obrade se kad se uključi,
-    i kad je RB u međuvremenu povučen ili opozvan — tekst tada kaže „dodijeljen je registracijski
-    broj” za broj koji više ne vrijedi. Treba li takve retke preskočiti?
+10. ~~**Zaostatak nakon povlačenja**~~ — riješeno u kodu: redak čiji je RB u međuvremenu opozvan ili
+    povučen, ili čiji je objekt verificiran, završi `PRESKOCENO` bez upisa. Potvrditi da je to željeno.
+11. **(P5) Prikaz teksta:** prikazuje li eTurizam `korisnicka_obavijest.tekst` kao običan tekst ili
+    kao HTML? STR naziv i mjesto objekta čisti (bez `< > & " '`, kontrolnih i bidi znakova), ali
+    eTurizam bi tekst svejedno trebao prikazivati kao običan tekst.
+12. **(P1) Obujam:** oko 99 % objekata u eTurizmu su migrirani (`optimit`), pa gotovo svaki RB iz
+    tuStarta daje zahtjev i obavijest **svim** aktivnim internim korisnicima jedinice. Je li to
+    prihvatljivo, ili obavijesti treba suziti (rola, županija, jedna po organizaciji)?
+13. **(P2) Verifikacija u tijeku:** objekt čija verifikacija već traje (npr. `BCVS_U_IZRADI`) — treba
+    li za njega preskočiti zahtjev? STR ga danas ne prepoznaje.
+14. **(P3) Vrijeme zahtjeva:** `created_date` i `stvoreno` su vrijeme **obrade**, ne izdavanja RB-a.
+    Za zaostatak (zastavica ugašena, retry) to može biti sati ili dani kasnije, što mijenja redoslijed
+    na listi prioriteta (T9). Treba li vrijeme izdavanja RB-a?
+15. **(P4) Suspendiran RB:** RB u prijedlogu suspenzije ili suspendiran u trenutku obrade i dalje
+    dobiva zahtjev (preskaču se samo opozvan i povučen). Je li to ispravno?
+

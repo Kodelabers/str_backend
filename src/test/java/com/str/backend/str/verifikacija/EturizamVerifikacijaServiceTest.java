@@ -1,6 +1,7 @@
 package com.str.backend.str.verifikacija;
 
-import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.rn.RnRepository;
+import com.str.backend.str.RnFacilityVerification;
 import com.str.backend.str.verifikacija.EturizamVerifikacijaWriter.Pokusaj;
 import com.str.backend.str.verifikacija.VerifikacijaOutboxEntity.Status;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ class EturizamVerifikacijaServiceTest {
     private final EturizamVerifikacijaWriter writer = mock(EturizamVerifikacijaWriter.class);
     private final VerifikacijaOutbox outbox = mock(VerifikacijaOutbox.class);
     private final EturizamVerifikacijaService service = new EturizamVerifikacijaService(writer, outbox,
-            new EturizamVerifikacijaProperties(true, null, null, null, null));
+            new EturizamVerifikacijaProperties(true, null, null, null, null, null));
 
     /** eTurizam je upisao zahtjev za isti dokument istodobno: drugi pokušaj ga zatekne, bez neuspjeha. */
     @Test
@@ -53,6 +54,26 @@ class EturizamVerifikacijaServiceTest {
         verify(outbox, never()).recordFailure(anyString(), anyInt(), any());
     }
 
+    /** Drugi sukob ključa (npr. PK iza sekvence) ponovni pokušaj ne rješava — odmah obični neuspjeh. */
+    @Test
+    void otherDuplicateKey_noRetry_recordedAsFailure() {
+        DuplicateKeyException pk = duplicate("duplicate key value violates unique constraint \"pk_verification_request\"");
+        when(writer.upisi(POKUSAJ)).thenThrow(pk);
+
+        assertThat(service.obradi(POKUSAJ)).isEqualTo(EturizamVerifikacijaService.Ishod.NEUSPJEH);
+
+        verify(writer, times(1)).upisi(POKUSAJ);
+        verify(outbox).recordFailure(eq(RN), eq(2), same(pk));
+    }
+
+    @Test
+    void permissionDenied_isInfrastructureOutcome() {
+        when(writer.upisi(POKUSAJ)).thenThrow(new org.springframework.dao.DataAccessResourceFailureException("x",
+                new SQLException("ERROR: permission denied for table verification_request", "42501")));
+
+        assertThat(service.obradi(POKUSAJ)).isEqualTo(EturizamVerifikacijaService.Ishod.NEUSPJEH_INFRASTRUKTURA);
+    }
+
     @Test
     void isDocumentConflict_onlyForDocumentUniqueConstraint() {
         assertThat(EturizamVerifikacijaService.isDocumentConflict(duplicate(
@@ -64,15 +85,12 @@ class EturizamVerifikacijaServiceTest {
     /** Neuspjeh se bilježi s brojem pokušaja koji je pokušaj vidio — tako se ne broji dvaput. */
     @Test
     void failure_isSwallowedAndRecordedWithSeenAttempts() {
-        IllegalStateException greska = new IllegalStateException("wrap",
-                new RuntimeException("permission denied for table verification_request"));
+        IllegalStateException greska = new IllegalStateException("wrap", new RuntimeException("check violated"));
         when(writer.upisi(POKUSAJ)).thenThrow(greska);
 
-        assertThatCode(() -> service.obradi(POKUSAJ)).doesNotThrowAnyException();
+        assertThat(service.obradi(POKUSAJ)).isEqualTo(EturizamVerifikacijaService.Ishod.NEUSPJEH);
 
         verify(outbox).recordFailure(eq(RN), eq(2), same(greska));
-        assertThat(VerifikacijaOutbox.describe(greska))
-                .isEqualTo("RuntimeException: permission denied for table verification_request");
     }
 
     @Test
@@ -86,14 +104,14 @@ class EturizamVerifikacijaServiceTest {
     @Test
     void disabled_doesNothing() {
         EturizamVerifikacijaService ugasen = new EturizamVerifikacijaService(writer, outbox,
-                new EturizamVerifikacijaProperties(false, null, null, null, null));
+                new EturizamVerifikacijaProperties(false, null, null, null, null, null));
 
         ugasen.obradi(POKUSAJ);
 
         verify(writer, never()).upisi(any());
     }
 
-    /** Pokušaj ide u novu, imenovanu transakciju s ograničenjem iz konfiguracije. */
+    /** Pokušaj ide u novu transakciju s ograničenjem iz konfiguracije: job {@code timeout}, inline {@code inline-timeout}. */
     @Test
     void writer_runsAttemptInNamedRequiresNewTransactionWithTimeout() {
         PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
@@ -101,31 +119,18 @@ class EturizamVerifikacijaServiceTest {
         VerifikacijaOutboxRepository outboxRepository = mock(VerifikacijaOutboxRepository.class);
         when(outboxRepository.lockByRn(RN)).thenReturn(Optional.empty());
         EturizamVerifikacijaWriter pravi = new EturizamVerifikacijaWriter(outboxRepository,
-                mock(EturizamVerifikacijaRepository.class), mock(AccommodationRepository.class),
-                new EturizamVerifikacijaProperties(true, null, Duration.ofSeconds(7), null, null),
+                mock(EturizamVerifikacijaRepository.class), mock(RnRepository.class), mock(RnFacilityVerification.class),
+                new EturizamVerifikacijaProperties(true, null, Duration.ofSeconds(7), Duration.ofSeconds(2), null, null),
                 Clock.systemUTC(), txManager);
 
         assertThat(pravi.upisi(POKUSAJ)).isEmpty();
+        assertThat(pravi.upisi(Pokusaj.inline(RN))).isEmpty();
 
         ArgumentCaptor<TransactionDefinition> definicija = ArgumentCaptor.forClass(TransactionDefinition.class);
-        verify(txManager).getTransaction(definicija.capture());
-        assertThat(definicija.getValue().getTimeout()).isEqualTo(7);
-        assertThat(definicija.getValue().getName()).isEqualTo(EturizamVerifikacijaWriter.TX_NAME);
-        assertThat(definicija.getValue().getPropagationBehavior())
-                .isEqualTo(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-    }
-
-    @Test
-    void provjeriSifre_flagsTooLongCodesOnlyWhenNotificationsEnabled() {
-        String duga = "X".repeat(65);
-        assertThat(EturizamVerifikacijaWriter.provjeriSifre(
-                new EturizamVerifikacijaProperties.Obavijesti(true, duga, null, null))).isFalse();
-        assertThat(EturizamVerifikacijaWriter.provjeriSifre(
-                new EturizamVerifikacijaProperties.Obavijesti(true, null, duga, null))).isFalse();
-        assertThat(EturizamVerifikacijaWriter.provjeriSifre(
-                new EturizamVerifikacijaProperties.Obavijesti(false, duga, duga, null))).isTrue();
-        assertThat(EturizamVerifikacijaWriter.provjeriSifre(
-                new EturizamVerifikacijaProperties.Obavijesti(true, null, null, null))).isTrue();
+        verify(txManager, times(2)).getTransaction(definicija.capture());
+        assertThat(definicija.getAllValues()).extracting(TransactionDefinition::getTimeout).containsExactly(7, 2);
+        assertThat(definicija.getAllValues()).allMatch(d ->
+                d.getPropagationBehavior() == TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     private static DuplicateKeyException duplicate(String sqlMessage) {

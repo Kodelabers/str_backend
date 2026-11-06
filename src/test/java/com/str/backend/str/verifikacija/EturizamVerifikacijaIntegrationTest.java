@@ -2,7 +2,6 @@ package com.str.backend.str.verifikacija;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.address.CountyRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
@@ -11,9 +10,11 @@ import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.FacilityClaimVerifier;
+import com.str.backend.str.RnFacilityVerification;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import com.str.backend.str.verifikacija.EturizamVerifikacijaWriter.Pokusaj;
 import com.str.backend.str.verifikacija.VerifikacijaOutboxEntity.Status;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,33 +22,38 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.jdbc.datasource.ConnectionHolder;
-import org.springframework.orm.jpa.EntityManagerHolder;
 
 import javax.sql.DataSource;
-
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -56,13 +62,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Zahtjev za žurnu verifikaciju (T8) na pravoj bazi (H2): outbox u transakciji izdavanja RB-a,
- * atomaran upis u {@code str.verification_request} + {@code str.korisnicka_obavijest}, retry i
- * odustajanje.
+ * atomaran upis u {@code str.verification_request} + {@code str.korisnicka_obavijest}, provjera pri
+ * obradi, retry i odustajanje.
  *
  * <p>eTurizmove tablice test stvara sam, strukturom kao na CDU testu (bez FK-ova, da dijeljena H2
- * baza ne veže ostale testove). Rezervirani id-evi 951000–951999. {@code REQUIRES_NEW} upisi se ne
- * poništavaju, pa se čiste ručno. Provjera vlasništva objekta ({@link FacilityClaimVerifier}) je
- * zamijenjena kao u {@code RegistrationExistingFacilityIntegrationTest}.
+ * baza ne veže ostale testove). Rezervirani id-evi 951000–951999, RB-ovi {@code HR000000000000951…}.
+ * {@code REQUIRES_NEW} upisi se ne poništavaju, pa se čiste ručno. Provjera vlasništva objekta
+ * ({@link FacilityClaimVerifier}) i današnja verificiranost ({@link RnFacilityVerification}, native
+ * upit nad cijelim eTurizmovim modelom — pokriven zasebno) su zamijenjeni.
  */
 @SpringBootTest(properties = {
         "str.eturizam.verifikacija.enabled=true",
@@ -81,7 +88,7 @@ class EturizamVerifikacijaIntegrationTest {
     private static final long OTHER_UNIT = 951501;
     /** Jedinica bez korisnika. */
     private static final long EMPTY_UNIT = 951599;
-    /** Jedinica u kojoj upis obavijesti drugom službeniku pada (CHECK u testnoj tablici). */
+    /** Jedinica u kojoj upis obavijesti drugom službeniku pada ({@link #otrovanPrimatelj()}). */
     private static final long POISONED_UNIT = 951502;
     private static final long POISONED_USER = 951999;
 
@@ -96,17 +103,16 @@ class EturizamVerifikacijaIntegrationTest {
     @Autowired private EturizamVerifikacijaWriter writer;
     @Autowired private EturizamVerifikacijaRetryJob retryJob;
     @Autowired private EturizamVerifikacijaRepository eturizamRepository;
-    @Autowired private AccommodationRepository accommodationRepository;
     @Autowired private EturizamVerifikacijaProperties properties;
     @Autowired private RnRepository rnRepository;
     @Autowired private PlatformTransactionManager txManager;
     @Autowired private Clock clock;
     @Autowired private DataSource dataSource;
-    @Autowired private jakarta.persistence.EntityManagerFactory entityManagerFactory;
 
     @MockBean private SubjectProfileService subjectProfileService;
     @MockBean private CountyRepository countyRepository;
     @MockBean private FacilityClaimVerifier facilityClaimVerifier;
+    @MockBean private RnFacilityVerification facilityVerification;
 
     @BeforeEach
     void setUp() {
@@ -138,8 +144,7 @@ class EturizamVerifikacijaIntegrationTest {
                   objekt_id BIGINT,
                   podaci VARCHAR(4000),
                   stvoreno TIMESTAMP NOT NULL,
-                  procitano TIMESTAMP,
-                  CONSTRAINT ck_test_otrovan_primatelj CHECK (application_user_id <> 951999))
+                  procitano TIMESTAMP)
                 """);
         cleanUp();
 
@@ -158,16 +163,19 @@ class EturizamVerifikacijaIntegrationTest {
             return l;
         });
         when(countyRepository.findAll()).thenReturn(List.of());
+        when(facilityVerification.verifiedFacilityIds(anyCollection())).thenReturn(Set.of());
     }
 
     /** Dijeljena H2 baza: REQUIRES_NEW upisi se ne poništavaju, pa se čiste ručno (samo naši id-evi). */
     @AfterEach
     void cleanUp() {
+        jdbc.execute("ALTER TABLE str.korisnicka_obavijest DROP CONSTRAINT IF EXISTS ck_test_otrovan_primatelj");
         jdbc.update("DELETE FROM str.korisnicka_obavijest WHERE application_user_id BETWEEN 951000 AND 951999");
         jdbc.update("DELETE FROM str.verification_request WHERE source_document_id BETWEEN 951000 AND 951999");
         jdbc.update("DELETE FROM str.application_user WHERE id BETWEEN 951000 AND 951999");
         jdbc.update("DELETE FROM str.document WHERE id BETWEEN 951000 AND 951999");
         jdbc.update("DELETE FROM str_rn.eturizam_verifikacija WHERE document_id BETWEEN 951000 AND 951999");
+        jdbc.update("DELETE FROM str_rn.registration_number WHERE rn LIKE 'HR000000000000951%'");
     }
 
     // ---------------------------------------------------------------- puni tok kroz izdavanje RB-a
@@ -183,6 +191,8 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(zapis.getStatus()).isEqualTo(Status.ZAHTJEV_UPISAN);
         assertThat(zapis.getDocumentId()).isEqualTo(951001L);
         assertThat(zapis.getFacilityId()).isEqualTo("951101");
+        assertThat(zapis.getObjektNaziv()).isEqualTo("Apartman Marija");
+        assertThat(zapis.getObjektMjesto()).isEqualTo("Makarska");
         assertThat(zapis.getObavijestiPoslano()).isEqualTo(2);
         assertThat(zapis.getAttempts()).isZero();
         assertThat(zapis.getNextAttemptAt()).isNull();
@@ -193,8 +203,8 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(zahtjev.get("CREATED_BY")).isEqualTo("STR");
         assertThat(zahtjev.get("LAST_MODIFIED_BY")).isEqualTo("STR");
         assertThat(zahtjev.get("ACTIVE")).isEqualTo(true);
-        assertThat(((java.sql.Timestamp) zahtjev.get("CREATED_DATE")).toLocalDateTime())
-                .isCloseTo(LocalDateTime.now(ZAGREB), within(1, java.time.temporal.ChronoUnit.MINUTES));
+        assertThat(((Timestamp) zahtjev.get("CREATED_DATE")).toLocalDateTime())
+                .isCloseTo(LocalDateTime.now(ZAGREB), within(1, ChronoUnit.MINUTES));
 
         List<Map<String, Object>> obavijesti = jdbc.queryForList(
                 "SELECT * FROM str.korisnicka_obavijest WHERE application_user_id BETWEEN 951000 AND 951999 ORDER BY application_user_id");
@@ -217,6 +227,7 @@ class EturizamVerifikacijaIntegrationTest {
     /** Upis u eTurizam padne (obavijest) — RB je izdan i commitan, pokušaj zabilježen za retry. */
     @Test
     void eturizamWriteFails_issuanceUnaffected_failureRecorded() throws Exception {
+        otrovanPrimatelj();
         document(951002, POISONED_UNIT);
         unverifiedFacility("951102", 951002L);
 
@@ -226,7 +237,7 @@ class EturizamVerifikacijaIntegrationTest {
         VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
         assertThat(zapis.getStatus()).isEqualTo(Status.PENDING);
         assertThat(zapis.getAttempts()).isEqualTo(1);
-        assertThat(zapis.getLastError()).isNotBlank();
+        assertThat(zapis.getLastError()).isNotBlank().doesNotContain("SQL statement");
         assertThat(requestCount(951002)).isZero();
     }
 
@@ -247,13 +258,16 @@ class EturizamVerifikacijaIntegrationTest {
     // ---------------------------------------------------------------- bilježenje (outbox)
 
     @Test
-    void zabiljezi_skipsNewFacilityVerifiedAndMissingDocument() {
+    void zabiljezi_skipsNewFacilityVerifiedMissingOrInvalidDocument() {
         FacilityOwnershipRow verified = mock(FacilityOwnershipRow.class);
         when(verified.getVerified()).thenReturn(true);
         when(verified.getDocumentId()).thenReturn(951004L);
         FacilityOwnershipRow withoutDocument = mock(FacilityOwnershipRow.class);
         when(withoutDocument.getVerified()).thenReturn(false);
         when(withoutDocument.getDocumentId()).thenReturn(null);
+        FacilityOwnershipRow zeroDocument = mock(FacilityOwnershipRow.class);
+        when(zeroDocument.getVerified()).thenReturn(false);
+        when(zeroDocument.getDocumentId()).thenReturn(0L);
         FacilityOwnershipRow unknownAuthor = mock(FacilityOwnershipRow.class);
         when(unknownAuthor.getVerified()).thenReturn(null);
         when(unknownAuthor.getDocumentId()).thenReturn(951004L);
@@ -262,7 +276,8 @@ class EturizamVerifikacijaIntegrationTest {
             outbox.zabiljezi("HR000000000000951001", UUID.randomUUID(), null, null);
             outbox.zabiljezi("HR000000000000951002", UUID.randomUUID(), "951104", verified);
             outbox.zabiljezi("HR000000000000951003", UUID.randomUUID(), "951104", withoutDocument);
-            outbox.zabiljezi("HR000000000000951004", UUID.randomUUID(), "951104", unknownAuthor);
+            outbox.zabiljezi("HR000000000000951004", UUID.randomUUID(), "951104", zeroDocument);
+            outbox.zabiljezi("HR000000000000951005", UUID.randomUUID(), "951104", unknownAuthor);
         });
 
         assertThat(outboxRepository.findAll()).noneMatch(e -> e.getRn().startsWith("HR000000000000951"));
@@ -276,15 +291,7 @@ class EturizamVerifikacijaIntegrationTest {
         when(facility.getDocumentId()).thenReturn(951004L);
 
         assertThatThrownBy(() -> outbox.zabiljezi("HR000000000000951014", UUID.randomUUID(), "951114", facility))
-                .isInstanceOf(org.springframework.transaction.IllegalTransactionStateException.class);
-    }
-
-    /** Upis u eTurizam iz bilo koje transakcije osim pokušaja (npr. one koja izdaje RB) odbija se. */
-    @Test
-    void eturizamRepository_rejectsForeignTransaction() {
-        assertThatThrownBy(() -> requiresNew().executeWithoutResult(tx -> eturizamRepository.findRequestId(951001)))
-                .hasRootCauseInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("EturizamVerifikacijaWriter");
+                .isInstanceOf(IllegalTransactionStateException.class);
     }
 
     // ---------------------------------------------------------------- upis u eTurizam
@@ -339,11 +346,8 @@ class EturizamVerifikacijaIntegrationTest {
     void notificationsDisabled_requestOnly() {
         document(951008, UNIT);
         String rn = pending("HR000000000000951008", "951108", 951008);
-        EturizamVerifikacijaWriter bezObavijesti = new EturizamVerifikacijaWriter(outboxRepository,
-                eturizamRepository, accommodationRepository,
-                new EturizamVerifikacijaProperties(true, null, null,
-                        new EturizamVerifikacijaProperties.Obavijesti(false, null, null, null), properties.retry()),
-                clock, txManager);
+        EturizamVerifikacijaWriter bezObavijesti = writer(new EturizamVerifikacijaProperties(true, null, null, null,
+                new EturizamVerifikacijaProperties.Obavijesti(false, null, null, null, null), properties.retry()));
 
         Optional<Status> ishod = bezObavijesti.upisi(Pokusaj.inline(rn));
 
@@ -353,12 +357,47 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(outboxRepository.findByRn(rn).orElseThrow().getObavijestiPoslano()).isZero();
     }
 
+    /** Granica primatelja: više aktivnih službenika od {@code max-primatelja} → samo prvih toliko (po id-u). */
+    @Test
+    void recipientsAboveLimit_onlyFirstNotified() {
+        document(951018, UNIT);
+        String rn = pending("HR000000000000951018", "951118", 951018);
+        EturizamVerifikacijaWriter jedanPrimatelj = writer(new EturizamVerifikacijaProperties(true, null, null, null,
+                new EturizamVerifikacijaProperties.Obavijesti(true, null, null, null, 1), properties.retry()));
+
+        jedanPrimatelj.upisi(Pokusaj.inline(rn));
+
+        assertThat(jdbc.queryForList("SELECT application_user_id FROM str.korisnicka_obavijest "
+                + "WHERE application_user_id BETWEEN 951000 AND 951999", Long.class)).containsExactly(951001L);
+        assertThat(outboxRepository.findByRn(rn).orElseThrow().getObavijestiPoslano()).isEqualTo(1);
+    }
+
+    /** Naziv objekta je tuđi unos: HTML, prijelomi i bidi znakovi ne smiju u tekst, a RB i ID ostaju. */
+    @Test
+    void hostileFacilityName_isSanitizedInNotification() {
+        document(951019, UNIT);
+        FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
+        when(facility.getVerified()).thenReturn(false);
+        when(facility.getDocumentId()).thenReturn(951019L);
+        when(facility.getName()).thenReturn("<script>alert('x')</script>\n\u202EVila " + "A".repeat(500));
+        when(facility.getSettlementName()).thenReturn("Split\r\n<b>");
+        String rn = pending("HR000000000000951019", "951119", facility);
+
+        service.obradi(Pokusaj.inline(rn));
+
+        String tekst = jdbc.queryForObject("SELECT tekst FROM str.korisnicka_obavijest WHERE application_user_id = 951001",
+                String.class);
+        assertThat(tekst).doesNotContain("<", ">", "'", "\n", "\r", "\u202E")
+                .contains("ID 951119", rn, "(Split b, ID 951119)");
+        assertThat(tekst).startsWith("Smještajnom objektu „scriptalert(x)/script Vila AAA");
+    }
+
     @Test
     void featureDisabled_rowStaysPending_nothingWritten() {
         document(951009, UNIT);
         String rn = pending("HR000000000000951009", "951109", 951009);
         EturizamVerifikacijaService ugasen = new EturizamVerifikacijaService(writer, outbox,
-                new EturizamVerifikacijaProperties(false, null, null, properties.obavijesti(), properties.retry()));
+                new EturizamVerifikacijaProperties(false, null, null, null, properties.obavijesti(), properties.retry()));
 
         ugasen.obradi(Pokusaj.inline(rn));
 
@@ -372,6 +411,7 @@ class EturizamVerifikacijaIntegrationTest {
     /** Pad obavijesti drugom primatelju poništava i zahtjev i prvu obavijest — upis je atomaran. */
     @Test
     void notificationInsertFails_requestRolledBack_failureRecordedWithBackoff() {
+        otrovanPrimatelj();
         document(951010, POISONED_UNIT);
         String rn = pending("HR000000000000951010", "951110", 951010);
         Instant prije = Instant.now();
@@ -383,17 +423,115 @@ class EturizamVerifikacijaIntegrationTest {
         VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
         assertThat(zapis.getStatus()).isEqualTo(Status.PENDING);
         assertThat(zapis.getAttempts()).isEqualTo(1);
-        assertThat(zapis.getLastError()).containsIgnoringCase("ck_test_otrovan_primatelj");
+        assertThat(zapis.getLastError()).containsIgnoringCase("ck_test_otrovan_primatelj").doesNotContain("SQL statement");
         assertThat(zapis.getVerificationRequestId()).isNull();
         // backoff-base 5 min nakon prvog neuspjeha (+1 ms: H2 zaokružuje na mikrosekunde)
         assertThat(zapis.getNextAttemptAt()).isBetween(prije.plus(Duration.ofMinutes(5)),
                 Instant.now().plus(Duration.ofMinutes(5)).plusMillis(1));
     }
 
+    // ---------------------------------------------------------------- provjera pri obradi
+
+    /**
+     * RB1 izdan dok je integracija ugašena → opozvan → RB2 za isti objekt i dokument → uključivanje:
+     * RB1 se preskače (ništa se ne upisuje), RB2 upiše zahtjev i obavijesti.
+     */
+    @Test
+    void reissue_revokedRbSkipped_newRbWritesRequest() {
+        document(951020, UNIT);
+        String rb1 = pending("HR000000000000951020", "951120", 951020);
+        String rb2 = pending("HR000000000000951021", "951120", 951020);
+        jdbc.update("UPDATE str_rn.registration_number SET status = 'REVOKED' WHERE rn = ?", rb1);
+        makeDue(rb1);
+        makeDue(rb2);
+
+        retryJob.retryDue();
+
+        VerifikacijaOutboxEntity prvi = outboxRepository.findByRn(rb1).orElseThrow();
+        assertThat(prvi.getStatus()).isEqualTo(Status.PRESKOCENO);
+        assertThat(prvi.getLastError()).contains("REVOKED");
+        assertThat(prvi.getVerificationRequestId()).isNull();
+        VerifikacijaOutboxEntity drugi = outboxRepository.findByRn(rb2).orElseThrow();
+        assertThat(drugi.getStatus()).isEqualTo(Status.ZAHTJEV_UPISAN);
+        assertThat(drugi.getObavijestiPoslano()).isEqualTo(2);
+        assertThat(requestCount(951020)).isEqualTo(1);
+        assertThat(jdbc.queryForList("SELECT tekst FROM str.korisnicka_obavijest WHERE application_user_id = 951001",
+                String.class)).singleElement().asString().contains(rb2).doesNotContain(rb1);
+    }
+
+    @Test
+    void withdrawnRb_orFacilityVerifiedMeanwhile_orMissingRb_skipped() {
+        document(951022, UNIT);
+        document(951023, UNIT);
+        document(951024, UNIT);
+        String povucen = pending("HR000000000000951022", "951122", 951022);
+        String verificiran = pending("HR000000000000951023", "951123", 951023);
+        String bezRb = pending("HR000000000000951024", "951124", 951024);
+        jdbc.update("UPDATE str_rn.registration_number SET status = 'WITHDRAWN' WHERE rn = ?", povucen);
+        jdbc.update("DELETE FROM str_rn.registration_number WHERE rn = ?", bezRb);
+        when(facilityVerification.verifiedFacilityIds(List.of("951123"))).thenReturn(Set.of("951123"));
+
+        for (String rn : List.of(povucen, verificiran, bezRb)) {
+            assertThat(writer.upisi(Pokusaj.inline(rn))).contains(Status.PRESKOCENO);
+        }
+
+        assertThat(outboxRepository.findByRn(verificiran).orElseThrow().getLastError()).contains("verificiran");
+        assertThat(requestCount(951022) + requestCount(951023) + requestCount(951024)).isZero();
+        assertThat(notificationCount()).isZero();
+    }
+
+    /** Suspendiran RB i dalje traži verifikaciju (otvoreno pitanje P4, plan § 6). */
+    @Test
+    void suspendedRb_stillWritesRequest() {
+        document(951025, UNIT);
+        String rn = pending("HR000000000000951025", "951125", 951025);
+        jdbc.update("UPDATE str_rn.registration_number SET status = 'SUSPENDED' WHERE rn = ?", rn);
+
+        assertThat(writer.upisi(Pokusaj.inline(rn))).contains(Status.ZAHTJEV_UPISAN);
+    }
+
+    /** Pad provjere verificiranosti (eTurizam nedostupan) je obični neuspjeh — bez potvrde se ne upisuje. */
+    @Test
+    void verificationLookupFails_attemptFailsWithoutWriting() {
+        document(951026, UNIT);
+        String rn = pending("HR000000000000951026", "951126", 951026);
+        when(facilityVerification.verifiedFacilityIds(List.of("951126")))
+                .thenThrow(new DataAccessResourceFailureException("eTurizam nedostupan"));
+
+        assertThat(service.obradi(Pokusaj.inline(rn))).isEqualTo(EturizamVerifikacijaService.Ishod.NEUSPJEH_INFRASTRUKTURA);
+
+        VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
+        assertThat(zapis.getStatus()).isEqualTo(Status.PENDING);
+        assertThat(zapis.getAttempts()).isEqualTo(1);
+        assertThat(requestCount(951026)).isZero();
+    }
+
+    // ---------------------------------------------------------------- bez prava
+
+    /** Nedostaje GRANT: pokušaj se ne troši, redak čeka PENDING za backoff-max. */
+    @Test
+    void permissionDenied_doesNotBurnAttempts() {
+        document(951027, UNIT);
+        String rn = pending("HR000000000000951027", "951127", 951027);
+        RuntimeException bezPrava = new DataAccessResourceFailureException("insert",
+                new SQLException("ERROR: permission denied for table verification_request", "42501"));
+        Instant prije = Instant.now();
+
+        outbox.recordFailure(rn, 0, bezPrava);
+        outbox.recordFailure(rn, 0, bezPrava);
+
+        VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
+        assertThat(zapis.getStatus()).isEqualTo(Status.PENDING);
+        assertThat(zapis.getAttempts()).isZero();
+        assertThat(zapis.getLastError()).startsWith(VerifikacijaOutbox.BEZ_PRAVA).contains("permission denied");
+        assertThat(zapis.getNextAttemptAt()).isAfterOrEqualTo(prije.plus(properties.retry().backoffMax()).minusMillis(1));
+    }
+
     // ---------------------------------------------------------------- retry job
 
     @Test
     void retryJob_backsOffThenSucceedsWhenCauseIsGone() {
+        otrovanPrimatelj();
         document(951011, POISONED_UNIT);
         String rn = pending("HR000000000000951011", "951111", 951011);
         service.obradi(Pokusaj.inline(rn));
@@ -420,6 +558,7 @@ class EturizamVerifikacijaIntegrationTest {
 
     @Test
     void retryJob_abandonsAfterMaxAttempts() {
+        otrovanPrimatelj();
         document(951012, POISONED_UNIT);
         String rn = pending("HR000000000000951012", "951112", 951012);
         jdbc.update("UPDATE str_rn.eturizam_verifikacija SET attempts = ? WHERE rn = ?",
@@ -451,7 +590,7 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(requestCount(951013)).isZero();
     }
 
-    // ---------------------------------------------------------------- tko smije pokušati (L1)
+    // ---------------------------------------------------------------- tko smije pokušati
 
     /** Pokušaj koji je vidio stariji broj pokušaja (druga instanca je redak u međuvremenu odgodila) se preskače. */
     @Test
@@ -484,73 +623,94 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(writer.upisi(Pokusaj.inline(rn))).contains(Status.ZAHTJEV_UPISAN);
     }
 
-    // ---------------------------------------------------------------- vremensko ograničenje (M1)
+    // ---------------------------------------------------------------- vremensko ograničenje
 
     /**
-     * Ograničenje transakcije pokušaja stiže i do JDBC veze ({@code JdbcTemplate} → {@code setQueryTimeout})
-     * i do EntityManagera (JPA upiti, {@code SELECT … FOR UPDATE} outbox retka).
+     * eTurizam drži nepotvrđen zahtjev za isti dokument: INSERT čeka na UNIQUE. H2-ov lock timeout se za
+     * ovaj test diže na 20 s, pa čekanje prekida NAŠE ograničenje pokušaja (inline 1 s) — pokušaj završi
+     * za nekoliko sekundi i zabilježi se kao obični neuspjeh.
      */
     @Test
-    void attemptTransaction_carriesTimeoutToJdbc() {
-        TransactionTemplate pokusaj = EturizamVerifikacijaWriter.transakcija(txManager, Duration.ofSeconds(3));
-
-        pokusaj.executeWithoutResult(tx -> {
-            assertThat(TransactionSynchronizationManager.getCurrentTransactionName())
-                    .isEqualTo(EturizamVerifikacijaWriter.TX_NAME);
-            ConnectionHolder veza = (ConnectionHolder) TransactionSynchronizationManager.getResource(dataSource);
-            assertThat(veza).isNotNull();
-            assertThat(veza.hasTimeout()).isTrue();
-            assertThat(veza.getTimeToLiveInSeconds()).isBetween(1, 3);
-            EntityManagerHolder em = (EntityManagerHolder) TransactionSynchronizationManager.getResource(entityManagerFactory);
-            assertThat(em).isNotNull();
-            assertThat(em.hasTimeout()).isTrue();
-        });
-    }
-
-    /**
-     * eTurizam drži nepotvrđen zahtjev za isti dokument: INSERT čeka na UNIQUE. Pokušaj mora završiti
-     * istekom čekanja i biti zabilježen kao običan neuspjeh, ne objesiti nit. Na H2 čekanje prekida
-     * H2-ov vlastiti lock timeout (~2 s, prije našeg); na PostgreSQL-u to radi ograničenje transakcije
-     * ({@code setQueryTimeout}, v. {@link #attemptTransaction_carriesTimeoutToJdbc}).
-     */
-    @Test
-    void lockWaitOnRequestInsert_endsAsRecordedFailure() throws Exception {
+    void lockWaitOnRequestInsert_endsByAttemptTimeout() throws Exception {
         document(951017, UNIT);
         String rn = pending("HR000000000000951017", "951117", 951017);
-        java.util.concurrent.CountDownLatch upisano = new java.util.concurrent.CountDownLatch(1);
-        java.util.concurrent.CountDownLatch pusti = new java.util.concurrent.CountDownLatch(1);
+        EturizamVerifikacijaWriter kratki = writer(new EturizamVerifikacijaProperties(true, null, null,
+                Duration.ofSeconds(1), properties.obavijesti(), properties.retry()));
+        EturizamVerifikacijaService kratkiServis = new EturizamVerifikacijaService(kratki, outbox, properties);
+        HikariDataSource hikari = dataSource.unwrap(HikariDataSource.class);
+        // H2 zadano: 2000 ms (Constants.INITIAL_LOCK_TIMEOUT; INFORMATION_SCHEMA ga ne pokazuje).
+        String stariLockTimeout = "2000";
+        jdbc.execute("SET DEFAULT_LOCK_TIMEOUT 20000");
+        hikari.getHikariPoolMXBean().softEvictConnections();
+        CountDownLatch upisano = new CountDownLatch(1);
+        CountDownLatch pusti = new CountDownLatch(1);
         Thread eturizam = new Thread(() -> requiresNew().executeWithoutResult(tx -> {
             jdbc.update("INSERT INTO str.verification_request (created_by, created_date, last_modified_by, "
                     + "last_modified_date, active, source_document_id) VALUES ('x', CURRENT_TIMESTAMP, 'x', "
                     + "CURRENT_TIMESTAMP, TRUE, 951017)");
             upisano.countDown();
             try {
-                pusti.await(30, java.util.concurrent.TimeUnit.SECONDS);
+                pusti.await(30, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
             tx.setRollbackOnly();
         }));
+        Duration trajanje;
         eturizam.start();
         try {
-            assertThat(upisano.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(upisano.await(10, TimeUnit.SECONDS)).isTrue();
             long start = System.nanoTime();
 
-            service.obradi(Pokusaj.inline(rn));
+            kratkiServis.obradi(Pokusaj.inline(rn));
 
-            assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(20));
+            trajanje = Duration.ofNanos(System.nanoTime() - start);
         } finally {
             pusti.countDown();
             eturizam.join(30_000);
+            jdbc.execute("SET DEFAULT_LOCK_TIMEOUT " + stariLockTimeout);
+            hikari.getHikariPoolMXBean().softEvictConnections();
         }
+        assertThat(trajanje).as("prekinuo ga je naš timeout (1 s), ne H2-ov (20 s)").isLessThan(Duration.ofSeconds(8));
         VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
         assertThat(zapis.getStatus()).isEqualTo(Status.PENDING);
         assertThat(zapis.getAttempts()).isEqualTo(1);
-        assertThat(zapis.getLastError()).isNotBlank();
+        // H2: „Statement was canceled or the session timed out" (setQueryTimeout), ne vlastiti lock timeout.
+        assertThat(zapis.getLastError()).containsIgnoringCase("canceled");
         assertThat(requestCount(951017)).isZero();
     }
 
+    // ---------------------------------------------------------------- konfiguracija
+
+    /** Zadane vrijednosti dolaze iz zapisa: application.properties ih ostavlja prazne (${STR_…:}). */
+    @Test
+    void boundProperties_useRecordDefaults() {
+        assertThat(properties.enabled()).isTrue();
+        assertThat(properties.korisnik()).isEqualTo(EturizamVerifikacijaProperties.DEFAULT_KORISNIK);
+        assertThat(properties.timeout()).isEqualTo(Duration.ofSeconds(10));
+        assertThat(properties.inlineTimeout()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(properties.obavijesti().vrsta()).isEqualTo("ZURNA_VERIFIKACIJA");
+        assertThat(properties.obavijesti().objektTip()).isEqualTo("VERIFICATION_REQUEST");
+        assertThat(properties.obavijesti().tekst()).isEqualTo(EturizamVerifikacijaProperties.Obavijesti.DEFAULT_TEKST);
+        assertThat(properties.obavijesti().maxPrimatelja()).isEqualTo(200);
+        assertThat(properties.retry().maxAttempts()).isEqualTo(10);
+        assertThat(properties.retry().backoffBase()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(properties.retry().backoffMax()).isEqualTo(Duration.ofHours(2));
+        assertThat(properties.retry().batchSize()).isEqualTo(50);
+    }
+
     // ---------------------------------------------------------------- pomoćno
+
+    private EturizamVerifikacijaWriter writer(EturizamVerifikacijaProperties p) {
+        return new EturizamVerifikacijaWriter(outboxRepository, eturizamRepository, rnRepository,
+                facilityVerification, p, clock, txManager);
+    }
+
+    /** Drugi službenik jedinice {@link #POISONED_UNIT} ne smije primiti obavijest — upis pada na CHECK-u. */
+    private void otrovanPrimatelj() {
+        jdbc.execute("ALTER TABLE str.korisnicka_obavijest ADD CONSTRAINT IF NOT EXISTS ck_test_otrovan_primatelj "
+                + "CHECK (application_user_id <> " + POISONED_USER + ")");
+    }
 
     private TransactionTemplate requiresNew() {
         TransactionTemplate tx = new TransactionTemplate(txManager);
@@ -558,18 +718,27 @@ class EturizamVerifikacijaIntegrationTest {
         return tx;
     }
 
-    /** Outbox redak kakav ostavlja izdavanje RB-a za neverificiran objekt. */
+    /** Outbox redak (i aktivan RB) kakav ostavlja izdavanje RB-a za neverificiran objekt. */
     private String pending(String rn, String facilityId, long documentId) {
         FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
         when(facility.getVerified()).thenReturn(false);
         when(facility.getDocumentId()).thenReturn(documentId);
+        return pending(rn, facilityId, facility);
+    }
+
+    private String pending(String rn, String facilityId, FacilityOwnershipRow facility) {
+        jdbc.update("""
+                INSERT INTO str_rn.registration_number
+                  (rn, accommodation_id, status, issue_date, valid_from, created_at, updated_at)
+                VALUES (?, ?, 'ACTIVE', CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, rn, UUID.randomUUID());
         requiresNew().executeWithoutResult(tx -> outbox.zabiljezi(rn, UUID.randomUUID(), facilityId, facility));
         return rn;
     }
 
     private void makeDue(String rn) {
         jdbc.update("UPDATE str_rn.eturizam_verifikacija SET next_attempt_at = ? WHERE rn = ?",
-                java.sql.Timestamp.from(Instant.now().minusSeconds(60)), rn);
+                Timestamp.from(Instant.now().minusSeconds(60)), rn);
     }
 
     private void user(long id, long unit, boolean active, boolean internal) {

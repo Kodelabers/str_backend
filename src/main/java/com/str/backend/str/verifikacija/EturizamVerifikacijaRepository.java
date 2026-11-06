@@ -4,7 +4,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,28 +19,26 @@ import java.util.Optional;
  * native SQL nad točno tim stupcima, bez entiteta — nijedan drugi tok ne može slučajno perzistirati
  * promjenu u tuđu tablicu. Postojeći redak se nikad ne mijenja, samo {@code INSERT}.
  *
- * <p>Metode se smiju zvati samo iz transakcije pokušaja {@link EturizamVerifikacijaWriter}-a, da
- * zahtjev, obavijesti i outbox redak prođu ili padnu zajedno, i nikad iz transakcije koja izdaje RB.
- * {@link Propagation#MANDATORY} sam to ne jamči — priključio bi se bilo kojoj transakciji — pa svaka
- * metoda još provjerava naziv tekuće transakcije ({@link EturizamVerifikacijaWriter#TX_NAME}) i bez
- * njega baca {@link IllegalStateException}.
+ * <p><b>Vidljiv samo unutar paketa</b> (razred i metode): zove ga isključivo transakcija pokušaja
+ * {@link EturizamVerifikacijaWriter}-a, da zahtjev, obavijesti i outbox redak prođu ili padnu zajedno.
+ * Transakcija izdavanja RB-a ({@code RegistrationService}, drugi paket) do njega ne može.
+ * {@link Propagation#MANDATORY} uz to odbija poziv bez transakcije.
  *
  * <p>Vremena su lokalno vrijeme Europe/Zagreb ({@code timestamp} bez zone, kao eTurizamovi retci) —
  * zadaje ih pozivatelj.
  */
 @Repository
 @Transactional(propagation = Propagation.MANDATORY)
-public class EturizamVerifikacijaRepository {
+class EturizamVerifikacijaRepository {
 
     private final JdbcTemplate jdbc;
 
-    public EturizamVerifikacijaRepository(JdbcTemplate jdbc) {
+    EturizamVerifikacijaRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
     /** Zahtjev za dokument, bez obzira na {@code active} — po dokumentu smije postojati samo jedan. */
-    public Optional<Long> findRequestId(long documentId) {
-        requireWriterTransaction();
+    Optional<Long> findRequestId(long documentId) {
         return jdbc.queryForList(
                         "SELECT id FROM str.verification_request WHERE source_document_id = ?",
                         Long.class, documentId)
@@ -57,8 +54,7 @@ public class EturizamVerifikacijaRepository {
      * transakcija se poništi; pozivatelj tada ponovi pokušaj, koji zatečeni zahtjev nađe.
      * {@code ON CONFLICT DO NOTHING} bi to riješio u jednom koraku, ali H2 ga nema.
      */
-    public long insertRequest(long documentId, String korisnik, LocalDateTime now) {
-        requireWriterTransaction();
+    long insertRequest(long documentId, String korisnik, LocalDateTime now) {
         jdbc.update("""
                 INSERT INTO str.verification_request
                   (created_by, created_date, last_modified_by, last_modified_date, active, source_document_id)
@@ -73,17 +69,18 @@ public class EturizamVerifikacijaRepository {
      * Nadležna jedinica dokumenta ({@code str.document.jurisdiction_organizational_unit_id});
      * prazno kad je dokument nema (ili dokumenta nema).
      */
-    public Optional<Long> findJurisdictionUnit(long documentId) {
-        requireWriterTransaction();
+    Optional<Long> findJurisdictionUnit(long documentId) {
         return jdbc.queryForList(
                         "SELECT jurisdiction_organizational_unit_id FROM str.document WHERE id = ?",
                         Long.class, documentId)
                 .stream().filter(Objects::nonNull).findFirst();
     }
 
-    /** Aktivni interni korisnici jedinice — primatelji obavijesti. Bez filtra po roli (odluka 5. 11. 2026.). */
-    public List<Long> findRecipients(long organizationalUnitId) {
-        requireWriterTransaction();
+    /**
+     * Aktivni interni korisnici jedinice — primatelji obavijesti, najviše {@code limit} (po id-u).
+     * Bez filtra po roli (odluka 5. 11. 2026.).
+     */
+    List<Long> findRecipients(long organizationalUnitId, int limit) {
         return jdbc.queryForList("""
                 SELECT u.id
                   FROM str.application_user u
@@ -91,25 +88,17 @@ public class EturizamVerifikacijaRepository {
                    AND u.active = TRUE
                    AND u.internal = TRUE
                  ORDER BY u.id
-                """, Long.class, organizationalUnitId);
+                 LIMIT ?
+                """, Long.class, organizationalUnitId, limit);
     }
 
     /** Nepročitana obavijest jednom korisniku; {@code podaci} je JSON tekst. */
-    public void insertNotification(long applicationUserId, String vrsta, String tekst, String objektTip,
-                                   long objektId, String podaci, LocalDateTime now) {
-        requireWriterTransaction();
+    void insertNotification(long applicationUserId, String vrsta, String tekst, String objektTip,
+                            long objektId, String podaci, LocalDateTime now) {
         jdbc.update("""
                 INSERT INTO str.korisnicka_obavijest
                   (application_user_id, vrsta, tekst, objekt_tip, objekt_id, podaci, stvoreno)
                 VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), ?)
                 """, applicationUserId, vrsta, tekst, objektTip, objektId, podaci, now);
-    }
-
-    private static void requireWriterTransaction() {
-        if (!EturizamVerifikacijaWriter.TX_NAME.equals(TransactionSynchronizationManager.getCurrentTransactionName())) {
-            throw new IllegalStateException("str.verification_request / str.korisnicka_obavijest smiju se dirati "
-                    + "samo iz transakcije EturizamVerifikacijaWriter-a, ne iz '"
-                    + TransactionSynchronizationManager.getCurrentTransactionName() + "'");
-        }
     }
 }

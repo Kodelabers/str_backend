@@ -104,11 +104,12 @@ Ponašanje u rubnim slučajevima:
 Retryja nema — eTurizam nema idempotentni endpoint za ovo, pa neuspjeli upis ide na ručnu
 intervenciju preko logova.
 
-> **Preduvjet za okoline:** shema `str` je inače read-only za STR. Pišu u nju samo upis i brisanje
-> broja (oba samo nad stupcem `str.facility.registration_number`) i žurna verifikacija (§6e,
-> `INSERT` u `str.verification_request` i `str.korisnicka_obavijest`). Za ovaj tok DB korisnik
-> treba `UPDATE` pravo na stupac `registration_number`. Bez toga registracija i povlačenje i dalje prolaze, ali se
-> RB ne vraća u eTurizam (niti se iz njega briše).
+> **Preduvjet za okoline:** shema `str` je inače read-only za STR. Pišu u nju samo dva toka:
+> upis i brisanje broja (ovaj odjeljak, `UPDATE` samo nad stupcem `str.facility.registration_number`)
+> i žurna verifikacija (§6e, samo `INSERT` novih redaka u `str.verification_request` i
+> `str.korisnicka_obavijest`). Upis i brisanje broja traže `UPDATE` pravo na stupac
+> `registration_number`; bez njega registracija i povlačenje i dalje prolaze, ali se RB ne vraća u
+> eTurizam (niti se iz njega briše).
 >
 > **Popis objekata** (`NiasFacilityService`) broj iz `str.facility` koji je STR povukao ne smatra
 > brojem objekta, pa objekt može tražiti novi broj i kad brisanje u eTurizmu nije prošlo.
@@ -241,14 +242,16 @@ zahtjeva slaže i listu prioriteta za provjeru (T9). Plan i odluke:
 | :--- | :--- | :--- |
 | Outbox redak (`rn`, `facility_id`, `document_id`, `PENDING`) | `str_rn.eturizam_verifikacija`, `VerifikacijaOutbox.zabiljezi` iz `RegistrationService.commitRegistration` | ista kao izdavanje RB-a |
 | Zahtjev (`created_by = STR`, `source_document_id = facility.document_id`) | `str.verification_request` | jedna `REQUIRES_NEW` nakon commita (`EturizamVerifikacijaListener`) ili iz `EturizamVerifikacijaRetryJob` |
-| Obavijest svakom aktivnom internom korisniku jedinice `document.jurisdiction_organizational_unit_id` | `str.korisnicka_obavijest` (`objekt_id` = id zahtjeva) | ista kao zahtjev — pad bilo čega poništava sve |
+| Obavijest svakom aktivnom internom korisniku jedinice `document.jurisdiction_organizational_unit_id` (najviše 200) | `str.korisnicka_obavijest` (`objekt_id` = id zahtjeva; naziv i mjesto iz eTurizma, očišćeni) | ista kao zahtjev — pad bilo čega poništava sve |
 
 Rubni slučajevi:
 
 | Situacija | Ishod |
 | :--- | :--- |
 | Novi objekt (bez `facilityId`) ili verificiran objekt | Ništa — ni outbox retka |
-| Neverificiran objekt bez `document_id` | WARN `eturizam_verifikacija_bez_dokumenta`, retka nema |
+| Neverificiran objekt bez ispravnog `document_id` (u praksi ne stiže: `findOwnership` spaja dokument obaveznim joinom) | WARN `eturizam_verifikacija_bez_dokumenta`, retka nema |
+| RB je prije obrade opozvan ili povučen, ili je objekt u međuvremenu verificiran (npr. zaostatak dok je integracija bila ugašena) | Ništa se ne upisuje; redak `PRESKOCENO` s razlogom u `last_error` |
+| Nedostaje GRANT (`permission denied`) | Redak čeka `PENDING` bez trošenja pokušaja (ERROR `eturizam_verifikacija_bez_prava` jednom) |
 | Zahtjev za isti dokument već postoji (bilo koji `active`) | Ne mijenja se, obavijesti se ne šalju; redak `ZAHTJEV_POSTOJAO` s id-em zatečenog |
 | Dokument bez nadležne jedinice / jedinica bez aktivnih internih korisnika | Zahtjev se upisuje, obavijesti ne; WARN |
 | `str.eturizam.verifikacija.enabled=false` | Redak ostaje `PENDING`; obradi se kad se uključi |

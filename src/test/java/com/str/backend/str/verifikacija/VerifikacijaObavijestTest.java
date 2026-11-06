@@ -1,7 +1,9 @@
 package com.str.backend.str.verifikacija;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.TransactionTimedOutException;
 
+import java.sql.SQLException;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,12 +28,10 @@ class VerifikacijaObavijestTest {
         assertThat(VerifikacijaObavijest.opisObjekta(" Kuća ", "", "7")).isEqualTo("„Kuća“ (ID 7)");
     }
 
+    /** Predložak iz konfiguracije može biti dug — tekst se ipak skraćuje na 1000 znakova. */
     @Test
     void tekst_truncatedTo1000Characters() {
-        String dugiNaziv = "N".repeat(1500);
-
-        String tekst = VerifikacijaObavijest.tekst(PREDLOZAK, "HR180001000000000123",
-                VerifikacijaObavijest.opisObjekta(dugiNaziv, "Makarska", "1"));
+        String tekst = VerifikacijaObavijest.tekst("X".repeat(1500) + " {rn}", "HR180001000000000123", "(ID 1)");
 
         assertThat(tekst).hasSize(VerifikacijaObavijest.MAX_TEKST).endsWith("…");
     }
@@ -55,15 +55,64 @@ class VerifikacijaObavijestTest {
     }
 
     @Test
-    void properties_defaultsWhenUnset() {
-        EturizamVerifikacijaProperties p = new EturizamVerifikacijaProperties(false, " ", null, null, null);
+    void ocisti_removesMarkupControlAndBidiCharacters() {
+        assertThat(VerifikacijaObavijest.ocisti("<img src=x onerror=\"alert(1)\">", 100))
+                .isEqualTo("img src=x onerror=alert(1)");
+        assertThat(VerifikacijaObavijest.ocisti("Vila\r\n\tMare\u202E\u2066 & 'More'`", 100))
+                .isEqualTo("Vila Mare More");
+        assertThat(VerifikacijaObavijest.ocisti("a\u200Bb\u0000c", 100)).isEqualTo("a b c");
+        assertThat(VerifikacijaObavijest.ocisti(null, 100)).isNull();
+    }
 
+    /** Dugačak naziv se skraćuje sam, pa RB i ID objekta uvijek ostaju u tekstu. */
+    @Test
+    void longName_isCappedSoRnAndIdSurvive() {
+        String tekst = VerifikacijaObavijest.tekst(PREDLOZAK, "HR180001000000000123",
+                VerifikacijaObavijest.opisObjekta("N".repeat(5000), "M".repeat(5000), "1448035"));
+
+        assertThat(tekst).contains("HR180001000000000123", "ID 1448035").hasSizeLessThan(VerifikacijaObavijest.MAX_TEKST);
+        assertThat(tekst).contains("„" + "N".repeat(VerifikacijaObavijest.MAX_DIO - 1) + "…“");
+    }
+
+    @Test
+    void opis_cutsRowValuesAndSqlFromMessage() {
+        RuntimeException pg = new RuntimeException("insert", new SQLException(
+                "ERROR: new row for relation \"korisnicka_obavijest\" violates check constraint \"x\"\n"
+                        + "  Detail: Failing row contains (1, 951001, Ana Anić, ...).", "23514"));
+        RuntimeException h2 = new RuntimeException(new SQLException(
+                "Check constraint violation: \"CK\"; SQL statement:\nINSERT INTO str.korisnicka_obavijest VALUES ('Ana')",
+                "23513"));
+
+        assertThat(VerifikacijaGreska.opis(pg))
+                .isEqualTo("SQLException: ERROR: new row for relation \"korisnicka_obavijest\" violates check constraint \"x\"");
+        assertThat(VerifikacijaGreska.opis(h2)).isEqualTo("SQLException: Check constraint violation: \"CK\"");
+    }
+
+    @Test
+    void vrsta_classifiesPermissionInfrastructureAndData() {
+        assertThat(VerifikacijaGreska.vrsta(new RuntimeException(new SQLException("permission denied", "42501"))))
+                .isEqualTo(VerifikacijaGreska.Vrsta.BEZ_PRAVA);
+        assertThat(VerifikacijaGreska.vrsta(new TransactionTimedOutException("x")))
+                .isEqualTo(VerifikacijaGreska.Vrsta.INFRASTRUKTURA);
+        assertThat(VerifikacijaGreska.vrsta(new RuntimeException(new SQLException("canceling statement", "57014"))))
+                .isEqualTo(VerifikacijaGreska.Vrsta.INFRASTRUKTURA);
+        assertThat(VerifikacijaGreska.vrsta(new RuntimeException(new SQLException("check", "23514"))))
+                .isEqualTo(VerifikacijaGreska.Vrsta.PODACI);
+    }
+
+    @Test
+    void properties_defaultsWhenUnset() {
+        EturizamVerifikacijaProperties p = new EturizamVerifikacijaProperties(null, " ", null, null, null, null);
+
+        assertThat(p.enabled()).isFalse();
         assertThat(p.korisnik()).isEqualTo("STR");
         assertThat(p.obavijesti().enabled()).isFalse();
         assertThat(p.obavijesti().vrsta()).isEqualTo("ZURNA_VERIFIKACIJA");
         assertThat(p.obavijesti().tekst()).isEqualTo(PREDLOZAK);
+        assertThat(p.obavijesti().maxPrimatelja()).isEqualTo(200);
         assertThat(p.retry().maxAttempts()).isEqualTo(10);
         assertThat(p.retry().backoffBase()).isEqualTo(Duration.ofMinutes(5));
         assertThat(p.timeout()).isEqualTo(Duration.ofSeconds(10));
+        assertThat(p.inlineTimeout()).isEqualTo(Duration.ofSeconds(3));
     }
 }

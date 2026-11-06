@@ -283,4 +283,7 @@
     <!-- Mock str.verification_request / str.korisnicka_obavijest i stupci nadležne jedinice. Samo local. -->
     <include file="db/changelog/changes/151-str-verifikacija-obavijest-local.xml"/>
 
+    <!-- Žurna verifikacija: naziv i mjesto objekta iz eTurizma za tekst obavijesti; status PRESKOCENO. -->
+    <include file="db/changelog/changes/152-eturizam-verifikacija-objekt.xml"/>
+
 </databaseChangeLog>

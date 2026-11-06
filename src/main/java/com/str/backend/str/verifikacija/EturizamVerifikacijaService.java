@@ -28,6 +28,16 @@ public class EturizamVerifikacijaService {
     /** UNIQUE na dokumentu u eTurizmu — jedini sukob ključa koji znači „netko je upisao zahtjev prije nas". */
     static final String UQ_DOKUMENT = "uq_verification_request_source_document";
 
+    /** Ishod obrade za pozivatelja; retry job po {@link #NEUSPJEH_INFRASTRUKTURA} prekida seriju. */
+    public enum Ishod {
+        /** Obrađeno, preskočeno ili integracija ugašena — ništa za ponoviti odmah. */
+        GOTOVO,
+        /** Pao je ovaj redak (podaci); ostali retci mogu proći. */
+        NEUSPJEH,
+        /** Istek vremena, zaključavanje, veza ili nedostaje GRANT — isto bi palo i na sljedećem retku. */
+        NEUSPJEH_INFRASTRUKTURA
+    }
+
     private final EturizamVerifikacijaWriter writer;
     private final VerifikacijaOutbox outbox;
     private final EturizamVerifikacijaProperties properties;
@@ -40,31 +50,38 @@ public class EturizamVerifikacijaService {
         this.properties = properties;
     }
 
-    public void obradi(Pokusaj pokusaj) {
+    public Ishod obradi(Pokusaj pokusaj) {
         if (!properties.enabled()) {
-            return;
+            return Ishod.GOTOVO;
         }
         try {
             try {
                 writer.upisi(pokusaj);
             } catch (DuplicateKeyException e) {
-                // Transakcija je poništena. Kad je sukob na UNIQUE dokumenta, eTurizam je zahtjev upisao
-                // između našeg SELECT-a i INSERT-a: novi pokušaj ga zatekne (ZAHTJEV_POSTOJAO). Drugi sukob
-                // (npr. PK, sekvenca identity stupca iza podataka) ponovni pokušaj neće riješiti, pa padne
-                // i bilježi se kao običan neuspjeh.
-                log.info("eturizam_verifikacija_duplicate_key rn={} ({}) — ponavljam jednom", pokusaj.rn(),
-                        isDocumentConflict(e) ? "zahtjev za dokument upisan istodobno" : "sukob ključa");
+                if (!isDocumentConflict(e)) {
+                    // Drugi sukob ključa (npr. PK, sekvenca identity stupca iza podataka) ponovni pokušaj
+                    // ne rješava — obični neuspjeh.
+                    throw e;
+                }
+                // Transakcija je poništena; eTurizam je zahtjev za dokument upisao između našeg SELECT-a i
+                // INSERT-a. Novi pokušaj ga zatekne (ZAHTJEV_POSTOJAO).
+                log.info("eturizam_verifikacija_utrka rn={} — zahtjev za dokument upisan istodobno, ponavljam jednom",
+                        pokusaj.rn());
                 writer.upisi(pokusaj);
             }
+            return Ishod.GOTOVO;
         } catch (RuntimeException e) {
             // Namjerno se guta: RB je već izdan i commitan, a ovo je upis u tuđi registar.
             try {
                 outbox.recordFailure(pokusaj.rn(), pokusaj.ocekivaniPokusaji(), e);
             } catch (RuntimeException recordError) {
-                recordError.addSuppressed(e);
-                log.error("eturizam_verifikacija_record_failed rn={} — neuspjeh pokušaja nije zabilježen, redak "
-                        + "ostaje PENDING s istim rokom", pokusaj.rn(), recordError);
+                log.error("eturizam_verifikacija_record_failed rn={} — neuspjeh pokušaja ({}) nije zabilježen, redak "
+                                + "ostaje PENDING s istim rokom: {}", pokusaj.rn(), VerifikacijaGreska.opis(e),
+                        VerifikacijaGreska.opis(recordError));
+                return Ishod.NEUSPJEH_INFRASTRUKTURA;
             }
+            return VerifikacijaGreska.vrsta(e) == VerifikacijaGreska.Vrsta.PODACI
+                    ? Ishod.NEUSPJEH : Ishod.NEUSPJEH_INFRASTRUKTURA;
         }
     }
 

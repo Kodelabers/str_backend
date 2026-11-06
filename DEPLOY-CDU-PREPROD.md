@@ -548,19 +548,19 @@ uključene obavijesti) obavijesti službenicima nadležne jedinice u `str.korisn
 prije uključivanja treba grant (Darko Bosnar):
 
 ```sql
--- izvršava vlasnik sheme str (tustart_owner) ili superuser
-GRANT INSERT, UPDATE ON str.verification_request TO str_owner;
-GRANT INSERT, UPDATE ON str.korisnicka_obavijest TO str_owner;
+-- izvršava vlasnik sheme str (tustart_owner) ili superuser; najmanja potrebna prava
+GRANT SELECT, INSERT ON str.verification_request TO str_owner;
+GRANT INSERT         ON str.korisnicka_obavijest TO str_owner;
+-- uz obavijesti STR još čita nadležnu jedinicu i primatelje (SELECT na str već postoji, V11):
+GRANT SELECT ON str.document, str.application_user TO str_owner;
 ```
 
-STR danas koristi samo `SELECT` (već postoji) i `INSERT`; `UPDATE` je u dogovoru s eTurizmom
-(5. 11. 2026.), ali ga kod ne koristi — STR postojeći zahtjev nikad ne mijenja. `id` je
-`identity` stupac, pa zasebno pravo na sekvencu ne bi trebalo; ako INSERT ipak padne s
-`permission denied for sequence`, dodati `GRANT USAGE ON SEQUENCE <sekvenca stupca id> TO str_owner`
-(naziv daje `select pg_get_serial_sequence('str.verification_request','id')`).
+STR postojeći redak nikad ne mijenja ni ne briše, pa `UPDATE` i `DELETE` ne traži. Oba `id`
+stupca su `identity` (V2: `is_identity = YES`), pa pravo na sekvencu ne treba. Što od toga
+nedostaje, ispisuje `startup_eturizam_verifikacija … nedostaje=[…]`.
 
 Isto pitanje kao A1/6: preživljava li tablični grant noćni reset. Ako ne, ujutro u logu stoji
-`startup_eturizam_verifikacija … INSERT=false` i upisi padaju (`eturizam_verifikacija_failed`) dok
+`startup_eturizam_verifikacija … nedostaje=[…]` i upisi čekaju (`eturizam_verifikacija_bez_prava`) dok
 se grant ne vrati — RB se i dalje izdaje. Outbox (`str_rn.eturizam_verifikacija`) se resetom briše
 kao i ostatak `str_rn`.
 
@@ -577,12 +577,16 @@ docker logs str-backend-cdupreprod 2>&1 | grep -E "startup_eturizam_verifikacija
 | :--- | :--- |
 | `startup_eturizam_verifikacija enabled=… obavijesti=… nedostaje=[]` | potrebna prava postoje (SELECT/INSERT na zahtjevu; uz obavijesti i SELECT na `str.document`, `str.application_user` te INSERT na obavijesti). Uz `enabled=true` i nepraznu listu je WARN |
 | `eturizam_verifikacija_config …` (**ERROR**) | `vrsta` ili `objekt-tip` dulji od 64 znaka — svaki upis obavijesti će pasti |
-| `eturizam_verifikacija_duplicate_key rn=… (…)` | sukob ključa pri upisu, pokušaj se ponavlja jednom; „zahtjev za dokument upisan istodobno” je očekivana utrka s eTurizmom |
+| `eturizam_verifikacija_utrka rn=…` | eTurizam je upisao zahtjev za isti dokument istodobno; pokušaj se ponavlja jednom i redak završi `ZAHTJEV_POSTOJAO`. Drugi sukob ključa je obični neuspjeh |
 | `eturizam_verifikacija_zabiljezeno rn=… document=…` | RB je izdan za neverificiran objekt, outbox redak je nastao (i uz `enabled=false`) |
 | `eturizam_verifikacija_upisano … verification_request=… obavijesti=N` | zahtjev je upisan u eTurizam, `N` obavijesti službenicima |
 | `eturizam_verifikacija_postojao …` | zahtjev za taj dokument je već postojao; STR ga nije dirao ni obavještavao |
 | `eturizam_verifikacija_bez_jedinice` / `_bez_primatelja` (WARN) | zahtjev je upisan, ali obavijesti nema komu poslati |
-| `eturizam_verifikacija_bez_dokumenta` (WARN) | objekt nema `document_id` — zahtjev se ne može upisati, outbox retka nema |
+| `eturizam_verifikacija_bez_dokumenta` (WARN) | objekt nema ispravan `document_id` (u praksi ne stiže — `findOwnership` dokument spaja obaveznim joinom); retka nema |
+| `eturizam_verifikacija_preskoceno … razlog=…` | RB je u međuvremenu opozvan/povučen ili objekt verificiran — ništa se ne upisuje, redak `PRESKOCENO` |
+| `eturizam_verifikacija_bez_prava …` (**ERROR**, jednom po retku) | nedostaje GRANT; redak čeka `PENDING` bez trošenja pokušaja, ponovo za 2 h |
+| `eturizam_verifikacija_retry_aborted …` (WARN) | infrastrukturni neuspjeh (istek, zaključavanje, veza, prava) — ostatak serije čeka sljedeći prolazak |
+| `eturizam_verifikacija_previse_primatelja …` (WARN) | jedinica ima više aktivnih internih korisnika od `max-primatelja` (200); obavijest dobiva prvih 200 |
 | `eturizam_verifikacija_failed … reason=…` (WARN) | pokušaj je pao (najčešće `permission denied`); retry job ponavlja s backoffom |
 | `eturizam_verifikacija_exhausted …` (**ERROR**) | iscrpljeni pokušaji, redak `ABANDONED` — ručna intervencija |
 
@@ -615,6 +619,17 @@ sljedećem prolasku (`STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON`, zadano svakih 5 min
 UPDATE str_rn.eturizam_verifikacija
    SET status = 'PENDING', attempts = 0, next_attempt_at = now(), last_error = NULL, updated_at = now()
  WHERE rn = '<RB>' AND status = 'ABANDONED';
+```
+
+Redak bez prava (`permission denied`) ne troši pokušaje: ostaje `PENDING`, `last_error` počinje s
+`bez_prava:`, a sljedeći pokušaj je za `retry.backoff-max` (2 h). Nakon granta ga se ne mora čekati,
+a retke koje je starija verzija zbog prava ipak napustila vraća isti upit za sve odjednom:
+
+```sql
+UPDATE str_rn.eturizam_verifikacija
+   SET status = 'PENDING', attempts = 0, next_attempt_at = now(), last_error = NULL, updated_at = now()
+ WHERE (status = 'ABANDONED' AND last_error LIKE '%permission denied%')
+    OR (status = 'PENDING' AND last_error LIKE 'bez_prava:%');
 ```
 
 ## B6. Kako privatni repozitoriji dolaze na kutiju

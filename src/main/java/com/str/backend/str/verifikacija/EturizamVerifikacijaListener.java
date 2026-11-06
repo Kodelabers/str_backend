@@ -3,6 +3,8 @@ package com.str.backend.str.verifikacija;
 import com.str.backend.registration.event.RnIssuedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -14,6 +16,10 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * baca, pa ne može preskočiti ni njih ni odgovor zahtjeva. Za RB bez outbox retka (nov ili
  * verificiran objekt) to je jedan {@code SELECT}. Što ovdje ne prođe, ponavlja
  * {@link EturizamVerifikacijaRetryJob}.
+ *
+ * <p><b>Ide zadnji</b> ({@link Ordered#LOWEST_PRECEDENCE}; {@code RnIssuedListener} ima prednost):
+ * write-back RB-a i eGOP dostava su važniji za korisnika koji čeka odgovor. Radi na niti HTTP zahtjeva,
+ * pa ima kraće ograničenje ({@code str.eturizam.verifikacija.inline-timeout}, zadano 3 s).
  */
 @Component
 public class EturizamVerifikacijaListener {
@@ -26,6 +32,7 @@ public class EturizamVerifikacijaListener {
         this.service = service;
     }
 
+    @Order(Ordered.LOWEST_PRECEDENCE)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onRnIssued(RnIssuedEvent event) {
         try {

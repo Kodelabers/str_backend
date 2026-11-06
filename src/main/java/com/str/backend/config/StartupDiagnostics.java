@@ -1,5 +1,6 @@
 package com.str.backend.config;
 
+import com.str.backend.str.verifikacija.EturizamVerifikacijaProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -45,6 +46,9 @@ public class StartupDiagnostics {
 
     /** Spring Session JDBC čita, upisuje, produžuje i briše (cleanup) sesije. */
     private static final List<String> SESSION_PRIVILEGES = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
+
+    /** {@code str.korisnicka_obavijest.vrsta} i {@code objekt_tip} su {@code varchar(64)}. */
+    static final int MAX_SIFRA_OBAVIJESTI = 64;
 
     private final Environment env;
     private final JdbcTemplate jdbc;
@@ -162,6 +166,9 @@ public class StartupDiagnostics {
                 env.getProperty("str.documents.pdfa", Boolean.class, false),
                 eseal ? "" : " — izlazni akti idu u eGOP/KP NEPEČAĆENI");
 
+        // Ne ovisi o bazi, pa ide uz konfiguraciju (sonde prava rade samo na PostgreSQL-u).
+        provjeriObavijesti();
+
         log.info("startup_web frontend_base={} cors={}",
                 env.getProperty("app.frontend.base-url"),
                 env.getProperty("app.cors.allowed-origins"));
@@ -239,6 +246,36 @@ public class StartupDiagnostics {
         } else {
             log.info("startup_eturizam_verifikacija enabled={} obavijesti={} nedostaje={}",
                     enabled, obavijesti, nedostaje);
+        }
+    }
+
+    /**
+     * Konfiguracija obavijesti (samo kad su uključene): šifre stanu u {@code varchar(64)}, a predložak
+     * nosi {@code {rn}}. Ne ruši start — obavijesti su sporedne — ali bez toga bi svaki upis pao i redak
+     * nakon retry.max-attempts otišao u ABANDONED, odnosno službenik dobio obavijest bez broja. Zadane
+     * vrijednosti daje {@link EturizamVerifikacijaProperties.Obavijesti}, kao i pri bindanju.
+     */
+    private void provjeriObavijesti() {
+        EturizamVerifikacijaProperties.Obavijesti o = new EturizamVerifikacijaProperties.Obavijesti(
+                env.getProperty("str.eturizam.verifikacija.obavijesti.enabled", Boolean.class),
+                env.getProperty("str.eturizam.verifikacija.obavijesti.vrsta"),
+                env.getProperty("str.eturizam.verifikacija.obavijesti.objekt-tip"),
+                env.getProperty("str.eturizam.verifikacija.obavijesti.tekst"),
+                null);
+        if (!o.enabled()) {
+            return;
+        }
+        if (o.vrsta().length() > MAX_SIFRA_OBAVIJESTI) {
+            log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.vrsta ima {} znakova "
+                    + "(najvise {}) — svaki upis obavijesti ce pasti", o.vrsta().length(), MAX_SIFRA_OBAVIJESTI);
+        }
+        if (o.objektTip().length() > MAX_SIFRA_OBAVIJESTI) {
+            log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.objekt-tip ima {} znakova "
+                    + "(najvise {}) — svaki upis obavijesti ce pasti", o.objektTip().length(), MAX_SIFRA_OBAVIJESTI);
+        }
+        if (!o.tekst().contains("{rn}")) {
+            log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.tekst nema {rn} — "
+                    + "obavijest sluzbeniku nece nositi registracijski broj");
         }
     }
 
