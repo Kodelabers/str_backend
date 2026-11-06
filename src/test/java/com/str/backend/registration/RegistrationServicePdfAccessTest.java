@@ -19,6 +19,7 @@ import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +59,7 @@ class RegistrationServicePdfAccessTest {
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                mock(PrilogService.class));
+                mock(PrilogService.class), mock(VerifikacijaOutbox.class));
 
         owner = LessorEntity.create("Pero", "Perić", "Ilica", "1", "Zagreb", "Grad Zagreb", "pero@example.hr");
         owner.setLessorOib(OIB);

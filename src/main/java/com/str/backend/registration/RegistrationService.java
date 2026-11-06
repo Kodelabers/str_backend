@@ -40,6 +40,7 @@ import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
 import com.str.backend.validation.ValidationContext;
@@ -79,6 +80,7 @@ public class RegistrationService {
     private final SubmissionDraftService submissionDraftService;
     private final ReissueService reissueService;
     private final PrilogService prilogService;
+    private final VerifikacijaOutbox verifikacijaOutbox;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -97,7 +99,8 @@ public class RegistrationService {
                                ApplicationEventPublisher eventPublisher,
                                SubmissionDraftService submissionDraftService,
                                ReissueService reissueService,
-                               PrilogService prilogService) {
+                               PrilogService prilogService,
+                               VerifikacijaOutbox verifikacijaOutbox) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -116,6 +119,7 @@ public class RegistrationService {
         this.submissionDraftService = submissionDraftService;
         this.reissueService = reissueService;
         this.prilogService = prilogService;
+        this.verifikacijaOutbox = verifikacijaOutbox;
     }
 
     /** Bez NIAS assertiona (local/mock, testovi): identitet je samo OIB iz zahtjeva. */
@@ -149,7 +153,7 @@ public class RegistrationService {
         String previousRn = requireReissue(req, RnOwner.byOib(req.oib()));
         AccommodationEntity accommodation = buildAccommodation(req, countyName(req.countyId()));
         markReissue(accommodation, previousRn);
-        verifyAndCompleteFacility(req.oib(), accommodation);
+        FacilityOwnershipRow facility = verifyAndCompleteFacility(req.oib(), accommodation);
         requireMaxBeds(accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
@@ -176,7 +180,7 @@ public class RegistrationService {
         runValidation(accommodation, lessor);
 
         // Prilozi su učitani pod vlasnikom (efektivni OIB) — isti OIB koji je kontroler potvrdio kao req.oib().
-        return commitRegistration(lessor, accommodation, Ucitao.nias(req.oib()), req.prilogIds());
+        return commitRegistration(lessor, accommodation, facility, Ucitao.nias(req.oib()), req.prilogIds());
     }
 
     @Transactional(noRollbackFor = ValidationRejectedException.class)
@@ -189,7 +193,7 @@ public class RegistrationService {
         String previousRn = requireReissue(req, RnOwner.byLessor(lessorId));
         AccommodationEntity accommodation = buildAccommodation(req, countyName);
         markReissue(accommodation, previousRn);
-        verifyAndCompleteFacility(lessor.getLessorOib(), accommodation);
+        FacilityOwnershipRow facility = verifyAndCompleteFacility(lessor.getLessorOib(), accommodation);
         requireMaxBeds(accommodation);
         checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
 
@@ -198,7 +202,7 @@ public class RegistrationService {
         applyContact(lessor, req);
         runValidation(accommodation, lessor);
 
-        return commitRegistration(lessor, accommodation, Ucitao.lessor(lessorId), req.prilogIds());
+        return commitRegistration(lessor, accommodation, facility, Ucitao.lessor(lessorId), req.prilogIds());
     }
 
     /**
@@ -305,8 +309,12 @@ public class RegistrationService {
         }
     }
 
-    private void verifyAndCompleteFacility(String oib, AccommodationEntity accommodation) {
-        facilityClaimVerifier.verify(oib, accommodation.getFacilityId(),
+    /**
+     * @return provjereni eTurizam zapis objekta — {@code commitRegistration} po njemu odlučuje treba li
+     * eTurizmu zahtjev za žurnu verifikaciju; {@code null} za novi objekt (bez {@code facilityId})
+     */
+    private FacilityOwnershipRow verifyAndCompleteFacility(String oib, AccommodationEntity accommodation) {
+        Optional<FacilityOwnershipRow> facility = facilityClaimVerifier.verify(oib, accommodation.getFacilityId(),
                         new FacilityClaimVerifier.Claim(
                                 accommodation.getAccommodationTypeId(),
                                 accommodation.getMaxBeds(),
@@ -315,8 +323,9 @@ public class RegistrationService {
                                 accommodation.getCity(),
                                 accommodation.getSettlement(),
                                 accommodation.getStreet(),
-                                accommodation.getStreetNumber()))
-                .ifPresent(facility -> accommodation.completeFrom(facilityData(facility)));
+                                accommodation.getStreetNumber()));
+        facility.ifPresent(f -> accommodation.completeFrom(facilityData(f)));
+        return facility.orElse(null);
     }
 
     /** Ono što eTurizam stvarno zna o objektu, u obliku za dopunu; popunjivači postaju {@code null}. */
@@ -492,12 +501,15 @@ public class RegistrationService {
     }
 
     /**
+     * @param facility  provjereni eTurizam objekt ({@code null} za novi) — neverificiran dobiva outbox
+     *                  redak za žurnu verifikaciju (T8), u ovoj transakciji
      * @param ucitao   tko je učitao priloge zahtjeva ({@link Ucitao}) — samo njegovi se mogu vezati
      * @param prilogIds prilozi uz zahtjev (T17); vežu se uz submission u ovoj transakciji, pa ih eGOP
      *                  listener nakon commita prilaže uz ulazno pismeno zahtjeva. Neispravan prilog
      *                  (tuđi, istekao, previše) poništava i izdavanje RB-a.
      */
     private RegistrationResponse commitRegistration(LessorEntity lessor, AccommodationEntity accommodation,
+                                                    FacilityOwnershipRow facility,
                                                     String ucitao, List<Long> prilogIds) {
         lessorRepository.save(lessor);
 
@@ -517,6 +529,9 @@ public class RegistrationService {
         saveAccommodation(accommodation);
 
         RnEntity rn = rnService.issue(submission.getSubmissionId(), accommodation.getAccommodationId());
+        // T8: neverificiran eTurizam objekt traži žurnu verifikaciju. Ovdje se samo bilježi u outbox
+        // (str_rn, ista transakcija); u eTurizam se upisuje tek nakon commita (EturizamVerifikacijaListener).
+        verifikacijaOutbox.zabiljezi(rn.getRn(), submission.getSubmissionId(), accommodation.getFacilityId(), facility);
         if (prilogIds != null && !prilogIds.isEmpty()) {
             prilogService.bind(ucitao, prilogIds, PrilogVlasnik.zahtjev(submission.getSubmissionId()));
         }

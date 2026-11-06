@@ -330,6 +330,97 @@ to treba reći testerima unaprijed, inače će prijaviti „formular ne radi" ka
   umjesto traženja širokih prava.
 
 
+### 2e. Žurna verifikacija (T8) — `INSERT` na dvije tablice u `str`
+
+Kad se RB izda za **neverificiran** objekt iz eTurizma, STR upisuje zahtjev u
+`str.verification_request` i (uz uključene obavijesti) po jednu obavijest u
+`str.korisnicka_obavijest` svakom aktivnom internom korisniku nadležne jedinice dokumenta
+(`docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md`). Izmjereno 5. 11. 2026. (V11): **`str_owner` na obje
+tablice ima samo `SELECT`**, pa upis ovdje ne prolazi dok ne stigne grant (Darko Bosnar):
+
+```sql
+-- izvršava vlasnik sheme str (tustart_owner) ili superuser; najmanja potrebna prava
+GRANT SELECT, INSERT ON str.verification_request TO str_owner;
+GRANT INSERT         ON str.korisnicka_obavijest TO str_owner;
+-- uz obavijesti STR još čita nadležnu jedinicu i primatelje (SELECT na str već postoji, V11):
+GRANT SELECT ON str.document, str.application_user TO str_owner;
+```
+
+STR postojeći redak nikad ne mijenja ni ne briše, pa `UPDATE` i `DELETE` ne traži. Oba `id`
+stupca su `identity` (V2: `is_identity = YES`), pa pravo na sekvencu ne treba. Što od toga
+nedostaje, ispisuje `startup_eturizam_verifikacija … nedostaje=[…]`.
+
+Dok granta nema, `STR_ETURIZAM_VERIFIKACIJA_ENABLED=false` (zadano). Ništa se ne gubi: izdavanje
+RB-a i dalje bilježi redak u `str_rn.eturizam_verifikacija` (`PENDING`), a kad se zastavica
+uključi, `EturizamVerifikacijaRetryJob` obradi i taj zaostatak. Obavijesti imaju vlastitu
+zastavicu (`STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_ENABLED`, zadano `false`) dok eTurizam ne potvrdi
+`vrsta`, `objekt_tip` i tekst.
+
+Provjera nakon granta i uključivanja (log, pa baza):
+
+```bash
+sudo docker logs str-backend-preprod 2>&1 | grep -E "startup_eturizam_verifikacija|eturizam_verifikacija_"
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `startup_eturizam_verifikacija enabled=… obavijesti=… nedostaje=[]` | potrebna prava postoje (SELECT/INSERT na zahtjevu; uz obavijesti i SELECT na `str.document`, `str.application_user` te INSERT na obavijesti). Uz `enabled=true` i nepraznu listu je WARN |
+| `eturizam_verifikacija_config …` (**ERROR**) | `vrsta` ili `objekt-tip` dulji od 64 znaka — svaki upis obavijesti će pasti |
+| `eturizam_verifikacija_utrka rn=…` | eTurizam je upisao zahtjev za isti dokument istodobno; pokušaj se ponavlja jednom i redak završi `ZAHTJEV_POSTOJAO`. Drugi sukob ključa je obični neuspjeh |
+| `eturizam_verifikacija_zabiljezeno rn=… document=…` | RB je izdan za neverificiran objekt, outbox redak je nastao (i uz `enabled=false`) |
+| `eturizam_verifikacija_upisano … verification_request=… obavijesti=N` | zahtjev je upisan u eTurizam, `N` obavijesti službenicima |
+| `eturizam_verifikacija_postojao …` | zahtjev za taj dokument je već postojao; STR ga nije dirao ni obavještavao |
+| `eturizam_verifikacija_bez_jedinice` / `_bez_primatelja` (WARN) | zahtjev je upisan, ali obavijesti nema komu poslati |
+| `eturizam_verifikacija_bez_dokumenta` (WARN) | objekt nema ispravan `document_id` (u praksi ne stiže — `findOwnership` dokument spaja obaveznim joinom); retka nema |
+| `eturizam_verifikacija_preskoceno … razlog=…` | RB je u međuvremenu opozvan/povučen ili objekt verificiran — ništa se ne upisuje, redak `PRESKOCENO` |
+| `eturizam_verifikacija_bez_prava …` (**ERROR**, jednom po retku) | nedostaje GRANT; redak čeka `PENDING` bez trošenja pokušaja, ponovo za 2 h |
+| `eturizam_verifikacija_retry_aborted …` (WARN) | infrastrukturni neuspjeh (istek, zaključavanje, veza, prava) — ostatak serije čeka sljedeći prolazak |
+| `eturizam_verifikacija_previse_primatelja …` (WARN) | jedinica ima više aktivnih internih korisnika od `max-primatelja` (200); obavijest dobiva prvih 200 |
+| `eturizam_verifikacija_failed … reason=…` (WARN) | pokušaj je pao (najčešće `permission denied`); retry job ponavlja s backoffom |
+| `eturizam_verifikacija_exhausted …` (**ERROR**) | iscrpljeni pokušaji, redak `ABANDONED` — ručna intervencija |
+
+```sql
+SELECT 'Z1' AS blok, has_table_privilege('str.verification_request','INSERT') AS zahtjev_insert,
+       has_table_privilege('str.korisnicka_obavijest','INSERT') AS obavijest_insert;
+
+SELECT 'Z2' AS blok, e.rn, e.status, e.attempts, e.document_id, e.verification_request_id,
+       e.obavijesti_poslano, e.next_attempt_at, e.last_error, e.created_at
+FROM str_rn.eturizam_verifikacija e ORDER BY e.created_at DESC LIMIT 20;
+
+SELECT 'Z3' AS blok, vr.*
+FROM str.verification_request vr
+JOIN str_rn.eturizam_verifikacija e ON e.verification_request_id = vr.id
+ORDER BY vr.id DESC LIMIT 20;
+
+SELECT 'Z4' AS blok, o.id, o.application_user_id, o.vrsta, o.objekt_tip, o.objekt_id, o.stvoreno, o.procitano, o.tekst
+FROM str.korisnicka_obavijest o
+WHERE o.objekt_tip = 'VERIFICATION_REQUEST'
+  AND o.objekt_id IN (SELECT e.verification_request_id FROM str_rn.eturizam_verifikacija e)
+ORDER BY o.id DESC LIMIT 50;
+```
+
+(`'VERIFICATION_REQUEST'` je zadani `objekt_tip`; uz `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` upisati tu vrijednost.)
+
+**Povrat `ABANDONED` retka u red** (nakon otklanjanja uzroka, npr. granta): retry job ga uzme u
+sljedećem prolasku (`STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON`, zadano svakih 5 min) s punim brojem pokušaja.
+
+```sql
+UPDATE str_rn.eturizam_verifikacija
+   SET status = 'PENDING', attempts = 0, next_attempt_at = now(), last_error = NULL, updated_at = now()
+ WHERE rn = '<RB>' AND status = 'ABANDONED';
+```
+
+Redak bez prava (`permission denied`) ne troši pokušaje: ostaje `PENDING`, `last_error` počinje s
+`bez_prava:`, a sljedeći pokušaj je za `retry.backoff-max` (2 h). Nakon granta ga se ne mora čekati,
+a retke koje je starija verzija zbog prava ipak napustila vraća isti upit za sve odjednom:
+
+```sql
+UPDATE str_rn.eturizam_verifikacija
+   SET status = 'PENDING', attempts = 0, next_attempt_at = now(), last_error = NULL, updated_at = now()
+ WHERE (status = 'ABANDONED' AND last_error LIKE '%permission denied%')
+    OR (status = 'PENDING' AND last_error LIKE 'bez_prava:%');
+```
+
 ## 3. Keystore na kutiju
 
 Prijenos ide **s laptopa preko VPN-a**; keystore nikad ne ulazi u git (`.gitignore` blokira
@@ -519,6 +610,7 @@ sudo docker logs str-backend-preprod 2>&1 | grep startup_
 | `startup_schema_missing shema=rpj_dgu` (**ERROR**) | nema `USAGE` → adresna kaskada ne radi. Traži grant (§2d) |
 | `startup_schema_unreadable tablica=…` (**ERROR**) | shema dostupna, tablica nije (nema `SELECT`) |
 | `startup_schema_writeback … UPDATE=false` (WARN) | RB se ne upisuje natrag u eTurizam; RB ostaje valjan |
+| `startup_eturizam_verifikacija enabled=… obavijesti=… nedostaje=[…]` | neprazna lista: nema granta za žurnu verifikaciju (§2e); uz `enabled=true` WARN, RB ostaje valjan |
 | `startup_nias enabled=true entity_id=… alias=…` | vidi se čime se predstavljamo, bez tajni |
 | `startup_nias_urls acs=… slo=…` | usporedi s onim što je NIAS registrirao |
 | `startup_egop enabled=false` | uz napomenu da mock KLASI/URBROJU dodaje prefiks `MOCK-` |

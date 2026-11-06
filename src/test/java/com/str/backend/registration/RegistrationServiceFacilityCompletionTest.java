@@ -27,6 +27,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import com.str.backend.validation.PipelineResult;
@@ -84,7 +85,7 @@ class RegistrationServiceFacilityCompletionTest {
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                mock(PrilogService.class));
+                mock(PrilogService.class), mock(VerifikacijaOutbox.class));
 
         when(orchestrator.execute(any(ValidationContext.class))).thenReturn(PipelineResult.passed());
         RnEntity issued = mock(RnEntity.class);

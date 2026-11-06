@@ -2,6 +2,8 @@ package com.str.backend.registration.event;
 
 import com.str.backend.egop.EgopRegistrationDispatcher;
 import com.str.backend.str.FacilityRegistrationNumberWriteBack;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -32,6 +34,11 @@ public class RnIssuedListener {
         this.facilityWriteBack = facilityWriteBack;
     }
 
+    /**
+     * Prije {@code EturizamVerifikacijaListener}-a ({@code LOWEST_PRECEDENCE}), koji je na istoj niti
+     * HTTP zahtjeva: bez izričitog redoslijeda dva slušatelja istog prioriteta nemaju zajamčen poredak.
+     */
+    @Order(Ordered.LOWEST_PRECEDENCE - 100)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onRnIssued(RnIssuedEvent event) {
         facilityWriteBack.writeBack(event.submissionId(), event.rn());

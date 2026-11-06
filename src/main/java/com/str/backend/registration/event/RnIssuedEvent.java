@@ -12,6 +12,10 @@ import java.util.UUID;
  * the same path works for a later retry. {@code rn} is kept because it is logged at the
  * publishing site and used before the entities are loaded.
  *
+ * <p>{@code EturizamVerifikacijaListener} (zaseban AFTER_COMMIT slušatelj) za RB izdan neverificiranom
+ * eTurizam objektu upisuje zahtjev za žurnu verifikaciju i obavijesti službenicima (T8), iz outbox
+ * retka koji je {@code RegistrationService} zabilježio u istoj transakciji kao RB.
+ *
  * <p>Failures inside the listener are logged but do not affect the RN — by spec
  * the registration is valid regardless of delivery success.
  */

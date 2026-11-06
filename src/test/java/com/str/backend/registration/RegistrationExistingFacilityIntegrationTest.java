@@ -75,7 +75,7 @@ class RegistrationExistingFacilityIntegrationTest {
     /** eTurizam zna županiju, mjesto, naziv i kapacitet, ali ne ulicu ni kućni broj (tipično). */
     @Test
     void issuesRn_andCompletesKnownDataFromEturizam() throws Exception {
-        FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
+        FacilityOwnershipRow facility = verifiedFacility();
         when(facility.getCountyName()).thenReturn("SPLITSKO-DALMATINSKA");
         when(facility.getMunicipalityName()).thenReturn("MAKARSKA");
         when(facility.getName()).thenReturn("Apartman Marija");
@@ -102,7 +102,7 @@ class RegistrationExistingFacilityIntegrationTest {
      */
     @Test
     void issuesRn_evenWhenEturizamKnowsNothing() throws Exception {
-        FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
+        FacilityOwnershipRow facility = verifiedFacility();
         when(facilityClaimVerifier.verify(eq(OIB), eq("700002"), any())).thenReturn(Optional.of(facility));
 
         JsonNode body = submit("700002", 4);
@@ -117,7 +117,7 @@ class RegistrationExistingFacilityIntegrationTest {
     /** V-2: eTurizam ne zna kapacitet, a korisnik ga nije upisao — RB se ne izdaje. */
     @Test
     void rejects_whenNeitherEturizamNorUserKnowsMaxGuests() throws Exception {
-        FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
+        FacilityOwnershipRow facility = verifiedFacility();
         when(facilityClaimVerifier.verify(eq(OIB), eq("700003"), any())).thenReturn(Optional.of(facility));
 
         mvc.perform(post("/api/generateRegistrationNumber")
@@ -126,6 +126,16 @@ class RegistrationExistingFacilityIntegrationTest {
                 .andExpect(status().isBadRequest());
 
         assertThat(accommodationRepository.findAll()).noneMatch(a -> "700003".equals(a.getFacilityId()));
+    }
+
+    /**
+     * Verificiran objekt: Mockito bi za {@code getVerified()} vratio {@code false}, pa bi svako izdavanje
+     * ostavilo outbox redak žurne verifikacije (T8) s {@code document_id = 0} — ovaj test o tome ništa ne zna.
+     */
+    private static FacilityOwnershipRow verifiedFacility() {
+        FacilityOwnershipRow facility = mock(FacilityOwnershipRow.class);
+        when(facility.getVerified()).thenReturn(true);
+        return facility;
     }
 
     private JsonNode submit(String facilityId) throws Exception {

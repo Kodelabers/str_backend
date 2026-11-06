@@ -281,4 +281,13 @@
          valjanosti, URL/naziv/adresa oglasa, ISO kod države gosta i brisanje gostiju s aktivnošću. -->
     <include file="db/changelog/changes/150-activity-sdep-upsert.xml"/>
 
+    <!-- Outbox zahtjeva za žurnu verifikaciju (T8): RB izdan za neverificiran eTurizam objekt. -->
+    <include file="db/changelog/changes/151-eturizam-verifikacija.xml"/>
+
+    <!-- Mock str.verification_request / str.korisnicka_obavijest i stupci nadležne jedinice. Samo local. -->
+    <include file="db/changelog/changes/152-str-verifikacija-obavijest-local.xml"/>
+
+    <!-- Žurna verifikacija: naziv i mjesto objekta iz eTurizma za tekst obavijesti; status PRESKOCENO. -->
+    <include file="db/changelog/changes/153-eturizam-verifikacija-objekt.xml"/>
+
 </databaseChangeLog>

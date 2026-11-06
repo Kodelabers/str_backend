@@ -566,6 +566,94 @@ i u Adobe Readeru pogledati panel potpisa. Dok pečata nema, portal pokazuje nep
 registracije ostaje nedovršena (RB je izdan i valjan). Za novi pokušaj — nova radnja. Gašenje:
 `ESEAL_ENABLED=false`, korak 7.
 
+### 8e. Žurna verifikacija (T8)
+
+RB izdan za **neverificiran** objekt iz eTurizma (tuStart handoff, `created_by = 'optimit'`) daje
+zahtjev u `str.verification_request` i, uz uključene obavijesti, po jednu obavijest u
+`str.korisnicka_obavijest` svakom aktivnom internom korisniku nadležne jedinice dokumenta
+(`docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md`). Na CDU testu `shorttermrental` ima `SELECT`, `INSERT` i
+`UPDATE` na obje tablice (V11, 5. 11. 2026.), pa grant ne treba.
+
+**`.env.cdu`** (zadano je sve ugašeno):
+
+```bash
+STR_ETURIZAM_VERIFIKACIJA_ENABLED=true
+# Obavijesti tek kad eTurizam potvrdi vrstu, objekt_tip i tekst (do tada samo zahtjev):
+#STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_ENABLED=true
+#STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_VRSTA=ZURNA_VERIFIKACIJA
+#STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP=VERIFICATION_REQUEST
+```
+
+**Okidač:** zahtjev za RB za neverificiran objekt s popisa objekata. Objekt kojem je eTurizam
+zahtjev za isti dokument već upisao daje `ZAHTJEV_POSTOJAO` (bez obavijesti). Novi i verificiran
+objekt ne ostavljaju trag.
+
+```bash
+docker logs str-backend-cdu 2>&1 | grep -E "startup_eturizam_verifikacija|eturizam_verifikacija_" | tail -20
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `startup_eturizam_verifikacija enabled=… obavijesti=… nedostaje=[]` | potrebna prava postoje (SELECT/INSERT na zahtjevu; uz obavijesti i SELECT na `str.document`, `str.application_user` te INSERT na obavijesti). Uz `enabled=true` i nepraznu listu je WARN |
+| `eturizam_verifikacija_config …` (**ERROR**) | `vrsta` ili `objekt-tip` dulji od 64 znaka — svaki upis obavijesti će pasti |
+| `eturizam_verifikacija_utrka rn=…` | eTurizam je upisao zahtjev za isti dokument istodobno; pokušaj se ponavlja jednom i redak završi `ZAHTJEV_POSTOJAO`. Drugi sukob ključa je obični neuspjeh |
+| `eturizam_verifikacija_zabiljezeno rn=… document=…` | RB je izdan za neverificiran objekt, outbox redak je nastao (i uz `enabled=false`) |
+| `eturizam_verifikacija_upisano … verification_request=… obavijesti=N` | zahtjev je upisan u eTurizam, `N` obavijesti službenicima |
+| `eturizam_verifikacija_postojao …` | zahtjev za taj dokument je već postojao; STR ga nije dirao ni obavještavao |
+| `eturizam_verifikacija_bez_jedinice` / `_bez_primatelja` (WARN) | zahtjev je upisan, ali obavijesti nema komu poslati |
+| `eturizam_verifikacija_bez_dokumenta` (WARN) | objekt nema ispravan `document_id` (u praksi ne stiže — `findOwnership` dokument spaja obaveznim joinom); retka nema |
+| `eturizam_verifikacija_preskoceno … razlog=…` | RB je u međuvremenu opozvan/povučen ili objekt verificiran — ništa se ne upisuje, redak `PRESKOCENO` |
+| `eturizam_verifikacija_bez_prava …` (**ERROR**, jednom po retku) | nedostaje GRANT; redak čeka `PENDING` bez trošenja pokušaja, ponovo za 2 h |
+| `eturizam_verifikacija_retry_aborted …` (WARN) | infrastrukturni neuspjeh (istek, zaključavanje, veza, prava) — ostatak serije čeka sljedeći prolazak |
+| `eturizam_verifikacija_previse_primatelja …` (WARN) | jedinica ima više aktivnih internih korisnika od `max-primatelja` (200); obavijest dobiva prvih 200 |
+| `eturizam_verifikacija_failed … reason=…` (WARN) | pokušaj je pao (najčešće `permission denied`); retry job ponavlja s backoffom |
+| `eturizam_verifikacija_exhausted …` (**ERROR**) | iscrpljeni pokušaji, redak `ABANDONED` — ručna intervencija |
+
+```sql
+SELECT 'Z1' AS blok, has_table_privilege('str.verification_request','INSERT') AS zahtjev_insert,
+       has_table_privilege('str.korisnicka_obavijest','INSERT') AS obavijest_insert;
+
+SELECT 'Z2' AS blok, e.rn, e.status, e.attempts, e.document_id, e.verification_request_id,
+       e.obavijesti_poslano, e.next_attempt_at, e.last_error, e.created_at
+FROM str_rn.eturizam_verifikacija e ORDER BY e.created_at DESC LIMIT 20;
+
+SELECT 'Z3' AS blok, vr.*
+FROM str.verification_request vr
+JOIN str_rn.eturizam_verifikacija e ON e.verification_request_id = vr.id
+ORDER BY vr.id DESC LIMIT 20;
+
+SELECT 'Z4' AS blok, o.id, o.application_user_id, o.vrsta, o.objekt_tip, o.objekt_id, o.stvoreno, o.procitano, o.tekst
+FROM str.korisnicka_obavijest o
+WHERE o.objekt_tip = 'VERIFICATION_REQUEST'
+  AND o.objekt_id IN (SELECT e.verification_request_id FROM str_rn.eturizam_verifikacija e)
+ORDER BY o.id DESC LIMIT 50;
+```
+
+(`'VERIFICATION_REQUEST'` je zadani `objekt_tip`; uz `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` upisati tu vrijednost.)
+
+**Povrat `ABANDONED` retka u red** (nakon otklanjanja uzroka, npr. granta): retry job ga uzme u
+sljedećem prolasku (`STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON`, zadano svakih 5 min) s punim brojem pokušaja.
+
+```sql
+UPDATE str_rn.eturizam_verifikacija
+   SET status = 'PENDING', attempts = 0, next_attempt_at = now(), last_error = NULL, updated_at = now()
+ WHERE rn = '<RB>' AND status = 'ABANDONED';
+```
+
+Redak bez prava (`permission denied`) ne troši pokušaje: ostaje `PENDING`, `last_error` počinje s
+`bez_prava:`, a sljedeći pokušaj je za `retry.backoff-max` (2 h). Nakon granta ga se ne mora čekati,
+a retke koje je starija verzija zbog prava ipak napustila vraća isti upit za sve odjednom:
+
+```sql
+UPDATE str_rn.eturizam_verifikacija
+   SET status = 'PENDING', attempts = 0, next_attempt_at = now(), last_error = NULL, updated_at = now()
+ WHERE (status = 'ABANDONED' AND last_error LIKE '%permission denied%')
+    OR (status = 'PENDING' AND last_error LIKE 'bez_prava:%');
+```
+
+Gašenje: `STR_ETURIZAM_VERIFIKACIJA_ENABLED=false`, korak 7. Retci koji nastanu dok je ugašeno
+ostaju `PENDING` i obrade se kad se ponovno uključi.
+
 ## 9. Iz browsera
 
 ```

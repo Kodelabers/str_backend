@@ -22,6 +22,7 @@ import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.str.FacilityClaimVerifier;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.validation.ParallelValidationOrchestrator;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,7 +80,7 @@ class RegistrationServiceBuildAccommodationTest {
                 addressValidator,
                 mock(ApplicationEventPublisher.class),
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                mock(PrilogService.class));
+                mock(PrilogService.class), mock(VerifikacijaOutbox.class));
     }
 
     private static HouseNumberRepository.CadastreRow registryRow(String broj, String ulica,

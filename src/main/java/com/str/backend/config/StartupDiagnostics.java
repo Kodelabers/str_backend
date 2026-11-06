@@ -1,5 +1,6 @@
 package com.str.backend.config;
 
+import com.str.backend.str.verifikacija.EturizamVerifikacijaProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -45,6 +46,9 @@ public class StartupDiagnostics {
 
     /** Spring Session JDBC čita, upisuje, produžuje i briše (cleanup) sesije. */
     private static final List<String> SESSION_PRIVILEGES = List.of("SELECT", "INSERT", "UPDATE", "DELETE");
+
+    /** {@code str.korisnicka_obavijest.vrsta} i {@code objekt_tip} su {@code varchar(64)}. */
+    static final int MAX_SIFRA_OBAVIJESTI = 64;
 
     private final Environment env;
     private final JdbcTemplate jdbc;
@@ -162,6 +166,9 @@ public class StartupDiagnostics {
                 env.getProperty("str.documents.pdfa", Boolean.class, false),
                 eseal ? "" : " — izlazni akti idu u eGOP/KP NEPEČAĆENI");
 
+        // Ne ovisi o bazi, pa ide uz konfiguraciju (sonde prava rade samo na PostgreSQL-u).
+        provjeriObavijesti();
+
         log.info("startup_web frontend_base={} cors={}",
                 env.getProperty("app.frontend.base-url"),
                 env.getProperty("app.cors.allowed-origins"));
@@ -201,6 +208,74 @@ public class StartupDiagnostics {
                     + "prepoznaje sam, ali tuStart handoff se ne moze testirati end-to-end");
         } else if (Boolean.TRUE.equals(canWrite)) {
             log.info("startup_schema_writeback str.facility UPDATE=true");
+        }
+
+        probeVerifikacija();
+    }
+
+    /**
+     * Prava koja trebaju zahtjevu za zurnu verifikaciju (T8, EturizamVerifikacijaWriter): uvijek
+     * SELECT i INSERT na str.verification_request; uz obavijesti jos SELECT na str.document (nadlezna
+     * jedinica) i str.application_user (primatelji) te INSERT na str.korisnicka_obavijest. Bez njih RB
+     * se svejedno izda, ali svaki pokusaj upisa padne i nakon retry.max-attempts redak ide u ABANDONED.
+     * Samo log, i kad je zastavica ukljucena: grant moze stici nakon deploya.
+     */
+    private void probeVerifikacija() {
+        boolean enabled = env.getProperty("str.eturizam.verifikacija.enabled", Boolean.class, false);
+        boolean obavijesti = env.getProperty("str.eturizam.verifikacija.obavijesti.enabled", Boolean.class, false);
+        List<String[]> potrebna = new ArrayList<>(List.of(
+                new String[]{"str.verification_request", "SELECT"},
+                new String[]{"str.verification_request", "INSERT"}));
+        if (obavijesti) {
+            potrebna.add(new String[]{"str.document", "SELECT"});
+            potrebna.add(new String[]{"str.application_user", "SELECT"});
+            potrebna.add(new String[]{"str.korisnicka_obavijest", "INSERT"});
+        }
+        List<String> nedostaje = new ArrayList<>();
+        for (String[] pravo : potrebna) {
+            // Tablica koja ne postoji baca gresku — i to je „nedostaje".
+            Boolean ima = queryBoolean("select has_table_privilege('" + pravo[0] + "','" + pravo[1] + "')");
+            if (!Boolean.TRUE.equals(ima)) {
+                nedostaje.add(pravo[0] + ":" + pravo[1]);
+            }
+        }
+        if (enabled && !nedostaje.isEmpty()) {
+            log.warn("startup_eturizam_verifikacija enabled=true obavijesti={} nedostaje={} — upis zahtjeva za "
+                    + "zurnu verifikaciju ce padati (eturizam_verifikacija_failed u logu); RB ostaje valjan. "
+                    + "GRANT trazi od vlasnika sheme str (DEPLOY-PREPROD.md 2e)", obavijesti, nedostaje);
+        } else {
+            log.info("startup_eturizam_verifikacija enabled={} obavijesti={} nedostaje={}",
+                    enabled, obavijesti, nedostaje);
+        }
+    }
+
+    /**
+     * Konfiguracija obavijesti (samo kad su uključene): šifre stanu u {@code varchar(64)}, a predložak
+     * nosi {@code {rn}}. Ne ruši start — obavijesti su sporedne — ali bez toga bi svaki upis pao i redak
+     * nakon retry.max-attempts otišao u ABANDONED, odnosno službenik dobio obavijest bez broja. Zadane
+     * vrijednosti daje {@link EturizamVerifikacijaProperties.Obavijesti}, kao i pri bindanju.
+     */
+    private void provjeriObavijesti() {
+        EturizamVerifikacijaProperties.Obavijesti o = new EturizamVerifikacijaProperties.Obavijesti(
+                env.getProperty("str.eturizam.verifikacija.obavijesti.enabled", Boolean.class),
+                env.getProperty("str.eturizam.verifikacija.obavijesti.vrsta"),
+                env.getProperty("str.eturizam.verifikacija.obavijesti.objekt-tip"),
+                env.getProperty("str.eturizam.verifikacija.obavijesti.tekst"),
+                null);
+        if (!o.enabled()) {
+            return;
+        }
+        if (o.vrsta().length() > MAX_SIFRA_OBAVIJESTI) {
+            log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.vrsta ima {} znakova "
+                    + "(najvise {}) — svaki upis obavijesti ce pasti", o.vrsta().length(), MAX_SIFRA_OBAVIJESTI);
+        }
+        if (o.objektTip().length() > MAX_SIFRA_OBAVIJESTI) {
+            log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.objekt-tip ima {} znakova "
+                    + "(najvise {}) — svaki upis obavijesti ce pasti", o.objektTip().length(), MAX_SIFRA_OBAVIJESTI);
+        }
+        if (!o.tekst().contains("{rn}")) {
+            log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.tekst nema {rn} — "
+                    + "obavijest sluzbeniku nece nositi registracijski broj");
         }
     }
 

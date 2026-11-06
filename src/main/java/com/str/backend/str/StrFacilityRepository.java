@@ -615,8 +615,9 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     /**
      * Upisuje dodijeljeni RB natrag u eTurizam registar, po dogovoru s tuStartom.
      *
-     * <p>Uz {@link #clearRegistrationNumber} ovo je jedini put pisanja u shemu {@code str},
-     * koja je inače read-only za ovaj servis — oba nad istom kolonom. Namjerno je izveden kao
+     * <p>Uz {@link #clearRegistrationNumber} ovo je jedini put pisanja u postojeće retke sheme
+     * {@code str}, koja je inače read-only za ovaj servis — oba nad istom kolonom. (Jedini drugi upis u
+     * {@code str} su novi retci zahtjeva za žurnu verifikaciju, {@code str.verifikacija}.) Namjerno je izveden kao
      * uski native UPDATE umjesto kroz entitet: {@link StrFacilityEntity} ostaje {@code @Immutable},
      * pa nijedan drugi tok ne može slučajno perzistirati promjenu u tuđu tablicu.
      *

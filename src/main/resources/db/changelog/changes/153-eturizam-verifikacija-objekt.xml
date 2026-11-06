@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Naziv i mjesto objekta za tekst obavijesti o žurnoj verifikaciji (T8), iz eTurizma u trenutku
+        izdavanja RB-a (findOwnership), a ne iz unosa iznajmljivača u STR-u. Prazno kad ih eTurizam
+        nema — tekst tada nosi samo ID objekta. Postojeći retci ostaju bez njih.
+
+        Status PRESKOCENO (bez promjene sheme, status je varchar): RB opozvan/povučen ili objekt
+        verificiran prije obrade retka.
+    -->
+    <changeSet id="153-eturizam-verifikacija-objekt" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="eturizam_verifikacija">
+            <column name="objekt_naziv" type="VARCHAR(255)" remarks="Naziv objekta iz eTurizma pri izdavanju RB-a"/>
+            <column name="objekt_mjesto" type="VARCHAR(255)" remarks="Naselje ili općina objekta iz eTurizma pri izdavanju RB-a"/>
+        </addColumn>
+        <setColumnRemarks schemaName="str_rn" tableName="eturizam_verifikacija" columnName="status"
+                          remarks="PENDING → ZAHTJEV_UPISAN / ZAHTJEV_POSTOJAO / PRESKOCENO / ABANDONED"/>
+        <rollback>
+            <dropColumn schemaName="str_rn" tableName="eturizam_verifikacija" columnName="objekt_naziv"/>
+            <dropColumn schemaName="str_rn" tableName="eturizam_verifikacija" columnName="objekt_mjesto"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

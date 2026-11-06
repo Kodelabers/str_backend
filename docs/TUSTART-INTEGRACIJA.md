@@ -104,10 +104,12 @@ Ponašanje u rubnim slučajevima:
 Retryja nema — eTurizam nema idempotentni endpoint za ovo, pa neuspjeli upis ide na ručnu
 intervenciju preko logova.
 
-> **Preduvjet za okoline:** upis i brisanje broja jedini su putevi pisanja u shemu `str`, koja je
-> inače read-only za STR — oba samo nad stupcem `str.facility.registration_number`. DB korisnik
-> treba `UPDATE` pravo na taj stupac. Bez toga registracija i povlačenje i dalje prolaze, ali se
-> RB ne vraća u eTurizam (niti se iz njega briše).
+> **Preduvjet za okoline:** shema `str` je inače read-only za STR. Pišu u nju samo dva toka:
+> upis i brisanje broja (ovaj odjeljak, `UPDATE` samo nad stupcem `str.facility.registration_number`)
+> i žurna verifikacija (§6e, samo `INSERT` novih redaka u `str.verification_request` i
+> `str.korisnicka_obavijest`). Upis i brisanje broja traže `UPDATE` pravo na stupac
+> `registration_number`; bez njega registracija i povlačenje i dalje prolaze, ali se RB ne vraća u
+> eTurizam (niti se iz njega briše).
 >
 > **Popis objekata** (`NiasFacilityService`) broj iz `str.facility` koji je STR povukao ne smatra
 > brojem objekta, pa objekt može tražiti novi broj i kad brisanje u eTurizmu nije prošlo.
@@ -227,6 +229,39 @@ sadržaj 400 `error.categorization.file.type`.
 > je već na 52m). Pojedina datoteka je i dalje do 10 MB, ali prigovor nosi do 5 datoteka u jednom
 > multipart zahtjevu (T17). Manji limit znači da zahtjev nikad ne dođe do Springa i korisnik dobije
 > 413 od proxyja bez našeg tijela greške.
+
+## 6e. Zahtjev za žurnu verifikaciju (T8)
+
+Kad se RB izda za objekt iz eTurizma koji u tom trenutku **nije verificiran**
+(`FacilityOwnershipRow.verified = false`, tj. `str.facility.created_by = 'optimit'`), STR eTurizmu
+upisuje zahtjev za žurnu verifikaciju i obavještava službenike nadležne jedinice. eTurizam iz tih
+zahtjeva slaže i listu prioriteta za provjeru (T9). Plan i odluke:
+`docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md`.
+
+| Korak | Gdje | Transakcija |
+| :--- | :--- | :--- |
+| Outbox redak (`rn`, `facility_id`, `document_id`, `PENDING`) | `str_rn.eturizam_verifikacija`, `VerifikacijaOutbox.zabiljezi` iz `RegistrationService.commitRegistration` | ista kao izdavanje RB-a |
+| Zahtjev (`created_by = STR`, `source_document_id = facility.document_id`) | `str.verification_request` | jedna `REQUIRES_NEW` nakon commita (`EturizamVerifikacijaListener`) ili iz `EturizamVerifikacijaRetryJob` |
+| Obavijest svakom aktivnom internom korisniku jedinice `document.jurisdiction_organizational_unit_id` (najviše 200) | `str.korisnicka_obavijest` (`objekt_id` = id zahtjeva; naziv i mjesto iz eTurizma, očišćeni) | ista kao zahtjev — pad bilo čega poništava sve |
+
+Rubni slučajevi:
+
+| Situacija | Ishod |
+| :--- | :--- |
+| Novi objekt (bez `facilityId`) ili verificiran objekt | Ništa — ni outbox retka |
+| Neverificiran objekt bez ispravnog `document_id` (u praksi ne stiže: `findOwnership` spaja dokument obaveznim joinom) | WARN `eturizam_verifikacija_bez_dokumenta`, retka nema |
+| RB je prije obrade opozvan ili povučen, ili je objekt u međuvremenu verificiran (npr. zaostatak dok je integracija bila ugašena) | Ništa se ne upisuje; redak `PRESKOCENO` s razlogom u `last_error` |
+| Nedostaje GRANT (`permission denied`) | Redak čeka `PENDING` bez trošenja pokušaja (ERROR `eturizam_verifikacija_bez_prava` jednom) |
+| Zahtjev za isti dokument već postoji (bilo koji `active`) | Ne mijenja se, obavijesti se ne šalju; redak `ZAHTJEV_POSTOJAO` s id-em zatečenog |
+| Dokument bez nadležne jedinice / jedinica bez aktivnih internih korisnika | Zahtjev se upisuje, obavijesti ne; WARN |
+| `str.eturizam.verifikacija.enabled=false` | Redak ostaje `PENDING`; obradi se kad se uključi |
+| `...obavijesti.enabled=false` (zadano) | Samo zahtjev |
+| Upis padne (npr. nema `INSERT` prava) ili traje dulje od `str.eturizam.verifikacija.timeout` (10 s) | **RB ostaje valjan i izdan**; retry s backoffom, nakon `max-attempts` `ABANDONED` + ERROR (povrat u red: `DEPLOY-CDU.md` §8e) |
+| RB se kasnije opozove ili povuče | STR zahtjev ne dira (eTurizam ga zatvara sam) |
+
+> STR nikad ne mijenja postojeći redak u `str.verification_request` ni `str.korisnicka_obavijest` —
+> samo `INSERT`. Prava i provjera po okolinama: `DEPLOY-CDU.md` §8e, `DEPLOY-PREPROD.md` §2e,
+> `DEPLOY-CDU-PREPROD.md` §B5b.
 
 ## 7. Napomene za STR frontend
 
