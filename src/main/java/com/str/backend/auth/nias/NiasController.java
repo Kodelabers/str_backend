@@ -310,13 +310,15 @@ public class NiasController {
      * rješenja koja tamo još nisu upisana. Objekt s RB-om frontend vodi na „Prikaži", objekt
      * bez RB-a na „Zatraži RB".
      *
-     * <p>Paginirano — na dev-u postoji iznajmljivač s 1530 objekata.
+     * <p>Paginirano — na dev-u postoji iznajmljivač s 1530 objekata. Neobavezni {@code q} sužava
+     * popis prije straničenja; vlasnik i dalje dolazi isključivo iz sesije.
      */
     @GetMapping("/facilities")
     public FacilityPageResponse facilities(@RequestParam(required = false) Integer page,
                                            @RequestParam(required = false) Integer size,
+                                           @RequestParam(required = false) String q,
                                            Authentication authentication) {
-        return facilityService.list(resolveOib(authentication), page, size);
+        return facilityService.list(resolveOib(authentication), page, size, q);
     }
 
     /**

@@ -207,6 +207,55 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                AND c_sub.code IN (:codes)
             """;
 
+    /**
+     * Uvjet pretrage nad podupitom {@code q} iz {@link #PRIKAZ_ZA_OIB}. Objekt ulazi na popis sa svim
+     * svojim jedinicama čim bilo koja prikazana jedinica odgovara, jer se kapacitet i broj jedinica
+     * objekta računaju iz cijelog objekta. Kad je {@code :pretraga} prazna, podupit se ne izvodi.
+     *
+     * <p>Traži se ono što popis prikazuje: naziv, adresa u obliku „ulica broj, poštanski broj naselje",
+     * općina, županija, puna adresa i registracijski broj. Broj je onaj koji popis pokazuje: iz
+     * {@code str.facility} osim opozvanog ili povučenog, odnosno još stojeći broj koji je izdao STR.
+     *
+     * <p>Tekst se uspoređuje bez hrvatskih dijakritika: {@code translate} ih uklanja prije
+     * {@code lower}, pa rezultat ne ovisi o lokalu baze. Uzorak mora biti u istom obliku.
+     */
+    String UVJET_PRETRAGE = """
+            (:pretraga = ''
+             OR q.su IN (SELECT m.su
+                           FROM (""" + PRIKAZ_ZA_OIB + """
+                                ) m
+                           JOIN str.facility f ON f.id = m.id
+                           LEFT JOIN str.address a
+                                  ON a.id = CASE WHEN f.same_address_subject = true
+                                                 THEN (SELECT max(x.address_id) FROM str.subject_address x
+                                                        WHERE x.subject_version_id = m.bc_sv
+                                                          AND coalesce(x.active, true) = true)
+                                                 ELSE f.address_id END
+                           LEFT JOIN str.county co        ON co.id  = a.county_id
+                           LEFT JOIN str.municipality mu  ON mu.id  = a.municipality_id
+                           LEFT JOIN str.settlement se    ON se.id  = a.settlement_id
+                           LEFT JOIN str.street stt       ON stt.id = a.street_id
+                           LEFT JOIN str.house_number hn  ON hn.id  = a.house_number_id
+                          WHERE lower(translate(concat_ws(' ', f.name,
+                                    concat_ws(', ',
+                                        concat_ws(' ', coalesce(stt.name, a.street),
+                                                       coalesce(hn.name, a.house_number)),
+                                        concat_ws(' ', coalesce(a.postal_code, se.postal_code),
+                                                       coalesce(se.name, a.settlement))),
+                                    coalesce(mu.name, a.municipality),
+                                    coalesce(co.name, a.county),
+                                    a.full_address), 'ČĆĐŠŽčćđšž', 'CCDSZccdsz')) LIKE lower(:pretraga) ESCAPE '!'
+                             OR (lower(f.registration_number) LIKE lower(:pretraga) ESCAPE '!'
+                                 AND NOT EXISTS (SELECT 1 FROM str_rn.registration_number rn
+                                                  WHERE rn.rn = f.registration_number
+                                                    AND rn.status IN ('REVOKED', 'WITHDRAWN')))
+                             OR EXISTS (SELECT 1 FROM str_rn.registration_number rn
+                                          JOIN str_rn.accommodation ac ON ac.accommodation_id = rn.accommodation_id
+                                         WHERE ac.facility_id = cast(f.id AS varchar(64))
+                                           AND rn.status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED')
+                                           AND lower(rn.rn) LIKE lower(:pretraga) ESCAPE '!')))
+            """;
+
     /*
      * ---------------------------------------------------------------------------------------------
      * Kapacitet jedinice — jedno pravilo za popis i za claim (B-3, docs/ETURIZAM-OBJEKTI.md)
@@ -313,6 +362,10 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * id jedinice), pa je {@code max(redni)} broj objekata.
      *
      * <p>Adresa subjekta ({@code same_address_subject}) čita se preko subjekta predmeta, kao u viewu.
+     *
+     * <p>{@code :pretraga} je LIKE uzorak s escape znakom {@code !}, prazan znači bez filtra
+     * ({@link #UVJET_PRETRAGE}). Primjenjuje se prije numeriranja, pa redni brojevi i ukupno broje
+     * samo pogotke.
      */
     @Query(value = """
             SELECT f.id                                    AS facilityId,
@@ -350,7 +403,9 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                                            bool_or(q.verificiran) OVER (PARTITION BY q.su) AS obj_verificiran,
                                            min(q.id) OVER (PARTITION BY q.su)              AS obj_prvi_id
                                       FROM (""" + PRIKAZ_ZA_OIB + """
-                                           ) q) p) u) s
+                                           ) q
+                                     WHERE """ + UVJET_PRETRAGE + """
+                                           ) p) u) s
               JOIN str.facility f ON f.id = s.id
               LEFT JOIN str.facility_type ft
                      ON ft.id = (SELECT max(x.id) FROM str.facility_type x
@@ -376,6 +431,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
             """, nativeQuery = true)
     List<FacilityListingRow> findListingByOib(@Param("oib") String oib,
                                               @Param("codes") Collection<String> codes,
+                                              @Param("pretraga") String pretraga,
                                               @Param("limit") int limit,
                                               @Param("offset") long offset);
 
@@ -390,8 +446,10 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    count(*)             AS units
               FROM (""" + PRIKAZ_ZA_OIB + """
                    ) q
-            """, nativeQuery = true)
-    ListingTotals countListingByOib(@Param("oib") String oib, @Param("codes") Collection<String> codes);
+             WHERE """ + UVJET_PRETRAGE, nativeQuery = true)
+    ListingTotals countListingByOib(@Param("oib") String oib,
+                                    @Param("codes") Collection<String> codes,
+                                    @Param("pretraga") String pretraga);
 
     interface FacilityOwnershipRow {
         String getOib();

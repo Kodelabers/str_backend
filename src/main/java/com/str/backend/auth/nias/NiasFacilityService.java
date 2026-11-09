@@ -21,9 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Popis objekata prijavljenog iznajmljivača, spojen iz dva izvora: eTurizam registra i naših
@@ -42,6 +45,7 @@ public class NiasFacilityService {
 
     static final int DEFAULT_PAGE_SIZE = 20;
     static final int MAX_PAGE_SIZE = 100;
+    static final int MAX_SEARCH_LENGTH = 100;
 
     /** Šifra vrste „Zahtjev za promjenu podataka" u eTurizmovu šifrarniku ({@code str.codebook_element}). */
     static final String CHANGE_REQUEST_TYPE_CODE = "DST_Z_PROMJ_POD";
@@ -70,11 +74,16 @@ public class NiasFacilityService {
     }
 
     @Transactional(readOnly = true)
-    public FacilityPageResponse list(String oib, Integer page, Integer size) {
+    public FacilityPageResponse list(String oib, Integer page, Integer size, String q) {
         int pageIndex = page == null || page < 0 ? 0 : page;
         int pageSize = size == null || size < 1 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
 
-        List<FacilityResponse> temporary = temporaryDecisions(oib);
+        // Oba izvora se filtriraju prije straničenja, pa total i pomaci ispod broje samo pogotke.
+        String search = foldForSearch(normalizeSearch(q));
+        String pattern = likePattern(search);
+        List<FacilityResponse> temporary = temporaryDecisions(oib).stream()
+                .filter(item -> matchesSearch(item, search))
+                .toList();
         List<String> codes = accommodationTypeRepository.findAllCodes();
 
         // Prazan popis šifara bi dao IN () — nevažeći SQL. Bez našeg šifrarnika nema ni filtra,
@@ -90,7 +99,7 @@ public class NiasFacilityService {
         long skip = (long) pageIndex * pageSize;
         List<FacilityListingRow> rows = codes.isEmpty()
                 ? List.of()
-                : facilityRepository.findListingByOib(oib, codes, pageSize, skip);
+                : facilityRepository.findListingByOib(oib, codes, pattern, pageSize, skip);
 
         // Ukupno nosi svaki redak stranice; prazna stranica (iza zadnjeg objekta ili bez objekata)
         // ga ne nosi, pa se tek tada pita zasebno.
@@ -103,7 +112,7 @@ public class NiasFacilityService {
             eturizamObjects = 0;
             eturizamUnits = 0;
         } else {
-            ListingTotals totals = facilityRepository.countListingByOib(oib, codes);
+            ListingTotals totals = facilityRepository.countListingByOib(oib, codes, pattern);
             eturizamObjects = totals.getObjects();
             eturizamUnits = totals.getUnits();
         }
@@ -120,6 +129,40 @@ public class NiasFacilityService {
 
         return new FacilityPageResponse(items, pageIndex, pageSize,
                 eturizamObjects + temporary.size(), eturizamUnits + temporary.size());
+    }
+
+    /**
+     * Obrezan upit, najviše {@link #MAX_SEARCH_LENGTH} znakova; prazan znači bez filtra. Kontrolni
+     * znakovi postaju razmak: NUL bi PostgreSQL odbio i korisnik bi dobio grešku 500.
+     */
+    private static String normalizeSearch(String q) {
+        String search = q == null ? "" : q.replaceAll("\\p{Cntrl}", " ").trim();
+        return search.length() > MAX_SEARCH_LENGTH ? search.substring(0, MAX_SEARCH_LENGTH) : search;
+    }
+
+    /** Mala slova bez hrvatskih dijakritika: isti oblik u koji upit u bazi svodi tekst objekta. */
+    private static String foldForSearch(String text) {
+        return text.toLowerCase(Locale.ROOT)
+                .replace('č', 'c').replace('ć', 'c').replace('đ', 'd').replace('š', 's').replace('ž', 'z');
+    }
+
+    /** Uzorak za {@code LIKE ... ESCAPE '!'}: znakovi iz upita vrijede doslovno, ne kao zamjenski. */
+    private static String likePattern(String search) {
+        if (search.isEmpty()) {
+            return "";
+        }
+        return "%" + search.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+    }
+
+    /** Privremeno rješenje na popisu ima samo naziv i adresu, pa se ona i pretražuju. */
+    private static boolean matchesSearch(FacilityResponse item, String search) {
+        if (search.isEmpty()) {
+            return true;
+        }
+        String text = Stream.of(item.naziv(), item.punaAdresa())
+                .filter(Objects::nonNull)
+                .collect(Collectors.joining(" "));
+        return foldForSearch(text).contains(search);
     }
 
     /**
