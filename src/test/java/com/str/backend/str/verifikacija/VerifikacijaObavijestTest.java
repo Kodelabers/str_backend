@@ -48,10 +48,22 @@ class VerifikacijaObavijestTest {
     }
 
     @Test
-    void podaci_isJsonWithIdentifiers() {
-        assertThat(VerifikacijaObavijest.podaci("HR180001000000000123", 110735L, "1448035", 14L))
-                .isEqualTo("{\"rn\":\"HR180001000000000123\",\"documentId\":110735,\"facilityId\":1448035,"
-                        + "\"verificationRequestId\":14}");
+    void podaci_matchEturizamDtoShape() {
+        assertThat(VerifikacijaObavijest.podaci(
+                new VerifikacijaObavijest.Subjekt("12312312316", "PERO PERIĆ"),
+                new VerifikacijaObavijest.Objekt("Hoteli", "Aparthotel", "Vila", "Split, Ilica 1, 21000 Split")))
+                .isEqualTo("{\"subjekt\":{\"oib\":\"12312312316\",\"naziv\":\"PERO PERIĆ\",\"adresa\":null},"
+                        + "\"objekt\":{\"skupina\":\"Hoteli\",\"vrsta\":\"Aparthotel\",\"naziv\":\"Vila\","
+                        + "\"adresa\":\"Split, Ilica 1, 21000 Split\"},\"rijeseno\":null}");
+    }
+
+    /** Bez podataka dijelovi su {@code null}, što eTurizam dopušta; tuđi tekst se čisti. */
+    @Test
+    void podaci_emptyPartsAreNull_textIsSanitized() {
+        assertThat(VerifikacijaObavijest.podaci(null, new VerifikacijaObavijest.Objekt(null, null, " - ", null)))
+                .isEqualTo("{\"subjekt\":null,\"objekt\":null,\"rijeseno\":null}");
+        assertThat(VerifikacijaObavijest.podaci(null, new VerifikacijaObavijest.Objekt(null, null, "<b>Vila</b>", null)))
+                .contains("\"naziv\":\"bVila/b\"");
     }
 
     @Test
@@ -107,7 +119,7 @@ class VerifikacijaObavijestTest {
         assertThat(p.enabled()).isFalse();
         assertThat(p.korisnik()).isEqualTo("STR");
         assertThat(p.obavijesti().enabled()).isFalse();
-        assertThat(p.obavijesti().vrsta()).isEqualTo("ZURNA_VERIFIKACIJA");
+        assertThat(p.obavijesti().vrsta()).isEqualTo("VERIFIKACIJA_ZATRAZENA");
         assertThat(p.obavijesti().tekst()).isEqualTo(PREDLOZAK);
         assertThat(p.obavijesti().maxPrimatelja()).isEqualTo(200);
         assertThat(p.retry().maxAttempts()).isEqualTo(10);
@@ -138,10 +150,4 @@ class VerifikacijaObavijestTest {
         assertThat(VerifikacijaObavijest.opisNovogObjekta("-", "")).isEqualTo("(bez naziva)");
     }
 
-    @Test
-    void podaciNovogObjekta_carryRnAndDecision() {
-        assertThat(VerifikacijaObavijest.podaciNovogObjekta("HR170001000000000456",
-                java.util.UUID.fromString("0f6c2c9e-6a43-4d8f-9b0d-6a1f3b1b7c55")))
-                .isEqualTo("{\"rn\":\"HR170001000000000456\",\"decisionId\":\"0f6c2c9e-6a43-4d8f-9b0d-6a1f3b1b7c55\"}");
-    }
 }

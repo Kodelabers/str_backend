@@ -121,7 +121,7 @@ class EturizamVerifikacijaServiceTest {
         when(outboxRepository.lockByRn(RN)).thenReturn(Optional.empty());
         EturizamVerifikacijaWriter pravi = new EturizamVerifikacijaWriter(outboxRepository,
                 mock(EturizamVerifikacijaRepository.class), mock(RnRepository.class), mock(RnFacilityVerification.class),
-                mock(CategorizationDecisionRepository.class),
+                mock(CategorizationDecisionRepository.class), mock(VerifikacijaPodaci.class),
                 new EturizamVerifikacijaProperties(true, null, Duration.ofSeconds(7), Duration.ofSeconds(2), null, null),
                 Clock.systemUTC(), txManager);
 

@@ -122,6 +122,7 @@ class EturizamVerifikacijaIntegrationTest {
     @Autowired private Clock clock;
     @Autowired private DataSource dataSource;
     @Autowired private CategorizationDecisionRepository decisionRepository;
+    @Autowired private VerifikacijaPodaci podaciObavijesti;
 
     @MockBean private SubjectProfileService subjectProfileService;
     @MockBean private CountyRepository countyRepository;
@@ -240,10 +241,11 @@ class EturizamVerifikacijaIntegrationTest {
                 .isEqualTo("Smještajnom objektu „Apartman Marija“ (Makarska, ID 951101) dodijeljen je "
                         + "registracijski broj " + rn + ". Objekt nije verificiran – potrebna je žurna verifikacija.");
         JsonNode podaci = om.readTree((String) prva.get("PODACI"));
-        assertThat(podaci.get("rn").asText()).isEqualTo(rn);
-        assertThat(podaci.get("documentId").asLong()).isEqualTo(951001L);
-        assertThat(podaci.get("facilityId").asLong()).isEqualTo(951101L);
-        assertThat(podaci.get("verificationRequestId").asLong()).isEqualTo(zapis.getVerificationRequestId());
+        assertThat(podaci.fieldNames()).toIterable().containsExactlyInAnyOrder("subjekt", "objekt", "rijeseno");
+        assertThat(podaci.get("subjekt").get("oib").asText()).isEqualTo(OIB);
+        assertThat(podaci.get("subjekt").get("naziv").asText()).isEqualTo("PERO PERIĆ");
+        assertThat(podaci.get("objekt").get("naziv").asText()).isEqualTo("Apartman Marija");
+        assertThat(podaci.get("rijeseno").isNull()).isTrue();
     }
 
     /** Upis u eTurizam padne (obavijest) — RB je izdan i commitan, pokušaj zabilježen za retry. */
@@ -711,8 +713,8 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(properties.korisnik()).isEqualTo(EturizamVerifikacijaProperties.DEFAULT_KORISNIK);
         assertThat(properties.timeout()).isEqualTo(Duration.ofSeconds(10));
         assertThat(properties.inlineTimeout()).isEqualTo(Duration.ofSeconds(3));
-        assertThat(properties.obavijesti().vrsta()).isEqualTo("ZURNA_VERIFIKACIJA");
-        assertThat(properties.obavijesti().objektTip()).isEqualTo("VERIFICATION_REQUEST");
+        assertThat(properties.obavijesti().vrsta()).isEqualTo("VERIFIKACIJA_ZATRAZENA");
+        assertThat(properties.obavijesti().objektTip()).isEqualTo("VERIFIKACIJA_RJESENJA");
         assertThat(properties.obavijesti().tekst()).isEqualTo(EturizamVerifikacijaProperties.Obavijesti.DEFAULT_TEKST);
         assertThat(properties.obavijesti().maxPrimatelja()).isEqualTo(200);
         assertThat(properties.retry().maxAttempts()).isEqualTo(10);
@@ -756,8 +758,9 @@ class EturizamVerifikacijaIntegrationTest {
                 + "upisan u eTurizam – potrebna je žurna verifikacija. Rješenje unesite kroz modul Verifikacije, "
                 + "funkcionalnost Unos rješenja.");
         JsonNode podaci = om.readTree((String) obavijest.get("PODACI"));
-        assertThat(podaci.get("rn").asText()).isEqualTo(rn);
-        assertThat(podaci.get("decisionId").asText()).isEqualTo(decisionId.toString());
+        assertThat(podaci.fieldNames()).toIterable().containsExactlyInAnyOrder("subjekt", "objekt", "rijeseno");
+        assertThat(podaci.get("objekt").get("naziv").asText()).isEqualTo("Apartman Ana");
+        assertThat(podaci.get("rijeseno").isNull()).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM str.verification_request", Integer.class)).isZero();
     }
 
@@ -872,9 +875,6 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(zapis.getAttempts()).isZero();
         assertThat(zapis.getLastError()).isNull();
         assertThat(notificationCount()).isEqualTo(2);
-        String podaci = jdbc.queryForObject("SELECT podaci FROM str.korisnicka_obavijest "
-                + "WHERE application_user_id = 951011", String.class);
-        assertThat(om.readTree(podaci).get("decisionId").asText()).isEqualTo(drugo.toString());
     }
 
     @Test
@@ -888,7 +888,7 @@ class EturizamVerifikacijaIntegrationTest {
 
     private EturizamVerifikacijaWriter writer(EturizamVerifikacijaProperties p) {
         return new EturizamVerifikacijaWriter(outboxRepository, eturizamRepository, rnRepository,
-                facilityVerification, decisionRepository, p, clock, txManager);
+                facilityVerification, decisionRepository, podaciObavijesti, p, clock, txManager);
     }
 
     /** Drugi službenik jedinice {@link #POISONED_UNIT} ne smije primiti obavijest — upis pada na CHECK-u. */

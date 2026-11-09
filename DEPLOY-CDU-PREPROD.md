@@ -605,12 +605,12 @@ ORDER BY vr.id DESC LIMIT 20;
 
 SELECT 'Z4' AS blok, o.id, o.application_user_id, o.vrsta, o.objekt_tip, o.objekt_id, o.stvoreno, o.procitano, o.tekst
 FROM str.korisnicka_obavijest o
-WHERE o.objekt_tip = 'VERIFICATION_REQUEST'
+WHERE o.objekt_tip = 'VERIFIKACIJA_RJESENJA'
   AND o.objekt_id IN (SELECT e.verification_request_id FROM str_rn.eturizam_verifikacija e)
 ORDER BY o.id DESC LIMIT 50;
 ```
 
-(`'VERIFICATION_REQUEST'` je zadani `objekt_tip`; uz `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` upisati tu vrijednost.)
+(`'VERIFIKACIJA_RJESENJA'` je zadani `objekt_tip`; uz `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` upisati tu vrijednost.)
 
 **Povrat `ABANDONED` retka u red** (nakon otklanjanja uzroka, npr. granta): retry job ga uzme u
 sljedećem prolasku (`STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON`, zadano svakih 5 min) s punim brojem pokušaja.
