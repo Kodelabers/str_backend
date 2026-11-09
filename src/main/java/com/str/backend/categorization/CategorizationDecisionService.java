@@ -15,6 +15,7 @@ import com.str.backend.registration.RnOwner;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.StrFacilityRepository;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,17 +59,20 @@ public class CategorizationDecisionService {
     private final RnRepository rnRepository;
     private final AccommodationRepository accommodationRepository;
     private final StrFacilityRepository facilityRepository;
+    private final VerifikacijaOutbox verifikacijaOutbox;
 
     public CategorizationDecisionService(CategorizationDecisionRepository repository,
                                         AccommodationTypeRepository accommodationTypeRepository,
                                         RnRepository rnRepository,
                                         AccommodationRepository accommodationRepository,
-                                        StrFacilityRepository facilityRepository) {
+                                        StrFacilityRepository facilityRepository,
+                                        VerifikacijaOutbox verifikacijaOutbox) {
         this.repository = repository;
         this.accommodationTypeRepository = accommodationTypeRepository;
         this.rnRepository = rnRepository;
         this.accommodationRepository = accommodationRepository;
         this.facilityRepository = facilityRepository;
+        this.verifikacijaOutbox = verifikacijaOutbox;
     }
 
     /**
@@ -122,7 +126,16 @@ public class CategorizationDecisionService {
                 : CategorizationDecisionEntity.createForLessor(owner.lessorId(), rn, fileName, contentType,
                         content, metadata);
 
-        return CategorizationDecisionResponse.of(saveActive(entity));
+        CategorizationDecisionEntity saved = saveActive(entity);
+        if (facilityId == null) {
+            // Novi objekt nije u eTurizmu: službenici nadležne županije dobivaju obavijest o žurnoj
+            // verifikaciji (dopuna T8/T9). Objekt iz eTurizma ju je, ako je neverificiran, dobio pri izdavanju RB-a.
+            String naselje = trimToNull(accommodation.getSettlement());
+            verifikacijaOutbox.zabiljeziNoviObjekt(rn, rnEntity.getSubmissionId(), saved.getDecisionId(),
+                    accommodation.getCounty(), accommodation.getName(),
+                    naselje != null ? naselje : accommodation.getCity());
+        }
+        return CategorizationDecisionResponse.of(saved);
     }
 
     private boolean isOwned(String rn, RnOwner owner) {

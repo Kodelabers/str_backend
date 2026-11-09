@@ -1,5 +1,8 @@
 package com.str.backend.str.verifikacija;
 
+import com.str.backend.categorization.CategorizationDecisionEntity;
+import com.str.backend.categorization.CategorizationDecisionRepository;
+import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
@@ -26,6 +29,11 @@ import java.util.Optional;
  * redak. Ista baza, pa je upis atomaran: bilo koja greška poništava i zahtjev i obavijesti, a outbox
  * ostaje {@code PENDING} za sljedeći pokušaj. Neuspjeh bilježi pozivatelj, u zasebnoj transakciji
  * ({@link VerifikacijaOutbox#recordFailure}).
+ *
+ * <p><b>Novi objekt uz predano rješenje</b> ({@link VerifikacijaOutboxEntity.Vrsta#NOVI_OBJEKT_RJESENJE}):
+ * zahtjeva nema (objekt u eTurizmu nema dokument), pa pokušaj upisuje samo obavijesti službenicima
+ * nadležne županije i zatvara redak kao {@link Status#OBAVIJESTI_UPISANE}. Dok su obavijesti ugašene,
+ * takav redak se ne dira — ostaje {@code PENDING} i ne troši pokušaje.
  *
  * <p><b>Provjera pri obradi.</b> Redak može čekati (zastavica ugašena, retry), a za to vrijeme RB može
  * biti opozvan ili povučen, ili objekt verificiran. Tada se ništa ne upisuje i redak se zatvara kao
@@ -77,6 +85,7 @@ public class EturizamVerifikacijaWriter {
     private final EturizamVerifikacijaRepository eturizam;
     private final RnRepository rnRepository;
     private final RnFacilityVerification facilityVerification;
+    private final CategorizationDecisionRepository decisionRepository;
     private final EturizamVerifikacijaProperties properties;
     private final Clock clock;
     private final TransactionTemplate inlineTx;
@@ -86,6 +95,7 @@ public class EturizamVerifikacijaWriter {
                                       EturizamVerifikacijaRepository eturizam,
                                       RnRepository rnRepository,
                                       RnFacilityVerification facilityVerification,
+                                      CategorizationDecisionRepository decisionRepository,
                                       EturizamVerifikacijaProperties properties,
                                       Clock clock,
                                       PlatformTransactionManager transactionManager) {
@@ -93,6 +103,7 @@ public class EturizamVerifikacijaWriter {
         this.eturizam = eturizam;
         this.rnRepository = rnRepository;
         this.facilityVerification = facilityVerification;
+        this.decisionRepository = decisionRepository;
         this.properties = properties;
         this.clock = clock;
         this.inlineTx = transakcija(transactionManager, properties.inlineTimeout());
@@ -108,8 +119,9 @@ public class EturizamVerifikacijaWriter {
     }
 
     /**
-     * @return ishod upisa; prazno kad pokušaja nije bilo: za RB nema retka na čekanju (verificiran ili
-     * nov objekt), redak je obradio ili odgodio drugi pokušaj, ili mu (za job) rok još nije došao.
+     * @return ishod upisa; prazno kad pokušaja nije bilo: za RB nema retka na čekanju (verificiran
+     * objekt, ili novi objekt bez predanog rješenja), redak je obradio ili odgodio drugi pokušaj, mu (za
+     * job) rok još nije došao, ili je redak novog objekta a obavijesti su ugašene.
      * Prazno odvaja „preskočeno" od „obrađeno" — po tome to provjeravaju testovi.
      */
     public Optional<Status> upisi(Pokusaj pokusaj) {
@@ -148,14 +160,24 @@ public class EturizamVerifikacijaWriter {
                     rn, zapis.getAttempts(), pokusaj.ocekivaniPokusaji(), zapis.getNextAttemptAt());
             return Optional.empty();
         }
+        if (zapis.isNoviObjekt() && !properties.obavijesti().enabled()) {
+            // Novi objekt nema zahtjev, samo obavijesti: bez njih redak čeka, ne zatvara se prazan.
+            log.debug("eturizam_verifikacija_novi_ceka rn={} — obavijesti su ugašene", rn);
+            return Optional.empty();
+        }
 
         String razlog = razlogPreskakanja(zapis);
         if (razlog != null) {
             zapis.skip(clock.instant(), razlog);
             outboxRepository.save(zapis);
-            log.info("eturizam_verifikacija_preskoceno rn={} document={} facility={} razlog={} — ništa se ne upisuje",
-                    rn, zapis.getDocumentId(), zapis.getFacilityId(), razlog);
+            log.info("eturizam_verifikacija_preskoceno rn={} vrsta={} document={} facility={} decision={} razlog={} "
+                            + "— ništa se ne upisuje",
+                    rn, zapis.getVrsta(), zapis.getDocumentId(), zapis.getFacilityId(), zapis.getDecisionId(), razlog);
             return Optional.of(Status.PRESKOCENO);
+        }
+
+        if (zapis.isNoviObjekt()) {
+            return Optional.of(upisiObavijestiNovogObjekta(zapis));
         }
 
         long documentId = zapis.getDocumentId();
@@ -185,6 +207,8 @@ public class EturizamVerifikacijaWriter {
      * Zašto upis više nema smisla, ili {@code null}. RB se čita iz {@code str_rn}; verificiranost je
      * današnja, po pravilu stupca „Verificiran" ({@link RnFacilityVerification}, objekt po
      * {@code system_uuid}). Pad tog upita je obični neuspjeh pokušaja — bez potvrde se ne upisuje.
+     * Za novi objekt umjesto verificiranosti se gleda rješenje: obavijest ide samo dok je predano
+     * ({@code SUBMITTED}), a ne kad ga je službenik u međuvremenu prihvatio ili odbio.
      * Suspendiran RB (ili prijedlog suspenzije) i dalje traži verifikaciju (otvoreno pitanje, plan § 6).
      */
     private String razlogPreskakanja(VerifikacijaOutboxEntity zapis) {
@@ -194,6 +218,15 @@ public class EturizamVerifikacijaWriter {
         }
         if (status == RnStatus.REVOKED || status == RnStatus.WITHDRAWN) {
             return "RB je " + status + " prije obrade";
+        }
+        if (zapis.isNoviObjekt()) {
+            // Službenik je rješenje već prihvatio ili odbio na internom portalu STR-a: žurnost je prošla.
+            CategorizationDecisionStatus rjesenje = decisionRepository.findById(zapis.getDecisionId())
+                    .map(CategorizationDecisionEntity::getStatus).orElse(null);
+            if (rjesenje != CategorizationDecisionStatus.SUBMITTED) {
+                return rjesenje == null ? "rješenje ne postoji" : "rješenje je u međuvremenu obrađeno (" + rjesenje + ")";
+            }
+            return null;
         }
         if (facilityVerification.verifiedFacilityIds(List.of(zapis.getFacilityId())).contains(zapis.getFacilityId())) {
             return "objekt je u međuvremenu verificiran u eTurizmu";
@@ -235,6 +268,54 @@ public class EturizamVerifikacijaWriter {
                 zapis.getRn(), zapis.getDocumentId(), zapis.getFacilityId(), zahtjevId);
         for (Long korisnik : primatelji) {
             eturizam.insertNotification(korisnik, postavke.vrsta(), tekst, postavke.objektTip(), zahtjevId, podaci, sada);
+        }
+        return primatelji.size();
+    }
+
+    /**
+     * Novi objekt uz predano rješenje: obavijesti službenicima nadležne županije, bez zahtjeva, pa
+     * zatvoren redak ({@link Status#OBAVIJESTI_UPISANE}). Kad se županija ne prepozna ili nema
+     * službenika, redak se zatvara s 0 obavijesti i WARN-om — ponovni pokušaj to ne bi promijenio, a
+     * rješenje službenici i dalje vide na internom portalu STR-a.
+     */
+    private Status upisiObavijestiNovogObjekta(VerifikacijaOutboxEntity zapis) {
+        LocalDateTime sada = LocalDateTime.now(clock.withZone(ETURIZAM_ZONE));
+        int obavijesti = obavijestiNovogObjekta(zapis, sada);
+        zapis.completeObavijesti(obavijesti, clock.instant());
+        outboxRepository.save(zapis);
+        log.info("eturizam_verifikacija_novi_upisano rn={} decision={} zupanija={} obavijesti={}",
+                zapis.getRn(), zapis.getDecisionId(), zapis.getZupanija(), obavijesti);
+        return Status.OBAVIJESTI_UPISANE;
+    }
+
+    private int obavijestiNovogObjekta(VerifikacijaOutboxEntity zapis, LocalDateTime sada) {
+        Optional<Long> zupanija = eturizam.findCountyId(zapis.getZupanija());
+        if (zupanija.isEmpty()) {
+            log.warn("eturizam_verifikacija_novi_bez_zupanije rn={} zupanija={} — županija objekta nije pronađena "
+                    + "u str.county, obavijesti se ne šalju", zapis.getRn(), zapis.getZupanija());
+            return 0;
+        }
+        EturizamVerifikacijaProperties.Obavijesti postavke = properties.obavijesti();
+        int max = postavke.maxPrimatelja();
+        List<Long> primatelji = eturizam.findCountyRecipients(zupanija.get(), max + 1);
+        if (primatelji.isEmpty()) {
+            log.warn("eturizam_verifikacija_novi_bez_primatelja rn={} zupanija={} county={} — nijedna aktivna "
+                            + "županijska jedinica nadležna za županiju nema aktivnih internih korisnika, obavijesti "
+                            + "se ne šalju", zapis.getRn(), zapis.getZupanija(), zupanija.get());
+            return 0;
+        }
+        if (primatelji.size() > max) {
+            log.warn("eturizam_verifikacija_previse_primatelja rn={} county={} max={} — županija ima više aktivnih "
+                            + "internih korisnika od granice, obavijest dobiva samo prvih {} (po id-u)",
+                    zapis.getRn(), zupanija.get(), max, max);
+            primatelji = primatelji.subList(0, max);
+        }
+
+        String tekst = VerifikacijaObavijest.tekst(postavke.tekstNoviObjekt(), zapis.getRn(),
+                VerifikacijaObavijest.opisNovogObjekta(zapis.getObjektNaziv(), zapis.getObjektMjesto()));
+        String podaci = VerifikacijaObavijest.podaciNovogObjekta(zapis.getRn(), zapis.getDecisionId());
+        for (Long korisnik : primatelji) {
+            eturizam.insertNotification(korisnik, postavke.vrsta(), tekst, null, null, podaci, sada);
         }
         return primatelji.size();
     }

@@ -216,9 +216,11 @@ public class StartupDiagnostics {
     /**
      * Prava koja trebaju zahtjevu za zurnu verifikaciju (T8, EturizamVerifikacijaWriter): uvijek
      * SELECT i INSERT na str.verification_request; uz obavijesti jos SELECT na str.document (nadlezna
-     * jedinica) i str.application_user (primatelji) te INSERT na str.korisnicka_obavijest. Bez njih RB
-     * se svejedno izda, ali svaki pokusaj upisa padne i nakon retry.max-attempts redak ide u ABANDONED.
-     * Samo log, i kad je zastavica ukljucena: grant moze stici nakon deploya.
+     * jedinica) i str.application_user (primatelji) te INSERT na str.korisnicka_obavijest. Za novi objekt
+     * uz predano rjesenje primatelji se traze po zupaniji (str.county, municipality, settlement,
+     * settlement_jurisdiction, organizational_unit, internal_organization, codebook_element; SELECT). Bez
+     * njih RB se svejedno izda, ali svaki pokusaj upisa padne i nakon retry.max-attempts redak ide u
+     * ABANDONED. Samo log, i kad je zastavica ukljucena: grant moze stici nakon deploya.
      */
     private void probeVerifikacija() {
         boolean enabled = env.getProperty("str.eturizam.verifikacija.enabled", Boolean.class, false);
@@ -230,6 +232,11 @@ public class StartupDiagnostics {
             potrebna.add(new String[]{"str.document", "SELECT"});
             potrebna.add(new String[]{"str.application_user", "SELECT"});
             potrebna.add(new String[]{"str.korisnicka_obavijest", "INSERT"});
+            for (String tablica : List.of("str.county", "str.municipality", "str.settlement",
+                    "str.settlement_jurisdiction", "str.organizational_unit", "str.internal_organization",
+                    "str.codebook_element")) {
+                potrebna.add(new String[]{tablica, "SELECT"});
+            }
         }
         List<String> nedostaje = new ArrayList<>();
         for (String[] pravo : potrebna) {
@@ -261,7 +268,8 @@ public class StartupDiagnostics {
                 env.getProperty("str.eturizam.verifikacija.obavijesti.vrsta"),
                 env.getProperty("str.eturizam.verifikacija.obavijesti.objekt-tip"),
                 env.getProperty("str.eturizam.verifikacija.obavijesti.tekst"),
-                null);
+                null,
+                env.getProperty("str.eturizam.verifikacija.obavijesti.tekst-novi-objekt"));
         if (!o.enabled()) {
             return;
         }
@@ -276,6 +284,10 @@ public class StartupDiagnostics {
         if (!o.tekst().contains("{rn}")) {
             log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.tekst nema {rn} — "
                     + "obavijest sluzbeniku nece nositi registracijski broj");
+        }
+        if (!o.tekstNoviObjekt().contains("{rn}")) {
+            log.error("eturizam_verifikacija_config str.eturizam.verifikacija.obavijesti.tekst-novi-objekt nema {rn} — "
+                    + "obavijest sluzbeniku za novi objekt nece nositi registracijski broj");
         }
     }
 

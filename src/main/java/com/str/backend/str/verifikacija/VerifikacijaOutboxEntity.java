@@ -14,10 +14,16 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Zahtjev za žurnu verifikaciju koji STR duguje eTurizmu za jedan izdani RB
- * ({@code str_rn.eturizam_verifikacija}, changeset 151). Nastaje u transakciji izdavanja RB-a,
- * a zatvara ga {@link EturizamVerifikacijaWriter} kad upiše (ili zatekne) zahtjev u
- * {@code str.verification_request}.
+ * Žurna verifikacija koju STR duguje eTurizmu za jedan RB ({@code str_rn.eturizam_verifikacija},
+ * changeseti 151, 153, 154), po {@link Vrsta}:
+ * <ul>
+ *   <li>{@link Vrsta#ETURIZAM_OBJEKT} — RB izdan za neverificiran objekt iz eTurizma. Nastaje u
+ *       transakciji izdavanja RB-a, a zatvara ga {@link EturizamVerifikacijaWriter} kad upiše (ili
+ *       zatekne) zahtjev u {@code str.verification_request}.</li>
+ *   <li>{@link Vrsta#NOVI_OBJEKT_RJESENJE} — uz RB novog objekta predano je rješenje o kategorizaciji.
+ *       Objekta u eTurizmu nema, pa ni dokumenta uz koji bi se upisao zahtjev: šalju se samo obavijesti
+ *       službenicima nadležne županije. Nastaje u transakciji predaje rješenja.</li>
+ * </ul>
  */
 @Entity
 @Table(schema = "str_rn", name = "eturizam_verifikacija")
@@ -28,11 +34,26 @@ public class VerifikacijaOutboxEntity {
     /** Najdulji razlog koji stane u stupac {@code last_error}. */
     static final int MAX_ERROR = 500;
 
+    /** Najdulji naziv županije ({@code accommodation.county}). */
+    static final int MAX_ZUPANIJA = 128;
+
+    public enum Vrsta {
+        /** Neverificiran objekt iz eTurizma: zahtjev uz njegov dokument i obavijesti nadležnoj jedinici. */
+        ETURIZAM_OBJEKT,
+        /** Novi objekt uz predano rješenje o kategorizaciji: samo obavijesti službenicima županije. */
+        NOVI_OBJEKT_RJESENJE
+    }
+
     public enum Status {
         /** Čeka upis u eTurizam (prvi pokušaj ili retry). */
         PENDING,
         /** STR je upisao zahtjev u {@code str.verification_request} (i obavijesti, ako su uključene). */
         ZAHTJEV_UPISAN,
+        /**
+         * Novi objekt ({@link Vrsta#NOVI_OBJEKT_RJESENJE}): obavijesti su upisane, bez zahtjeva. Broj je u
+         * {@code obavijesti_poslano} — 0 kad županija nema službenika ili se ne prepozna (WARN u logu).
+         */
+        OBAVIJESTI_UPISANE,
         /**
          * Zahtjev za dokument je već postojao — upisao ga je eTurizam ili STR za drugi RB istog dokumenta
          * (zahtjev je po dokumentu). Ne mijenja se i obavijesti se ne šalju; zapisuje se njegov id.
@@ -44,7 +65,8 @@ public class VerifikacijaOutboxEntity {
         ZAHTJEV_POSTOJAO,
         /**
          * Upis više nema smisla: RB je u međuvremenu opozvan ili povučen, objekt je u međuvremenu
-         * verificiran, ili RB-a nema. Ništa se ne upisuje; razlog je u {@code last_error}.
+         * verificiran, rješenje novog objekta je već obrađeno, ili RB-a nema. Ništa se ne upisuje;
+         * razlog je u {@code last_error}.
          */
         PRESKOCENO,
         /** Pokušaji su iscrpljeni; ostaje za ručnu intervenciju. */
@@ -58,20 +80,43 @@ public class VerifikacijaOutboxEntity {
     @Column(name = "rn", length = 20, nullable = false, updatable = false, unique = true)
     private String rn;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "vrsta", length = 32, nullable = false, updatable = false)
+    private Vrsta vrsta;
+
     @Column(name = "submission_id", nullable = false, updatable = false)
     private UUID submissionId;
 
-    @Column(name = "facility_id", length = 64, nullable = false, updatable = false)
+    /** {@code str.facility.id}; samo {@link Vrsta#ETURIZAM_OBJEKT}. */
+    @Column(name = "facility_id", length = 64, updatable = false)
     private String facilityId;
 
-    @Column(name = "document_id", nullable = false, updatable = false)
+    /** {@code str.document.id} = {@code source_document_id} zahtjeva; samo {@link Vrsta#ETURIZAM_OBJEKT}. */
+    @Column(name = "document_id", updatable = false)
     private Long documentId;
 
-    /** Naziv objekta iz eTurizma pri izdavanju RB-a ({@code findOwnership}); {@code null} kad ga nema. */
+    /**
+     * Predano rješenje ({@code str_rn.categorization_decision}); samo {@link Vrsta#NOVI_OBJEKT_RJESENJE}.
+     * Mijenja se kad redak bez poslane obavijesti dobije novo rješenje ({@link #ponovoNaCekanje}).
+     */
+    @Column(name = "decision_id")
+    private UUID decisionId;
+
+    /**
+     * Županija objekta iz STR-a ({@code accommodation.county}) — po njoj se biraju primatelji;
+     * samo {@link Vrsta#NOVI_OBJEKT_RJESENJE}.
+     */
+    @Column(name = "zupanija", length = MAX_ZUPANIJA, updatable = false)
+    private String zupanija;
+
+    /**
+     * Naziv objekta: iz eTurizma pri izdavanju RB-a ({@code findOwnership}) za objekt iz eTurizma, a iz
+     * zahtjeva za RB za novi objekt; {@code null} kad ga nema.
+     */
     @Column(name = "objekt_naziv", length = 255, updatable = false)
     private String objektNaziv;
 
-    /** Naselje (ili općina) objekta iz eTurizma pri izdavanju RB-a. */
+    /** Naselje (ili općina) objekta, iz istog izvora kao naziv. */
     @Column(name = "objekt_mjesto", length = 255, updatable = false)
     private String objektMjesto;
 
@@ -107,12 +152,36 @@ public class VerifikacijaOutboxEntity {
     public static VerifikacijaOutboxEntity pending(String rn, UUID submissionId, String facilityId,
                                                    long documentId, String objektNaziv, String objektMjesto,
                                                    Instant now, Instant nextAttemptAt) {
-        VerifikacijaOutboxEntity e = new VerifikacijaOutboxEntity();
-        e.verifikacijaId = UUID.randomUUID();
-        e.rn = rn;
-        e.submissionId = submissionId;
+        VerifikacijaOutboxEntity e = novi(Vrsta.ETURIZAM_OBJEKT, rn, submissionId, objektNaziv, objektMjesto,
+                now, nextAttemptAt);
         e.facilityId = facilityId;
         e.documentId = documentId;
+        return e;
+    }
+
+    /**
+     * Redak za novi objekt uz predano rješenje ({@link Vrsta#NOVI_OBJEKT_RJESENJE}).
+     *
+     * @param nextAttemptAt kao kod {@link #pending}: kasnije od inline pokušaja nakon commita predaje
+     */
+    public static VerifikacijaOutboxEntity pendingNoviObjekt(String rn, UUID submissionId, UUID decisionId,
+                                                             String zupanija, String objektNaziv,
+                                                             String objektMjesto, Instant now,
+                                                             Instant nextAttemptAt) {
+        VerifikacijaOutboxEntity e = novi(Vrsta.NOVI_OBJEKT_RJESENJE, rn, submissionId, objektNaziv, objektMjesto,
+                now, nextAttemptAt);
+        e.decisionId = decisionId;
+        e.zupanija = truncate(zupanija, MAX_ZUPANIJA);
+        return e;
+    }
+
+    private static VerifikacijaOutboxEntity novi(Vrsta vrsta, String rn, UUID submissionId, String objektNaziv,
+                                                 String objektMjesto, Instant now, Instant nextAttemptAt) {
+        VerifikacijaOutboxEntity e = new VerifikacijaOutboxEntity();
+        e.verifikacijaId = UUID.randomUUID();
+        e.vrsta = vrsta;
+        e.rn = rn;
+        e.submissionId = submissionId;
         e.objektNaziv = truncate(objektNaziv, 255);
         e.objektMjesto = truncate(objektMjesto, 255);
         e.status = Status.PENDING;
@@ -121,6 +190,40 @@ public class VerifikacijaOutboxEntity {
         e.createdAt = now;
         e.updatedAt = now;
         return e;
+    }
+
+    /** Novi objekt: obavijesti su upisane ({@code obavijesti} je njihov broj, 0 kad primatelja nema). */
+    public void completeObavijesti(int obavijesti, Instant now) {
+        if (vrsta != Vrsta.NOVI_OBJEKT_RJESENJE) {
+            throw new IllegalStateException("obavijesti bez zahtjeva samo za novi objekt, ne " + vrsta);
+        }
+        this.status = Status.OBAVIJESTI_UPISANE;
+        this.obavijestiPoslano = obavijesti;
+        this.nextAttemptAt = null;
+        this.lastError = null;
+        this.updatedAt = now;
+    }
+
+    /**
+     * Novi objekt, obavijest još nije poslana (redak čeka, preskočen jer je prethodno rješenje obrađeno,
+     * ili napušten), a predano je novo rješenje: redak se vraća na čekanje uz njega, s punim brojem pokušaja.
+     */
+    public void ponovoNaCekanje(UUID decisionId, Instant now, Instant nextAttemptAt) {
+        if (vrsta != Vrsta.NOVI_OBJEKT_RJESENJE || status == Status.OBAVIJESTI_UPISANE) {
+            throw new IllegalStateException("ponovno čekanje samo za novi objekt bez poslane obavijesti, ne "
+                    + vrsta + "/" + status);
+        }
+        this.decisionId = decisionId;
+        this.status = Status.PENDING;
+        this.attempts = 0;
+        this.obavijestiPoslano = null;
+        this.nextAttemptAt = nextAttemptAt;
+        this.lastError = null;
+        this.updatedAt = now;
+    }
+
+    public boolean isNoviObjekt() {
+        return vrsta == Vrsta.NOVI_OBJEKT_RJESENJE;
     }
 
     /** Zahtjev je upisan ili zatečen; {@code obavijesti} je broj upisanih obavijesti (0 kad ih nema). */

@@ -114,5 +114,34 @@ class VerifikacijaObavijestTest {
         assertThat(p.retry().backoffBase()).isEqualTo(Duration.ofMinutes(5));
         assertThat(p.timeout()).isEqualTo(Duration.ofSeconds(10));
         assertThat(p.inlineTimeout()).isEqualTo(Duration.ofSeconds(3));
+        assertThat(p.obavijesti().tekstNoviObjekt())
+                .isEqualTo(EturizamVerifikacijaProperties.Obavijesti.DEFAULT_TEKST_NOVI_OBJEKT);
+    }
+
+    // ---------------------------------------------------------------- novi objekt uz predano rješenje
+
+    @Test
+    void tekstNovogObjekta_fillsPlaceholders() {
+        String tekst = VerifikacijaObavijest.tekst(EturizamVerifikacijaProperties.Obavijesti.DEFAULT_TEKST_NOVI_OBJEKT,
+                "HR170001000000000456", VerifikacijaObavijest.opisNovogObjekta("Apartman Ana", "Split"));
+
+        assertThat(tekst).isEqualTo("Uz registracijski broj HR170001000000000456 priloženo je rješenje o kategorizaciji "
+                + "za novi smještajni objekt „Apartman Ana“ (Split). Objekt nije upisan u eTurizam – potrebna je "
+                + "žurna verifikacija. Rješenje unesite kroz modul Verifikacije, funkcionalnost Unos rješenja.");
+    }
+
+    /** Naziv i mjesto unosi iznajmljivač: čiste se, a bez oboje rečenica ostaje cijela. */
+    @Test
+    void opisNovogObjekta_sanitizedAndNeverEmpty() {
+        assertThat(VerifikacijaObavijest.opisNovogObjekta("<b>Vila</b>", null)).isEqualTo("„bVila/b“");
+        assertThat(VerifikacijaObavijest.opisNovogObjekta(null, " Split ")).isEqualTo("(Split)");
+        assertThat(VerifikacijaObavijest.opisNovogObjekta("-", "")).isEqualTo("(bez naziva)");
+    }
+
+    @Test
+    void podaciNovogObjekta_carryRnAndDecision() {
+        assertThat(VerifikacijaObavijest.podaciNovogObjekta("HR170001000000000456",
+                java.util.UUID.fromString("0f6c2c9e-6a43-4d8f-9b0d-6a1f3b1b7c55")))
+                .isEqualTo("{\"rn\":\"HR170001000000000456\",\"decisionId\":\"0f6c2c9e-6a43-4d8f-9b0d-6a1f3b1b7c55\"}");
     }
 }

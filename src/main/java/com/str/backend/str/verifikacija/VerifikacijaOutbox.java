@@ -5,6 +5,7 @@ import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -14,14 +15,17 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Outbox zahtjeva za žurnu verifikaciju ({@code str_rn.eturizam_verifikacija}).
  *
- * <p>{@link #zabiljezi} se zove iz transakcije izdavanja RB-a i <b>priključuje joj se</b>: redak
- * i RB nastaju ili ne nastaju zajedno, pa nakon pada između commita i upisa u eTurizam ništa ne
+ * <p>{@link #zabiljezi} se zove iz transakcije izdavanja RB-a, a {@link #zabiljeziNoviObjekt} iz
+ * transakcije predaje rješenja novog objekta; obje joj se <b>priključuju</b>: redak i RB (odnosno
+ * rješenje) nastaju ili ne nastaju zajedno, pa nakon pada između commita i upisa u eTurizam ništa ne
  * ostaje zaboravljeno. Sam upis u {@code str.*} tu se nikad ne radi — tek nakon commita
  * ({@link EturizamVerifikacijaListener}) ili iz {@link EturizamVerifikacijaRetryJob}-a.
  *
@@ -42,15 +46,20 @@ public class VerifikacijaOutbox {
     private final VerifikacijaOutboxRepository repository;
     private final Clock clock;
     private final EgopRetryPolicy policy;
+    private final EturizamVerifikacijaProperties properties;
     private final EturizamVerifikacijaProperties.Retry retry;
     private final TransactionTemplate tx;
+    private final ApplicationEventPublisher events;
 
     public VerifikacijaOutbox(VerifikacijaOutboxRepository repository,
                               Clock clock,
                               EturizamVerifikacijaProperties properties,
-                              PlatformTransactionManager transactionManager) {
+                              PlatformTransactionManager transactionManager,
+                              ApplicationEventPublisher events) {
         this.repository = repository;
         this.clock = clock;
+        this.properties = properties;
+        this.events = events;
         this.retry = properties.retry();
         this.policy = new EgopRetryPolicy(retry.maxAttempts(), retry.backoffBase(), retry.backoffMax());
         this.tx = EturizamVerifikacijaWriter.transakcija(transactionManager, properties.timeout());
@@ -93,6 +102,56 @@ public class VerifikacijaOutbox {
         repository.save(VerifikacijaOutboxEntity.pending(rn, submissionId, facilityId, documentId,
                 FacilityClaimVerifier.objectName(facility), mjesto, now, policy.nextAttemptAt(now, 0)));
         log.info("eturizam_verifikacija_zabiljezeno rn={} facility={} document={}", rn, facilityId, documentId);
+    }
+
+    /**
+     * Bilježi obavijest o žurnoj verifikaciji za <b>novi objekt</b> uz čiji je RB upravo predano rješenje
+     * o kategorizaciji. Objekta u eTurizmu nema, pa ni dokumenta: nakon commita se ne upisuje zahtjev,
+     * nego samo obavijesti službenicima nadležne županije ({@link VerifikacijaOutboxEntity.Vrsta#NOVI_OBJEKT_RJESENJE}).
+     * Naziv, mjesto i županija su iz zahtjeva za RB (STR); naziv ide kroz {@link FacilityClaimVerifier#knownOrNull}.
+     *
+     * <p><b>Jedna poslana obavijest po RB-u</b> ({@code rn} je UNIQUE, kao i za objekt iz eTurizma):
+     * <ul>
+     *   <li>obavijest je već poslana ({@code OBAVIJESTI_UPISANE}) — ponovna predaja nakon odbijenog
+     *       rješenja ne šalje novu: službenici za objekt već znaju, a novo rješenje vide na internom
+     *       portalu STR-a;</li>
+     *   <li>obavijest još nije poslana (redak čeka, preskočen jer je prethodno rješenje u međuvremenu
+     *       odbijeno, ili napušten) — redak se vraća na čekanje uz novo rješenje
+     *       ({@link VerifikacijaOutboxEntity#ponovoNaCekanje}). Inače bi službenici za novo rješenje
+     *       ostali bez obavijesti.</li>
+     * </ul>
+     * Postojeći redak se čita zaključan: pokušaj koji ga upravo obrađuje (inline ili job) završi prije, pa
+     * se odluka donosi nad njegovim ishodom.
+     *
+     * <p>Nakon commita predaje prvi pokušaj radi {@link EturizamVerifikacijaListener} (događaj
+     * {@link RjesenjeNovogObjektaPredano}); redak nastaje i dok je integracija ugašena.
+     *
+     * <p>{@link Propagation#MANDATORY}: redak mora nastati u transakciji koja sprema rješenje, nikad sam.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void zabiljeziNoviObjekt(String rn, UUID submissionId, UUID decisionId, String zupanija,
+                                    String naziv, String mjesto) {
+        Instant now = clock.instant();
+        VerifikacijaOutboxEntity postojeci = repository.lockByRn(rn).orElse(null);
+        if (postojeci != null) {
+            if (!postojeci.isNoviObjekt() || postojeci.getStatus() == VerifikacijaOutboxEntity.Status.OBAVIJESTI_UPISANE) {
+                log.info("eturizam_verifikacija_novi_vec_zabiljezeno rn={} decision={} status={} — za RB je obavijest "
+                        + "već poslana, nova se ne šalje", rn, decisionId, postojeci.getStatus());
+                return;
+            }
+            UUID prethodno = postojeci.getDecisionId();
+            postojeci.ponovoNaCekanje(decisionId, now, policy.nextAttemptAt(now, 0));
+            repository.save(postojeci);
+            events.publishEvent(new RjesenjeNovogObjektaPredano(rn));
+            log.info("eturizam_verifikacija_novi_ponovo rn={} decision={} prethodno={} — obavijest još nije poslana, "
+                    + "redak čeka uz novo rješenje", rn, decisionId, prethodno);
+            return;
+        }
+        repository.save(VerifikacijaOutboxEntity.pendingNoviObjekt(rn, submissionId, decisionId, zupanija,
+                FacilityClaimVerifier.knownOrNull(naziv), FacilityClaimVerifier.knownOrNull(mjesto), now,
+                policy.nextAttemptAt(now, 0)));
+        events.publishEvent(new RjesenjeNovogObjektaPredano(rn));
+        log.info("eturizam_verifikacija_novi_zabiljezeno rn={} decision={} zupanija={}", rn, decisionId, zupanija);
     }
 
     /**
@@ -152,9 +211,17 @@ public class VerifikacijaOutbox {
         repository.save(e);
     }
 
+    /**
+     * Dospjeli {@code PENDING} retci, najstariji rok prvi. Dok su obavijesti ugašene, retci novog
+     * objekta se ne uzimaju: bez obavijesti nemaju što upisati, pa bi pokušaj ostavio redak netaknut, a
+     * s najstarijim rokom bi zauvijek popunjavali seriju ispred redaka objekata iz eTurizma.
+     */
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public List<VerifikacijaOutboxEntity> due() {
-        return repository.findByStatusAndNextAttemptAtLessThanEqualOrderByNextAttemptAtAsc(
-                VerifikacijaOutboxEntity.Status.PENDING, clock.instant(), PageRequest.of(0, retry.batchSize()));
+        Set<VerifikacijaOutboxEntity.Vrsta> vrste = properties.obavijesti().enabled()
+                ? EnumSet.allOf(VerifikacijaOutboxEntity.Vrsta.class)
+                : EnumSet.of(VerifikacijaOutboxEntity.Vrsta.ETURIZAM_OBJEKT);
+        return repository.findByStatusAndVrstaInAndNextAttemptAtLessThanEqualOrderByNextAttemptAtAsc(
+                VerifikacijaOutboxEntity.Status.PENDING, vrste, clock.instant(), PageRequest.of(0, retry.batchSize()));
     }
 }

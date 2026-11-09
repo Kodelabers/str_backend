@@ -290,4 +290,7 @@
     <!-- Žurna verifikacija: naziv i mjesto objekta iz eTurizma za tekst obavijesti; status PRESKOCENO. -->
     <include file="db/changelog/changes/153-eturizam-verifikacija-objekt.xml"/>
 
+    <!-- Žurna verifikacija za novi objekt uz predano rješenje: samo obavijesti županiji (vrsta retka). -->
+    <include file="db/changelog/changes/154-eturizam-verifikacija-novi-objekt.xml"/>
+
 </databaseChangeLog>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Žurna verifikacija za novi objekt uz predano rješenje o kategorizaciji (dopuna T8/T9, 9. 11. 2026.).
+
+        Novi objekt u eTurizmu nema dokument, pa ni zahtjev u str.verification_request (source_document_id
+        je NOT NULL, FK i UNIQUE): retci vrste NOVI_OBJEKT_RJESENJE šalju samo obavijesti službenicima
+        nadležne županije. Zato facility_id i document_id više nisu obavezni, a uz redak se pamte rješenje
+        i županija objekta iz STR-a. Postojeći retci dobivaju vrstu ETURIZAM_OBJEKT.
+
+        Status OBAVIJESTI_UPISANE (bez promjene sheme, status je varchar): obavijesti novog objekta upisane.
+
+        Rollback vraća NOT NULL tek kad redaka novog objekta nema (inače pada — namjerno, da se ne izgube).
+    -->
+    <changeSet id="154-eturizam-verifikacija-novi-objekt" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="eturizam_verifikacija">
+            <column name="vrsta" type="VARCHAR(32)" defaultValue="ETURIZAM_OBJEKT"
+                    remarks="ETURIZAM_OBJEKT (zahtjev + obavijesti) / NOVI_OBJEKT_RJESENJE (samo obavijesti)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="decision_id" type="UUID" remarks="Predano rješenje novog objekta (categorization_decision)"/>
+            <column name="zupanija" type="VARCHAR(128)" remarks="Županija novog objekta iz STR-a, za odabir primatelja"/>
+        </addColumn>
+        <dropNotNullConstraint schemaName="str_rn" tableName="eturizam_verifikacija"
+                               columnName="facility_id" columnDataType="VARCHAR(64)"/>
+        <dropNotNullConstraint schemaName="str_rn" tableName="eturizam_verifikacija"
+                               columnName="document_id" columnDataType="BIGINT"/>
+        <setColumnRemarks schemaName="str_rn" tableName="eturizam_verifikacija" columnName="status"
+                          remarks="PENDING → ZAHTJEV_UPISAN / ZAHTJEV_POSTOJAO / OBAVIJESTI_UPISANE / PRESKOCENO / ABANDONED"/>
+        <rollback>
+            <addNotNullConstraint schemaName="str_rn" tableName="eturizam_verifikacija"
+                                  columnName="document_id" columnDataType="BIGINT"/>
+            <addNotNullConstraint schemaName="str_rn" tableName="eturizam_verifikacija"
+                                  columnName="facility_id" columnDataType="VARCHAR(64)"/>
+            <dropColumn schemaName="str_rn" tableName="eturizam_verifikacija" columnName="zupanija"/>
+            <dropColumn schemaName="str_rn" tableName="eturizam_verifikacija" columnName="decision_id"/>
+            <dropColumn schemaName="str_rn" tableName="eturizam_verifikacija" columnName="vrsta"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

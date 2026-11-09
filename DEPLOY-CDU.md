@@ -654,6 +654,33 @@ UPDATE str_rn.eturizam_verifikacija
 Gašenje: `STR_ETURIZAM_VERIFIKACIJA_ENABLED=false`, korak 7. Retci koji nastanu dok je ugašeno
 ostaju `PENDING` i obrade se kad se ponovno uključi.
 
+#### Novi objekt uz predano rješenje (plan § 7)
+
+Predaja rješenja uz RB **novog** objekta (obrazac „imam rješenje”) daje outbox redak vrste
+`NOVI_OBJEKT_RJESENJE` i, **samo uz uključene obavijesti**, obavijesti službenicima županijske organizacije
+nadležne za županiju objekta — bez zahtjeva u `str.verification_request` (novi objekt nema dokument).
+Dok su obavijesti ugašene, redak čeka `PENDING`. Prije uključivanja pokrenuti
+`docs/sql/t8-novi-objekt-dijagnostika.sql` (N3: broj primatelja po županiji za `IOT_ZUPANIJA`).
+
+| Redak | Značenje |
+| :--- | :--- |
+| `eturizam_verifikacija_novi_zabiljezeno rn=… decision=… zupanija=…` | rješenje je predano, outbox redak je nastao |
+| `eturizam_verifikacija_novi_upisano … obavijesti=N` | `N` obavijesti upisano, redak `OBAVIJESTI_UPISANE` |
+| `eturizam_verifikacija_novi_bez_zupanije` / `_novi_bez_primatelja` (WARN) | županija nije prepoznata u `str.county` ili nema službenika; redak zatvoren s 0 obavijesti |
+| `eturizam_verifikacija_novi_vec_zabiljezeno` | za RB je obavijest već poslana (ponovna predaja nakon odbijanja) — nova se ne šalje |
+| `eturizam_verifikacija_novi_ponovo rn=… decision=… prethodno=…` | obavijest za RB još nije bila poslana, a predano je novo rješenje — redak čeka uz njega |
+| `eturizam_verifikacija_preskoceno vrsta=NOVI_OBJEKT_RJESENJE … razlog=rješenje je u međuvremenu obrađeno` | službenik je rješenje prihvatio/odbio prije obrade retka |
+
+```sql
+SELECT 'Z5' AS blok, e.rn, e.status, e.zupanija, e.decision_id, e.obavijesti_poslano, e.attempts, e.last_error, e.created_at
+FROM str_rn.eturizam_verifikacija e WHERE e.vrsta = 'NOVI_OBJEKT_RJESENJE' ORDER BY e.created_at DESC LIMIT 20;
+
+SELECT 'Z6' AS blok, o.id, o.application_user_id, o.vrsta, o.stvoreno, o.procitano, o.podaci, o.tekst
+FROM str.korisnicka_obavijest o
+WHERE o.objekt_tip IS NULL AND o.podaci ->> 'decisionId' IS NOT NULL
+ORDER BY o.id DESC LIMIT 50;
+```
+
 ## 9. Iz browsera
 
 ```
