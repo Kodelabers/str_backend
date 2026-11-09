@@ -86,12 +86,57 @@ class SmtpEmailServiceTest {
         assertThat(html(sent.getContent())).contains("dostavlja se elektroničkom poštom");
     }
 
+    /** Iznajmljivač s OIB-om: poruka, preslika akta u privitku i poveznica na pretinac (MINTS, T4). */
+    @Test
+    void rnIssued_withOib_attachesActAndLinksToKp() throws Exception {
+        boolean ok = service(null, "https://kp.example.hr/inbox").sendRnIssuedNotification(new RnIssuedMail(LESSOR,
+                "Ana", "HR123456789012345678", "Apartman Sunce, Ilica 1, Zagreb", new byte[]{1, 2, 3}, false));
+
+        MimeMessage sent = sent();
+        sent.saveChanges();
+        assertThat(ok).isTrue();
+        assertThat(sent.getSubject()).isEqualTo("Izdan registracijski broj HR123456789012345678 — eTurizam STR");
+        assertThat(attachmentNames((MimeMultipart) sent.getContent()))
+                .containsExactly("dodjela-HR123456789012345678.pdf");
+        assertThat(html(sent.getContent()))
+                .contains("Apartman Sunce, Ilica 1, Zagreb")
+                .contains("U privitku ove poruke nalazi se preslika akta")
+                .contains("href=\"https://kp.example.hr/inbox\"");
+    }
+
+    /** Non-EU poruka ostaje ista: nema poveznice ni tvrdnje o pretincu ni uz postavljenu adresu. */
+    @Test
+    void rnIssued_nonEu_hasNoKpLinkEvenWhenConfigured() throws Exception {
+        service(null, "https://kp.example.hr/inbox").sendRnIssuedNotification(new RnIssuedMail(LESSOR, "John",
+                "HR123456789012345678", "Apartman Sunce", new byte[]{1, 2, 3}, true));
+
+        MimeMessage sent = sent();
+        sent.saveChanges();
+        assertThat(html(sent.getContent()))
+                .doesNotContain("kp.example.hr")
+                .doesNotContain("korisnički pretinac")
+                .contains("dostavlja se elektroničkom poštom");
+    }
+
+    /** Akt je razlog za privitak: prilog bez akta ne smije poruku natjerati da tvrdi da je akt tu. */
+    @Test
+    void rnLifecycle_attachmentsWithoutAct_doesNotClaimActAttached() throws Exception {
+        service(null).sendRnLifecycleNotification(new RnLifecycleMail(MailTemplate.SUSPENZIJA,
+                LESSOR, "Ana", "HR123456789012345678", "Apartman Sunce", "razlog", "rok",
+                null, Dostava.PRETINAC, List.of(new MailPrilog("zapisnik.pdf", "application/pdf", new byte[]{4})),
+                List.of()));
+
+        MimeMessage sent = sent();
+        sent.saveChanges();
+        assertThat(html(sent.getContent())).doesNotContain("preslika akta");
+    }
+
     /**
-     * Iznajmljivač s OIB-om: obavijest s brojem i objektom, bez privitka — obavijest o dodjeli
-     * ide u korisnički pretinac, a poruka to mora reći.
+     * Iznajmljivač s OIB-om kad akta nema ni nakon čekanja: obavijest s brojem i objektom, bez
+     * privitka — poruka tada ne smije spominjati privitak.
      */
     @Test
-    void rnIssued_withOib_isNoticeWithoutAttachment() throws Exception {
+    void rnIssued_withOib_noAct_isNoticeWithoutAttachment() throws Exception {
         boolean ok = service(null).sendRnIssuedNotification(new RnIssuedMail(LESSOR, "Ana",
                 "HR123456789012345678", "Apartman Sunce, Ilica 1, Zagreb", null, false));
 
@@ -234,14 +279,18 @@ class SmtpEmailServiceTest {
     }
 
     private SmtpEmailService service(String redirectTo) {
+        return service(redirectTo, null);
+    }
+
+    private SmtpEmailService service(String redirectTo, String kpUrl) {
         MailProperties properties = new MailProperties(true, "str@example.com",
-                "https://str.example.com/login", redirectTo);
+                "https://str.example.com/login", redirectTo, kpUrl);
         return new SmtpEmailService(mailSender, properties, new EmailTemplates(loader, properties));
     }
 
     private String subject(MailTemplate template) {
         return new EmailTemplates(loader, new MailProperties(true, "str@example.com",
-                "https://str.example.com/login", null)).subject(template, Map.of());
+                "https://str.example.com/login", null, null)).subject(template, Map.of());
     }
 
     private MimeMessage sent() {

@@ -303,6 +303,13 @@ Obavijest o izdanom RB-u je idempotentna preko `submission.rn_email_sent_at`, ko
 kad je poruka predana SMTP-u (`EmailService.sendRnIssuedNotification` vraća ishod). Non-EU poruka
 bez akta se ne šalje — ne zamjenjuje se PDF-om zahtjeva.
 
+Iznajmljivač s OIB-om uz obavijest o izdanom RB-u dobiva presliku u verziji iz eGOP-a/KP-a: pečaćenu
+uz uključen eSeal, inače s URBROJ-em izlaznog pismena. Dok te verzije nema, poruka čeka u
+`str_rn.mail_retry` (razlog `not_sealed` / `not_filed`), najviše `app.mail.retry.act-wait` (zadano 30 min).
+Prvi pokušaj nakon isteka ide bez privitka, da obavijest ne kasni i ne izgubi se. Izdavanje RB-a
+ne ovisi o ničemu od toga. Poveznica na pretinac (`app.mail.kp-url`) ispisuje se samo uz klauzulu
+za pretinac; bez adrese je nema.
+
 **Ponovno slanje.** Neuspjelo slanje (izdani RB i promjena statusa) upisuje se u
 `str_rn.mail_retry` (`MailRetryStore`); zapis nastaje tek pri neuspjehu, pa uspješne poruke tamo
 ne ostavljaju trag. `MailRetryJob` (svakih 5 min) ponavlja dospjele zapise istim putem kao prvi
@@ -322,7 +329,7 @@ odjednom poslati sve obavijesti iz razdoblja kad je bio ugašen.
 | :--- | :--- |
 | `registracija` | `LessorRegistrationService.register` — non-EU, odmah po registraciji: korisničko ime i lozinka, prijava bez čekanja na odobrenje. Ne ide u red ponovnog slanja (lozinka se ne sprema) |
 | `odbijanje` | `AdminPendingRegistrationService.reject` (odobrenje ne šalje poruku) |
-| `rb-izdan` | `EgopRegistrationDispatcher`, iznajmljivač s OIB-om — obavijest bez privitka, akt ide u KP |
+| `rb-izdan` | `EgopRegistrationDispatcher`, iznajmljivač s OIB-om — obavijest s preslikom obavijesti o dodjeli (`DODJELA`) u privitku, akt ide u KP |
 | `rb-izdan-dostava` | `EgopRegistrationDispatcher`, non-EU — dostava e-poštom, u privitku obavijest o dodjeli (`DODJELA`) |
 | `prijedlog-suspenzije` | prijelaz → `SUSPENSION_PROPOSED` |
 | `suspenzija` | prijelaz → `SUSPENDED` uz `DEADLINE_EXCEEDED` |

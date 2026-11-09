@@ -341,6 +341,10 @@ Zatreba li ikad sve poruke preusmjeriti na jednu adresu: `APP_MAIL_REDIRECT_TO=<
 `up -d` — stvarni primatelj tada ide u predmet (`[za: …] `). Prazan `APP_MAIL_REDIRECT_TO=` vrijedi
 isto kao nepostavljen.
 
+Poruke iznajmljivaču s korisničkim pretincem nose poveznicu na pretinac kad je postavljen
+`APP_MAIL_KP_URL` (apsolutni http(s) URL, neispravna vrijednost ruši podizanje). Nepostavljen znači
+poruku bez poveznice; točna adresa još nije potvrđena.
+
 Prije paljenja provjeri relay s kutije i iz kontejnera (ime postoji samo u internom DNS-u):
 
 ```powershell

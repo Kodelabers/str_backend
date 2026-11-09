@@ -121,14 +121,20 @@ class EgopRegistrationDispatcherTest {
     }
 
     /**
-     * Iznajmljivač s OIB-om dobiva obavijest s brojem i objektom, ali bez privitka — obavijest
-     * o dodjeli ide u korisnički pretinac. Prije je ovaj put mail preskakao u potpunosti.
+     * Iznajmljivač s OIB-om dobiva obavijest s brojem i objektom i presliku akta — onu s URBROJ-em
+     * izlaznog pismena, istu koja je u eGOP-u i ide u korisnički pretinac.
      */
     @Test
-    void dispatch_lessorWithOib_emailsNoticeWithoutPdf() throws Exception {
+    void dispatch_lessorWithOib_emailsCopyOfFiledNotice() throws Exception {
         lessor.setLessorOib("12345678901");
-        when(egopFilingService.fileRegistration(any(), any(), any()))
-                .thenReturn(new EgopFilingService.FilingResult("KLASA: x, URBROJ: y", "pdf".getBytes()));
+        FilingReference izlazno = new FilingReference("UP/I-334-01/26-01/1", "2181-26-2");
+        when(documentService.render(eq(StrDocumentType.DODJELA), anyString(), isNull(), eq(izlazno)))
+                .thenReturn("dodjela-urbroj".getBytes());
+        when(egopFilingService.fileRegistration(any(), any(), any())).thenAnswer(inv -> {
+            EgopDocumentSupplier documents = inv.getArgument(2);
+            documents.obavijestODodjeli(izlazno);
+            return new EgopFilingService.FilingResult("KLASA: x, URBROJ: y", "zahtjev".getBytes());
+        });
 
         dispatcher.dispatch(submission.getSubmissionId());
 
@@ -139,21 +145,129 @@ class EgopRegistrationDispatcherTest {
         assertEquals("HR123456789012345678", mail.rn());
         assertEquals("Apartman Sunce", mail.objekt());
         assertFalse(mail.dostavaMailom());
-        assertNull(mail.pdf());
+        assertArrayEquals("dodjela-urbroj".getBytes(), mail.pdf());
         verify(store).markRnEmailSent(submission.getSubmissionId());
     }
 
-    /** Obavijest ne treba PDF, pa je ne smije blokirati ni pad urudžbiranja ni pad rendera. */
+    /**
+     * Urudžbiranje je palo: verzije iz eGOP-a još nema, a render bez URBROJ-a nije ta verzija. Poruka
+     * čeka u redu ponovnog slanja.
+     */
     @Test
-    void dispatch_lessorWithOib_filingAndPdfFail_stillEmails() throws Exception {
+    void dispatch_lessorWithOib_filingFails_defersInsteadOfAttachingUnnumberedAct() throws Exception {
         lessor.setLessorOib("12345678901");
         when(egopFilingService.fileRegistration(any(), any(), any()))
                 .thenThrow(new EgopBadRequestException("eGOP down"));
-        when(pdfGenerator.generate(any())).thenThrow(new IllegalStateException("render"));
 
         dispatcher.dispatch(submission.getSubmissionId());
 
-        assertFalse(sentMail().dostavaMailom());
+        verify(emailService, never()).sendRnIssuedNotification(any());
+        verify(documentService, never()).render(any(), anyString(), any());
+        verify(mailRetryStore).recordFailure(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId(),
+                "not_filed");
+        verify(store, never()).markRnEmailSent(any());
+    }
+
+    /** Uz eSeal preslika je pečaćeni akt iz izlaznog pismena, ne render nastao prije pečata. */
+    @Test
+    void dispatch_lessorWithOib_sealingEnabled_emailsSealedCopy() throws Exception {
+        lessor.setLessorOib("12345678901");
+        when(sealer.isEnabled()).thenReturn(true);
+        EgopPismenoEntity izlazno = EgopPismenoEntity.create(submission.getSubmissionId(),
+                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, 1002,
+                "2181-26-2", "102", false);
+        izlazno.applySeal("%PDF-pecaceni".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.DODJELA.vrstaPismenaNaziv(),
+                EgopPismenoEntity.ACT_REF_REGISTRACIJA)).thenReturn(Optional.of(izlazno));
+        FilingReference filing = new FilingReference("UP/I-334-01/26-01/1", "2181-26-2");
+        when(documentService.render(eq(StrDocumentType.DODJELA), anyString(), isNull(), eq(filing)))
+                .thenReturn("nepecaceni-render".getBytes());
+        when(egopFilingService.fileRegistration(any(), any(), any())).thenAnswer(inv -> {
+            EgopDocumentSupplier documents = inv.getArgument(2);
+            documents.obavijestODodjeli(filing);
+            return new EgopFilingService.FilingResult("KLASA: x, URBROJ: y", "zahtjev".getBytes());
+        });
+
+        dispatcher.dispatch(submission.getSubmissionId());
+
+        RnIssuedMail mail = sentMail();
+        assertFalse(mail.dostavaMailom());
+        assertArrayEquals("%PDF-pecaceni".getBytes(), mail.pdf());
+    }
+
+    /** Pečat još nije stigao: poruka čeka, a nepečaćeni render iz urudžbiranja ne smije van. */
+    @Test
+    void dispatch_lessorWithOib_sealingEnabled_notSealed_defersEmail() throws Exception {
+        lessor.setLessorOib("12345678901");
+        when(sealer.isEnabled()).thenReturn(true);
+        FilingReference filing = new FilingReference("UP/I-334-01/26-01/1", "2181-26-2");
+        when(documentService.render(eq(StrDocumentType.DODJELA), anyString(), isNull(), eq(filing)))
+                .thenReturn("nepecaceni-render".getBytes());
+        when(egopFilingService.fileRegistration(any(), any(), any())).thenAnswer(inv -> {
+            EgopDocumentSupplier documents = inv.getArgument(2);
+            documents.obavijestODodjeli(filing);
+            throw new EgopBadRequestException("eseal status=503");
+        });
+
+        dispatcher.dispatch(submission.getSubmissionId());
+
+        verify(emailService, never()).sendRnIssuedNotification(any());
+        verify(mailRetryStore).recordFailure(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId(),
+                "not_sealed");
+        verify(store, never()).markRnEmailSent(any());
+    }
+
+    /** Pečat je stigao dok je poruka čekala: job je šalje s pečaćenim aktom. */
+    @Test
+    void retryEmail_lessorWithOib_afterSealing_emailsSealedCopy() {
+        lessor.setLessorOib("12345678901");
+        when(sealer.isEnabled()).thenReturn(true);
+        EgopPismenoEntity izlazno = EgopPismenoEntity.create(submission.getSubmissionId(),
+                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO, 1002,
+                "2181-26-2", "102", false);
+        izlazno.applySeal("%PDF-pecaceni".getBytes(), UUID.randomUUID(), "7K3M-Q9RT-X2VW", "B-LT", "sha-256=:x:");
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.DODJELA.vrstaPismenaNaziv(),
+                EgopPismenoEntity.ACT_REF_REGISTRACIJA)).thenReturn(Optional.of(izlazno));
+
+        dispatcher.retryEmail(submission.getSubmissionId());
+
+        assertArrayEquals("%PDF-pecaceni".getBytes(), sentMail().pdf());
+        verify(store).markRnEmailSent(submission.getSubmissionId());
+        verify(mailRetryStore).markSent(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId());
+    }
+
+    /**
+     * Čekanje je ograničeno: kad istekne, poruka ide bez privitka (nikad nepečaćena), da obavijest
+     * o izdanom broju ne kasni i ne izgubi se.
+     */
+    @Test
+    void retryEmail_lessorWithOib_actWaitOver_sendsWithoutAct() {
+        lessor.setLessorOib("12345678901");
+        when(sealer.isEnabled()).thenReturn(true);
+        when(mailRetryStore.isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId()))
+                .thenReturn(true);
+
+        dispatcher.retryEmail(submission.getSubmissionId());
+
+        RnIssuedMail mail = sentMail();
+        assertFalse(mail.dostavaMailom());
+        assertNull(mail.pdf());
+        verify(store).markRnEmailSent(submission.getSubmissionId());
+        verify(mailRetryStore, never()).recordFailure(any(), any(), any());
+    }
+
+    /** Non-EU ne dobiva fallback bez akta: poruka bi tvrdila dostavu akta koji nije u privitku. */
+    @Test
+    void retryEmail_nonEu_sealingEnabled_actWaitOver_stillNotSentWithoutAct() {
+        when(sealer.isEnabled()).thenReturn(true);
+        when(mailRetryStore.isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId()))
+                .thenReturn(true);
+
+        dispatcher.retryEmail(submission.getSubmissionId());
+
+        verify(emailService, never()).sendRnIssuedNotification(any());
+        verify(mailRetryStore).recordFailure(MailRetryEntity.Kind.RN_ISSUED, submission.getSubmissionId(),
+                "not_sealed");
     }
 
     /**
@@ -286,6 +400,14 @@ class EgopRegistrationDispatcherTest {
     @Test
     void retryEmail_sendsWithoutFiling() throws Exception {
         lessor.setLessorOib("12345678901");
+        EgopPismenoEntity izlazno = EgopPismenoEntity.create(submission.getSubmissionId(),
+                StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
+                7, "2181-26-2", "OBV", false);
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.DODJELA.vrstaPismenaNaziv(),
+                EgopPismenoEntity.ACT_REF_REGISTRACIJA)).thenReturn(Optional.of(izlazno));
+        when(documentService.render(eq(StrDocumentType.DODJELA), anyString(), isNull(),
+                eq(new FilingReference(null, "2181-26-2", 7))))
+                .thenReturn("dodjela-urbroj".getBytes());
 
         dispatcher.retryEmail(submission.getSubmissionId());
 

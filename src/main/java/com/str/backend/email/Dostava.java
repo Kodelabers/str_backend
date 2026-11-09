@@ -5,7 +5,7 @@ package com.str.backend.email;
  */
 public enum Dostava {
 
-    /** Akt se dostavlja u korisnički pretinac; poruka je samo obavijest. */
+    /** Akt se dostavlja u korisnički pretinac; poruka je obavijest i uz nju ide preslika akta. */
     PRETINAC,
 
     /** Non-EU iznajmljivač nema pretinac — e-pošta je kanal dostave i od nje teku rokovi. */

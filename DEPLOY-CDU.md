@@ -177,6 +177,8 @@ APP_MAIL_REDIRECT_TO=ime.prezime@kodelab.hr
 # Najveća kodirana poruka koju relay prima (default 20MB). Prilozi akta koji s aktom ne stanu samo se
 # navode u poruci; poruka koju relay odbije zbog veličine (552) odmah ide s popisom priloga.
 #APP_MAIL_MAX_MESSAGE_SIZE=20MB
+# Adresa korisničkog pretinca za poveznicu u porukama (apsolutni http(s) URL). Nepostavljeno = bez poveznice.
+#APP_MAIL_KP_URL=
 ```
 
 **Ključ koji ne postavljaš zakomentiraj, nemoj ostaviti prazan** — prazna vrijednost je

@@ -4,11 +4,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
 
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class EmailTemplateTest {
 
@@ -16,10 +19,14 @@ class EmailTemplateTest {
 
     @BeforeEach
     void setUp() {
+        templates = templates(null);
+    }
+
+    private EmailTemplates templates(String kpUrl) {
         MailTemplateLoader loader = new MailTemplateLoader();
         loader.loadAll();
-        templates = new EmailTemplates(loader,
-                new MailProperties(true, "str@example.com", "https://str.example.com/login", null));
+        return new EmailTemplates(loader,
+                new MailProperties(true, "str@example.com", "https://str.example.com/login", null, kpUrl));
     }
 
     @ParameterizedTest
@@ -104,6 +111,82 @@ class EmailTemplateTest {
 
         assertThat(html).contains("a ne dostava akta");
         assertThat(html).contains("korisnički pretinac");
+    }
+
+    /** MINTS: poruka s aktom ne smije tvrditi samo da je akt u pretincu, a bez akta ne smije spominjati privitak. */
+    @Test
+    void pretinac_clauseFollowsWhetherActIsAttached() {
+        String sAktom = templates.body(MailTemplate.SUSPENZIJA, values(), Dostava.PRETINAC, true);
+        assertThat(sAktom).contains("U privitku ove poruke nalazi se preslika akta")
+                .contains("a ne dostava akta").contains("korisnički pretinac");
+
+        assertThat(templates.body(MailTemplate.SUSPENZIJA, values(), Dostava.PRETINAC, false))
+                .doesNotContain("privitku");
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = MailTemplate.class,
+            names = {"RB_IZDAN", "PRIJEDLOG_SUSPENZIJE", "SUSPENZIJA", "OBUSTAVA_SUSPENZIJE",
+                    "REAKTIVACIJA", "POVLACENJE", "OPOZIV"})
+    void pretinac_carriesKpLinkWhenConfigured(MailTemplate template) {
+        assertThat(templates("https://kp.example.hr/inbox").body(template, values(), Dostava.PRETINAC, true))
+                .contains("<a href=\"https://kp.example.hr/inbox\"");
+    }
+
+    @Test
+    void pretinac_withoutConfiguredUrl_hasNoLinkAndStaysComplete() {
+        String html = templates.body(MailTemplate.RB_IZDAN, values(), Dostava.PRETINAC, true);
+
+        assertThat(html).doesNotContain("Otvorite svoj korisnički pretinac").doesNotContain("href=\"\"");
+        assertThat(html).contains("korisnički pretinac");
+    }
+
+    /** Ampersand u upitu mora biti escapiran, inače je atribut neispravan HTML. */
+    @Test
+    void kpLink_isEscapedInHtml() {
+        assertThat(templates("https://kp.example.hr/i?a=1&b=2").body(MailTemplate.SUSPENZIJA, values()))
+                .contains("href=\"https://kp.example.hr/i?a=1&amp;b=2\"");
+    }
+
+    @Test
+    void kpUrl_blankMeansNoLink_invalidFailsFast() {
+        assertThat(new MailProperties(true, "a@b.hr", "http://x", null, "  ").kpUrl()).isNull();
+        assertThat(new MailProperties(true, "a@b.hr", "http://x", null, " https://kp.example.hr/ ").kpUrl())
+                .isEqualTo("https://kp.example.hr/");
+
+        for (String neispravna : new String[]{"javascript:alert(1)", "kp.example.hr/inbox", "https://",
+                "https://kp.example.hr/\"><script>"}) {
+            assertThatThrownBy(() -> new MailProperties(true, "a@b.hr", "http://x", null, neispravna))
+                    .as(neispravna)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    /** Isti put kao {@code app.mail.kp-url=${APP_MAIL_KP_URL:}} u application.properties. */
+    @Test
+    void kpUrl_bindsFromProperty_emptyValueMeansNoLink() {
+        assertThat(bind("https://kp.example.hr/").kpUrl()).isEqualTo("https://kp.example.hr/");
+        assertThat(bind("").kpUrl()).isNull();
+    }
+
+    private static MailProperties bind(String kpUrl) {
+        return new Binder(new MapConfigurationPropertySource(Map.of(
+                "app.mail.enabled", "true", "app.mail.from", "a@b.hr",
+                "app.mail.login-url", "http://x", "app.mail.kp-url", kpUrl)))
+                .bindOrCreate("app.mail", MailProperties.class);
+    }
+
+    /** Non-EU nema pretinac: ni poveznice, ni tvrdnje o njemu, ni kad je adresa postavljena. */
+    @ParameterizedTest
+    @EnumSource(value = MailTemplate.class, names = {"RB_IZDAN_DOSTAVA", "SUSPENZIJA"})
+    void epostaAndNoClause_neverLinkToKp(MailTemplate template) {
+        EmailTemplates saAdresom = templates("https://kp.example.hr/inbox");
+
+        assertThat(saAdresom.body(template, values(), Dostava.EPOSTA, true))
+                .doesNotContain("kp.example.hr").doesNotContain("korisnički pretinac")
+                .contains("dostavlja se elektroničkom poštom");
+        assertThat(saAdresom.body(template, values(), Dostava.BEZ_KLAUZULE, true))
+                .doesNotContain("kp.example.hr");
     }
 
     /** Ime iznajmljivača s HTML znakovima ne smije razbiti poruku. */

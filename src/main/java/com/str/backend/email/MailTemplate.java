@@ -6,7 +6,7 @@ import java.util.Set;
  * Predlošci poruka e-pošte, u {@code documents/mail/<slug>.html}.
  *
  * <p><b>E-pošta nije dostava.</b> Po čl. 94. st. 6 ZUP-a osobnom dostavom smatra se dostava u
- * korisnički pretinac; mail je samo uljudna obavijest da je akt tamo. Zato nijedan predložak
+ * korisnički pretinac; mail je obavijest uz presliku akta. Zato nijedan predložak
  * ne navodi rokove pravnog lijeka kao da teku od maila — inače bi stranka računala rok od
  * krivog dana.
  *
@@ -21,7 +21,7 @@ public enum MailTemplate {
     /** Non-EU iznajmljivač odmah po registraciji — pristupni podaci, prije pregleda zahtjeva. */
     REGISTRACIJA("registracija", Keys.REGISTRACIJA),
     ODBIJANJE("odbijanje", Keys.SAMO_IME),
-    /** Iznajmljivač s OIB-om — obavijest, akt ide u korisnički pretinac. */
+    /** Iznajmljivač s OIB-om — obavijest uz presliku akta, akt ide u korisnički pretinac. */
     RB_IZDAN("rb-izdan", Keys.RB_IZDAN),
     /** Non-EU iznajmljivač — e-pošta je kanal dostave, dokument je u privitku. */
     RB_IZDAN_DOSTAVA("rb-izdan-dostava", Keys.RB_IZDAN_DOSTAVA),

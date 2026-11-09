@@ -13,6 +13,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -38,17 +39,20 @@ public class MailRetryStore {
     private final MailProperties properties;
     private final Clock clock;
     private final EgopRetryPolicy policy;
+    private final Duration actWait;
 
     public MailRetryStore(MailRetryRepository repository,
                           MailProperties properties,
                           Clock clock,
                           @Value("${app.mail.retry.max-attempts:10}") int maxAttempts,
                           @Value("${app.mail.retry.backoff-base:PT5M}") Duration backoffBase,
-                          @Value("${app.mail.retry.backoff-max:PT2H}") Duration backoffMax) {
+                          @Value("${app.mail.retry.backoff-max:PT2H}") Duration backoffMax,
+                          @Value("${app.mail.retry.act-wait:PT30M}") Duration actWait) {
         this.repository = repository;
         this.properties = properties;
         this.clock = clock;
         this.policy = new EgopRetryPolicy(maxAttempts, backoffBase, backoffMax);
+        this.actWait = actWait;
     }
 
     /** Slanje nije uspjelo — zakazuje sljedeći pokušaj, a nakon zadnjeg odustaje. */
@@ -114,6 +118,21 @@ public class MailRetryStore {
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public boolean isQueued(MailRetryEntity.Kind kind, UUID refId) {
         return repository.findByKindAndRefId(kind, refId).filter(MailRetryEntity::isPending).isPresent();
+    }
+
+    /**
+     * Smije li obavijest koja namjerno čeka akt čekati i dalje. Čekanje završava kad istekne
+     * {@code app.mail.retry.act-wait} od prvog upisa u red, ili kad bi neuspjeh ovog pokušaja
+     * zatvorio zapis, jer bi se tada obavijest izgubila.
+     */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public boolean isActWaitOver(MailRetryEntity.Kind kind, UUID refId) {
+        Optional<MailRetryEntity> zapis = repository.findByKindAndRefId(kind, refId)
+                .filter(MailRetryEntity::isPending);
+        if (policy.isExhausted(zapis.map(MailRetryEntity::getAttempts).orElse(0) + 1)) {
+            return true;
+        }
+        return zapis.map(e -> !clock.instant().isBefore(e.getCreatedAt().plus(actWait))).orElse(false);
     }
 
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
