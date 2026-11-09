@@ -51,8 +51,12 @@ public class SmtpEmailService implements EmailService {
                     Map.of("ime", nn(mail.ime()), "rn", nn(mail.rn())),
                     "dodjela-" + mail.rn() + ".pdf", mail.pdf(), Dostava.EPOSTA);
         }
-        return send(mail.to(), MailTemplate.RB_IZDAN,
-                Map.of("ime", nn(mail.ime()), "rn", nn(mail.rn()), "objekt", nn(mail.objekt())));
+        Map<String, String> values = Map.of("ime", nn(mail.ime()), "rn", nn(mail.rn()), "objekt", nn(mail.objekt()));
+        if (mail.pdf() == null || mail.pdf().length == 0) {
+            return send(mail.to(), MailTemplate.RB_IZDAN, values);
+        }
+        return sendWithAttachment(mail.to(), MailTemplate.RB_IZDAN, values,
+                "dodjela-" + mail.rn() + ".pdf", mail.pdf(), Dostava.PRETINAC);
     }
 
     @Override
@@ -65,8 +69,9 @@ public class SmtpEmailService implements EmailService {
         values.put("rok", nn(mail.rok()));
         values.put(EmailTemplates.PRILOZI, priloziTekst(mail));
 
+        boolean aktUPrivitku = mail.pdf() != null && mail.pdf().length > 0;
         List<Privitak> privitci = new ArrayList<>();
-        if (mail.pdf() != null && mail.pdf().length > 0) {
+        if (aktUPrivitku) {
             privitci.add(new Privitak(mail.template().slug() + "-" + mail.rn() + ".pdf", mail.pdf(), null));
         }
         mail.prilozi().forEach(p -> privitci.add(new Privitak(p.naziv(), p.sadrzaj(), p.contentType())));
@@ -74,7 +79,7 @@ public class SmtpEmailService implements EmailService {
             return send(mail.to(), mail.template(), values, mail.dostava()) ? IshodSlanja.POSLANA : IshodSlanja.NEUSPJELA;
         }
         try {
-            deliverWithAttachments(mail.to(), mail.template(), values, privitci, mail.dostava());
+            deliverWithAttachments(mail.to(), mail.template(), values, privitci, mail.dostava(), aktUPrivitku);
             return IshodSlanja.POSLANA;
         } catch (MessagingException | MailException e) {
             boolean prevelika = isMessageTooLarge(e);
@@ -171,7 +176,7 @@ public class SmtpEmailService implements EmailService {
     private boolean sendWithAttachments(String to, MailTemplate template, Map<String, String> values,
                                         List<Privitak> privitci, Dostava dostava) {
         try {
-            deliverWithAttachments(to, template, values, privitci, dostava);
+            deliverWithAttachments(to, template, values, privitci, dostava, !privitci.isEmpty());
             return true;
         } catch (MessagingException | MailException e) {
             log.error("Failed to send email to {} with subject '{}': {}", to, templates.subject(template, values),
@@ -181,13 +186,14 @@ public class SmtpEmailService implements EmailService {
     }
 
     private void deliverWithAttachments(String to, MailTemplate template, Map<String, String> values,
-                                        List<Privitak> privitci, Dostava dostava) throws MessagingException {
+                                        List<Privitak> privitci, Dostava dostava,
+                                        boolean aktUPrivitku) throws MessagingException {
         String subject = templates.subject(template, values);
         MimeMessage message = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
         helper.setFrom(properties.from());
         String recipient = address(helper, to, subject);
-        helper.setText(templates.body(template, values, dostava), true);
+        helper.setText(templates.body(template, values, dostava, aktUPrivitku), true);
         for (Privitak privitak : privitci) {
             ByteArrayResource resource = new ByteArrayResource(privitak.sadrzaj());
             if (privitak.contentType() == null) {

@@ -14,8 +14,8 @@ public interface EmailService {
     void sendRejectionNotification(String to, String firstName);
 
     /**
-     * Obavijest o izdanom registracijskom broju, svakom iznajmljivaču. Non-EU iznajmljivaču je
-     * to ujedno dostava (PDF u privitku); ostalima samo obavijest, akt ide u korisnički pretinac.
+     * Obavijest o izdanom registracijskom broju, svakom iznajmljivaču, s aktom u privitku. Non-EU
+     * iznajmljivaču je to ujedno dostava; ostalima je privitak preslika, akt ide u korisnički pretinac.
      *
      * @return je li poruka predana SMTP poslužitelju. Pozivatelj po tome bilježi da je obavijest
      *         poslana — neuspjeh se ne smije zabilježiti kao poslan, inače ga retry preskače.

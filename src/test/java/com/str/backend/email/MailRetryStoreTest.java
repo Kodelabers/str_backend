@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MailRetryStoreTest {
 
     private static final Instant T0 = Instant.parse("2026-10-02T10:00:00Z");
+    private static final Duration ACT_WAIT = Duration.ofMinutes(30);
 
     @Autowired
     private MailRetryRepository repository;
@@ -123,10 +124,33 @@ class MailRetryStoreTest {
                 .doesNotContain(ceka, odbacen);
     }
 
+    /** Uz max-attempts=3: pokušaji 1 i 2 smiju pasti i ostati u redu, treći zatvara zapis. */
+    @Test
+    void isActWaitOver_isTrueWhenFailureWouldCloseTheRecord() {
+        assertThat(store(T0, true).isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, ref)).isFalse();
+
+        store(T0, true).recordFailure(MailRetryEntity.Kind.RN_ISSUED, ref, "not_sealed");
+        assertThat(store(T0, true).isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, ref)).isFalse();
+
+        store(T0, true).recordFailure(MailRetryEntity.Kind.RN_ISSUED, ref, "not_sealed");
+        assertThat(store(T0, true).isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, ref)).isTrue();
+    }
+
+    /** Rok se računa od prvog upisa u red, a ne od zadnjeg pokušaja. */
+    @Test
+    void isActWaitOver_isTrueFromTheEndOfTheWaitWindow() {
+        store(T0, true).recordFailure(MailRetryEntity.Kind.RN_ISSUED, ref, "not_filed");
+
+        assertThat(store(T0.plus(Duration.ofMinutes(29)), true).isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, ref))
+                .isFalse();
+        assertThat(store(T0.plus(ACT_WAIT), true).isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, ref))
+                .isTrue();
+    }
+
     private MailRetryStore store(Instant now, boolean mailEnabled) {
         return new MailRetryStore(repository,
-                new MailProperties(mailEnabled, "str@example.com", "https://str.example.com/login", null),
-                Clock.fixed(now, ZoneOffset.UTC), 3, Duration.ofMinutes(5), Duration.ofHours(2));
+                new MailProperties(mailEnabled, "str@example.com", "https://str.example.com/login", null, null),
+                Clock.fixed(now, ZoneOffset.UTC), 3, Duration.ofMinutes(5), Duration.ofHours(2), ACT_WAIT);
     }
 
     private MailRetryEntity zapis() {

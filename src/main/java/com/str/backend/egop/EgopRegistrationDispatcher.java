@@ -31,7 +31,7 @@ import java.util.stream.Stream;
 
 /**
  * Urudžbira jednu registraciju u eGOP i šalje iznajmljivaču obavijest o izdanom RB-u
- * e-mailom (non-EU s PDF-om u privitku jer mu je to dostava; ostalima bez privitka).
+ * e-mailom (s aktom u privitku: non-EU iznajmljivaču je to dostava, ostalima preslika).
  * Sve ulazne podatke rekonstruira iz baze po {@code submissionId}, pa je isti
  * ulaz siguran i za prvi pokušaj (nakon izdavanja RN-a) i za naknadni retry —
  * dijele ga {@link com.str.backend.registration.event.RnIssuedListener} i
@@ -122,8 +122,8 @@ public class EgopRegistrationDispatcher {
             handleFailure(submission, pdfContext, rnValue, e);
         }
 
-        // Obavijest ide svakom iznajmljivaču. Non-EU dobiva akt e-mailom (to mu je dostava);
-        // s OIB-om samo obavijest bez privitka — akt ide u korisnički pretinac (eGOP strana).
+        // Obavijest s aktom ide svakom iznajmljivaču. Non-EU je to dostava; s OIB-om preslika, a akt
+        // ide u korisnički pretinac (eGOP strana).
         // Obavijest koja već čeka u redu ponovnog slanja pripada MailRetryJob-u: ponovno
         // urudžbiranje (EgopRetryJob) bi je inače slalo mimo njezinog backoffa i trošilo pokušaje.
         if (mailRetryStore.isQueued(MailRetryEntity.Kind.RN_ISSUED, submissionId)) {
@@ -221,7 +221,7 @@ public class EgopRegistrationDispatcher {
         // ne šalje: poruka bi tvrdila da je akt u privitku. Ne zamjenjuje se PDF-om zahtjeva,
         // jer to nije akt kojim je RB dodijeljen.
         boolean dostavaMailom = lessor.getLessorOib() == null || lessor.getLessorOib().isBlank();
-        byte[] akt = dostavaMailom ? documents.obavijestZaDostavu() : null;
+        byte[] akt = dostavaMailom ? documents.obavijestZaDostavu() : documents.obavijestIzEgopa();
         if (dostavaMailom && akt == null) {
             if (sealer.isEnabled()) {
                 // Nije kvar: obavijest čeka pečat i ide s prvim pokušajem nakon njega (MailRetryJob).
@@ -232,6 +232,19 @@ public class EgopRegistrationDispatcher {
             log.error("egop_email_skipped reason=no_pdf submission={} rn={}", submissionId, rn);
             mailRetryStore.recordFailure(MailRetryEntity.Kind.RN_ISSUED, submissionId, "no_pdf");
             return;
+        }
+        // Iznajmljivač s OIB-om: preslika mora biti verzija iz eGOP-a/KP-a, pa poruka čeka u redu
+        // ponovnog slanja dok ta verzija ne postoji, ali najviše app.mail.retry.act-wait. Nakon toga
+        // ide bez privitka: akt ionako stiže u pretinac, a obavijest o izdanom broju ne smije kasniti.
+        if (akt == null && !dostavaMailom) {
+            if (!mailRetryStore.isActWaitOver(MailRetryEntity.Kind.RN_ISSUED, submissionId)) {
+                String razlog = sealer.isEnabled() ? "not_sealed" : "not_filed";
+                log.warn("egop_email_deferred reason={} submission={} rn={}", razlog, submissionId, rn);
+                mailRetryStore.recordFailure(MailRetryEntity.Kind.RN_ISSUED, submissionId, razlog);
+                return;
+            }
+            log.warn("egop_email_without_act submission={} rn={} — akta nema ni nakon čekanja,"
+                    + " obavijest ide bez privitka", submissionId, rn);
         }
         boolean sent = emailService.sendRnIssuedNotification(new RnIssuedMail(
                 lessor.getEmail(), ime(lessor), rn, objekt(accommodation), akt, dostavaMailom));
@@ -324,6 +337,21 @@ public class EgopRegistrationDispatcher {
          * @return {@code null} kad se akt ne može renderirati, ili uz eSeal još nije pečatiran
          */
         byte[] obavijestZaDostavu() {
+            return dohvatiObavijest(true);
+        }
+
+        /**
+         * Preslika za iznajmljivača s OIB-om: ista verzija koja je u eGOP-u i KP-u, dakle pečaćena uz
+         * uključen eSeal, a bez njega s URBROJ-em izlaznog pismena. Za razliku od dostave non-EU
+         * iznajmljivaču, verzija bez URBROJ-a nema opravdanja: dostava je u pretincu.
+         *
+         * @return {@code null} dok te verzije nema ili kad se ne može renderirati
+         */
+        byte[] obavijestIzEgopa() {
+            return dohvatiObavijest(false);
+        }
+
+        private byte[] dohvatiObavijest(boolean smijeBezUrbroja) {
             if (sealer.isEnabled()) {
                 return store.findPismeno(submission.getSubmissionId(),
                                 StrDocumentType.DODJELA.vrstaPismenaNaziv(), EgopPismenoEntity.ACT_REF_REGISTRACIJA)
@@ -341,11 +369,12 @@ public class EgopRegistrationDispatcher {
                         .filter(p -> p.getUrBroj() != null)
                         .map(p -> new FilingReference(submission.getEgopKlasa(), p.getUrBroj(), p.getJop()))
                         .orElse(null);
-                return izlazno != null
-                        ? documentService.render(StrDocumentType.DODJELA, rn, null, izlazno)
-                        : documentService.render(StrDocumentType.DODJELA, rn, null);
+                if (izlazno != null) {
+                    return documentService.render(StrDocumentType.DODJELA, rn, null, izlazno);
+                }
+                return smijeBezUrbroja ? documentService.render(StrDocumentType.DODJELA, rn, null) : null;
             } catch (RuntimeException e) {
-                log.error("egop_dodjela_pdf_failed rn={} (dostava e-poštom): {}", rn, e.getMessage(), e);
+                log.error("egop_dodjela_pdf_failed rn={} (privitak e-pošte): {}", rn, e.getMessage(), e);
                 return null;
             }
         }

@@ -17,13 +17,31 @@ public class EmailTemplates {
 
     /**
      * Čl. 94. st. 5–6 ZUP-a: dostava u korisnički pretinac je osobna dostava i od nje teku
-     * rokovi. Poruka <b>ne smije tvrditi da je dostava obavljena</b> — KP klijent još ne
-     * postoji (BX1) — nego samo reći odakle rokovi teku.
+     * rokovi. Poruka <b>ne smije tvrditi da je dostava obavljena</b> — otprema u KP ide odvojeno i
+     * može zakasniti — nego samo reći odakle rokovi teku.
      */
     private static final String KLAUZULA_PRETINAC = """
             <p style="color:#6C757D;font-size:13px;margin-top:20px;">
               Ovo je obavijest, a ne dostava akta. Akt se dostavlja u Vaš korisnički pretinac i
               rokovi teku od te dostave, sukladno članku 94. Zakona o općem upravnom postupku.
+            </p>
+            """;
+
+    /**
+     * Isto kao {@link #KLAUZULA_PRETINAC}, uz akt u privitku: MINTS je primijetio da poruka s aktom
+     * tvrdi samo da se akt dostavlja u KP. Privitak je preslika, rokovi i dalje teku od pretinca.
+     */
+    private static final String KLAUZULA_PRETINAC_S_AKTOM = """
+            <p style="color:#6C757D;font-size:13px;margin-top:20px;">
+              Ovo je obavijest, a ne dostava akta. U privitku ove poruke nalazi se preslika akta, a akt
+              se dostavlja u Vaš korisnički pretinac i rokovi teku od te dostave, sukladno članku 94.
+              Zakona o općem upravnom postupku.
+            </p>
+            """;
+
+    private static final String POVEZNICA_PRETINAC = """
+            <p style="color:#6C757D;font-size:13px;">
+              <a href="%s" style="color:#168ABF;">Otvorite svoj korisnički pretinac</a>
             </p>
             """;
 
@@ -63,21 +81,32 @@ public class EmailTemplates {
         return loader.subject(template, oneLine);
     }
 
-    /** Gotov HTML poruke uz dostavu u korisnički pretinac. */
+    /** Gotov HTML poruke bez akta u privitku, uz dostavu u korisnički pretinac. */
     public String body(MailTemplate template, Map<String, String> values) {
         return body(template, values, Dostava.PRETINAC);
     }
 
     /**
-     * Gotov HTML poruke; {@code values} su sirove vrijednosti, escapiranje je ovdje.
+     * Gotov HTML poruke bez akta u privitku.
      *
      * @param dostava kanal dostave akta, o kojem ovisi klauzula na dnu poruke
      */
     public String body(MailTemplate template, Map<String, String> values, Dostava dostava) {
+        return body(template, values, dostava, false);
+    }
+
+    /**
+     * Gotov HTML poruke; {@code values} su sirove vrijednosti, escapiranje je ovdje.
+     *
+     * @param dostava      kanal dostave akta, o kojem ovisi klauzula na dnu poruke
+     * @param aktUPrivitku je li akt stvarno u privitku; poruka to smije reći samo tada
+     */
+    public String body(MailTemplate template, Map<String, String> values, Dostava dostava,
+                       boolean aktUPrivitku) {
         Map<String, String> safe = new HashMap<>();
         values.forEach((k, v) -> safe.put(k, escape(v)));
         safe.put("klauzula.dostava", prilozi(safe.get(PRILOZI)) + switch (dostava) {
-            case PRETINAC -> KLAUZULA_PRETINAC;
+            case PRETINAC -> (aktUPrivitku ? KLAUZULA_PRETINAC_S_AKTOM : KLAUZULA_PRETINAC) + poveznicaNaPretinac();
             case EPOSTA -> KLAUZULA_EPOSTA;
             case BEZ_KLAUZULE -> "";
         });
@@ -92,6 +121,11 @@ public class EmailTemplates {
      */
     private static String prilozi(String escapedTekst) {
         return escapedTekst == null || escapedTekst.isBlank() ? "" : "<p>" + escapedTekst + "</p>";
+    }
+
+    /** Bez konfigurirane adrese nema odlomka, a klauzula ostaje potpuna. */
+    private String poveznicaNaPretinac() {
+        return properties.kpUrl() == null ? "" : POVEZNICA_PRETINAC.formatted(escape(properties.kpUrl()));
     }
 
     private static String wrap(String inner) {
