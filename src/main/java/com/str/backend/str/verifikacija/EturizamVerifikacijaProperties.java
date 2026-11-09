@@ -12,9 +12,10 @@ import java.time.Duration;
  * ovdje postaje zadana vrijednost. Zato su komponente omotači ({@code Boolean}, {@code Integer}).
  * Iznimka je {@code retry.cron}, koji čita {@code @Scheduled} i nije dio ovog zapisa.
  *
- * <p>Vrijednosti obavijesti ({@code vrsta}, {@code objekt-tip}, tekst) eTurizam još nije potvrdio
- * ({@code docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md} § 6) — zato su konfiguracija, a obavijesti imaju
- * vlastitu zastavicu, zadano ugašenu. Neispravne vrijednosti prijavljuje {@code StartupDiagnostics}.
+ * <p><b>{@code vrsta} i {@code objekt-tip} su eTurizmovi enumi</b> ({@code VrstaObavijesti},
+ * {@code TipObjektaObavijesti}): vrijednost izvan njih ruši cijeli popis obavijesti službeniku koji ima
+ * taj redak ({@code docs/PLAN-T8-T9-ZURNA-VERIFIKACIJA.md} § 8). Obavijesti imaju vlastitu zastavicu,
+ * zadano ugašenu. Predugačke vrijednosti prijavljuje {@code StartupDiagnostics}.
  *
  * @param enabled       upisuje li STR uopće u {@code str.*}; dok je ugašeno, outbox redak nastaje i
  *                      čeka ({@code PENDING})
@@ -64,8 +65,8 @@ public record EturizamVerifikacijaProperties(
     public record Obavijesti(Boolean enabled, String vrsta, String objektTip, String tekst, Integer maxPrimatelja,
                              String tekstNoviObjekt) {
 
-        public static final String DEFAULT_VRSTA = "ZURNA_VERIFIKACIJA";
-        public static final String DEFAULT_OBJEKT_TIP = "VERIFICATION_REQUEST";
+        public static final String DEFAULT_VRSTA = "VERIFIKACIJA_ZATRAZENA";
+        public static final String DEFAULT_OBJEKT_TIP = "VERIFIKACIJA_RJESENJA";
         public static final String DEFAULT_TEKST = "Smještajnom objektu {objekt} dodijeljen je registracijski "
                 + "broj {rn}. Objekt nije verificiran – potrebna je žurna verifikacija.";
         public static final String DEFAULT_TEKST_NOVI_OBJEKT = "Uz registracijski broj {rn} priloženo je rješenje "

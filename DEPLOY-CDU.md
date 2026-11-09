@@ -580,8 +580,8 @@ zahtjev u `str.verification_request` i, uz uključene obavijesti, po jednu obavi
 STR_ETURIZAM_VERIFIKACIJA_ENABLED=true
 # Obavijesti tek kad eTurizam potvrdi vrstu, objekt_tip i tekst (do tada samo zahtjev):
 #STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_ENABLED=true
-#STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_VRSTA=ZURNA_VERIFIKACIJA
-#STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP=VERIFICATION_REQUEST
+#STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_VRSTA=VERIFIKACIJA_ZATRAZENA
+#STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP=VERIFIKACIJA_RJESENJA
 ```
 
 **Okidač:** zahtjev za RB za neverificiran objekt s popisa objekata. Objekt kojem je eTurizam
@@ -624,12 +624,12 @@ ORDER BY vr.id DESC LIMIT 20;
 
 SELECT 'Z4' AS blok, o.id, o.application_user_id, o.vrsta, o.objekt_tip, o.objekt_id, o.stvoreno, o.procitano, o.tekst
 FROM str.korisnicka_obavijest o
-WHERE o.objekt_tip = 'VERIFICATION_REQUEST'
+WHERE o.objekt_tip = 'VERIFIKACIJA_RJESENJA'
   AND o.objekt_id IN (SELECT e.verification_request_id FROM str_rn.eturizam_verifikacija e)
 ORDER BY o.id DESC LIMIT 50;
 ```
 
-(`'VERIFICATION_REQUEST'` je zadani `objekt_tip`; uz `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` upisati tu vrijednost.)
+(`'VERIFIKACIJA_RJESENJA'` je zadani `objekt_tip`; uz `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` upisati tu vrijednost.)
 
 **Povrat `ABANDONED` retka u red** (nakon otklanjanja uzroka, npr. granta): retry job ga uzme u
 sljedećem prolasku (`STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON`, zadano svakih 5 min) s punim brojem pokušaja.
@@ -677,7 +677,7 @@ FROM str_rn.eturizam_verifikacija e WHERE e.vrsta = 'NOVI_OBJEKT_RJESENJE' ORDER
 
 SELECT 'Z6' AS blok, o.id, o.application_user_id, o.vrsta, o.stvoreno, o.procitano, o.podaci, o.tekst
 FROM str.korisnicka_obavijest o
-WHERE o.objekt_tip IS NULL AND o.podaci ->> 'decisionId' IS NOT NULL
+WHERE o.objekt_tip IS NULL AND o.vrsta = 'VERIFIKACIJA_ZATRAZENA'
 ORDER BY o.id DESC LIMIT 50;
 ```
 

@@ -27,7 +27,7 @@ Dogovor s eTurizmom (Simon, 5. 11. 2026.):
 | T9 | Isto kao T8. Listu slaže eTurizam iz `verification_request`; tablica nema prioritet, pa STR za T9 ne upisuje ništa dodatno. |
 | Kada točno (precizno) | Samo RB izdan za **eTurizam objekt** (`facilityId`) koji je **u trenutku izdavanja** neverificiran: `FacilityOwnershipRow.getVerified() == FALSE` (`str.facility.created_by = 'optimit'` provjerene jedinice). Novi objekt (bez `facilityId`), objekt s učitanim rješenjem i „podaci nisu točni" nisu u opsegu. `verified = NULL` (nepoznat autor) ne ulazi. |
 | `created_by` / `last_modified_by` | Oznaka sustava iz konfiguracije, zadano `STR` (`str.eturizam.verifikacija.korisnik`). |
-| Vrijednosti obavijesti | Nepoznate → konfiguracija: `vrsta` (zadano `ZURNA_VERIFIKACIJA`), `objekt_tip` (zadano `VERIFICATION_REQUEST`), tekst (predložak). `objekt_id` = `verification_request.id`; `podaci` = `{"rn","documentId","facilityId","verificationRequestId"}`. Obavijesti su iza vlastite zastavice, zadano ugašene. |
+| Vrijednosti obavijesti (zamijenjeno, v. § 8) | Nepoznate → konfiguracija: `vrsta` (zadano `ZURNA_VERIFIKACIJA`), `objekt_tip` (zadano `VERIFICATION_REQUEST`), tekst (predložak). `objekt_id` = `verification_request.id`; `podaci` = `{"rn","documentId","facilityId","verificationRequestId"}`. Obavijesti su iza vlastite zastavice, zadano ugašene. |
 
 ### 2a. Privremena pravila (potvrditi sa Simonom)
 
@@ -245,8 +245,8 @@ env s praznim defaultom (`${STR_…:}`), a prazno znači „zadano". Iznimka je 
 | `str.eturizam.verifikacija.timeout` | `STR_ETURIZAM_VERIFIKACIJA_TIMEOUT` | `PT10S` (job, bilježenje neuspjeha) |
 | `str.eturizam.verifikacija.inline-timeout` | `STR_ETURIZAM_VERIFIKACIJA_INLINE_TIMEOUT` | `PT3S` (prvi pokušaj, nit HTTP zahtjeva) |
 | `str.eturizam.verifikacija.obavijesti.enabled` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_ENABLED` | `false` |
-| `str.eturizam.verifikacija.obavijesti.vrsta` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_VRSTA` | `ZURNA_VERIFIKACIJA` |
-| `str.eturizam.verifikacija.obavijesti.objekt-tip` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` | `VERIFICATION_REQUEST` |
+| `str.eturizam.verifikacija.obavijesti.vrsta` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_VRSTA` | `VERIFIKACIJA_ZATRAZENA` |
+| `str.eturizam.verifikacija.obavijesti.objekt-tip` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_OBJEKT_TIP` | `VERIFIKACIJA_RJESENJA` |
 | `str.eturizam.verifikacija.obavijesti.tekst` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_TEKST` | v. § 2a |
 | `str.eturizam.verifikacija.obavijesti.max-primatelja` | `STR_ETURIZAM_VERIFIKACIJA_OBAVIJESTI_MAX_PRIMATELJA` | `200` |
 | `str.eturizam.verifikacija.retry.cron` | `STR_ETURIZAM_VERIFIKACIJA_RETRY_CRON` | `0 */5 * * * *` (u `application.properties`) |
@@ -361,7 +361,7 @@ dok eTurizam ne odluči kako (pitanje 16).
 | Primatelji | Aktivni interni korisnici (`active`, `internal`) **organizacije** vrste **`IOT_ZUPANIJA`** (`internal_organization_id`) čija je neka aktivna jedinica preko `settlement_jurisdiction` nadležna za barem jedno naselje **županije objekta** — lanac kao `OfficialCountyResolver`. Po organizaciji, ne po jedinici: na CDU-u dio službenika nije u jedinici s nadležnošću (W3, 9. 11.: Šibensko-kninska 1 u jedinici, 2 u organizaciji); svaka od 21 županije ima točno jednu takvu organizaciju s barem jednim službenikom (W5, `docs/sql/results/t8-novi-objekt`). Ministarstvo (`IOT_MINTS`) ne dobiva obavijest za svaki novi objekt. Najviše `max-primatelja`. |
 | Županija | `accommodation.county` (adresni registar) → `str.county`: prvo po šifri (`external_code` = `rpj_dgu.zupanije.zu_rb` tog naziva), inače po nazivu (`CountyNames.key`) — kao `OfficialCountyResolver`. Neprepoznata županija ili bez službenika → redak se zatvara s 0 obavijesti i WARN-om. |
 | Tekst | `obavijesti.tekst-novi-objekt`, zadano: „Uz registracijski broj {rn} priloženo je rješenje o kategorizaciji za novi smještajni objekt {objekt}. Objekt nije upisan u eTurizam – potrebna je žurna verifikacija. Rješenje unesite kroz modul Verifikacije, funkcionalnost Unos rješenja." Uputa je na zahtjev MINTS-a (9. 11. 2026.): službenik objekt unosi kroz Verifikacije → Unos rješenja. `{objekt}` = „naziv“ (naselje ili grad) iz zahtjeva za RB, očišćeno; bez oboje „(bez naziva)". |
-| Ostala polja | `vrsta` ista kao § 2; `objekt_tip` i `objekt_id` **NULL** (nema zahtjeva); `podaci` = `{"rn","decisionId"}` (`str_rn.categorization_decision`). |
+| Ostala polja | `vrsta` ista kao § 2; `objekt_tip` i `objekt_id` **NULL** (nema zahtjeva); `podaci` kao § 8. |
 | Provjera pri obradi | RB opozvan/povučen/ne postoji, ili rješenje više nije `SUBMITTED` (službenik ga je prihvatio ili odbio) → `PRESKOCENO`. |
 | Obavijesti ugašene | Redak čeka `PENDING`, ne troši pokušaje i ne ulazi u seriju retry joba (`due()` ga ne uzima); obradi se kad se obavijesti uključe. |
 
@@ -388,3 +388,19 @@ više nisu NOT NULL; novi završni status `OBAVIJESTI_UPISANE`. Redak nastaje u 
     županiju objekta", bez MINTS-a? Ili treba jedinica po naselju objekta?
 18. **`vrsta` / `objekt_tip`** za obavijest bez zahtjeva: ista `vrsta` kao za objekt iz eTurizma i
     `objekt_tip` NULL — ili zasebna vrsta?
+
+## 8. Format obavijesti (eTurizam, Simon, 9. 11. 2026.)
+
+Vrijednosti iz § 2 i § 6 (t. 1, 18) bile su pretpostavke i na CDU-u su srušile `/str-internal-api/obavijesti`
+(500): eTurizam redak čita u entitet s enumima i strogim JSON DTO-om, pa **jedan neispravan redak ruši cijeli
+popis obavijesti** službeniku koji ga ima. Zato u ove stupce smije samo ono što njihov model poznaje.
+
+| Stupac | Dopušteno (eTurizam) | STR piše |
+|---|---|---|
+| `vrsta` (`VrstaObavijesti`) | `PREDMET_DODIJELJEN`, `VERIFIKACIJA_ZATRAZENA`, `EGOP_PREDMET_STVOREN`, `EGOP_PREDMET_AZURIRAN`, `EGOP_PREDMET_UGASEN`, `EGOP_PORUKA_KARANTENA` | `VERIFIKACIJA_ZATRAZENA` |
+| `objekt_tip` (`TipObjektaObavijesti`, može NULL) | `PREDMET`, `VERIFIKACIJA_RJESENJA`, `EGOP_PORUKA` | objekt iz eTurizma `VERIFIKACIJA_RJESENJA`; novi objekt NULL |
+| `objekt_id` | bigint, može NULL | objekt iz eTurizma `verification_request.id` (nepotvrđeno); novi objekt NULL |
+| `podaci` (`PodaciObavijesti`, može NULL) | samo `subjekt` {`oib`, `naziv`, `adresa`}, `objekt` {`skupina`, `vrsta`, `naziv`, `adresa`}, `rijeseno` {`tko`, `kada`, `ishod`} | `subjekt`: iznajmljivač iz predaje (`adresa` NULL); `objekt`: vrsta, skupina i adresa iz smještaja RB-a, naziv iz retka; `rijeseno` NULL |
+| `hitna` (boolean, NOT NULL) | | ne piše se (zadano `false`), otvoreno pitanje |
+
+Otvoreno: treba li `hitna = true` i što eTurizam očekuje u `objekt_id` uz `VERIFIKACIJA_RJESENJA`.

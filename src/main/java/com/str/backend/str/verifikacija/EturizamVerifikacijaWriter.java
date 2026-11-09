@@ -86,6 +86,7 @@ public class EturizamVerifikacijaWriter {
     private final RnRepository rnRepository;
     private final RnFacilityVerification facilityVerification;
     private final CategorizationDecisionRepository decisionRepository;
+    private final VerifikacijaPodaci podaciObavijesti;
     private final EturizamVerifikacijaProperties properties;
     private final Clock clock;
     private final TransactionTemplate inlineTx;
@@ -96,6 +97,7 @@ public class EturizamVerifikacijaWriter {
                                       RnRepository rnRepository,
                                       RnFacilityVerification facilityVerification,
                                       CategorizationDecisionRepository decisionRepository,
+                                      VerifikacijaPodaci podaciObavijesti,
                                       EturizamVerifikacijaProperties properties,
                                       Clock clock,
                                       PlatformTransactionManager transactionManager) {
@@ -104,6 +106,7 @@ public class EturizamVerifikacijaWriter {
         this.rnRepository = rnRepository;
         this.facilityVerification = facilityVerification;
         this.decisionRepository = decisionRepository;
+        this.podaciObavijesti = podaciObavijesti;
         this.properties = properties;
         this.clock = clock;
         this.inlineTx = transakcija(transactionManager, properties.inlineTimeout());
@@ -264,8 +267,7 @@ public class EturizamVerifikacijaWriter {
 
         String tekst = VerifikacijaObavijest.tekst(postavke.tekst(), zapis.getRn(),
                 VerifikacijaObavijest.opisObjekta(zapis.getObjektNaziv(), zapis.getObjektMjesto(), zapis.getFacilityId()));
-        String podaci = VerifikacijaObavijest.podaci(
-                zapis.getRn(), zapis.getDocumentId(), zapis.getFacilityId(), zahtjevId);
+        String podaci = podaciObavijesti.sastavi(zapis);
         for (Long korisnik : primatelji) {
             eturizam.insertNotification(korisnik, postavke.vrsta(), tekst, postavke.objektTip(), zahtjevId, podaci, sada);
         }
@@ -313,7 +315,7 @@ public class EturizamVerifikacijaWriter {
 
         String tekst = VerifikacijaObavijest.tekst(postavke.tekstNoviObjekt(), zapis.getRn(),
                 VerifikacijaObavijest.opisNovogObjekta(zapis.getObjektNaziv(), zapis.getObjektMjesto()));
-        String podaci = VerifikacijaObavijest.podaciNovogObjekta(zapis.getRn(), zapis.getDecisionId());
+        String podaci = podaciObavijesti.sastavi(zapis);
         for (Long korisnik : primatelji) {
             eturizam.insertNotification(korisnik, postavke.vrsta(), tekst, null, null, podaci, sada);
         }

@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 /**
@@ -27,6 +27,17 @@ final class VerifikacijaObavijest {
 
     /** Najdulji naziv odnosno mjesto u tekstu. */
     static final int MAX_DIO = 100;
+
+    /** Najdulja vrijednost tuđeg teksta u {@code podaci}. */
+    static final int MAX_PODATAK = 255;
+
+    /** Podnositelj u {@code podaci}; {@code oib} je OIB tvrtke kad je podnositelj pravna osoba. */
+    record Subjekt(String oib, String naziv) {
+    }
+
+    /** Objekt u {@code podaci}. */
+    record Objekt(String skupina, String vrsta, String naziv, String adresa) {
+    }
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -99,25 +110,45 @@ final class VerifikacijaObavijest {
         return skrati(sazeto, max);
     }
 
-    /** {@code podaci}: identifikatori po kojima eTurizam može obavijest povezati sa zahtjevom. */
-    static String podaci(String rn, long documentId, String facilityId, long verificationRequestId) {
+    /**
+     * {@code podaci} u obliku eTurizmova {@code PodaciObavijesti}. Taj DTO ne dopušta nepoznata polja, a
+     * jedan redak koji se ne može pročitati ruši cijeli popis obavijesti službeniku ({@code 500} na
+     * {@code /str-internal-api/obavijesti}), pa ovdje smiju biti samo njegova polja. {@code rijeseno}
+     * popunjava eTurizam kad je obavijest riješena. Tekst je tuđi unos, pa se čisti kao u {@link #tekst}.
+     */
+    static String podaci(Subjekt subjekt, Objekt objekt) {
         Map<String, Object> podaci = new LinkedHashMap<>();
-        podaci.put("rn", rn);
-        podaci.put("documentId", documentId);
-        podaci.put("facilityId", numericOrText(facilityId));
-        podaci.put("verificationRequestId", verificationRequestId);
+        podaci.put("subjekt", subjekt(subjekt));
+        podaci.put("objekt", objekt(objekt));
+        podaci.put("rijeseno", null);
         return json(podaci);
     }
 
-    /**
-     * {@code podaci} za novi objekt uz predano rješenje: zahtjeva ni dokumenta nema, pa obavijest
-     * nosi RB i id rješenja u STR-u ({@code str_rn.categorization_decision}).
-     */
-    static String podaciNovogObjekta(String rn, UUID decisionId) {
+    private static Map<String, Object> subjekt(Subjekt subjekt) {
+        String oib = subjekt == null ? null : cisto(subjekt.oib());
+        String naziv = subjekt == null ? null : cisto(subjekt.naziv());
+        if (oib == null && naziv == null) {
+            return null;
+        }
         Map<String, Object> podaci = new LinkedHashMap<>();
-        podaci.put("rn", rn);
-        podaci.put("decisionId", decisionId == null ? null : decisionId.toString());
-        return json(podaci);
+        podaci.put("oib", oib);
+        podaci.put("naziv", naziv);
+        podaci.put("adresa", null);
+        return podaci;
+    }
+
+    private static Map<String, Object> objekt(Objekt objekt) {
+        Map<String, Object> podaci = new LinkedHashMap<>();
+        podaci.put("skupina", cisto(objekt.skupina()));
+        podaci.put("vrsta", cisto(objekt.vrsta()));
+        podaci.put("naziv", cisto(objekt.naziv()));
+        podaci.put("adresa", cisto(objekt.adresa()));
+        return podaci.values().stream().allMatch(Objects::isNull) ? null : podaci;
+    }
+
+    private static String cisto(String value) {
+        String cisto = ocisti(value, MAX_PODATAK);
+        return isBlank(cisto) ? null : cisto;
     }
 
     private static String json(Map<String, Object> podaci) {
@@ -141,14 +172,6 @@ final class VerifikacijaObavijest {
             end--;
         }
         return value.substring(0, end) + "…";
-    }
-
-    private static Object numericOrText(String value) {
-        try {
-            return Long.parseLong(value.trim());
-        } catch (NumberFormatException e) {
-            return value;
-        }
     }
 
     private static boolean isBlank(String value) {
