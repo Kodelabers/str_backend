@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -61,6 +62,22 @@ final class VerifikacijaObavijest {
     }
 
     /**
+     * Novi objekt (iz zahtjeva za RB, unos iznajmljivača, očišćen): naziv pod navodnicima i mjesto u
+     * zagradi — npr. {@code „Apartman Ana" (Split)}. Bez naziva samo mjesto u zagradi, a bez oboje
+     * „(bez naziva)", da rečenica ostane cijela; RB ga svejedno jednoznačno određuje.
+     */
+    static String opisNovogObjekta(String naziv, String mjesto) {
+        String cistNaziv = ocisti(naziv, MAX_DIO);
+        String cistoMjesto = ocisti(mjesto, MAX_DIO);
+        String zagrada = isBlank(cistoMjesto) ? null : "(" + cistoMjesto + ")";
+        if (isBlank(cistNaziv)) {
+            return zagrada != null ? zagrada : "(bez naziva)";
+        }
+        String navodnici = "„" + cistNaziv + "“";
+        return zagrada != null ? navodnici + " " + zagrada : navodnici;
+    }
+
+    /**
      * Tuđi tekst spreman za umetanje u obavijest: bez kontrolnih ({@code Cc}) i formatnih ({@code Cf},
      * npr. U+202E) znakova, bez znakova {@code < > & " ' `}, razmaci sažeti u jedan, skraćeno na
      * {@code max}. {@code null} ostaje {@code null}.
@@ -89,6 +106,21 @@ final class VerifikacijaObavijest {
         podaci.put("documentId", documentId);
         podaci.put("facilityId", numericOrText(facilityId));
         podaci.put("verificationRequestId", verificationRequestId);
+        return json(podaci);
+    }
+
+    /**
+     * {@code podaci} za novi objekt uz predano rješenje: zahtjeva ni dokumenta nema, pa obavijest
+     * nosi RB i id rješenja u STR-u ({@code str_rn.categorization_decision}).
+     */
+    static String podaciNovogObjekta(String rn, UUID decisionId) {
+        Map<String, Object> podaci = new LinkedHashMap<>();
+        podaci.put("rn", rn);
+        podaci.put("decisionId", decisionId == null ? null : decisionId.toString());
+        return json(podaci);
+    }
+
+    private static String json(Map<String, Object> podaci) {
         try {
             return JSON.writeValueAsString(podaci);
         } catch (JsonProcessingException e) {

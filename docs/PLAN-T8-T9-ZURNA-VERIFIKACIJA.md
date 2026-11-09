@@ -2,6 +2,8 @@
 
 Stanje: **implementirano** (grana `feature/zurna-verifikacija`, 5. 11. 2026.). Upis je iza zastavice `str.eturizam.verifikacija.enabled` (zadano `false`), obavijesti iza vlastite (zadano `false`) dok eTurizam ne potvrdi vrijednosti iz § 6. Pravila označena s *privremeno* (§ 2a) treba potvrditi sa Simonom.
 
+**Dopuna 9. 11. 2026.** (grana `feature/zurna-obavijest-novi-objekt`): u opsegu je i **novi objekt uz predano rješenje o kategorizaciji**, ali samo s obavijestima — v. § 7. Retci § 2 „Kada STR upisuje zahtjev" i „Kada točno" i dalje vrijede za **zahtjev**.
+
 ## 1. Kontekst
 
 Primjedbe MINTS-a s UAT-a (22. 10. 2026.), redovi 8 i 9:
@@ -341,3 +343,48 @@ vrijednosti iz zapisa; provjera konfiguracije pri startu; `zabiljezi` izvan tran
 15. **(P4) Suspendiran RB:** RB u prijedlogu suspenzije ili suspendiran u trenutku obrade i dalje
     dobiva zahtjev (preskaču se samo opozvan i povučen). Je li to ispravno?
 
+
+## 7. Dopuna: novi objekt uz predano rješenje (9. 11. 2026.)
+
+Excel primjedbi (r. 8, očitovanje) traži zahtjev za verifikaciju i za objekte koji nisu u eTurizmu, a
+stranka je priložila rješenje („2. opcija"). Odluka (9. 11. 2026.): za njih STR šalje **samo obavijesti**.
+
+**Zašto bez zahtjeva.** `str.verification_request.source_document_id` je NOT NULL, FK na `str.document`
+i UNIQUE. Novi objekt u eTurizmu nema dokument dok ga službenik ne unese (Verifikacije → Unos rješenja),
+pa STR nema uz što upisati zahtjev. Posljedica: novi objekt **nije na eTurizmovoj listi prioriteta (T9)**
+dok eTurizam ne odluči kako (pitanje 16).
+
+| Pitanje | Odluka |
+|---|---|
+| Okidač | Uspješna predaja rješenja uz RB **novog** objekta (`accommodation.facility_id IS NULL`), `CategorizationDecisionService.upload` — NIAS i non-EU, i kao odgovor na suspenziju. Objekt iz eTurizma ide kroz § 2 (pri izdavanju RB-a). |
+| Koliko | **Jedna poslana obavijest po RB-u** (`rn` UNIQUE). Ponovna predaja nakon odbijenog rješenja ne šalje novu obavijest ako je prva već poslana (`OBAVIJESTI_UPISANE`). Ako nije (redak čeka, `PRESKOCENO` jer je prethodno rješenje odbijeno prije slanja, ili `ABANDONED`), redak se vraća na čekanje uz novo rješenje — inače službenici za njega ne bi saznali. |
+| Primatelji | Aktivni interni korisnici (`active`, `internal`) **organizacije** vrste **`IOT_ZUPANIJA`** (`internal_organization_id`) čija je neka aktivna jedinica preko `settlement_jurisdiction` nadležna za barem jedno naselje **županije objekta** — lanac kao `OfficialCountyResolver`. Po organizaciji, ne po jedinici: na CDU-u dio službenika nije u jedinici s nadležnošću (W3, 9. 11.: Šibensko-kninska 1 u jedinici, 2 u organizaciji); svaka od 21 županije ima točno jednu takvu organizaciju s barem jednim službenikom (W5, `docs/sql/results/t8-novi-objekt`). Ministarstvo (`IOT_MINTS`) ne dobiva obavijest za svaki novi objekt. Najviše `max-primatelja`. |
+| Županija | `accommodation.county` (adresni registar) → `str.county`: prvo po šifri (`external_code` = `rpj_dgu.zupanije.zu_rb` tog naziva), inače po nazivu (`CountyNames.key`) — kao `OfficialCountyResolver`. Neprepoznata županija ili bez službenika → redak se zatvara s 0 obavijesti i WARN-om. |
+| Tekst | `obavijesti.tekst-novi-objekt`, zadano: „Uz registracijski broj {rn} priloženo je rješenje o kategorizaciji za novi smještajni objekt {objekt}. Objekt nije upisan u eTurizam – potrebna je žurna verifikacija. Rješenje unesite kroz modul Verifikacije, funkcionalnost Unos rješenja." Uputa je na zahtjev MINTS-a (9. 11. 2026.): službenik objekt unosi kroz Verifikacije → Unos rješenja. `{objekt}` = „naziv“ (naselje ili grad) iz zahtjeva za RB, očišćeno; bez oboje „(bez naziva)". |
+| Ostala polja | `vrsta` ista kao § 2; `objekt_tip` i `objekt_id` **NULL** (nema zahtjeva); `podaci` = `{"rn","decisionId"}` (`str_rn.categorization_decision`). |
+| Provjera pri obradi | RB opozvan/povučen/ne postoji, ili rješenje više nije `SUBMITTED` (službenik ga je prihvatio ili odbio) → `PRESKOCENO`. |
+| Obavijesti ugašene | Redak čeka `PENDING`, ne troši pokušaje i ne ulazi u seriju retry joba (`due()` ga ne uzima); obradi se kad se obavijesti uključe. |
+
+**Izvedba.** Isti outbox (`str_rn.eturizam_verifikacija`, changeset 154): stupac `vrsta`
+(`ETURIZAM_OBJEKT` / `NOVI_OBJEKT_RJESENJE`), `decision_id`, `zupanija`; `facility_id` i `document_id`
+više nisu NOT NULL; novi završni status `OBAVIJESTI_UPISANE`. Redak nastaje u transakciji predaje
+(`VerifikacijaOutbox.zabiljeziNoviObjekt`, `MANDATORY`), prvi pokušaj nakon commita
+(`RjesenjeNovogObjektaPredano` → `EturizamVerifikacijaListener`), retry i odustajanje kao § 4.1.
+
+**Prava.** Uz § 4.5 još SELECT na `str.county`, `str.municipality`, `str.settlement`,
+`str.settlement_jurisdiction`, `str.organizational_unit`, `str.internal_organization`,
+`str.codebook_element` (`StartupDiagnostics` ih provjerava uz uključene obavijesti) i na
+`rpj_dgu.zupanije`.
+
+**Provjera na CDU-u prije uključivanja:** `docs/sql/t8-novi-objekt-dijagnostika.sql` (vrste organizacija,
+šifre županija, broj primatelja po županiji).
+
+### 7a. Otvorena pitanja za Simona (dopuna)
+
+16. **Lista prioriteta za novi objekt:** novi objekt nema `str.document`, pa ni `verification_request`.
+    Kako ga eTurizam želi na listi (zahtjev bez dokumenta, druga tablica, ili ga kreira tuStart, kako
+    kaže očitovanje „Riješiti na TuStart strani")?
+17. **Primatelji za novi objekt:** je li ispravno „sve aktivne jedinice `IOT_ZUPANIJA` nadležne za
+    županiju objekta", bez MINTS-a? Ili treba jedinica po naselju objekta?
+18. **`vrsta` / `objekt_tip`** za obavijest bez zahtjeva: ista `vrsta` kao za objekt iz eTurizma i
+    `objekt_tip` NULL — ili zasebna vrsta?

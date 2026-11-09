@@ -44,23 +44,33 @@ public record EturizamVerifikacijaProperties(
         korisnik = blankToDefault(korisnik, DEFAULT_KORISNIK);
         timeout = positiveOrDefault(timeout, DEFAULT_TIMEOUT);
         inlineTimeout = positiveOrDefault(inlineTimeout, DEFAULT_INLINE_TIMEOUT);
-        obavijesti = obavijesti == null ? new Obavijesti(null, null, null, null, null) : obavijesti;
+        obavijesti = obavijesti == null ? new Obavijesti(null, null, null, null, null, null) : obavijesti;
         retry = retry == null ? new Retry(null, null, null, null) : retry;
     }
 
     /**
-     * @param vrsta         {@code korisnicka_obavijest.vrsta} (najviše 64 znaka)
-     * @param objektTip     {@code korisnicka_obavijest.objekt_tip}; {@code objekt_id} je id zahtjeva
-     * @param tekst         predložak teksta; {@code {rn}} = RB, {@code {objekt}} = naziv i mjesto
-     *                      objekta (v. {@link VerifikacijaObavijest})
-     * @param maxPrimatelja najviše obavijesti po zahtjevu; iznad toga WARN i samo prvih toliko
+     * Obavijesti su jedini upis za novi objekt uz predano rješenje: dok su ugašene, njegovi retci
+     * čekaju {@code PENDING} (ne zatvaraju se bez obavijesti, kao zahtjev objekta iz eTurizma).
+     *
+     * @param vrsta           {@code korisnicka_obavijest.vrsta} (najviše 64 znaka), ista za obje vrste retka
+     * @param objektTip       {@code korisnicka_obavijest.objekt_tip}; {@code objekt_id} je id zahtjeva. Novi
+     *                        objekt zahtjeva nema, pa su ondje oba {@code NULL}
+     * @param tekst           predložak teksta za objekt iz eTurizma; {@code {rn}} = RB, {@code {objekt}} =
+     *                        naziv, mjesto i id objekta (v. {@link VerifikacijaObavijest})
+     * @param maxPrimatelja   najviše obavijesti po retku; iznad toga WARN i samo prvih toliko
+     * @param tekstNoviObjekt predložak teksta za novi objekt uz predano rješenje; {@code {rn}} = RB,
+     *                        {@code {objekt}} = naziv i mjesto iz zahtjeva za RB
      */
-    public record Obavijesti(Boolean enabled, String vrsta, String objektTip, String tekst, Integer maxPrimatelja) {
+    public record Obavijesti(Boolean enabled, String vrsta, String objektTip, String tekst, Integer maxPrimatelja,
+                             String tekstNoviObjekt) {
 
         public static final String DEFAULT_VRSTA = "ZURNA_VERIFIKACIJA";
         public static final String DEFAULT_OBJEKT_TIP = "VERIFICATION_REQUEST";
         public static final String DEFAULT_TEKST = "Smještajnom objektu {objekt} dodijeljen je registracijski "
                 + "broj {rn}. Objekt nije verificiran – potrebna je žurna verifikacija.";
+        public static final String DEFAULT_TEKST_NOVI_OBJEKT = "Uz registracijski broj {rn} priloženo je rješenje "
+                + "o kategorizaciji za novi smještajni objekt {objekt}. Objekt nije upisan u eTurizam – potrebna "
+                + "je žurna verifikacija. Rješenje unesite kroz modul Verifikacije, funkcionalnost Unos rješenja.";
         public static final int DEFAULT_MAX_PRIMATELJA = 200;
 
         public Obavijesti {
@@ -69,6 +79,7 @@ public record EturizamVerifikacijaProperties(
             objektTip = blankToDefault(objektTip, DEFAULT_OBJEKT_TIP);
             tekst = blankToDefault(tekst, DEFAULT_TEKST);
             maxPrimatelja = maxPrimatelja != null && maxPrimatelja > 0 ? maxPrimatelja : DEFAULT_MAX_PRIMATELJA;
+            tekstNoviObjekt = blankToDefault(tekstNoviObjekt, DEFAULT_TEKST_NOVI_OBJEKT);
         }
     }
 

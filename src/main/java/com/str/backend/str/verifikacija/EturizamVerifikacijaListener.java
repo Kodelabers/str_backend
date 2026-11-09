@@ -42,4 +42,17 @@ public class EturizamVerifikacijaListener {
             log.error("eturizam_verifikacija_listener_failed rn={} — RB ostaje valjan", event.rn(), e);
         }
     }
+
+    /**
+     * Isto za novi objekt: prvi pokušaj upisa obavijesti odmah nakon commita predaje rješenja
+     * ({@link VerifikacijaOutbox#zabiljeziNoviObjekt}). Rješenje je spremljeno neovisno o ishodu.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onRjesenjeNovogObjekta(RjesenjeNovogObjektaPredano event) {
+        try {
+            service.obradi(EturizamVerifikacijaWriter.Pokusaj.inline(event.rn()));
+        } catch (RuntimeException e) {
+            log.error("eturizam_verifikacija_listener_failed rn={} — rješenje ostaje predano", event.rn(), e);
+        }
+    }
 }

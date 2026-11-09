@@ -3,6 +3,8 @@ package com.str.backend.str.verifikacija;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.str.backend.address.CountyRepository;
+import com.str.backend.categorization.CategorizationDecisionEntity;
+import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
@@ -94,6 +96,17 @@ class EturizamVerifikacijaIntegrationTest {
 
     private static final ZoneId ZAGREB = ZoneId.of("Europe/Zagreb");
 
+    /**
+     * Novi objekt: županija u eTurizmu (naziv kako ga piše eTurizam, šifra = {@code zu_rb}) s jednim
+     * naseljem; za njega su nadležni županijski ured ({@link #COUNTY_UNIT}) i ministarstvo
+     * ({@link #MINTS_UNIT}), koje obavijest za novi objekt ne dobiva.
+     */
+    private static final long COUNTY = 951700;
+    private static final long COUNTY_UNIT = 951750;
+    private static final long MINTS_UNIT = 951751;
+    private static final long COUNTY_ORG = 951740;
+    private static final String ZUPANIJA = "Splitsko-dalmatinska županija";
+
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper om;
     @Autowired private JdbcTemplate jdbc;
@@ -108,6 +121,7 @@ class EturizamVerifikacijaIntegrationTest {
     @Autowired private PlatformTransactionManager txManager;
     @Autowired private Clock clock;
     @Autowired private DataSource dataSource;
+    @Autowired private CategorizationDecisionRepository decisionRepository;
 
     @MockBean private SubjectProfileService subjectProfileService;
     @MockBean private CountyRepository countyRepository;
@@ -146,7 +160,9 @@ class EturizamVerifikacijaIntegrationTest {
                   stvoreno TIMESTAMP NOT NULL,
                   procitano TIMESTAMP)
                 """);
+        countyTables();
         cleanUp();
+        countySeed();
 
         user(951001, UNIT, true, true);
         user(951002, UNIT, true, true);
@@ -175,7 +191,13 @@ class EturizamVerifikacijaIntegrationTest {
         jdbc.update("DELETE FROM str.application_user WHERE id BETWEEN 951000 AND 951999");
         jdbc.update("DELETE FROM str.document WHERE id BETWEEN 951000 AND 951999");
         jdbc.update("DELETE FROM str_rn.eturizam_verifikacija WHERE document_id BETWEEN 951000 AND 951999");
+        jdbc.update("DELETE FROM str_rn.eturizam_verifikacija WHERE rn LIKE 'HR000000000000951%'");
+        jdbc.update("DELETE FROM str_rn.categorization_decision WHERE rn LIKE 'HR000000000000951%'");
         jdbc.update("DELETE FROM str_rn.registration_number WHERE rn LIKE 'HR000000000000951%'");
+        for (String tablica : List.of("str.settlement_jurisdiction", "str.organizational_unit", "str.internal_organization",
+                "str.settlement", "str.municipality", "str.county", "str.codebook_element", "rpj_dgu.zupanije")) {
+            jdbc.update("DELETE FROM " + tablica + " WHERE id BETWEEN 951000 AND 951999");
+        }
     }
 
     // ---------------------------------------------------------------- puni tok kroz izdavanje RB-a
@@ -347,7 +369,7 @@ class EturizamVerifikacijaIntegrationTest {
         document(951008, UNIT);
         String rn = pending("HR000000000000951008", "951108", 951008);
         EturizamVerifikacijaWriter bezObavijesti = writer(new EturizamVerifikacijaProperties(true, null, null, null,
-                new EturizamVerifikacijaProperties.Obavijesti(false, null, null, null, null), properties.retry()));
+                new EturizamVerifikacijaProperties.Obavijesti(false, null, null, null, null, null), properties.retry()));
 
         Optional<Status> ishod = bezObavijesti.upisi(Pokusaj.inline(rn));
 
@@ -363,7 +385,7 @@ class EturizamVerifikacijaIntegrationTest {
         document(951018, UNIT);
         String rn = pending("HR000000000000951018", "951118", 951018);
         EturizamVerifikacijaWriter jedanPrimatelj = writer(new EturizamVerifikacijaProperties(true, null, null, null,
-                new EturizamVerifikacijaProperties.Obavijesti(true, null, null, null, 1), properties.retry()));
+                new EturizamVerifikacijaProperties.Obavijesti(true, null, null, null, 1, null), properties.retry()));
 
         jedanPrimatelj.upisi(Pokusaj.inline(rn));
 
@@ -699,11 +721,174 @@ class EturizamVerifikacijaIntegrationTest {
         assertThat(properties.retry().batchSize()).isEqualTo(50);
     }
 
+    // ---------------------------------------------------------------- novi objekt uz predano rješenje
+
+    /**
+     * Predaja rješenja uz RB novog objekta: nakon commita obavijest dobivaju aktivni interni službenici
+     * županijske organizacije nadležne za županiju objekta, i oni koji nisu u jedinici s nadležnošću —
+     * bez zahtjeva (objekt u eTurizmu nema dokument), bez ministarstva, neaktivnih i vanjskih korisnika.
+     */
+    @Test
+    void newObject_decisionSubmitted_notifiesCountyOfficialsWithoutRequest() throws Exception {
+        String rn = "HR000000000000951201";
+        UUID decisionId = noviObjekt(rn, ZUPANIJA, "Apartman Ana", "Žrnovnica");
+
+        VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
+        assertThat(zapis.getVrsta()).isEqualTo(VerifikacijaOutboxEntity.Vrsta.NOVI_OBJEKT_RJESENJE);
+        assertThat(zapis.getStatus()).isEqualTo(Status.OBAVIJESTI_UPISANE);
+        assertThat(zapis.getDecisionId()).isEqualTo(decisionId);
+        assertThat(zapis.getFacilityId()).isNull();
+        assertThat(zapis.getDocumentId()).isNull();
+        assertThat(zapis.getVerificationRequestId()).isNull();
+        assertThat(zapis.getObavijestiPoslano()).isEqualTo(2);
+        assertThat(zapis.getNextAttemptAt()).isNull();
+
+        List<Map<String, Object>> obavijesti = jdbc.queryForList(
+                "SELECT * FROM str.korisnicka_obavijest WHERE application_user_id BETWEEN 951000 AND 951999 "
+                        + "ORDER BY application_user_id");
+        assertThat(obavijesti).extracting(o -> o.get("APPLICATION_USER_ID")).containsExactly(951011L, 951015L);
+        Map<String, Object> obavijest = obavijesti.get(0);
+        assertThat(obavijest.get("VRSTA")).isEqualTo(EturizamVerifikacijaProperties.Obavijesti.DEFAULT_VRSTA);
+        assertThat(obavijest.get("OBJEKT_TIP")).isNull();
+        assertThat(obavijest.get("OBJEKT_ID")).isNull();
+        assertThat((String) obavijest.get("TEKST")).isEqualTo("Uz registracijski broj " + rn + " priloženo je "
+                + "rješenje o kategorizaciji za novi smještajni objekt „Apartman Ana“ (Žrnovnica). Objekt nije "
+                + "upisan u eTurizam – potrebna je žurna verifikacija. Rješenje unesite kroz modul Verifikacije, "
+                + "funkcionalnost Unos rješenja.");
+        JsonNode podaci = om.readTree((String) obavijest.get("PODACI"));
+        assertThat(podaci.get("rn").asText()).isEqualTo(rn);
+        assertThat(podaci.get("decisionId").asText()).isEqualTo(decisionId.toString());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM str.verification_request", Integer.class)).isZero();
+    }
+
+    /**
+     * Naziv županije u eTurizmu ne odgovara nazivu iz adresnog registra — županija se nađe po šifri
+     * ({@code str.county.external_code} = {@code rpj_dgu.zupanije.zu_rb}).
+     */
+    @Test
+    void newObject_countyMatchedByExternalCode() {
+        jdbc.update("INSERT INTO rpj_dgu.zupanije (id, zu_ime, zu_rb) VALUES (951790, ?, 17)", ZUPANIJA);
+        jdbc.update("UPDATE str.county SET name = 'SDŽ', external_code = '17' WHERE id = ?", COUNTY);
+
+        String rn = "HR000000000000951202";
+        noviObjekt(rn, ZUPANIJA, "Apartman Ana", "Žrnovnica");
+
+        assertThat(outboxRepository.findByRn(rn).orElseThrow().getObavijestiPoslano()).isEqualTo(2);
+        assertThat(notificationCount()).isEqualTo(2);
+    }
+
+    /** Županija koja se ne prepozna: redak se zatvara bez obavijesti (ponovni pokušaj to ne bi promijenio). */
+    @Test
+    void newObject_unknownCounty_closedWithoutNotifications() {
+        String rn = "HR000000000000951203";
+        noviObjekt(rn, "Nepostojeća županija", null, null);
+
+        VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
+        assertThat(zapis.getStatus()).isEqualTo(Status.OBAVIJESTI_UPISANE);
+        assertThat(zapis.getObavijestiPoslano()).isZero();
+        assertThat(notificationCount()).isZero();
+    }
+
+    /**
+     * Bez obavijesti novi objekt nema što upisati: redak čeka PENDING, ne troši pokušaje i ne ulazi u
+     * seriju retry joba, a obradi se kad se obavijesti uključe.
+     */
+    @Test
+    void newObject_notificationsDisabled_rowWaitsPending() {
+        String rn = "HR000000000000951204";
+        EturizamVerifikacijaProperties bezObavijesti = new EturizamVerifikacijaProperties(true, null, null, null,
+                new EturizamVerifikacijaProperties.Obavijesti(false, null, null, null, null, null), properties.retry());
+        vratiNaCekanje(rn, zabiljeziNoviObjekt(rn));
+
+        assertThat(writer(bezObavijesti).upisi(Pokusaj.inline(rn))).isEmpty();
+        VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
+        assertThat(zapis.getStatus()).isEqualTo(Status.PENDING);
+        assertThat(zapis.getAttempts()).isZero();
+        assertThat(notificationCount()).isZero();
+        VerifikacijaOutbox outboxBezObavijesti = new VerifikacijaOutbox(outboxRepository, clock, bezObavijesti,
+                txManager, event -> { });
+        assertThat(outboxBezObavijesti.due()).extracting(VerifikacijaOutboxEntity::getRn).doesNotContain(rn);
+        assertThat(outbox.due()).extracting(VerifikacijaOutboxEntity::getRn).contains(rn);
+
+        assertThat(writer(properties).upisi(Pokusaj.inline(rn))).contains(Status.OBAVIJESTI_UPISANE);
+        assertThat(notificationCount()).isEqualTo(2);
+    }
+
+    /** Službenik je rješenje već obradio na internom portalu STR-a prije obrade retka → ništa se ne upisuje. */
+    @Test
+    void newObject_decisionAlreadyProcessed_skipped() {
+        String rn = "HR000000000000951205";
+        UUID decisionId = zabiljeziNoviObjekt(rn);
+        vratiNaCekanje(rn, decisionId);
+        requiresNew().executeWithoutResult(tx -> {
+            CategorizationDecisionEntity rjesenje = decisionRepository.findById(decisionId).orElseThrow();
+            rjesenje.verify("sluzbenik");
+            decisionRepository.save(rjesenje);
+        });
+
+        assertThat(writer(properties).upisi(Pokusaj.inline(rn))).contains(Status.PRESKOCENO);
+        assertThat(outboxRepository.findByRn(rn).orElseThrow().getLastError()).contains("VERIFIED");
+        assertThat(notificationCount()).isZero();
+    }
+
+    /** Jedan redak po RB-u: ponovna predaja (nakon odbijenog rješenja) ne šalje novu obavijest. */
+    @Test
+    void newObject_secondDecisionForSameRb_noSecondNotification() {
+        String rn = "HR000000000000951206";
+        zabiljeziNoviObjekt(rn);
+
+        requiresNew().executeWithoutResult(tx -> outbox.zabiljeziNoviObjekt(rn, UUID.randomUUID(),
+                UUID.randomUUID(), ZUPANIJA, "Apartman Ana", "Žrnovnica"));
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM str_rn.eturizam_verifikacija WHERE rn = ?",
+                Integer.class, rn)).isEqualTo(1);
+        assertThat(notificationCount()).isEqualTo(2);
+    }
+
+    /**
+     * Službenik je odbio rješenje prije nego je obavijest poslana (npr. obavijesti su bile ugašene), pa je
+     * redak preskočen. Novo rješenje uz isti RB vraća redak na čekanje i obavijest odlazi uz njega —
+     * inače službenici za novo rješenje ne bi saznali.
+     */
+    @Test
+    void newObject_rejectedBeforeNotification_newDecisionRearmsRow() throws Exception {
+        String rn = "HR000000000000951208";
+        UUID prvo = zabiljeziNoviObjekt(rn);
+        vratiNaCekanje(rn, prvo);
+        requiresNew().executeWithoutResult(tx -> {
+            CategorizationDecisionEntity rjesenje = decisionRepository.findById(prvo).orElseThrow();
+            rjesenje.reject("sluzbenik");
+            decisionRepository.save(rjesenje);
+        });
+        assertThat(writer(properties).upisi(Pokusaj.inline(rn))).contains(Status.PRESKOCENO);
+
+        UUID drugo = predanoRjesenje(rn);
+        requiresNew().executeWithoutResult(tx -> outbox.zabiljeziNoviObjekt(rn, UUID.randomUUID(), drugo,
+                ZUPANIJA, "Apartman Ana", "Žrnovnica"));
+
+        VerifikacijaOutboxEntity zapis = outboxRepository.findByRn(rn).orElseThrow();
+        assertThat(zapis.getStatus()).isEqualTo(Status.OBAVIJESTI_UPISANE);
+        assertThat(zapis.getDecisionId()).isEqualTo(drugo);
+        assertThat(zapis.getAttempts()).isZero();
+        assertThat(zapis.getLastError()).isNull();
+        assertThat(notificationCount()).isEqualTo(2);
+        String podaci = jdbc.queryForObject("SELECT podaci FROM str.korisnicka_obavijest "
+                + "WHERE application_user_id = 951011", String.class);
+        assertThat(om.readTree(podaci).get("decisionId").asText()).isEqualTo(drugo.toString());
+    }
+
+    @Test
+    void zabiljeziNoviObjekt_outsideTransaction_fails() {
+        assertThatThrownBy(() -> outbox.zabiljeziNoviObjekt("HR000000000000951207", UUID.randomUUID(),
+                UUID.randomUUID(), ZUPANIJA, null, null))
+                .isInstanceOf(IllegalTransactionStateException.class);
+    }
+
     // ---------------------------------------------------------------- pomoćno
 
     private EturizamVerifikacijaWriter writer(EturizamVerifikacijaProperties p) {
         return new EturizamVerifikacijaWriter(outboxRepository, eturizamRepository, rnRepository,
-                facilityVerification, p, clock, txManager);
+                facilityVerification, decisionRepository, p, clock, txManager);
     }
 
     /** Drugi službenik jedinice {@link #POISONED_UNIT} ne smije primiti obavijest — upis pada na CHECK-u. */
@@ -734,6 +919,100 @@ class EturizamVerifikacijaIntegrationTest {
                 """, rn, UUID.randomUUID());
         requiresNew().executeWithoutResult(tx -> outbox.zabiljezi(rn, UUID.randomUUID(), facilityId, facility));
         return rn;
+    }
+
+    /**
+     * Predano rješenje novog objekta i outbox redak, u jednoj transakciji kao {@code CategorizationDecisionService};
+     * nakon commita inline pokušaj odmah upisuje obavijesti.
+     */
+    private UUID noviObjekt(String rn, String zupanija, String naziv, String mjesto) {
+        UUID decisionId = rjesenje(rn);
+        requiresNew().executeWithoutResult(tx ->
+                outbox.zabiljeziNoviObjekt(rn, UUID.randomUUID(), decisionId, zupanija, naziv, mjesto));
+        return decisionId;
+    }
+
+    private UUID zabiljeziNoviObjekt(String rn) {
+        return noviObjekt(rn, ZUPANIJA, "Apartman Ana", "Žrnovnica");
+    }
+
+    /** Inline pokušaj nakon commita već je obradio redak (obavijesti su u testu uključene) — vraća ga na čekanje. */
+    private void vratiNaCekanje(String rn, UUID decisionId) {
+        jdbc.update("UPDATE str_rn.eturizam_verifikacija SET status = 'PENDING', obavijesti_poslano = NULL "
+                + "WHERE rn = ? AND decision_id = ?", rn, decisionId);
+        jdbc.update("DELETE FROM str.korisnicka_obavijest WHERE application_user_id BETWEEN 951000 AND 951999");
+        makeDue(rn);
+    }
+
+    /** Aktivan RB novog objekta i predano rješenje uz njega. */
+    private UUID rjesenje(String rn) {
+        jdbc.update("""
+                INSERT INTO str_rn.registration_number
+                  (rn, accommodation_id, status, issue_date, valid_from, created_at, updated_at)
+                VALUES (?, ?, 'ACTIVE', CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, rn, UUID.randomUUID());
+        return predanoRjesenje(rn);
+    }
+
+    /** Predano rješenje uz postojeći RB. */
+    private UUID predanoRjesenje(String rn) {
+        CategorizationDecisionEntity rjesenje = CategorizationDecisionEntity.create(OIB, rn, "rjesenje.pdf",
+                "application/pdf", "%PDF-1.7".getBytes(),
+                new CategorizationDecisionEntity.CategorizationDecisionMetadata(
+                        "Apartman Ana", null, null, null, null, null, null));
+        return requiresNew().execute(tx -> decisionRepository.save(rjesenje).getDecisionId());
+    }
+
+    /**
+     * eTurizmov model nadležnosti za novi objekt. Tablice dijele i drugi testovi istog konteksta
+     * ({@code InternalUserRepositoryTest}, {@code StrFacilityListingQueryTest}), pa se stvaraju s
+     * njihovim stupcima, a naši se dodaju ako ih nema.
+     */
+    private void countyTables() {
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.codebook_element (id BIGINT PRIMARY KEY, active BOOLEAN, code VARCHAR(100), name VARCHAR(255))");
+        jdbc.execute("ALTER TABLE str.codebook_element ADD COLUMN IF NOT EXISTS code VARCHAR(100)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.internal_organization (id BIGINT PRIMARY KEY, active BOOLEAN NOT NULL, name VARCHAR(255) NOT NULL, type_id BIGINT NOT NULL)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.organizational_unit (id BIGINT PRIMARY KEY)");
+        jdbc.execute("ALTER TABLE str.organizational_unit ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE");
+        jdbc.execute("ALTER TABLE str.organizational_unit ADD COLUMN IF NOT EXISTS internal_organization_id BIGINT");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.settlement_jurisdiction (id BIGINT PRIMARY KEY, active BOOLEAN NOT NULL, organizational_unit_id BIGINT NOT NULL, settlement_id BIGINT NOT NULL)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.county (id BIGINT PRIMARY KEY, name VARCHAR(255))");
+        jdbc.execute("ALTER TABLE str.county ADD COLUMN IF NOT EXISTS name VARCHAR(255)");
+        jdbc.execute("ALTER TABLE str.county ADD COLUMN IF NOT EXISTS external_code VARCHAR(16)");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.municipality (id BIGINT PRIMARY KEY, name VARCHAR(255))");
+        jdbc.execute("ALTER TABLE str.municipality ADD COLUMN IF NOT EXISTS county_id BIGINT");
+        jdbc.execute("CREATE TABLE IF NOT EXISTS str.settlement (id BIGINT PRIMARY KEY, name VARCHAR(255), postal_code VARCHAR(16))");
+        jdbc.execute("ALTER TABLE str.settlement ADD COLUMN IF NOT EXISTS municipality_id BIGINT");
+        jdbc.execute("ALTER TABLE str.application_user ADD COLUMN IF NOT EXISTS internal_organization_id BIGINT");
+    }
+
+    /**
+     * Županija s jednim naseljem; nadležni su županijski ured i ministarstvo. U županijskoj organizaciji:
+     * aktivni interni u jedinici (951011) i bez jedinice (951015), neaktivni (951012) i vanjski (951014)
+     * korisnik; u ministarstvu aktivni interni (951013).
+     */
+    private void countySeed() {
+        jdbc.update("INSERT INTO str.codebook_element (id, active, code, name) VALUES (951730, TRUE, 'IOT_ZUPANIJA', 'Županija'), "
+                + "(951731, TRUE, 'IOT_MINTS', 'Ministarstvo')");
+        jdbc.update("INSERT INTO str.internal_organization (id, active, name, type_id) VALUES "
+                + "(?, TRUE, 'Upravni odjel SDŽ', 951730), (951741, TRUE, 'MINTS', 951731)", COUNTY_ORG);
+        jdbc.update("INSERT INTO str.organizational_unit (id, active, internal_organization_id) VALUES (?, TRUE, ?), "
+                + "(?, TRUE, 951741)", COUNTY_UNIT, COUNTY_ORG, MINTS_UNIT);
+        jdbc.update("INSERT INTO str.county (id, name, external_code) VALUES (?, 'SPLITSKO-DALMATINSKA', NULL)", COUNTY);
+        jdbc.update("INSERT INTO str.municipality (id, name, county_id) VALUES (951710, 'SPLIT', ?)", COUNTY);
+        jdbc.update("INSERT INTO str.settlement (id, name, municipality_id) VALUES (951720, 'ŽRNOVNICA', 951710)");
+        jdbc.update("INSERT INTO str.settlement_jurisdiction (id, active, organizational_unit_id, settlement_id) VALUES "
+                + "(951760, TRUE, ?, 951720), (951761, TRUE, ?, 951720)", COUNTY_UNIT, MINTS_UNIT);
+        orgUser(951011, COUNTY_UNIT, COUNTY_ORG, true, true);
+        orgUser(951015, null, COUNTY_ORG, true, true);
+        orgUser(951012, COUNTY_UNIT, COUNTY_ORG, false, true);
+        orgUser(951014, COUNTY_UNIT, COUNTY_ORG, true, false);
+        orgUser(951013, MINTS_UNIT, 951741L, true, true);
+    }
+
+    private void orgUser(long id, Long unit, long organization, boolean active, boolean internal) {
+        jdbc.update("INSERT INTO str.application_user (id, active, username, internal, organizational_unit_id, "
+                + "internal_organization_id) VALUES (?, ?, ?, ?, ?, ?)", id, active, "u" + id, internal, unit, organization);
     }
 
     private void makeDue(String rn) {

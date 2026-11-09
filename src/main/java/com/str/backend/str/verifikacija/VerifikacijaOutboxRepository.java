@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,7 +26,8 @@ public interface VerifikacijaOutboxRepository extends JpaRepository<Verifikacija
     @Query("SELECT e FROM VerifikacijaOutboxEntity e WHERE e.rn = :rn")
     Optional<VerifikacijaOutboxEntity> lockByRn(@Param("rn") String rn);
 
-    /** Dospjeli zapisi, najstariji rok prvi — {@code pageable} ograničava veličinu serije. */
-    List<VerifikacijaOutboxEntity> findByStatusAndNextAttemptAtLessThanEqualOrderByNextAttemptAtAsc(
-            VerifikacijaOutboxEntity.Status status, Instant now, Pageable pageable);
+    /** Dospjeli zapisi zadanih vrsta, najstariji rok prvi — {@code pageable} ograničava veličinu serije. */
+    List<VerifikacijaOutboxEntity> findByStatusAndVrstaInAndNextAttemptAtLessThanEqualOrderByNextAttemptAtAsc(
+            VerifikacijaOutboxEntity.Status status, Collection<VerifikacijaOutboxEntity.Vrsta> vrste, Instant now,
+            Pageable pageable);
 }

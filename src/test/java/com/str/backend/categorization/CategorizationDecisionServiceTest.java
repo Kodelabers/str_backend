@@ -13,6 +13,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.StrFacilityRepository;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
+import com.str.backend.str.verifikacija.VerifikacijaOutbox;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,8 +54,9 @@ class CategorizationDecisionServiceTest {
     private final RnRepository rnRepository = mock(RnRepository.class);
     private final AccommodationRepository accommodationRepository = mock(AccommodationRepository.class);
     private final StrFacilityRepository facilityRepository = mock(StrFacilityRepository.class);
+    private final VerifikacijaOutbox verifikacijaOutbox = mock(VerifikacijaOutbox.class);
     private final CategorizationDecisionService service = new CategorizationDecisionService(
-            repository, typeRepository, rnRepository, accommodationRepository, facilityRepository);
+            repository, typeRepository, rnRepository, accommodationRepository, facilityRepository, verifikacijaOutbox);
 
     private final RnEntity rn = mock(RnEntity.class);
     private final AccommodationEntity accommodation = mock(AccommodationEntity.class);
@@ -143,6 +145,36 @@ class CategorizationDecisionServiceTest {
         assertConflict("CATEGORIZATION_NOT_REQUIRED");
     }
 
+    /**
+     * Novi objekt nije u eTurizmu: uz predano rješenje bilježi se obavijest o žurnoj verifikaciji
+     * službenicima županije — s RB-om, predajom, rješenjem i podacima objekta iz STR-a (naselje prije grada).
+     */
+    @Test
+    void newObject_recordsUrgentVerificationNotification() {
+        UUID submissionId = UUID.randomUUID();
+        when(rn.getSubmissionId()).thenReturn(submissionId);
+        when(accommodation.getCounty()).thenReturn("Splitsko-dalmatinska županija");
+        when(accommodation.getName()).thenReturn("Apartman Ana");
+        when(accommodation.getSettlement()).thenReturn("Žrnovnica");
+        when(accommodation.getCity()).thenReturn("Split");
+
+        CategorizationDecisionEntity saved = capture(request(file("rjesenje.pdf", "application/pdf", PDF)));
+
+        verify(verifikacijaOutbox).zabiljeziNoviObjekt(RN, submissionId, saved.getDecisionId(),
+                "Splitsko-dalmatinska županija", "Apartman Ana", "Žrnovnica");
+    }
+
+    /** Bez naselja mjesto je grad. */
+    @Test
+    void newObject_withoutSettlement_usesCity() {
+        when(accommodation.getSettlement()).thenReturn("  ");
+        when(accommodation.getCity()).thenReturn("Split");
+
+        capture(request(file("rjesenje.pdf", "application/pdf", PDF)));
+
+        verify(verifikacijaOutbox).zabiljeziNoviObjekt(eq(RN), any(), any(), any(), any(), eq("Split"));
+    }
+
     /** Neverificiran (migriran) objekt: podaci nisu provjereni, pa iznajmljivač smije priložiti rješenje. */
     @Test
     void stores_whenAccommodationIsUnverifiedETurizamFacility() {
@@ -153,6 +185,8 @@ class CategorizationDecisionServiceTest {
 
         assertThat(saved.getRn()).isEqualTo(RN);
         assertThat(saved.getStatus()).isEqualTo(CategorizationDecisionStatus.SUBMITTED);
+        // Objekt iz eTurizma žurnu verifikaciju (ako je neverificiran) dobiva pri izdavanju RB-a.
+        verify(verifikacijaOutbox, never()).zabiljeziNoviObjekt(any(), any(), any(), any(), any(), any());
     }
 
     /** Objekt koji eTurizam ne pronađe, ni onaj bez autora, nije dokazano neverificiran. */

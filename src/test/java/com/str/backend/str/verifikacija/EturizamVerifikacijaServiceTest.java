@@ -1,5 +1,6 @@
 package com.str.backend.str.verifikacija;
 
+import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.RnFacilityVerification;
 import com.str.backend.str.verifikacija.EturizamVerifikacijaWriter.Pokusaj;
@@ -120,6 +121,7 @@ class EturizamVerifikacijaServiceTest {
         when(outboxRepository.lockByRn(RN)).thenReturn(Optional.empty());
         EturizamVerifikacijaWriter pravi = new EturizamVerifikacijaWriter(outboxRepository,
                 mock(EturizamVerifikacijaRepository.class), mock(RnRepository.class), mock(RnFacilityVerification.class),
+                mock(CategorizationDecisionRepository.class),
                 new EturizamVerifikacijaProperties(true, null, Duration.ofSeconds(7), Duration.ofSeconds(2), null, null),
                 Clock.systemUTC(), txManager);
 
