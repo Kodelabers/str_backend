@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -279,15 +280,15 @@ class StrFacilityListingQueryTest {
         migratedCase(901, 1);
         unit(20, 901, "uuid-kuca", "Kuca", MIGRACIJA, "2023-01-19 14:00:00");
 
-        List<FacilityListingRow> first = repository.findListingByOib(OIB, CODES, 1, 0);
-        List<FacilityListingRow> second = repository.findListingByOib(OIB, CODES, 1, 1);
+        List<FacilityListingRow> first = repository.findListingByOib(OIB, CODES, "", 1, 0);
+        List<FacilityListingRow> second = repository.findListingByOib(OIB, CODES, "", 1, 1);
 
         assertThat(ids(first)).containsExactly(10L, 11L, 12L);
         assertThat(first).extracting(FacilityListingRow::getSystemUuid).containsOnly("uuid-vila");
         assertThat(first.getFirst().getTotalObjects()).isEqualTo(2);
         assertThat(first.getFirst().getTotalUnits()).isEqualTo(4);
         assertThat(ids(second)).containsExactly(20L);
-        assertThat(repository.findListingByOib(OIB, CODES, 1, 2)).isEmpty();
+        assertThat(repository.findListingByOib(OIB, CODES, "", 1, 2)).isEmpty();
     }
 
     @Test
@@ -298,7 +299,7 @@ class StrFacilityListingQueryTest {
         verifiedCase(901, 1);
         unit(20, 901, "uuid-kuca", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
 
-        ListingTotals totals = repository.countListingByOib(OIB, CODES);
+        ListingTotals totals = repository.countListingByOib(OIB, CODES, "");
 
         assertThat(totals.getObjects()).isEqualTo(2);
         assertThat(totals.getUnits()).isEqualTo(3);
@@ -306,10 +307,185 @@ class StrFacilityListingQueryTest {
 
     @Test
     void countsZero_whenLessorHasNothing() {
-        ListingTotals totals = repository.countListingByOib(OIB, CODES);
+        ListingTotals totals = repository.countListingByOib(OIB, CODES, "");
 
         assertThat(totals.getObjects()).isZero();
         assertThat(totals.getUnits()).isZero();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Pretraga (uzorak gradi NiasFacilityService: %...% s escape znakom !)
+    // -------------------------------------------------------------------------------------------
+
+    @Test
+    void search_matchesName_ignoringCase() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Vila Marija", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-20", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
+        useAddress(20, 42);
+
+        assertThat(ids(search("%VILA%"))).containsExactly(10L);
+    }
+
+    /** Servis šalje uzorak bez dijakritika, pa tekst objekta mora završiti u istom obliku. */
+    @Test
+    void search_matchesName_withoutDiacritics() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Šibenik Čakovec Đakovo Žuti Ćiro", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-20", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
+        useAddress(20, 42);
+
+        assertThat(ids(search("%sibenik cakovec dakovo zuti ciro%"))).containsExactly(10L);
+    }
+
+    /** Ulica i broj dolaze iz hijerarhije, a {@code full_address} je kod verificiranih objekata prazan. */
+    @Test
+    void search_matchesDisplayedAddress_withoutFullAddress() {
+        jdbc.update("""
+                INSERT INTO str.address (id, active, county_id, municipality_id, settlement_id,
+                                         street_id, house_number_id, full_address)
+                VALUES (43, true, 91, 81, 71, 61, 52, NULL)
+                """);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+        useAddress(10, 43);
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-20", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(ids(search("%kraljevska 4, 21300 makarska%"))).containsExactly(10L);
+        assertThat(ids(search("%kraljevska 4%"))).containsExactly(10L);
+    }
+
+    @Test
+    void search_matchesCounty() {
+        jdbc.update("INSERT INTO str.county (id, name) VALUES (92, 'Istarska zupanija')");
+        jdbc.update("""
+                INSERT INTO str.address (id, active, county_id, full_address)
+                VALUES (44, true, 92, 'Rovinj')
+                """);
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-10", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+        useAddress(10, 44);
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-20", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(ids(search("%istarska%"))).containsExactly(10L);
+    }
+
+    /** Pogodak jedne jedinice vraća cijeli objekt: kapacitet i broj jedinica računaju se iz svih. */
+    @Test
+    void search_returnsEveryUnitOfObject_whenOneUnitMatches() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-vila", "Apartman A1", MIGRACIJA, "2023-01-19 13:00:00.001");
+        unit(11, 900, "uuid-vila", "Zuti apartman", MIGRACIJA, "2023-01-19 13:00:00.002");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-kuca", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
+        useAddress(20, 42);
+
+        List<FacilityListingRow> rows = search("%zuti%");
+
+        assertThat(ids(rows)).containsExactly(10L, 11L);
+        assertThat(rows.getFirst().getTotalObjects()).isEqualTo(1);
+        assertThat(rows.getFirst().getTotalUnits()).isEqualTo(2);
+    }
+
+    /** Redni brojevi i ukupno računaju se nad pogocima, pa stranice nemaju rupa. */
+    @Test
+    void search_appliesBeforePagination() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-a", "Vila A", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-b", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(902, 1);
+        unit(30, 902, "uuid-c", "Vila C", SLUZBENIK, "2024-01-01 10:00:00");
+
+        List<FacilityListingRow> first = repository.findListingByOib(OIB, CODES, "%vila%", 1, 0);
+        List<FacilityListingRow> second = repository.findListingByOib(OIB, CODES, "%vila%", 1, 1);
+
+        assertThat(ids(first)).containsExactly(10L);
+        assertThat(first.getFirst().getTotalObjects()).isEqualTo(2);
+        assertThat(ids(second)).containsExactly(30L);
+        assertThat(repository.findListingByOib(OIB, CODES, "%vila%", 1, 2)).isEmpty();
+
+        ListingTotals totals = repository.countListingByOib(OIB, CODES, "%vila%");
+        assertThat(totals.getObjects()).isEqualTo(2);
+        assertThat(totals.getUnits()).isEqualTo(2);
+    }
+
+    @Test
+    void search_treatsEscapedWildcardsLiterally() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-a", "Vila 100%", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-b", "Vila 100", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(902, 1);
+        unit(30, 902, "uuid-c", "a_b", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(903, 1);
+        unit(40, 903, "uuid-d", "axb", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(ids(search("%100!%%"))).containsExactly(10L);
+        assertThat(ids(search("%a!_b%"))).containsExactly(30L);
+    }
+
+    @Test
+    void search_emptyPatternMeansNoFilter() {
+        verifiedCase(900, 1);
+        unit(10, 900, "uuid-a", "Vila", SLUZBENIK, "2024-01-01 10:00:00");
+        verifiedCase(901, 1);
+        unit(20, 901, "uuid-b", "Kuca", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(ids(search(""))).containsExactly(10L, 20L);
+    }
+
+    @Test
+    void search_doesNotSeeObjectsOfOtherLessor() {
+        verifiedCase(900, 2);
+        unit(10, 900, "uuid-tudi", "Vila", SLUZBENIK, "2024-01-01 10:00:00");
+
+        assertThat(search("%vila%")).isEmpty();
+        assertThat(repository.countListingByOib(OIB, CODES, "%vila%").getObjects()).isZero();
+        assertThat(ids(repository.findListingByOib(OTHER_OIB, CODES, "%vila%", 20, 0))).containsExactly(10L);
+    }
+
+    /** Stari predmet objekta se ne prikazuje, pa ni njegov naziv ne smije dati pogodak. */
+    @Test
+    void search_ignoresUnitsHiddenByNewerCase() {
+        migratedCase(900, 1);
+        unit(10, 900, "uuid-a", "Stari naziv", MIGRACIJA, "2023-01-19 13:00:00");
+        migratedCase(901, 1);
+        unit(11, 901, "uuid-a", "Novi naziv", MIGRACIJA, "2023-06-19 13:00:00");
+
+        assertThat(search("%stari%")).isEmpty();
+        assertThat(ids(search("%novi%"))).containsExactly(11L);
+    }
+
+    /** Traži se broj koji popis prikazuje: stojeći iz eTurizma ili onaj koji je izdao STR. */
+    @Test
+    void search_matchesDisplayedRegistrationNumber() {
+        String eturizam = "HR990000000000000001";
+        String povucen = "HR990000000000000002";
+        String izdan = "HR990000000000000003";
+        try {
+            verifiedCase(900, 1);
+            unit(10, 900, "uuid-a", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+            setRegistrationNumber(10, eturizam);
+            verifiedCase(901, 1);
+            unit(20, 901, "uuid-b", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+            setRegistrationNumber(20, povucen);
+            strRn(povucen, "WITHDRAWN", null);
+            verifiedCase(902, 1);
+            unit(30, 902, "uuid-c", "Soba", SLUZBENIK, "2024-01-01 10:00:00");
+            strRn(izdan, "ACTIVE", "30");
+
+            assertThat(ids(search("%" + eturizam.toLowerCase() + "%"))).containsExactly(10L);
+            assertThat(search("%" + povucen + "%")).isEmpty();
+            assertThat(ids(search("%" + izdan + "%"))).containsExactly(30L);
+        } finally {
+            jdbc.update("DELETE FROM str_rn.registration_number WHERE rn LIKE 'HR9900000000000000%'");
+            jdbc.update("DELETE FROM str_rn.accommodation WHERE facility_id = '30'");
+        }
     }
 
     // -------------------------------------------------------------------------------------------
@@ -507,7 +683,7 @@ class StrFacilityListingQueryTest {
         unit(20, 901, "uuid-transfer", "Ista soba, novi vlasnik", SLUZBENIK, "2024-03-01 10:00:00");
 
         assertThat(list(OIB)).isEmpty();
-        assertThat(repository.countListingByOib(OIB, CODES).getObjects()).isZero();
+        assertThat(repository.countListingByOib(OIB, CODES, "").getObjects()).isZero();
         assertThat(ids(list(OTHER_OIB))).containsExactly(20L);
     }
 
@@ -709,7 +885,7 @@ class StrFacilityListingQueryTest {
         businessStatus(11, 1031L);
 
         assertThat(ids(list(OIB))).containsExactly(10L);
-        assertThat(repository.countListingByOib(OIB, CODES).getObjects()).isEqualTo(1);
+        assertThat(repository.countListingByOib(OIB, CODES, "").getObjects()).isEqualTo(1);
     }
 
     /** Bez poslovnog statusa se ne zna da objekt posluje, pa se ne prikazuje. */
@@ -720,7 +896,7 @@ class StrFacilityListingQueryTest {
         businessStatus(10, null);
 
         assertThat(list(OIB)).isEmpty();
-        assertThat(repository.countListingByOib(OIB, CODES).getObjects()).isZero();
+        assertThat(repository.countListingByOib(OIB, CODES, "").getObjects()).isZero();
     }
 
     /**
@@ -1071,7 +1247,7 @@ class StrFacilityListingQueryTest {
     }
 
     private List<FacilityListingRow> list(String oib) {
-        return repository.findListingByOib(oib, CODES, 20, 0);
+        return repository.findListingByOib(oib, CODES, "", 20, 0);
     }
 
     /** Predmet novog sustava s izvršnim rješenjem (dokument ima isti id kao predmet). */
@@ -1128,6 +1304,36 @@ class StrFacilityListingQueryTest {
                        CAST(? AS TIMESTAMP), NULL
                   FROM str.business_case bc WHERE bc.id = ?
                 """, id, name, systemUuid, caseId, createdBy, createdDate, caseId);
+    }
+
+    private List<FacilityListingRow> search(String pattern) {
+        return repository.findListingByOib(OIB, CODES, pattern, 20, 0);
+    }
+
+    private void useAddress(long facilityId, long addressId) {
+        jdbc.update("UPDATE str.facility SET address_id = ? WHERE id = ?", addressId, facilityId);
+    }
+
+    private void setRegistrationNumber(long facilityId, String rn) {
+        jdbc.update("UPDATE str.facility SET registration_number = ? WHERE id = ?", rn, facilityId);
+    }
+
+    /** Broj u našoj tablici; uz {@code facilityId} i smještaj preko kojeg popis nalazi izdani broj. */
+    private void strRn(String rn, String status, String facilityId) {
+        UUID accommodationId = UUID.randomUUID();
+        if (facilityId != null) {
+            jdbc.update("""
+                    INSERT INTO str_rn.accommodation
+                      (accommodation_id, facility_id, offer_type, offering, building, apartments, legalized,
+                       created_at, updated_at)
+                    VALUES (?, ?, 'OTHER', 'WHOLE', false, false, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """, accommodationId, facilityId);
+        }
+        jdbc.update("""
+                INSERT INTO str_rn.registration_number
+                  (rn, accommodation_id, status, issue_date, valid_from, created_at, updated_at)
+                VALUES (?, ?, ?, CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, rn, accommodationId, status);
     }
 
     private void businessStatus(long facilityId, Long statusId) {

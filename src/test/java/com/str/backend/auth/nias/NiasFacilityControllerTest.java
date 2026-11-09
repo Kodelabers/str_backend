@@ -200,11 +200,11 @@ class NiasFacilityControllerTest {
     void facilities_useCompanyOib_whenActingForCompany() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
-        when(facilityService.list(any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
+        when(facilityService.list(any(), any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
 
         mvc.perform(get("/api/nias/facilities")).andExpect(status().isOk());
 
-        verify(facilityService).list(eq(COMPANY_OIB), any(), any());
+        verify(facilityService).list(eq(COMPANY_OIB), any(), any(), any());
     }
 
     /** Stupac „Verificiran": popis nosi facilityVerified, a interni facilityId ne izlazi u odgovor. */
@@ -683,7 +683,7 @@ class NiasFacilityControllerTest {
     @Test
     void returnsFacilityPage() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(facilityService.list(eq(OIB), any(), any())).thenReturn(new FacilityPageResponse(
+        when(facilityService.list(eq(OIB), any(), any(), any())).thenReturn(new FacilityPageResponse(
                 List.of(new FacilityResponse("153049", "Soba 1", "FS_SOBA", "Soba", "Tri zvjezdice",
                         "Aktivan", 2, null, "Splitsko-dalmatinska", "Makarska", "Makarska",
                         "Kraljevska", "88", "21300", "Kraljevska 88", null,
@@ -703,12 +703,25 @@ class NiasFacilityControllerTest {
                 .andExpect(jsonPath("$.totalUnits").value(1));
     }
 
+    /** Pretraga ide servisu, a vlasnik je uvijek iz sesije, što god klijent poslao. */
+    @Test
+    void passesSearchToService_withOibFromSession() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(facilityService.list(any(), any(), any(), any()))
+                .thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
+
+        mvc.perform(get("/api/nias/facilities").param("q", "Vila").param("oib", "12312312316"))
+                .andExpect(status().isOk());
+
+        verify(facilityService).list(eq(OIB), any(), any(), eq("Vila"));
+    }
+
     @Test
     void rejectsFacilityList_withoutNiasSession() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.empty());
 
         mvc.perform(get("/api/nias/facilities")).andExpect(status().isUnauthorized());
-        verify(facilityService, never()).list(any(), any(), any());
+        verify(facilityService, never()).list(any(), any(), any(), any());
     }
 
     @Test
