@@ -76,7 +76,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * nastaje za svako pokretanje testa, pa u repozitoriju nema ključeva.
  */
 @ActiveProfiles("test")
-@Import({SecurityConfig.class, SdepSecurityConfig.class})
+@Import({SecurityConfig.class, SdepSecurityConfig.class, SdepPlatforms.class})
 @WebMvcTest(controllers = {SdepIntegrationController.class, SdepIntegrationApiTest.BackOfficeController.class},
             excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class)
 class SdepIntegrationApiTest {

@@ -31,4 +31,16 @@ public class OnlinePlatformEntity {
 
     @Column(name = "active", nullable = false)
     private boolean active;
+
+    /**
+     * Platforma koju je STR dodao iz predaje SDEP-a (samo na testu, {@code SdepPlatforms}). Adresa
+     * platforme nije poznata, a stupac je obavezan, pa ostaje prazna.
+     */
+    public static OnlinePlatformEntity fromSdep(String name) {
+        OnlinePlatformEntity platform = new OnlinePlatformEntity();
+        platform.name = name;
+        platform.url = "";
+        platform.active = true;
+        return platform;
+    }
 }
