@@ -1033,7 +1033,7 @@ class StrDocumentServiceTest {
                 UUID.randomUUID(), "Ana", "Anić", null, "ana@example.com", "98765432109",
                 false, null, null, null,
                 null, null, null, null, null,
-                withdrawalDeadline, false);
+                withdrawalDeadline, false, null);
     }
 
     /** Sve neobavezno je null: non-EU iznajmljivač bez OIB-a, bez naziva objekta, bez roka. */

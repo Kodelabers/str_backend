@@ -47,14 +47,16 @@ public class EOvlastenjaHttpClient implements EOvlastenjaClient {
     }
 
     @Override
-    public Zastupanje verifyRepresentation(String sesijaId, String personOib, String legalOib) {
+    public Zastupanje verifyRepresentation(String sesijaId, String personOib, String legalOib, LegalForm legalForm) {
         requireSesijaId(sesijaId);
-        EOvlastenjaRequest request = build(() -> EOvlastenjaRequest.of(sesijaId, personOib, legalOib));
+        EOvlastenjaRequest request = build(() -> EOvlastenjaRequest.of(sesijaId, personOib, legalOib,
+                legalForm.izvorReg()));
         long start = System.nanoTime();
         byte[] body = post("eovlastenja_call", permissionUrl, request, start);
         try {
-            Zastupanje result = parser.parse(body, request.id(), personOib, legalOib);
-            log.info("eovlastenja_call ok ms={} functions={}", elapsedMs(start), result.functions().size());
+            Zastupanje result = parser.parse(body, request.id(), personOib, legalOib, legalForm.izvorReg());
+            log.info("eovlastenja_call ok ms={} functions={} izvorReg={}", elapsedMs(start), result.functions().size(),
+                    legalForm.izvorReg());
             return result;
         } catch (EOvlastenjaException e) {
             log.info("eovlastenja_call rejected ms={} reason={} code={}", elapsedMs(start), e.reason(), e.code());

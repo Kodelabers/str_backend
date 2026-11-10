@@ -217,7 +217,10 @@ Kod ostaje; okolina se gasi s `APP_EOVLASTENJA_ENABLED=false`.
 - Adresa sjedišta i kontakt tvrtke (izvor?) — do tada prazno / upisuje korisnik.
 - Može li pravna osoba biti „domaćin" (GO-1)?
 - Smije li svaka funkcija iz e-Zastupanja tražiti RB (sada: da); „official id" iz stavke 2.
-- Obrt i OPG (`IZVOR_REG` 2/3).
+- Obrt i OPG (`IZVOR_REG` 2/3): od T13 se prihvaćaju (traka, popis, potpisana provjera s istim registrom;
+  `LegalForm`). Mapiranje **2 = obrt, 3 = OPG nije potvrđeno** — provjeriti na CDU-u po logu
+  `acting_subject selected ... izvorReg=` i po tome gdje FINA za njih šalje OIB subjekta. Ručni upis OIB-a
+  i dalje znači tvrtku.
 - Format `sesija_id`: prihvaća se `[A-Za-z0-9-]{1,100}`; drugi znakovi daju 503 („neispravan
   sesija_id za e-Ovlaštenja"). Provjeriti na CDU-u i po potrebi proširiti uzorak.
 

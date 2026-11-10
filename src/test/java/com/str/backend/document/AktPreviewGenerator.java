@@ -145,7 +145,8 @@ class AktPreviewGenerator {
         when(accommodation.getMaxBeds()).thenReturn(4);
 
         byte[] pdf = generator.generate(SubmissionPdfContext.of(accommodation, lessor(),
-                "Apartman", new FacilityRooms.Rooms(null, 2, null), RN,
+                "Apartman", "Objekti u kojima se pružaju ugostiteljske usluge u domaćinstvu",
+                new FacilityRooms.Rooms(null, 2, null), RN,
                 new FilingReference("334-01/26-01/55", "529-06/26-1")));
         Files.write(OUT.resolve("zahtjev.pdf"), pdf);
     }

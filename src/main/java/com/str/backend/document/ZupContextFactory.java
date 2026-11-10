@@ -151,7 +151,7 @@ public class ZupContextFactory {
         ctx.put("objekt.mjesto", optional(d.city()));
         ctx.put("objekt.zupanija", optional(d.county()));
         ctx.put("objekt.vrsta", fallback(d.accommodationTypeName()));
-        ctx.put("objekt.skupina", skupina(d.rn()));
+        ctx.put("objekt.skupina", d.accommodationGroupName() != null ? d.accommodationGroupName() : skupina(d.rn()));
         ctx.put("objekt.kapacitet", d.maxBeds() == null ? "" : String.valueOf(d.maxBeds()));
 
         LocalDate rok = rokOcitovanja(type, d);
@@ -205,10 +205,11 @@ public class ZupContextFactory {
 
     /**
      * Skupina objekta iz samog registracijskog broja: {@code HR} + županija(2) + <b>skupina(2)</b>
-     * + vrsta(2) + 12 (vidi {@link com.str.backend.domain.RegistrationNumber}). Danas se izdaje
-     * samo skupina {@code 00} (domaćinstvo), ali natpis se ne smije hardkodirati — akt bi inače
-     * tiho tvrdio domaćinstvo i za RB druge skupine. Nepoznata skupina daje vidljivu oznaku i
-     * ERROR u logu, kao nekonfigurirani property.
+     * + vrsta(2) + 12 (vidi {@link com.str.backend.domain.RegistrationNumber}) — samo kad RB nema
+     * vrstu, pa skupina nije poznata iz {@code str_rn.object_group} (T13). Iz znamenki se ne smije
+     * čitati kad je vrsta poznata: oznaka skupine za ostale ugostiteljske objekte još nije
+     * potvrđena i do tada je i ona {@code 00}, pa bi akt tvrtke tvrdio domaćinstvo. Nepoznata
+     * skupina daje vidljivu oznaku i ERROR u logu, kao nekonfigurirani property.
      */
     private String skupina(String rn) {
         if (rn == null || rn.length() < 6) {

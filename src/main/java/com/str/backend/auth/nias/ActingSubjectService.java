@@ -5,6 +5,7 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaClient;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.registries.eovlastenja.Zastupanje;
 import jakarta.servlet.http.HttpSession;
@@ -66,17 +67,30 @@ public class ActingSubjectService {
      * @throws EOvlastenjaException kad e-Ovlaštenja ne potvrde zastupanje ili je sjednica nevažeća
      */
     public ActingSubject select(HttpSession session, NiasIdentity person, String legalOib) {
+        return select(session, person, legalOib, LegalForm.TVRTKA);
+    }
+
+    /**
+     * Kao {@link #select(HttpSession, NiasIdentity, String)}, za subjekt iz zadanog registra (obrt, OPG —
+     * T13). Registar dolazi iz navigacijske trake ili popisa i nije potpisan: potpisani odgovor
+     * e-Ovlaštenja mora navoditi isti subjekt u istom registru.
+     */
+    public ActingSubject select(HttpSession session, NiasIdentity person, String legalOib, LegalForm legalForm) {
         String oib = legalOib == null ? null : legalOib.trim();
         if (!Oib.isValid(oib)) {
             throw new BusinessException("error.actingSubject.invalidOib");
         }
-        if (oib.equals(person.oib())) {
+        // Obrt i OPG često nose OIB vlasnika: tada isti OIB nije „u svoje ime" nego subjekt iz
+        // registra (T13). Za tvrtku je isti OIB i dalje pogreška korisnika.
+        if (oib.equals(person.oib()) && legalForm == LegalForm.TVRTKA) {
             throw new BusinessException("error.actingSubject.self");
         }
         rateLimiter.acquire(person.oib(), session.getId());
-        ActingSubject subject = verify(person, oib);
+        ActingSubject subject = verify(person, oib, legalForm);
         session.setAttribute(SESSION_KEY, subject.toSessionValue());
-        log.info("acting_subject selected functions={}", subject.functions().size());
+        // izvorReg u logu: mapiranje obrt = 2, OPG = 3 još se potvrđuje na CDU-u (LegalForm).
+        log.info("acting_subject selected functions={} izvorReg={}", subject.functions().size(),
+                legalForm.izvorReg());
         return subject;
     }
 
@@ -150,6 +164,7 @@ public class ActingSubjectService {
                 HashMap<String, String> company = new HashMap<>();
                 company.put("oib", c.oib());
                 company.put("naziv", c.naziv());
+                company.put("izvorReg", c.izvorReg());
                 list.add(company);
             }
             HashMap<String, Object> value = new HashMap<>();
@@ -171,7 +186,9 @@ public class ActingSubjectService {
             try {
                 List<ZastupanaTvrtka> companies = ((List<?>) map.get("companies")).stream()
                         .map(o -> (Map<?, ?>) o)
-                        .map(c -> new ZastupanaTvrtka((String) c.get("oib"), (String) c.get("naziv")))
+                        // Keš spremljen prije obrta i OPG-a nema registar — ZastupanaTvrtka ga tada čita kao tvrtku.
+                        .map(c -> new ZastupanaTvrtka((String) c.get("oib"), (String) c.get("naziv"),
+                                (String) c.get("izvorReg")))
                         .toList();
                 return Optional.of(new CachedOptions((String) map.get("personOib"),
                         Instant.parse((String) map.get("fetchedAt")), companies, (Boolean) map.get("unavailable")));
@@ -204,7 +221,7 @@ public class ActingSubjectService {
      */
     public ActingSubject reverify(HttpSession session, NiasIdentity person, ActingSubject subject) {
         try {
-            ActingSubject fresh = verify(person, subject.legalOib());
+            ActingSubject fresh = verify(person, subject.legalOib(), subject.legalForm());
             session.setAttribute(SESSION_KEY, fresh.toSessionValue());
             log.info("acting_subject reverified functions={}", fresh.functions().size());
             return fresh;
@@ -215,8 +232,8 @@ public class ActingSubjectService {
         }
     }
 
-    private ActingSubject verify(NiasIdentity person, String legalOib) {
-        Zastupanje z = eOvlastenjaClient.verifyRepresentation(person.sesijaId(), person.oib(), legalOib);
+    private ActingSubject verify(NiasIdentity person, String legalOib, LegalForm legalForm) {
+        Zastupanje z = eOvlastenjaClient.verifyRepresentation(person.sesijaId(), person.oib(), legalOib, legalForm);
         return new ActingSubject(
                 z.legalOib(),
                 z.legalName(),
@@ -224,7 +241,8 @@ public class ActingSubjectService {
                 person.oib(),
                 firstNonBlank(person.firstName(), z.personFirstName()),
                 firstNonBlank(person.lastName(), z.personLastName()),
-                Instant.now(clock));
+                Instant.now(clock),
+                legalForm);
     }
 
     private static String firstNonBlank(String a, String b) {

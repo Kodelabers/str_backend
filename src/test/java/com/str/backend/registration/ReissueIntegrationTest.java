@@ -20,6 +20,9 @@ import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeEntity;
+import com.str.backend.lookup.ObjectGroupEntity;
+import com.str.backend.lookup.ObjectGroupRepository;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
@@ -43,6 +46,7 @@ import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -79,6 +83,7 @@ class ReissueIntegrationTest {
     @Autowired private CategorizationDecisionRepository decisionRepository;
 
     @Autowired private AccommodationTypeRepository accommodationTypeRepository;
+    @Autowired private ObjectGroupRepository objectGroupRepository;
 
     @MockBean private SubjectProfileService subjectProfileService;
 
@@ -98,8 +103,11 @@ class ReissueIntegrationTest {
                     return l;
                 });
         when(countyRepository.findById(2L)).thenReturn(Optional.of(county(2L, "Splitsko-dalmatinska županija")));
+        // T13: skupina vrste mora postojati i biti dopuštena fizičkoj osobi (changeset 156).
+        objectGroupRepository.save(new ObjectGroupEntity("FT_UGOST_USL_U_DOM", "Domaćinstvo", 0,
+                Set.of(SubjectCategory.FIZICKA_OSOBA)));
         typeId = String.valueOf(accommodationTypeRepository
-                .save(new AccommodationTypeEntity("Apartman", true, "OBITELJSKI")).getTypeId());
+                .save(new AccommodationTypeEntity("Apartman", true, "FT_UGOST_USL_U_DOM")).getTypeId());
     }
 
     @Test

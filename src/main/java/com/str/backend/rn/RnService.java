@@ -18,6 +18,7 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.objection.SuspensionObjectionEntity;
 import com.str.backend.objection.SuspensionObjectionRepository;
 import com.str.backend.objection.SuspensionObjectionStatus;
@@ -100,12 +101,13 @@ public class RnService {
     private final PrilogService prilogService;
     private final RnReissueGuard reissueGuard;
     private final SuspensionObjectionRepository objectionRepository;
+    private final ObjectGroupPolicy objectGroupPolicy;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
                      AccommodationTypeRepository accommodationTypeRepository, Clock clock,
                      DocumentLabels labels, PrilogService prilogService, RnReissueGuard reissueGuard,
-                     SuspensionObjectionRepository objectionRepository) {
+                     SuspensionObjectionRepository objectionRepository, ObjectGroupPolicy objectGroupPolicy) {
         this.reissueGuard = reissueGuard;
         this.objectionRepository = objectionRepository;
         this.repository = repository;
@@ -115,6 +117,7 @@ public class RnService {
         this.clock = clock;
         this.labels = labels;
         this.prilogService = prilogService;
+        this.objectGroupPolicy = objectGroupPolicy;
     }
 
     @Transactional
@@ -132,10 +135,12 @@ public class RnService {
         int countyCode = countyCode(accommodation);
         int typeCode = accommodation.getAccommodationTypeId() != null
                 ? accommodation.getAccommodationTypeId().intValue() : 0;
+        // Oznaka skupine iz str_rn.object_group (T13); vrsta bez skupine daje 0, kao svaki RB prije.
+        int groupCode = objectGroupPolicy.rbGroupCode(accommodation.getAccommodationTypeId());
 
         LocalDate today = LocalDate.now(clock);
         for (int i = 0; i < MAX_RN_ATTEMPTS; i++) {
-            String candidate = RegistrationNumber.generate(countyCode, 0, typeCode).getValue();
+            String candidate = RegistrationNumber.generate(countyCode, groupCode, typeCode).getValue();
             if (!repository.existsByRn(candidate)) {
                 RnEntity rn = RnEntity.issue(candidate, submissionId, accommodationId, today);
                 repository.save(rn);

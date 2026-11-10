@@ -93,9 +93,18 @@ final class EOvlastenjaResponseParser {
 
     /** @param xml tijelo odgovora kako je stiglo; kodiranje određuje XML deklaracija, ne HTTP zaglavlje */
     Zastupanje parse(byte[] xml, String expectedRequestId, String expectedPersonOib, String expectedLegalOib) {
+        return parse(xml, expectedRequestId, expectedPersonOib, expectedLegalOib, LegalForm.TVRTKA.izvorReg());
+    }
+
+    /**
+     * @param expectedIzvorReg registar subjekta iz zahtjeva — odgovor mora navoditi isti subjekt u istom
+     *                         registru (tvrtka i obrt istog OIB-a nisu isti subjekt)
+     */
+    Zastupanje parse(byte[] xml, String expectedRequestId, String expectedPersonOib, String expectedLegalOib,
+                     String expectedIzvorReg) {
         Element root = verifiedRoot(xml);
         try {
-            Zastupanje z = read(root, expectedRequestId, expectedPersonOib, expectedLegalOib);
+            Zastupanje z = read(root, expectedRequestId, expectedPersonOib, expectedLegalOib, expectedIzvorReg);
             if (log.isDebugEnabled()) {
                 log.debug("eovlastenja_response_shape {}", shape(root));
             }
@@ -114,13 +123,13 @@ final class EOvlastenjaResponseParser {
     }
 
     private static Zastupanje read(Element root, String expectedRequestId, String expectedPersonOib,
-                                   String expectedLegalOib) {
+                                   String expectedLegalOib, String expectedIzvorReg) {
         requireForRequestId(root, expectedRequestId);
         failOnErrors(root);
         Element person = requirePerson(root, expectedPersonOib);
         String personOib = text(person, "OIB");
 
-        String legalName = verifySubject(root, expectedLegalOib);
+        String legalName = verifySubject(root, expectedLegalOib, expectedIzvorReg);
 
         List<Zastupanje.Funkcija> functions = functions(child(root, "Representation"));
         if (functions.isEmpty()) {
@@ -181,14 +190,15 @@ final class EOvlastenjaResponseParser {
             for (Element permission : children(permissions, "PermissionFor")) {
                 Element entityFor = child(permission, "EntityFor");
                 Element legal = entityFor != null ? child(entityFor, "Legal") : null;
-                String ips = companyIps(legal);
+                String ips = subjectIps(legal);
                 if (ips == null || !"true".equalsIgnoreCase(text(permission, "BasedOnRepresentation"))) {
                     continue;
                 }
-                if (within != null && !ips.equals(companyIps(within))) {
+                // Unutar subjekta: isti OIB u istom registru — obrt i tvrtka istog OIB-a nisu isti subjekt.
+                if (within != null && !(ips.equals(subjectIps(within)) && izvorReg(legal).equals(izvorReg(within)))) {
                     continue;
                 }
-                companies.putIfAbsent(ips, new ZastupanaTvrtka(ips, text(legal, "Name")));
+                companies.putIfAbsent(ips, new ZastupanaTvrtka(ips, text(legal, "Name"), izvorReg(legal)));
             }
         }
         if (companies.isEmpty() && !children(authorizations, "AuthorizationItem").isEmpty()) {
@@ -199,14 +209,23 @@ final class EOvlastenjaResponseParser {
         return List.copyOf(companies.values());
     }
 
-    /** OIB tvrtke iz {@code Legal}/{@code LegalPersonTo}; {@code null} kad to nije tvrtka ({@code IZVOR_REG} ≠ 1). */
-    private static String companyIps(Element legal) {
-        Element jips = legal != null ? child(legal, "Jips") : null;
-        if (jips == null || !"1".equals(text(jips, "IZVOR_REG"))) {
+    /**
+     * OIB subjekta iz {@code Legal}/{@code LegalPersonTo}; {@code null} kad registar nije onaj koji
+     * prihvaćamo (tvrtka, obrt, OPG — {@link LegalForm}; tijela i ostalo ne).
+     */
+    private static String subjectIps(Element legal) {
+        if (izvorReg(legal) == null) {
             return null;
         }
-        String ips = text(jips, "IPS");
+        String ips = text(child(legal, "Jips"), "IPS");
         return ips != null && OIB.matcher(ips).matches() ? ips : null;
+    }
+
+    /** {@code IZVOR_REG} subjekta ako ga prihvaćamo ({@link LegalForm}), inače {@code null}. */
+    private static String izvorReg(Element legal) {
+        Element jips = legal != null ? child(legal, "Jips") : null;
+        return jips == null ? null
+                : LegalForm.fromIzvorReg(text(jips, "IZVOR_REG")).map(LegalForm::izvorReg).orElse(null);
     }
 
     // ── zajedničke provjere ──────────────────────────────────────────────────
@@ -463,7 +482,7 @@ final class EOvlastenjaResponseParser {
      * Subjekt iz odgovora mora biti traženi: {@code EntityFor} (u ime koga se djeluje) i
      * {@code LegalTo} (u okviru koga), koji god je naveden. Barem jedan mora biti naveden.
      */
-    private static String verifySubject(Element root, String expectedLegalOib) {
+    private static String verifySubject(Element root, String expectedLegalOib, String expectedIzvorReg) {
         String name = null;
         int seen = 0;
         for (Element holder : new Element[]{child(root, "EntityFor"), child(root, "LegalTo")}) {
@@ -477,7 +496,7 @@ final class EOvlastenjaResponseParser {
             Element jips = child(legal, "Jips");
             String ips = jips != null ? text(jips, "IPS") : null;
             String izvor = jips != null ? text(jips, "IZVOR_REG") : null;
-            if (!expectedLegalOib.equals(ips) || !"1".equals(izvor)) {
+            if (!expectedLegalOib.equals(ips) || !expectedIzvorReg.equals(izvor)) {
                 throw failure("subjekt u odgovoru nije traženi subjekt");
             }
             if (name == null) {

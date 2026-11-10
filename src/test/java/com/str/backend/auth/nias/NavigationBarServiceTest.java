@@ -3,6 +3,7 @@ package com.str.backend.auth.nias;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -200,7 +201,7 @@ class NavigationBarServiceTest {
     void change_company_selectsThroughSignedCheck() {
         assertThat(pick(COMPANY, "1", "")).isEqualTo("ok");
 
-        verify(actingSubjectService).select(eq(session), eq(new NiasIdentity(PERSON, null, null)), eq(COMPANY));
+        verify(actingSubjectService).select(eq(session), eq(new NiasIdentity(PERSON, null, null)), eq(COMPANY), eq(LegalForm.TVRTKA));
     }
 
     @Test
@@ -211,7 +212,7 @@ class NavigationBarServiceTest {
         assertThat(change(COMPANY, "1", null, "podmetnuto")).isEqualTo("invalid");
         assertThat(change("", "", null, "AAAAAAAAAAAAAAAAAAAAAA")).isEqualTo("invalid");
 
-        verify(actingSubjectService, never()).select(any(), any(), any());
+        verify(actingSubjectService, never()).select(any(), any(), any(), any());
         verify(actingSubjectService, never()).clear(any());
     }
 
@@ -227,6 +228,14 @@ class NavigationBarServiceTest {
         assertThat(validState()).isNotEqualTo(state);
     }
 
+    /** T13: obrt i OPG često nose OIB vlasnika — s registrom 2/3 to je odabir subjekta, ne „u svoje ime". */
+    @Test
+    void change_familyFarmWithOwnersOib_isSelected() {
+        assertThat(pick(PERSON, "3", null)).isEqualTo("ok");
+        verify(actingSubjectService).select(any(), any(), eq(PERSON), eq(LegalForm.OPG));
+        assertThat(pick(PERSON, "1", null)).isEqualTo("self");
+    }
+
     @Test
     void change_self_clearsSubject() {
         assertThat(pick("", "", "")).isEqualTo("self");
@@ -234,7 +243,7 @@ class NavigationBarServiceTest {
         assertThat(pick(PERSON, null, null)).isEqualTo("self");
 
         verify(actingSubjectService, times(3)).clear(session);
-        verify(actingSubjectService, never()).select(any(), any(), any());
+        verify(actingSubjectService, never()).select(any(), any(), any(), any());
     }
 
     @Test
@@ -242,24 +251,33 @@ class NavigationBarServiceTest {
         assertThat(pick("", "", "98765432106")).isEqualTo("unsupported");
 
         verify(actingSubjectService, never()).clear(any());
-        verify(actingSubjectService, never()).select(any(), any(), any());
+        verify(actingSubjectService, never()).select(any(), any(), any(), any());
     }
 
     @Test
     void change_otherRegistry_isUnsupported() {
-        assertThat(pick(COMPANY, "2", null)).isEqualTo("unsupported");
-        verify(actingSubjectService, never()).select(any(), any(), any());
+        assertThat(pick(COMPANY, "9", null)).isEqualTo("unsupported");
+        verify(actingSubjectService, never()).select(any(), any(), any(), any());
+    }
+
+    /** T13: obrt i OPG se biraju kroz traku kao i tvrtka, uz svoj registar u potpisanoj provjeri. */
+    @Test
+    void change_craftAndFamilyFarm_selectThroughSignedCheck() {
+        assertThat(pick(COMPANY, "2", null)).isEqualTo("ok");
+        verify(actingSubjectService).select(any(), any(), eq(COMPANY), eq(LegalForm.OBRT));
+        assertThat(pick(COMPANY, "3", null)).isEqualTo("ok");
+        verify(actingSubjectService).select(any(), any(), eq(COMPANY), eq(LegalForm.OPG));
     }
 
     @Test
     void change_missingRegistry_stillGoesToSignedCheck() {
         assertThat(pick(COMPANY, null, null)).isEqualTo("ok");
-        verify(actingSubjectService).select(any(), any(), eq(COMPANY));
+        verify(actingSubjectService).select(any(), any(), eq(COMPANY), eq(LegalForm.TVRTKA));
     }
 
     @Test
     void change_mapsRejections() {
-        when(actingSubjectService.select(any(), any(), any()))
+        when(actingSubjectService.select(any(), any(), any(), any()))
                 .thenThrow(new EOvlastenjaException(EOvlastenjaException.Reason.NOT_REPRESENTATIVE, "400", "ne"))
                 .thenThrow(new EOvlastenjaException(EOvlastenjaException.Reason.SESSION, "200", "istekla"))
                 .thenThrow(new EOvlastenjaException(EOvlastenjaException.Reason.SUBJECT_NOT_FOUND, "500", "nema"));
@@ -271,7 +289,7 @@ class NavigationBarServiceTest {
 
     @Test
     void change_mapsLocalAndInfrastructureFailures() {
-        when(actingSubjectService.select(any(), any(), any()))
+        when(actingSubjectService.select(any(), any(), any(), any()))
                 .thenThrow(new BusinessException("error.actingSubject.invalidOib"))
                 .thenThrow(new ActingSubjectRateLimitException(30))
                 .thenThrow(new ExternalRegistryException("EOVLASTENJA", "nedostupno"))
@@ -290,7 +308,7 @@ class NavigationBarServiceTest {
         URI uri = service.change(request, null, COMPANY, "1", null, "x");
 
         assertThat(uri.toString()).isEqualTo(BASE + "/new-registration-number?entitySwitch=loginRequired");
-        verify(actingSubjectService, never()).select(any(), any(), any());
+        verify(actingSubjectService, never()).select(any(), any(), any(), any());
     }
 
     // ── adresa skripte samo s FINA-e ──────────────────────────────────────

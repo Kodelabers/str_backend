@@ -14,6 +14,7 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
@@ -59,7 +60,7 @@ class RegistrationServicePdfAccessTest {
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                mock(PrilogService.class), mock(VerifikacijaOutbox.class));
+                mock(PrilogService.class), mock(VerifikacijaOutbox.class), mock(ObjectGroupPolicy.class));
 
         owner = LessorEntity.create("Pero", "Perić", "Ilica", "1", "Zagreb", "Grad Zagreb", "pero@example.hr");
         owner.setLessorOib(OIB);

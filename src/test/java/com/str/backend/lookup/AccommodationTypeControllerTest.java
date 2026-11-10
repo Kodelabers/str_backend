@@ -12,6 +12,8 @@ import java.lang.reflect.Field;
 import java.util.List;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -26,6 +28,7 @@ class AccommodationTypeControllerTest {
     private MockMvc mvc;
 
     @MockBean private AccommodationTypeRepository repository;
+    @MockBean private ObjectGroupPolicy objectGroupPolicy;
 
     /**
      * Fronta se veže na {@code code}, a ne na {@code id} ili {@code name} — ID-evi se
@@ -63,6 +66,25 @@ class AccommodationTypeControllerTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].name").value("Nova vrsta"))
                 .andExpect(jsonPath("$[0].code").value(nullValue()));
+    }
+
+    /** T13: uz vrstu subjekta izbornik nudi samo vrste iz skupina koje taj subjekt smije imati. */
+    @Test
+    void accommodationTypes_filteredBySubjectCategory() throws Exception {
+        when(objectGroupPolicy.allowedTypes(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT))
+                .thenReturn(List.of(type(11L, "Hoteli", "FT_HOTEL", "FT_HOTEL")));
+
+        mvc.perform(get("/api/lookups/accommodation-types").param("kategorijaSubjekta", "OSTALI_POSLOVNI_SUBJEKT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].group").value("FT_HOTEL"));
+        verify(repository, never()).findAllByRegistrationNumberAllowedTrue();
+    }
+
+    @Test
+    void accommodationTypes_unknownSubjectCategory_isBadRequest() throws Exception {
+        mvc.perform(get("/api/lookups/accommodation-types").param("kategorijaSubjekta", "NEPOSTOJECA"))
+                .andExpect(status().isBadRequest());
     }
 
     // --- fixtures ---

@@ -14,6 +14,7 @@ import com.lowagie.text.pdf.PdfWriter;
 import com.str.backend.document.DocumentProperties;
 import com.str.backend.document.FilingReference;
 import com.str.backend.lessor.LessorEntity;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import com.str.backend.str.FacilityRooms.Rooms;
 import org.springframework.stereotype.Component;
 
@@ -117,7 +118,7 @@ public class SubmissionPdfGenerator {
             // ovdje stajao umjesto OIB-a tvrtke.
             String oib     = safe(lessor.getLessorOib());
             String naziv   = isLegal ? safe(lessor.getLegalEntityName())   : fullName(lessor);
-            String pravniOblik = isLegal ? "Pravna osoba" : "Fizička osoba";
+            String pravniOblik = pravniOblik(lessor, isLegal);
             String adresa  = safe(lessor.getStreet()) + " " + safe(lessor.getStreetNumber())
                     + ", " + safe(lessor.getPlace());
 
@@ -154,8 +155,7 @@ public class SubmissionPdfGenerator {
                     joinNonBlank(" ", ctx.postalCode(), safe(ctx.cityName()).toUpperCase()));
 
             PdfPTable objektiTop = innerTable();
-            addInnerRow(objektiTop, "Skupina objekta",
-                    "Objekti u kojima se pružaju ugostiteljske usluge u domaćinstvu");
+            addInnerRow(objektiTop, "Skupina objekta", safe(ctx.groupName()));
             addInnerRow(objektiTop, "Adresa objekta", adresaObjekta);
             addGroupRow(main, "OBJEKTI", objektiTop);
 
@@ -524,5 +524,16 @@ public class SubmissionPdfGenerator {
 
     private static String fullName(LessorEntity l) {
         return (safe(l.getFirstName()) + " " + safe(l.getLastName())).trim().toUpperCase();
+    }
+
+    /** Obrt i OPG iz e-Ovlaštenja (T13) imaju svoj naziv; ostala pravna osoba ostaje „Pravna osoba”. */
+    private static String pravniOblik(LessorEntity lessor, boolean isLegal) {
+        if (lessor.getLegalForm() == LegalForm.OPG) {
+            return "Obiteljsko poljoprivredno gospodarstvo";
+        }
+        if (lessor.getLegalForm() == LegalForm.OBRT) {
+            return "Obrt";
+        }
+        return isLegal ? "Pravna osoba" : "Fizička osoba";
     }
 }

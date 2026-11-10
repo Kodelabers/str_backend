@@ -1,6 +1,8 @@
 package com.str.backend.lessor;
 
 import com.str.backend.domain.LessorApplicationStatus;
+import com.str.backend.registries.eovlastenja.LegalForm;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -66,6 +68,14 @@ public class LessorEntity {
 
     @Column(name = "is_legal_entity_owner", nullable = false, updatable = false)
     private boolean legalEntityOwner;
+
+    /**
+     * Pravni oblik subjekta iz e-Ovlaštenja (tvrtka, obrt, OPG — T13); {@code null} za fizičku osobu i
+     * za iznajmljivače upisane prije T13. Ispisuje se kao „Pravni oblik" u PDF-u zahtjeva.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "legal_form", length = 16, updatable = false)
+    private LegalForm legalForm;
 
     @Column(name = "legal_entity_country_id", updatable = false)
     private Integer legalEntityCountryId;
@@ -217,6 +227,17 @@ public class LessorEntity {
      * @param registrationNumber    MBS iz OIB sustava; {@code null} kad ga nema
      * @param representativeAddress adresa zastupnika kao jedan tekst; {@code null} kad nije poznata
      */
+    /**
+     * Pravni oblik subjekta (T13). Pozvati <b>prije prve pohrane</b> — {@code legal_form} je
+     * {@code updatable = false}, kao i ostali podaci o pravnoj osobi.
+     */
+    public void applyLegalForm(LegalForm legalForm) {
+        if (managed) {
+            throw new IllegalStateException("applyLegalForm na već spremljenom iznajmljivaču " + lessorId);
+        }
+        this.legalForm = legalForm;
+    }
+
     public void applyNiasLegalEntity(String legalEntityName, String registrationNumber, String representativeOib,
                                      String representativeName, String representativeAddress) {
         if (managed) {

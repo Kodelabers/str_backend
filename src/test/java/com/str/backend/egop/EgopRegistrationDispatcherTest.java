@@ -15,6 +15,7 @@ import com.str.backend.email.RnIssuedMail;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.pdf.SubmissionPdfGenerator;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.rn.RnEntity;
@@ -90,7 +91,7 @@ class EgopRegistrationDispatcherTest {
         EgopRetryPolicy retryPolicy =
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2));
         dispatcher = new EgopRegistrationDispatcher(store, accommodationRepository,
-                lessorRepository, rnRepository, accommodationTypeRepository, pdfGenerator,
+                lessorRepository, rnRepository, accommodationTypeRepository, mock(ObjectGroupPolicy.class), pdfGenerator,
                 documentService, egopFilingService, retryPolicy, emailService, mailRetryStore, facilityRooms,
                 sealer);
 

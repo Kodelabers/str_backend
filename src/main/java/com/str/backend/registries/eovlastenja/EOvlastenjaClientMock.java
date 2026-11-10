@@ -23,9 +23,10 @@ public class EOvlastenjaClientMock implements EOvlastenjaClient {
     }
 
     @Override
-    public Zastupanje verifyRepresentation(String sesijaId, String personOib, String legalOib) {
+    public Zastupanje verifyRepresentation(String sesijaId, String personOib, String legalOib, LegalForm legalForm) {
         return representations.stream()
-                .filter(r -> r.personOib().equals(personOib) && r.legalOib().equals(legalOib))
+                .filter(r -> r.personOib().equals(personOib) && r.legalOib().equals(legalOib)
+                        && r.legalForm() == legalForm)
                 .findFirst()
                 .map(r -> new Zastupanje(personOib, null, null, legalOib, r.legalName(),
                         List.of(new Zastupanje.Funkcija("034", r.function() != null ? r.function() : "Direktor", "0"))))
@@ -38,7 +39,7 @@ public class EOvlastenjaClientMock implements EOvlastenjaClient {
     public List<ZastupanaTvrtka> representedCompanies(String sesijaId, String personOib) {
         return representations.stream()
                 .filter(r -> r.personOib().equals(personOib))
-                .map(r -> new ZastupanaTvrtka(r.legalOib(), r.legalName()))
+                .map(r -> new ZastupanaTvrtka(r.legalOib(), r.legalName(), r.legalForm().izvorReg()))
                 .distinct()
                 .toList();
     }

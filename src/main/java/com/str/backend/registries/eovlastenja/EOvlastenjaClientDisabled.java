@@ -11,7 +11,7 @@ import java.util.List;
 final class EOvlastenjaClientDisabled implements EOvlastenjaClient {
 
     @Override
-    public Zastupanje verifyRepresentation(String sesijaId, String personOib, String legalOib) {
+    public Zastupanje verifyRepresentation(String sesijaId, String personOib, String legalOib, LegalForm legalForm) {
         throw unavailable();
     }
 

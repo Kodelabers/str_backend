@@ -4,6 +4,7 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaClient;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.registries.eovlastenja.Zastupanje;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ class ActingSubjectServiceTest {
 
     @Test
     void select_storesVerifiedSubject() {
-        when(client.verifyRepresentation("sesija-1", PERSON, COMPANY)).thenReturn(zastupanje());
+        when(client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA)).thenReturn(zastupanje());
 
         ActingSubject s = service.select(session, IDENTITY, " " + COMPANY + " ");
 
@@ -71,11 +72,22 @@ class ActingSubjectServiceTest {
 
     @Test
     void select_rejected_storesNothing() {
-        when(client.verifyRepresentation(any(), any(), any())).thenThrow(new EOvlastenjaException(
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenThrow(new EOvlastenjaException(
                 EOvlastenjaException.Reason.NOT_REPRESENTATIVE, null, "ne"));
 
         assertThatThrownBy(() -> service.select(session, IDENTITY, COMPANY)).isInstanceOf(EOvlastenjaException.class);
         assertThat(service.current(session, PERSON)).isEmpty();
+    }
+
+    /** T13: obrt i OPG s OIB-om vlasnika nisu „u svoje ime" — o tome odlučuje registar. */
+    @Test
+    void select_craftWithOwnersOib_isVerifiedAsCraft() {
+        when(client.verifyRepresentation(any(), any(), any(), eq(LegalForm.OBRT))).thenReturn(zastupanje());
+
+        ActingSubject subject = service.select(session, IDENTITY, PERSON, LegalForm.OBRT);
+
+        assertThat(subject.legalForm()).isEqualTo(LegalForm.OBRT);
+        verify(client).verifyRepresentation(any(), eq(PERSON), eq(PERSON), eq(LegalForm.OBRT));
     }
 
     @Test
@@ -91,7 +103,7 @@ class ActingSubjectServiceTest {
     @Test
     void locallyRejectedOibs_doNotConsumeQuota() {
         ActingSubjectService strict = new ActingSubjectService(client, new ActingSubjectRateLimiter(1, 1, clock), clock);
-        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(zastupanje());
 
         assertThatThrownBy(() -> strict.select(session, IDENTITY, "12345678901")).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> strict.select(session, IDENTITY, PERSON)).isInstanceOf(BusinessException.class);
@@ -103,12 +115,12 @@ class ActingSubjectServiceTest {
     @Test
     void overQuota_isRejectedBeforeEOvlastenja() {
         ActingSubjectService strict = new ActingSubjectService(client, new ActingSubjectRateLimiter(1, 1, clock), clock);
-        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(zastupanje());
         strict.select(session, IDENTITY, COMPANY);
 
         assertThatThrownBy(() -> strict.select(session, IDENTITY, COMPANY))
                 .isInstanceOf(ActingSubjectRateLimitException.class);
-        verify(client, times(1)).verifyRepresentation(any(), any(), any());
+        verify(client, times(1)).verifyRepresentation(any(), any(), any(), any());
     }
 
     /** Popis za izbornik: sortiran po nazivu (hrvatska abeceda), bez same osobe, iz sesije 5 minuta. */
@@ -235,7 +247,7 @@ class ActingSubjectServiceTest {
     /** Subjekt odabran za jednu osobu ne vrijedi ako se u istoj sesiji pojavi druga. */
     @Test
     void current_ignoresSubjectOfAnotherPerson() {
-        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(zastupanje());
         service.select(session, IDENTITY, COMPANY);
 
         assertThat(service.current(session, "55555555551")).isEmpty();
@@ -244,9 +256,9 @@ class ActingSubjectServiceTest {
 
     @Test
     void reverify_failure_clearsSubject() {
-        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(zastupanje());
         ActingSubject s = service.select(session, IDENTITY, COMPANY);
-        when(client.verifyRepresentation(any(), any(), any())).thenThrow(new EOvlastenjaException(
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenThrow(new EOvlastenjaException(
                 EOvlastenjaException.Reason.SESSION, "200", "istekla"));
 
         assertThatThrownBy(() -> service.reverify(session, IDENTITY, s)).isInstanceOf(EOvlastenjaException.class);
@@ -266,7 +278,7 @@ class ActingSubjectServiceTest {
         try {
             assertThat(resolver.resolve(auth)).contains(PERSON);
 
-            when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+            when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(zastupanje());
             service.select(session, IDENTITY, COMPANY);
             assertThat(resolver.resolve(auth)).contains(COMPANY);
             assertThat(resolver.actingSubject(auth)).map(ActingSubject::legalOib).contains(COMPANY);
@@ -295,12 +307,12 @@ class ActingSubjectServiceTest {
             assertThat(resolver.reverifiedActingSubject(auth)).isEmpty();
             verifyNoInteractions(client);
 
-            when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+            when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(zastupanje());
             service.select(session, IDENTITY, COMPANY);
             assertThat(resolver.reverifiedActingSubject(auth)).map(ActingSubject::legalOib).contains(COMPANY);
-            verify(client, times(1)).verifyRepresentation("sesija-2", PERSON, COMPANY);
+            verify(client, times(1)).verifyRepresentation("sesija-2", PERSON, COMPANY, LegalForm.TVRTKA);
 
-            when(client.verifyRepresentation(any(), any(), any())).thenThrow(new EOvlastenjaException(
+            when(client.verifyRepresentation(any(), any(), any(), any())).thenThrow(new EOvlastenjaException(
                     EOvlastenjaException.Reason.NOT_REPRESENTATIVE, "400", "ne"));
             assertThatThrownBy(() -> resolver.reverifiedActingSubject(auth)).isInstanceOf(EOvlastenjaException.class);
             assertThat(resolver.actingSubject(auth)).isEmpty();
@@ -316,9 +328,9 @@ class ActingSubjectServiceTest {
      */
     @Test
     void afterNewLogin_reverificationUsesNewSession() {
-        when(client.verifyRepresentation(any(), any(), any())).thenReturn(zastupanje());
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(zastupanje());
         service.select(session, IDENTITY, COMPANY);                       // odabrano uz „sesija-1"
-        when(client.verifyRepresentation(eq("sesija-1"), any(), any())).thenThrow(new EOvlastenjaException(
+        when(client.verifyRepresentation(eq("sesija-1"), any(), any(), any())).thenThrow(new EOvlastenjaException(
                 EOvlastenjaException.Reason.SESSION, "203", "istekla"));
 
         Authentication newLogin = samlAuth("sesija-2");
@@ -343,5 +355,40 @@ class ActingSubjectServiceTest {
                         "prezime", List.<Object>of("Horvat"),
                         "sesija_id", List.<Object>of(sesijaId)));
         return new Saml2Authentication(principal, "<saml2p:Response/>", List.of());
+    }
+
+    /** T13: registar subjekta preživljava sesiju; sesija spremljena prije T13 nema ga i čita se kao tvrtka. */
+    @Test
+    void actingSubject_legalForm_survivesSession_andDefaultsToCompany() throws Exception {
+        ActingSubject opg = new ActingSubject(COMPANY, "OPG IVO", List.of("Nositelj"), PERSON, "Ana", "Horvat",
+                Instant.parse("2026-11-10T10:00:00Z"), LegalForm.OPG);
+        assertThat(ActingSubject.fromSessionValue(roundTrip(opg.toSessionValue())))
+                .map(ActingSubject::legalForm).contains(LegalForm.OPG);
+
+        java.util.HashMap<String, Object> legacy = new ActingSubject(COMPANY, "TVRTKA", List.of("Direktor"), PERSON,
+                "Ana", "Horvat", Instant.parse("2026-11-10T10:00:00Z")).toSessionValue();
+        legacy.remove("legalForm");
+        assertThat(ActingSubject.fromSessionValue(legacy)).map(ActingSubject::legalForm).contains(LegalForm.TVRTKA);
+    }
+
+    /** T13: popis u kešu pamti registar subjekta, da odabir s popisa pošalje pravi registar. */
+    @Test
+    void cachedOptions_keepRegistry() throws Exception {
+        ActingSubjectService.CachedOptions original = new ActingSubjectService.CachedOptions(PERSON,
+                Instant.parse("2026-11-10T10:00:00Z"), List.of(new ZastupanaTvrtka(COMPANY, "OPG IVO", "3")), false);
+
+        assertThat(ActingSubjectService.CachedOptions.fromSessionValue(roundTrip(original.toSessionValue())))
+                .hasValueSatisfying(c -> assertThat(c.companies().getFirst().legalForm()).isEqualTo(LegalForm.OPG));
+    }
+
+    /** T13: odabir OPG-a ide FINA-i s registrom OPG-a, a subjekt u sesiji ga pamti za ponovnu provjeru. */
+    @Test
+    void select_familyFarm_verifiesWithItsRegistry() {
+        when(client.verifyRepresentation(any(), any(), any(), eq(LegalForm.OPG))).thenReturn(zastupanje());
+
+        ActingSubject subject = service.select(session, IDENTITY, COMPANY, LegalForm.OPG);
+
+        assertThat(subject.legalForm()).isEqualTo(LegalForm.OPG);
+        verify(client).verifyRepresentation(any(), eq(PERSON), eq(COMPANY), eq(LegalForm.OPG));
     }
 }

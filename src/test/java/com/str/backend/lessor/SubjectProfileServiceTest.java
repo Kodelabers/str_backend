@@ -5,8 +5,10 @@ import com.str.backend.address.CountryRepository;
 import com.str.backend.address.CountyByMunicipalityResolver;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ExternalRegistryException;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -273,7 +275,7 @@ class SubjectProfileServiceTest {
                 .thenReturn(Optional.of(new LegalRepresentativeSource.Representative(OTHER_REP, "Iva", "Ivić")));
         when(legalRegistry.findPerson(OTHER_REP)).thenReturn(Optional.of(person(OTHER_REP)));
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED, LegalForm.TVRTKA);
         SubjectProfile r = service.loadLegal(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat").representative();
 
         assertThat(r.street()).isNull();
@@ -295,7 +297,7 @@ class SubjectProfileServiceTest {
                 "I".repeat(200), "P".repeat(200), null, longStreet, "1", "Osijek", "31000", null, null,
                 SubjectDataSource.OIB_REGISTAR)));
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", null);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", null, LegalForm.TVRTKA);
 
         assertThat(lessor.getStreet()).hasSize(500);
         assertThat(lessor.getStreetNumber()).hasSize(16);
@@ -312,7 +314,7 @@ class SubjectProfileServiceTest {
     void toLegalLessor_unknownRepresentativeName_isNull() {
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, null, null, ENTERED);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, null, null, ENTERED, LegalForm.TVRTKA);
 
         assertThat(lessor.getLegalRepresentativeName()).isNull();
         assertThat(lessor.getFirstName()).isEqualTo("N/A");
@@ -360,7 +362,7 @@ class SubjectProfileServiceTest {
         when(legalRegistry.findPerson(NIAS_OIB)).thenReturn(Optional.of(person(NIAS_OIB)));
         when(countyResolver.countyOf("GRAD ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat", null);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat", null, LegalForm.TVRTKA);
 
         assertThat(lessor.getLessorOib()).isEqualTo(LEGAL_OIB);
         assertThat(lessor.isLegalEntityOwner()).isTrue();
@@ -383,7 +385,7 @@ class SubjectProfileServiceTest {
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB,
-                "Ana", "Horvat", null))
+                "Ana", "Horvat", null, LegalForm.TVRTKA))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.subject.addressRequired");
     }
@@ -393,7 +395,7 @@ class SubjectProfileServiceTest {
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
         LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB,
-                "Ana", "Horvat", ENTERED);
+                "Ana", "Horvat", ENTERED, LegalForm.TVRTKA);
 
         assertThat(lessor.getStreet()).isEqualTo("Ilica");
         assertThat(lessor.getStreetNumber()).isEqualTo("1");
@@ -404,6 +406,20 @@ class SubjectProfileServiceTest {
         assertThat(lessor.getLegalRepresentativeName()).isEqualTo("Ana Horvat");
     }
 
+    /** T13: obrt i OPG nemaju broj sudskog registra, pa se MBS od njih ne traži. */
+    @Test
+    void toLegalLessor_craftAndFamilyFarm_withoutMbs() {
+        when(legalRegistry.findLegalEntity(LEGAL_OIB)).thenReturn(Optional.of(company(null)));
+        when(countyResolver.countyOf("GRAD ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
+        when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
+
+        for (LegalForm form : List.of(LegalForm.OBRT, LegalForm.OPG)) {
+            LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat",
+                    new EnteredAddress(null, null, null, null, null, null, null), form);
+            assertThat(lessor.getLegalEntityRegistrationNumber()).isNull();
+        }
+    }
+
     /** Sjedište je stiglo, MBS nije (testna tvrtka): MBS se mora upisati, upisano sjedište se ne koristi. */
     @Test
     void toLegalLessor_seatFromRegistry_mbsRequiredFromForm() {
@@ -412,11 +428,11 @@ class SubjectProfileServiceTest {
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat",
-                new EnteredAddress(null, null, null, null, null, null, null)))
+                new EnteredAddress(null, null, null, null, null, null, null), LegalForm.TVRTKA))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.subject.registrationNumberRequired");
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED, LegalForm.TVRTKA);
 
         assertThat(lessor.getStreet()).isEqualTo("ULICA CVIJETE ZUZORIĆ");
         assertThat(lessor.getLegalEntityRegistrationNumber()).isEqualTo("080123456");
@@ -430,7 +446,7 @@ class SubjectProfileServiceTest {
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
         LegalEntityProfile p = service.loadLegal(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat");
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED, LegalForm.TVRTKA);
 
         assertThat(p.seatSource()).isNull();
         assertThat(p.registrationNumber()).isEqualTo("070000001");
@@ -446,7 +462,7 @@ class SubjectProfileServiceTest {
         when(countyResolver.countyOf("GRAD ZAGREB")).thenReturn(Optional.of("Grad Zagreb"));
         when(representativeSource.findRepresentative(LEGAL_OIB, NIAS_OIB)).thenReturn(Optional.empty());
 
-        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED);
+        LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB, "Ana", "Horvat", ENTERED, LegalForm.TVRTKA);
 
         assertThat(lessor.getStreet()).isEqualTo("ULICA CVIJETE ZUZORIĆ");
         assertThat(lessor.getLegalEntityRegistrationNumber()).isEqualTo("070000001");
@@ -536,7 +552,7 @@ class SubjectProfileServiceTest {
         };
 
         assertThatThrownBy(() -> withVerifier(verifier).resolveLegalLessor(LEGAL_OIB, "T", NIAS_OIB,
-                "Ana", "Horvat", ENTERED))
+                "Ana", "Horvat", ENTERED, LegalForm.TVRTKA))
                 .isInstanceOf(com.str.backend.exception.AddressHierarchyException.class);
     }
 
@@ -574,7 +590,7 @@ class SubjectProfileServiceTest {
         croatiaInCountryTable();
 
         LessorEntity lessor = service.resolveLegalLessor(LEGAL_OIB, "TESTNA TVRTKA d.o.o.", NIAS_OIB, "Ana", "Horvat",
-                ENTERED);
+                ENTERED, LegalForm.TVRTKA);
 
         assertThat(lessor.getCountryOfResidenceId()).isEqualTo((int) CROATIA_ID);
     }

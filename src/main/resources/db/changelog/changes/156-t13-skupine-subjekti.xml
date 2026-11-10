@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        T13: što koja vrsta subjekta smije prijaviti (TuStart / MINTS):
+          - fizička osoba: vrste smještaja u domaćinstvu (4 vrste, kao i prije);
+          - OPG: vrste skupine ugostiteljskih usluga u OPG-u (8 vrsta);
+          - svi ostali poslovni subjekti (tvrtka, obrt): skupinu objekta (13 skupina) — ne vrstu.
+
+        Skupina je eTurizmova skupina objekta (str.codebook_element FT_*), pa je šifra ista kao u
+        eTurizmu. Tvrtka bira skupinu, pa za svaku od njih postoji jedan redak u accommodation_type
+        sa šifrom skupine (FT_*); fizička osoba i OPG biraju vrstu (FS_*). FT i FS šifre se ne
+        preklapaju, pa jedinstvenost accommodation_type.code (060) vrijedi i dalje.
+
+        Pravilo živi u tablicama, a ne u kodu, da se skupina ili vrsta doda bez izdanja.
+    -->
+    <changeSet id="156-object-group" author="str-backend">
+        <createTable schemaName="str_rn" tableName="object_group"
+                     remarks="Skupine objekata (eTurizam FT_*), na koje se vežu vrste smještaja">
+            <column name="code" type="VARCHAR(64)" remarks="eTurizam šifra skupine (FT_*); isto što accommodation_type.group_name">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)" remarks="Naziv skupine za obrazac i dokumente">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rb_group_code" type="SMALLINT"
+                    remarks="Oznaka skupine u registracijskom broju (HR + županija + SKUPINA + vrsta + 12)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <!--
+        Oznaka skupine u RB-u za sve je zasad 0: tako je izdan svaki dosadašnji RB, a oznake skupina
+        određuje MINTS. Kad ih potvrdi, mijenjaju se jednim UPDATE changesetom.
+    -->
+    <changeSet id="156-object-group-seed" author="str-backend">
+        <sql>
+            INSERT INTO str_rn.object_group (code, name, rb_group_code) VALUES
+              ('FT_UGOST_USL_U_DOM', 'Objekti u kojima se pružaju ugostiteljske usluge u domaćinstvu', 0),
+              ('FT_UGOST_USL_U_OPG', 'Objekti u kojima se pružaju ugostiteljske usluge u obiteljskom poljoprivrednom gospodarstvu', 0),
+              ('FT_HOTEL', 'Hoteli', 0),
+              ('FT_KAMP', 'Kampovi', 0),
+              ('FT_OST_KAT', 'Ostali objekti za smještaj koji se kategoriziraju', 0),
+              ('FT_OST_NEKAT', 'Ostali objekti za smještaj koji se ne kategoriziraju', 0),
+              ('FT_RESTORAN', 'Restorani', 0),
+              ('FT_BAR', 'Barovi', 0),
+              ('FT_CATERING', 'Catering', 0),
+              ('FT_JED_USLUGE', 'Objekti jednostavnih usluga', 0),
+              ('FT_LUKE_NAUT_TUR', 'Luka nautičkog turizma', 0),
+              ('FT_VEZ_SMJ_PLOV_OBJ', 'Objekti za pružanje usluga veza i smještaja plovnih objekata', 0),
+              ('FT_PLOVNI_OBJEKTI', 'Plovni objekti nautičkog turizma', 0),
+              ('FT_TUR_AGENCIJA', 'Turističke agencije', 0),
+              ('FT_RENT_A_CAR', 'Rent-a-car agencija', 0);
+        </sql>
+        <rollback>
+            <delete schemaName="str_rn" tableName="object_group"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="156-subject-category" author="str-backend">
+        <createTable schemaName="str_rn" tableName="subject_category"
+                     remarks="Vrste subjekta prema pravilu o skupinama objekata (T13)">
+            <column name="code" type="VARCHAR(64)" remarks="FIZICKA_OSOBA, OPG, OSTALI_POSLOVNI_SUBJEKT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <sql>
+            INSERT INTO str_rn.subject_category (code, name) VALUES
+              ('FIZICKA_OSOBA', 'Fizička osoba'),
+              ('OPG', 'Obiteljsko poljoprivredno gospodarstvo'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'Ostali poslovni subjekti');
+        </sql>
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="subject_category"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="156-subject-category-object-group" author="str-backend">
+        <createTable schemaName="str_rn" tableName="subject_category_object_group"
+                     remarks="Skupine objekata koje smije prijaviti subjekt te vrste (T13)">
+            <column name="subject_category_code" type="VARCHAR(64)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_scog_subject_category"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="subject_category"
+                             referencedColumnNames="code"/>
+            </column>
+            <column name="object_group_code" type="VARCHAR(64)">
+                <constraints nullable="false"
+                             foreignKeyName="fk_scog_object_group"
+                             referencedTableSchemaName="str_rn"
+                             referencedTableName="object_group"
+                             referencedColumnNames="code"/>
+            </column>
+        </createTable>
+        <addPrimaryKey schemaName="str_rn" tableName="subject_category_object_group"
+                       columnNames="subject_category_code, object_group_code"
+                       constraintName="pk_subject_category_object_group"/>
+        <sql>
+            INSERT INTO str_rn.subject_category_object_group (subject_category_code, object_group_code) VALUES
+              ('FIZICKA_OSOBA', 'FT_UGOST_USL_U_DOM'),
+              ('OPG', 'FT_UGOST_USL_U_OPG'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_HOTEL'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_KAMP'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_OST_KAT'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_OST_NEKAT'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_RESTORAN'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_BAR'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_CATERING'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_JED_USLUGE'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_LUKE_NAUT_TUR'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_VEZ_SMJ_PLOV_OBJ'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_PLOVNI_OBJEKTI'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_TUR_AGENCIJA'),
+              ('OSTALI_POSLOVNI_SUBJEKT', 'FT_RENT_A_CAR');
+        </sql>
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="subject_category_object_group"/>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Četiri vrste fizičke osobe pripadaju domaćinstvu. eTurizam ih vodi pod FS_SOBA… (bez _DOM),
+        iako ih njegov šifrarnik svrstava u FT_OST_KAT — za STR one su domaćinstvo, kao i prije.
+        Na dev/CDU/prod im je dosad ostala zadana vrijednost 'ostalo' (020); postavlja se po šifri
+        (060), ne po nazivu ni type_id, koji se među okolinama razlikuju.
+    -->
+    <changeSet id="156-accommodation-type-group-domacinstvo" author="str-backend">
+        <sql>
+            UPDATE str_rn.accommodation_type
+               SET group_name = 'FT_UGOST_USL_U_DOM'
+             WHERE code IN ('FS_SOBA', 'FS_APARTMAN', 'FS_STUDIO_APARTMAN', 'FS_KUCA_ZA_ODMOR');
+        </sql>
+        <rollback/>
+    </changeSet>
+
+    <!--
+        Vrste OPG-a (FS_*) i skupine ostalih poslovnih subjekata (FT_* — tvrtka bira skupinu, pa je
+        redak skupina sama). "NOT EXISTS" čini changeset ponovljivim na okolini kojoj je netko
+        šifru već dodao ručno.
+    -->
+    <changeSet id="156-accommodation-type-seed" author="str-backend">
+        <sql>
+            INSERT INTO str_rn.accommodation_type (name, registration_number_allowed, group_name, code)
+            SELECT v.name, true, v.group_name, v.code
+              FROM (VALUES
+                ('Soba', 'FT_UGOST_USL_U_OPG', 'FS_SOBA_OPG'),
+                ('Apartman', 'FT_UGOST_USL_U_OPG', 'FS_APARTMAN_OPG'),
+                ('Ruralna kuća za odmor', 'FT_UGOST_USL_U_OPG', 'FS_RURALNA_KUCA'),
+                ('Kamp', 'FT_UGOST_USL_U_OPG', 'FS_KAMP_OPG'),
+                ('Kamp odmorište', 'FT_UGOST_USL_U_OPG', 'FS_KAMP_ODMORISTE_OPG'),
+                ('Objekt za robinzonski smještaj', 'FT_UGOST_USL_U_OPG', 'FS_ROBINZONSKI_SMJ_OPG'),
+                ('Vinotočje / kušaonica', 'FT_UGOST_USL_U_OPG', 'FS_VINOTOCJE_KUS'),
+                ('Izletište', 'FT_UGOST_USL_U_OPG', 'FS_IZLETISTE'),
+                ('Hoteli', 'FT_HOTEL', 'FT_HOTEL'),
+                ('Kampovi', 'FT_KAMP', 'FT_KAMP'),
+                ('Ostali objekti za smještaj koji se kategoriziraju', 'FT_OST_KAT', 'FT_OST_KAT'),
+                ('Ostali objekti za smještaj koji se ne kategoriziraju', 'FT_OST_NEKAT', 'FT_OST_NEKAT'),
+                ('Restorani', 'FT_RESTORAN', 'FT_RESTORAN'),
+                ('Barovi', 'FT_BAR', 'FT_BAR'),
+                ('Catering', 'FT_CATERING', 'FT_CATERING'),
+                ('Objekti jednostavnih usluga', 'FT_JED_USLUGE', 'FT_JED_USLUGE'),
+                ('Luka nautičkog turizma', 'FT_LUKE_NAUT_TUR', 'FT_LUKE_NAUT_TUR'),
+                ('Objekti za pružanje usluga veza i smještaja plovnih objekata', 'FT_VEZ_SMJ_PLOV_OBJ', 'FT_VEZ_SMJ_PLOV_OBJ'),
+                ('Plovni objekti nautičkog turizma', 'FT_PLOVNI_OBJEKTI', 'FT_PLOVNI_OBJEKTI'),
+                ('Turističke agencije', 'FT_TUR_AGENCIJA', 'FT_TUR_AGENCIJA'),
+                ('Rent-a-car agencija', 'FT_RENT_A_CAR', 'FT_RENT_A_CAR')
+              ) AS v(name, group_name, code)
+             WHERE NOT EXISTS (SELECT 1 FROM str_rn.accommodation_type t WHERE t.code = v.code);
+        </sql>
+        <rollback>
+            <sql>
+                DELETE FROM str_rn.accommodation_type
+                 WHERE group_name &lt;&gt; 'FT_UGOST_USL_U_DOM'
+                   AND code IS NOT NULL
+                   AND (group_name = 'FT_UGOST_USL_U_OPG' OR code = group_name)
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Skupina vrste mora postojati u object_group. Zadana vrijednost 'ostalo' (020) nije skupina,
+        pa se uklanja: vrsta bez skupine sad pada na insertu umjesto da tiho dobije nepostojeću.
+
+        Vrsta sa skupinom koje nema u object_group (ručno dodana, izvan 060 šifri) zaustavlja
+        migraciju s porukom, umjesto da je FK sruši bez objašnjenja. Na takvoj okolini prvo treba
+        odlučiti kojoj skupini vrsta pripada.
+    -->
+    <changeSet id="156-accommodation-type-group-fk" author="str-backend">
+        <preConditions onFail="HALT"
+                       onFailMessage="str_rn.accommodation_type ima vrstu čija group_name nije u str_rn.object_group — vrsti treba odrediti skupinu (T13, docs/sql/t13-skupine-vrste-dijagnostika.sql, blok K4)">
+            <sqlCheck expectedResult="0">
+                SELECT count(*) FROM str_rn.accommodation_type t
+                 WHERE NOT EXISTS (SELECT 1 FROM str_rn.object_group g WHERE g.code = t.group_name)
+            </sqlCheck>
+        </preConditions>
+        <dropDefaultValue schemaName="str_rn" tableName="accommodation_type" columnName="group_name"/>
+        <addForeignKeyConstraint baseTableSchemaName="str_rn" baseTableName="accommodation_type"
+                                 baseColumnNames="group_name"
+                                 constraintName="fk_accommodation_type_object_group"
+                                 referencedTableSchemaName="str_rn" referencedTableName="object_group"
+                                 referencedColumnNames="code"/>
+        <rollback>
+            <dropForeignKeyConstraint baseTableSchemaName="str_rn" baseTableName="accommodation_type"
+                                      constraintName="fk_accommodation_type_object_group"/>
+            <addDefaultValue schemaName="str_rn" tableName="accommodation_type" columnName="group_name"
+                             defaultValue="ostalo"/>
+        </rollback>
+    </changeSet>
+
+    <!--
+        Pravni oblik subjekta u čije ime se djeluje (e-Ovlaštenja, IZVOR_REG): TVRTKA, OBRT ili OPG.
+        Ispisuje se u PDF-u zahtjeva ("Pravni oblik"). NULL za fizičku osobu i za iznajmljivače
+        upisane prije T13 — oni se ispisuju kao dosad.
+    -->
+    <changeSet id="156-lessor-legal-form" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="lessor">
+            <column name="legal_form" type="VARCHAR(16)" remarks="TVRTKA, OBRT ili OPG (e-Ovlaštenja); NULL za fizičku osobu"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

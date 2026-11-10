@@ -13,6 +13,8 @@ import com.str.backend.email.RnIssuedMail;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupEntity;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.pdf.SubmissionPdfContext;
 import com.str.backend.pdf.SubmissionPdfGenerator;
 import com.str.backend.rn.RnEntity;
@@ -59,6 +61,7 @@ public class EgopRegistrationDispatcher {
     private final LessorRepository lessorRepository;
     private final RnRepository rnRepository;
     private final AccommodationTypeRepository accommodationTypeRepository;
+    private final ObjectGroupPolicy objectGroupPolicy;
     private final SubmissionPdfGenerator pdfGenerator;
     private final StrDocumentService documentService;
     private final EgopFilingService egopFilingService;
@@ -73,6 +76,7 @@ public class EgopRegistrationDispatcher {
                                       LessorRepository lessorRepository,
                                       RnRepository rnRepository,
                                       AccommodationTypeRepository accommodationTypeRepository,
+                                      ObjectGroupPolicy objectGroupPolicy,
                                       SubmissionPdfGenerator pdfGenerator,
                                       StrDocumentService documentService,
                                       EgopFilingService egopFilingService,
@@ -86,6 +90,7 @@ public class EgopRegistrationDispatcher {
         this.lessorRepository = lessorRepository;
         this.rnRepository = rnRepository;
         this.accommodationTypeRepository = accommodationTypeRepository;
+        this.objectGroupPolicy = objectGroupPolicy;
         this.pdfGenerator = pdfGenerator;
         this.documentService = documentService;
         this.egopFilingService = egopFilingService;
@@ -178,6 +183,8 @@ public class EgopRegistrationDispatcher {
         // Sobe zna samo eTurizam, i to za postojeći objekt; novi ih na obrascu ne prijavljuje.
         return SubmissionPdfContext.of(accommodation, predmet.lessor(),
                 resolveTypeName(accommodation.getAccommodationTypeId()),
+                objectGroupPolicy.groupOfType(accommodation.getAccommodationTypeId())
+                        .map(ObjectGroupEntity::getName).orElse(null),
                 facilityRooms.forFacility(accommodation.getFacilityId()).orElse(null),
                 predmet.rn().getRn(), null);
     }

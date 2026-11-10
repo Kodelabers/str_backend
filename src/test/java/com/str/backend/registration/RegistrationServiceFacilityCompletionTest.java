@@ -21,6 +21,7 @@ import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
@@ -85,7 +86,7 @@ class RegistrationServiceFacilityCompletionTest {
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                mock(PrilogService.class), mock(VerifikacijaOutbox.class));
+                mock(PrilogService.class), mock(VerifikacijaOutbox.class), mock(ObjectGroupPolicy.class));
 
         when(orchestrator.execute(any(ValidationContext.class))).thenReturn(PipelineResult.passed());
         RnEntity issued = mock(RnEntity.class);
@@ -113,7 +114,9 @@ class RegistrationServiceFacilityCompletionTest {
         when(facility.getStreetName()).thenReturn("Kalalarga");
         when(facility.getHouseNumber()).thenReturn("12");
         when(facility.getPostalCode()).thenReturn("21300");
-        when(verifier.verify(eq(OIB), eq(FACILITY_ID), any())).thenReturn(Optional.of(facility));
+        when(verifier.verify(eq(OIB), eq(FACILITY_ID), any(), any())).thenReturn(Optional.of(facility));
+        // Vrstu za dopunu daje verifier (T13: vrsta ili skupina, ovisno o subjektu).
+        lenient().when(verifier.facilityType(any(), any())).thenReturn(Optional.of(type(3L)));
     }
 
     @Test

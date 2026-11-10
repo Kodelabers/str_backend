@@ -5,7 +5,9 @@ import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
-import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.AccommodationTypeEntity;
+import com.str.backend.lookup.ObjectGroupPolicy;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.FacilityClaimVerifier;
 import com.str.backend.str.StrFacilityRepository;
@@ -51,7 +53,7 @@ public class NiasFacilityService {
     static final String CHANGE_REQUEST_TYPE_CODE = "DST_Z_PROMJ_POD";
 
     private final StrFacilityRepository facilityRepository;
-    private final AccommodationTypeRepository accommodationTypeRepository;
+    private final ObjectGroupPolicy objectGroupPolicy;
     private final RnRepository rnRepository;
     private final CategorizationDecisionRepository decisionRepository;
     private final String eturizamExternalBaseUrl;
@@ -62,19 +64,24 @@ public class NiasFacilityService {
     private volatile Long changeRequestTypeId;
 
     public NiasFacilityService(StrFacilityRepository facilityRepository,
-                               AccommodationTypeRepository accommodationTypeRepository,
+                               ObjectGroupPolicy objectGroupPolicy,
                                RnRepository rnRepository,
                                CategorizationDecisionRepository decisionRepository,
                                @Value("${app.eturizam.external-base-url:}") String eturizamExternalBaseUrl) {
         this.facilityRepository = facilityRepository;
-        this.accommodationTypeRepository = accommodationTypeRepository;
+        this.objectGroupPolicy = objectGroupPolicy;
         this.rnRepository = rnRepository;
         this.decisionRepository = decisionRepository;
         this.eturizamExternalBaseUrl = eturizamExternalBaseUrl;
     }
 
     @Transactional(readOnly = true)
-    public FacilityPageResponse list(String oib, Integer page, Integer size, String q) {
+    /**
+     * @param category vrsta subjekta za koji se radi (T13): popis nosi samo objekte koje subjekt te
+     *                 vrste smije prijaviti — fizička osoba domaćinstvo, OPG svoje vrste, tvrtka i
+     *                 obrt skupine objekata
+     */
+    public FacilityPageResponse list(String oib, SubjectCategory category, Integer page, Integer size, String q) {
         int pageIndex = page == null || page < 0 ? 0 : page;
         int pageSize = size == null || size < 1 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
 
@@ -84,15 +91,16 @@ public class NiasFacilityService {
         List<FacilityResponse> temporary = temporaryDecisions(oib).stream()
                 .filter(item -> matchesSearch(item, search))
                 .toList();
-        List<String> codes = accommodationTypeRepository.findAllCodes();
+        List<String> codes = objectGroupPolicy.allowedTypeCodes(category);
 
         // Prazan popis šifara bi dao IN () — nevažeći SQL. Bez našeg šifrarnika nema ni filtra,
         // pa ostaju samo privremena rješenja. To nije normalno stanje nego neispravno popunjen
         // šifrarnik (changeset 060 popunjava code po nazivu vrste, a naziv se među okolinama
         // razlikuje), i vidi se kao prazan dashboard — zato WARN, ne tiha prazna lista.
         if (codes.isEmpty()) {
-            log.warn("accommodation_type nema ni jednu FS_* šifru — popis eTurizam objekata je prazan "
-                    + "za sve korisnike; provjeriti str_rn.accommodation_type.code na ovoj okolini");
+            log.warn("accommodation_type nema ni jednu FS_* šifru dopuštenu za {} — popis eTurizam objekata je "
+                    + "prazan za sve takve korisnike; provjeriti str_rn.accommodation_type.code i group_name na "
+                    + "ovoj okolini", category);
         }
 
         // long, pa page=999999999 ne prelije int u negativan OFFSET (Postgres bi na to pao s 500)
@@ -117,7 +125,7 @@ public class NiasFacilityService {
             eturizamUnits = totals.getUnits();
         }
 
-        List<FacilityResponse> items = new ArrayList<>(fromEturizam(rows));
+        List<FacilityResponse> items = new ArrayList<>(fromEturizam(rows, Set.copyOf(codes)));
         long objectsOnPage = rows.stream().map(FacilityListingRow::getSystemUuid).distinct().count();
 
         // Privremena rješenja dolaze iza svih eTurizam objekata: na stranicu ulaze tek kad je
@@ -173,7 +181,7 @@ public class NiasFacilityService {
      * Vlastiti objekt koji ne posluje daje 400 {@code error.facility.inactive}.
      */
     @Transactional(readOnly = true)
-    public FacilityClaimResponse claim(String oib, String facilityId) {
+    public FacilityClaimResponse claim(String oib, SubjectCategory category, String facilityId) {
         long id;
         try {
             id = Long.parseLong(facilityId.trim());
@@ -195,7 +203,12 @@ public class NiasFacilityService {
                 // nema naziv. Vratiti ga značilo bi da frontend predpopuni ime osobe u polje
                 // „naziv objekta", a polje istovremeno nije na popisu zaključanih.
                 FacilityClaimVerifier.objectName(row),
-                row.getSubtypeCode(),
+                // T13: šifra stavke koju obrazac nudi subjektu — vrsta (FS_*) za fizičku osobu i OPG,
+                // skupina (FT_*) za ostale poslovne subjekte. Bez nje obrazac vrstu ne bi predpopunio.
+                objectGroupPolicy.resolveFacilityType(FacilityClaimVerifier.knownOrNull(row.getSubtypeCode()),
+                                FacilityClaimVerifier.knownOrNull(row.getTypeCode()), category)
+                        .map(AccommodationTypeEntity::getCode)
+                        .orElse(row.getSubtypeCode()),
                 // Maksimalan broj gostiju (kreveti + pomoćni), isti račun kojim verifier
                 // zaključava i provjerava `maxBeds`.
                 FacilityClaimVerifier.maxGuests(row),
@@ -208,7 +221,10 @@ public class NiasFacilityService {
                 row.getContactEmail(),
                 row.getContactPhone(),
                 FacilityClaimVerifier.lockedFields(row),
-                FacilityClaimVerifier.isRegistrableType(row, accommodationTypeRepository),
+                // T13: objekt koji subjekt te vrste ne prijavljuje (tvrtka i objekt u domaćinstvu) blokira
+                // obrazac; predaju bi ionako odbio FacilityClaimVerifier. Nepoznatu vrstu ne blokira.
+                objectGroupPolicy.isRegistrable(FacilityClaimVerifier.knownOrNull(row.getSubtypeCode()),
+                        FacilityClaimVerifier.knownOrNull(row.getTypeCode()), category),
                 // T7: neverificirani objekt se ne preusmjerava na TuStart — njegov netočan podatak
                 // verificira nadležno tijelo. Bez adrese frontend nudi tekst neverificiranog
                 // objekta i za stariji/neusklađeni klijent. Nepoznato (null) = verificiran.
@@ -247,7 +263,12 @@ public class NiasFacilityService {
                 + "?idZahtjeva=" + requestTypeId;
     }
 
-    private List<FacilityResponse> fromEturizam(List<FacilityListingRow> rows) {
+    /**
+     * @param offeredCodes šifre koje obrazac nudi subjektu ({@link ObjectGroupPolicy#allowedTypeCodes}) —
+     *                     stavka nosi baš tu šifru, kao i claim: vrstu za fizičku osobu i OPG, skupinu
+     *                     za ostale poslovne subjekte (T13)
+     */
+    private List<FacilityResponse> fromEturizam(List<FacilityListingRow> rows, Set<String> offeredCodes) {
         if (rows.isEmpty()) {
             return List.of();
         }
@@ -263,7 +284,7 @@ public class NiasFacilityService {
             items.add(new FacilityResponse(
                     facilityId,
                     row.getName(),
-                    row.getSubtypeCode(),
+                    offeredCode(row, offeredCodes),
                     row.getSubtypeName(),
                     row.getCategoryName(),
                     row.getStatusName(),
@@ -320,6 +341,19 @@ public class NiasFacilityService {
         rnRepository.findRnsByFacilityIds(ids)
                 .forEach(row -> byFacility.put(row.getFacilityId(), row.getRn()));
         return byFacility;
+    }
+
+    /**
+     * Šifra stavke izbornika za objekt s popisa: vrsta kad je subjekt bira, inače skupina. Popis je već
+     * filtriran po istim šiframa, pa jedna od dvije postoji; bez toga ostaje vrsta iz eTurizma.
+     */
+    private static String offeredCode(FacilityListingRow row, Set<String> offeredCodes) {
+        if (row.getSubtypeCode() != null && offeredCodes.contains(row.getSubtypeCode())) {
+            return row.getSubtypeCode();
+        }
+        return row.getTypeCode() != null && offeredCodes.contains(row.getTypeCode())
+                ? row.getTypeCode()
+                : row.getSubtypeCode();
     }
 
     private List<FacilityResponse> temporaryDecisions(String oib) {

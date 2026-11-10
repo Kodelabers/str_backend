@@ -9,6 +9,9 @@ import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lookup.AccommodationTypeEntity;
+import com.str.backend.lookup.ObjectGroupEntity;
+import com.str.backend.lookup.ObjectGroupRepository;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionEntity;
@@ -32,6 +35,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +63,7 @@ class PdfLocalExportTest {
     @Autowired private ObjectMapper om;
     @Autowired private SubmissionRepository submissionRepository;
     @Autowired private AccommodationTypeRepository accommodationTypeRepository;
+    @Autowired private ObjectGroupRepository objectGroupRepository;
 
     /** Vrsta se razrješava iz baze, pa je H2 (bez Liquibase seeda) treba dobiti ovdje. */
     private String typeId;
@@ -70,8 +75,11 @@ class PdfLocalExportTest {
 
     @BeforeEach
     void setupMocks() {
+        // T13: skupina vrste mora postojati i biti dopuštena fizičkoj osobi (changeset 156).
+        objectGroupRepository.save(new ObjectGroupEntity("FT_UGOST_USL_U_DOM", "Domaćinstvo", 0,
+                Set.of(SubjectCategory.FIZICKA_OSOBA)));
         typeId = String.valueOf(accommodationTypeRepository
-                .save(new AccommodationTypeEntity("Apartman", true, "domacinstvo"))
+                .save(new AccommodationTypeEntity("Apartman", true, "FT_UGOST_USL_U_DOM"))
                 .getTypeId());
 
         LessorEntity lessor = LessorEntity.create(

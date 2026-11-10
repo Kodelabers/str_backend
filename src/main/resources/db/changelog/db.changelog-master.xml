@@ -296,4 +296,7 @@
     <!-- T12: prijedlog povlačenja RB-a (WITHDRAWAL_PROPOSED) i rok za očitovanje. -->
     <include file="db/changelog/changes/155-rn-withdrawal-proposed.xml"/>
 
+    <!-- T13: skupine objekata, vrste subjekta i koja vrsta subjekta smije koju skupinu (TuStart). -->
+    <include file="db/changelog/changes/156-t13-skupine-subjekti.xml"/>
+
 </databaseChangeLog>

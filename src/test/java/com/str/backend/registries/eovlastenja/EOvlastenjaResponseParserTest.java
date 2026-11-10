@@ -254,4 +254,25 @@ class EOvlastenjaResponseParserTest {
     private static Zastupanje parse(String xml) {
         return parser.parse(xml.getBytes(StandardCharsets.UTF_8), REQUEST_ID, PERSON_OIB, LEGAL_OIB);
     }
+
+    // ── registar subjekta (T13) ─────────────────────────────────────────────
+
+    /** OPG u potpisanom odgovoru prolazi kad je tražen OPG. */
+    @Test
+    void acceptsFamilyFarm_whenRequestedRegistryMatches() throws Exception {
+        String xml = signed(response(REQUEST_ID, PERSON_OIB, LEGAL_OIB, representation(), "")
+                .replace("<IZVOR_REG>1</IZVOR_REG>", "<IZVOR_REG>3</IZVOR_REG>"));
+
+        assertThat(parser.parse(xml.getBytes(StandardCharsets.UTF_8), REQUEST_ID, PERSON_OIB, LEGAL_OIB, "3")
+                .legalOib()).isEqualTo(LEGAL_OIB);
+    }
+
+    /** Tvrtka i OPG istog OIB-a nisu isti subjekt: odgovor za drugi registar se odbija. */
+    @Test
+    void rejects_whenRegistryDiffersFromRequested() throws Exception {
+        String xml = signed(response(REQUEST_ID, PERSON_OIB, LEGAL_OIB, representation(), ""));
+
+        assertThatThrownBy(() -> parser.parse(xml.getBytes(StandardCharsets.UTF_8), REQUEST_ID, PERSON_OIB, LEGAL_OIB, "3"))
+                .isInstanceOf(ExternalRegistryException.class);
+    }
 }

@@ -97,7 +97,8 @@ class SubmissionPdfZahtjevTest {
         LessorEntity lessor = LessorEntity.create("Ana", "Horvat", "Ilica", "1", "Zagreb", "Grad Zagreb",
                 "ana@example.com");
         lessor.setLessorOib("33333333360");
-        return textOf(generator.generate(SubmissionPdfContext.of(accommodation, lessor, "Apartman", rooms, RN, filing)));
+        return textOf(generator.generate(SubmissionPdfContext.of(accommodation, lessor, "Apartman",
+                "Objekti u kojima se pružaju ugostiteljske usluge u domaćinstvu", rooms, RN, filing)));
     }
 
     private static AccommodationEntity accommodation() {

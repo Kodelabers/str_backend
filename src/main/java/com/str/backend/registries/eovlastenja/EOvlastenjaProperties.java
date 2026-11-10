@@ -48,8 +48,21 @@ public record EOvlastenjaProperties(
     private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
     private static final int DEFAULT_READ_TIMEOUT_MS = 10_000;
 
-    /** Mock zastupanje: osoba {@code personOib} zastupa tvrtku {@code legalOib}. */
-    public record MockRepresentation(String personOib, String legalOib, String legalName, String function) {}
+    /**
+     * Mock zastupanje: osoba {@code personOib} zastupa subjekt {@code legalOib}. {@code izvorReg} je
+     * registar subjekta (1 tvrtka, 2 obrt, 3 OPG — v. {@link LegalForm}); bez njega tvrtka.
+     */
+    public record MockRepresentation(String personOib, String legalOib, String legalName, String function,
+                                     String izvorReg) {
+
+        public MockRepresentation(String personOib, String legalOib, String legalName, String function) {
+            this(personOib, legalOib, legalName, function, null);
+        }
+
+        public LegalForm legalForm() {
+            return LegalForm.fromIzvorReg(izvorReg).orElse(LegalForm.TVRTKA);
+        }
+    }
 
     /**
      * {@code GetNavigationData} je na istom {@code AuthUnionApi} kao {@code url}

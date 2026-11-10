@@ -178,7 +178,8 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     /**
      * Jedinice koje iznajmljivač {@code :oib} vidi na popisu: aktualne jedinice najnovijeg predmeta
      * svojih objekata, kojima je predmet njegov, koje posluju ({@code FBS_ACTIVE}, W-5) i koje su
-     * privatni smještaj ({@code :codes}). Stupci: {@code id, su, verificiran, bc_sv, predmet_jedinica}.
+     * dopuštene subjektu ({@code :codes} — vrsta {@code FS_*} ili skupina {@code FT_*}, T13).
+     * Stupci: {@code id, su, verificiran, bc_sv, predmet_jedinica}.
      */
     String PRIKAZ_ZA_OIB = """
             SELECT r.id, r.su, r.verificiran, r.bc_sv, r.predmet_jedinica
@@ -198,13 +199,14 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                      ON ft.id = (SELECT max(x.id) FROM str.facility_type x
                                   WHERE x.facility_id = f.id AND coalesce(x.active, true) = true)
               LEFT JOIN str.codebook_element c_sub ON c_sub.id = ft.sub_type_id
+              LEFT JOIN str.codebook_element c_typ ON c_typ.id = ft.type_id
              WHERE r.predmet_rang = 1
                AND r.bc_sv IN (SELECT sv.id
                                  FROM str.subject s
                                  JOIN str.subject_version sv ON sv.subject_id = s.id
                                 WHERE s.jips = :oib)
                AND c_st.code = 'FBS_ACTIVE'
-               AND c_sub.code IN (:codes)
+               AND (c_sub.code IN (:codes) OR c_typ.code IN (:codes))
             """;
 
     /**
@@ -454,6 +456,8 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     interface FacilityOwnershipRow {
         String getOib();
         String getSubtypeCode();
+        /** Skupina objekta ({@code FT_*}) — po njoj se razrješava objekt ostalih poslovnih subjekata (T13). */
+        String getTypeCode();
         Integer getBeds();
         /** Pomoćni kreveti ({@code CAT_BROJ_POM_KREVETA}); ulaze u maksimalan broj gostiju. */
         Integer getAuxiliaryBeds();
@@ -546,6 +550,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
     @Query(value = """
             SELECT s.jips      AS oib,
                    c_sub.code  AS subtypeCode,
+                   c_typ.code  AS typeCode,
                    f.active    AS active,
                    c_st.code   AS businessStatusCode,
                    coalesce(r.predmet_rang = 1, false) AS current,
@@ -581,6 +586,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                    ON ft.id = (SELECT max(x.id) FROM str.facility_type x
                                 WHERE x.facility_id = f.id AND coalesce(x.active, true) = true)
             LEFT JOIN str.codebook_element c_sub ON c_sub.id = ft.sub_type_id
+            LEFT JOIN str.codebook_element c_typ ON c_typ.id = ft.type_id
             LEFT JOIN str.codebook_element c_st  ON c_st.id  = f.business_status_id
             LEFT JOIN str.codebook_element c_cat ON c_cat.id = f.category_id
             LEFT JOIN str.address a

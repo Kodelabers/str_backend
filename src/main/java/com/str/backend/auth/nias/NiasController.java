@@ -8,6 +8,7 @@ import com.str.backend.categorization.CategorizationDecisionRequest;
 import com.str.backend.categorization.CategorizationDecisionResponse;
 import com.str.backend.categorization.CategorizationDecisionService;
 import com.str.backend.egop.ChangeRequestFilingService;
+import com.str.backend.exception.BusinessException;
 import com.str.backend.lessor.LessorDocumentEntity;
 import com.str.backend.lessor.LessorDocumentRepository;
 import com.str.backend.lessor.LessorEntity;
@@ -23,6 +24,7 @@ import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.objection.SuspensionObjectionRequest;
 import com.str.backend.objection.SuspensionObjectionResponse;
 import com.str.backend.objection.SuspensionObjectionService;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
@@ -125,7 +127,12 @@ public class NiasController {
     public ActingSubjectResponse selectActingSubject(@Valid @RequestBody ActingSubjectRequest body,
                                                      Authentication authentication,
                                                      HttpSession session) {
-        return ActingSubjectResponse.of(actingSubjectService.select(session, personIdentity(authentication), body.oib()));
+        LegalForm legalForm = body.izvorReg() == null || body.izvorReg().isBlank()
+                ? LegalForm.TVRTKA
+                : LegalForm.fromIzvorReg(body.izvorReg())
+                        .orElseThrow(() -> new BusinessException("error.actingSubject.unsupportedRegistry"));
+        return ActingSubjectResponse.of(actingSubjectService.select(session, personIdentity(authentication),
+                body.oib(), legalForm));
     }
 
     /**
@@ -139,7 +146,7 @@ public class NiasController {
     @GetMapping("/acting-subject/options")
     public List<ActingSubjectOption> actingSubjectOptions(Authentication authentication, HttpSession session) {
         return actingSubjectService.representedCompanies(session, personIdentity(authentication)).stream()
-                .map(c -> new ActingSubjectOption(c.oib(), c.naziv()))
+                .map(c -> new ActingSubjectOption(c.oib(), c.naziv(), c.legalForm().izvorReg()))
                 .toList();
     }
 
@@ -318,7 +325,8 @@ public class NiasController {
                                            @RequestParam(required = false) Integer size,
                                            @RequestParam(required = false) String q,
                                            Authentication authentication) {
-        return facilityService.list(resolveOib(authentication), page, size, q);
+        return facilityService.list(resolveOib(authentication),
+                effectiveOibResolver.subjectCategory(authentication), page, size, q);
     }
 
     /**
@@ -332,7 +340,8 @@ public class NiasController {
     @GetMapping("/facilities/{facilityId}")
     public FacilityClaimResponse facility(@PathVariable String facilityId,
                                           Authentication authentication) {
-        return facilityService.claim(resolveOib(authentication), facilityId);
+        return facilityService.claim(resolveOib(authentication),
+                effectiveOibResolver.subjectCategory(authentication), facilityId);
     }
 
     /**
