@@ -1,5 +1,6 @@
 package com.str.backend.registration.event;
 
+import com.str.backend.domain.RnTrigger;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import com.str.backend.str.FacilityRegistrationNumberWriteBack;
 import org.springframework.stereotype.Component;
@@ -11,6 +12,10 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * dobiti novi broj i da eTurizam ne prikazuje konačni broj kao važeći. Sluša
  * {@link RnLifecycleEvent}, koji objavljuje jedini prolaz kroz koji status smije proći, pa pokriva
  * i opoziv iznajmljivača ({@code REVOKED}) i povlačenje po službenoj dužnosti ({@code WITHDRAWN}).
+ *
+ * <p>Uvaženi prigovor na povlačenje ({@link RnTrigger#REINSTATE}, T12) broj ponovno upisuje u
+ * eTurizam ({@code str.facility.registration_number}, postojeća dopuštena iznimka): upis prolazi
+ * samo ako je polje prazno ili drži konačan broj, pa novi broj objekta nikad ne pregazi.
  */
 @Component
 public class RnWithdrawnListener {
@@ -25,6 +30,8 @@ public class RnWithdrawnListener {
     public void onLifecycleChange(RnLifecycleEvent event) {
         if (event.to().isTerminal()) {
             facilityWriteBack.clear(event.rn());
+        } else if (event.trigger() == RnTrigger.REINSTATE) {
+            facilityWriteBack.restore(event.rn());
         }
     }
 }

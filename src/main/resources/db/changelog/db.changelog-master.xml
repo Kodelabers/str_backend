@@ -293,4 +293,7 @@
     <!-- Žurna verifikacija za novi objekt uz predano rješenje: samo obavijesti županiji (vrsta retka). -->
     <include file="db/changelog/changes/154-eturizam-verifikacija-novi-objekt.xml"/>
 
+    <!-- T12: prijedlog povlačenja RB-a (WITHDRAWAL_PROPOSED) i rok za očitovanje. -->
+    <include file="db/changelog/changes/155-rn-withdrawal-proposed.xml"/>
+
 </databaseChangeLog>

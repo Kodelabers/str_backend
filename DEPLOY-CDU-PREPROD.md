@@ -413,6 +413,13 @@ S tim postavkama otvaranje oba predmeta, pismena i otprema u KP prošli su na te
    „Obavijest o opozivu registracijskog broja" biti izlazna. Dok vrste zahtjeva nema, uz posudbene
    vrste postaviti `EGOP_NAZIV_PISMENA_ZAHTJEV_OPOZIVA=Zahtjev` (inače bi ulazni zahtjev otišao
    pod fallbackom „Obavijest"); bez ičega urudžba zahtjeva pada, a obavijest o opozivu čeka iza njega.
+8. **T12 (postupak povlačenja):** tri nove izlazne vrste pismena — „Obavijest o prijedlogu povlačenja
+   registracijskog broja", „Obavijest o obustavi postupka povlačenja registracijskog broja" i
+   „Obavijest o reaktivaciji povučenog registracijskog broja" (slugovi `prijedlog-povlacenja`,
+   `obustava-povlacenja`, `reaktivacija-povlacenja`). Dok ih MINT ne unese, pokriva ih
+   `STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest` (pismeno označeno `egop_vrsta_privremena=true`).
+   Bez fallbacka ih do unosa staviti u `EGOP_AKTI_BEZ_SIFRE`, inače urudžba tih akata pada u retry.
+   Nema novih obaveznih varijabli; changeset 155 izvršava se sam pri startu.
 
 ### B5a.2 Paljenje
 

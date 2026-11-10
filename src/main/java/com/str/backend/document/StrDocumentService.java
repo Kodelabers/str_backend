@@ -146,14 +146,37 @@ public class StrDocumentService {
      */
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public String razlogAkta(StrDocumentType type, String rn, String razlog) {
-        if (razlog == null || razlogSPrijedloga(type)) {
+        if (razlog == null || razlogSPrijedloga(type)
+                || (type == StrDocumentType.POVLACENJE && povucenIstekomRoka(rn))) {
             return razlogIzTraga(type, rn);
         }
         return razlog;
     }
 
+    /**
+     * Akti čiji prijelaz uvijek nosi samo procesni okidač (istek roka, obustava), pa razlog uzimaju s
+     * prijedloga postupka. Povlačenje to radi kad je broj povučen istekom roka
+     * ({@link #povucenIstekomRoka}) — od T12 jedini način; povijesno izravno povlačenje službenika
+     * ({@code WITHDRAWAL}) nosi razlog na svom prijelazu.
+     */
     private static boolean razlogSPrijedloga(StrDocumentType type) {
-        return type == StrDocumentType.SUSPENZIJA || type == StrDocumentType.OBUSTAVA_SUSPENZIJE;
+        return type == StrDocumentType.SUSPENZIJA || type == StrDocumentType.OBUSTAVA_SUSPENZIJE
+                || type == StrDocumentType.OBUSTAVA_POVLACENJA;
+    }
+
+    /**
+     * Akti čiji prijelaz može napraviti sustav (istek roka) — tada ih potpisuje službenik koji je
+     * postupak pokrenuo prijedlogom.
+     */
+    private static boolean potpisSPrijedloga(StrDocumentType type) {
+        return razlogSPrijedloga(type) || type == StrDocumentType.POVLACENJE;
+    }
+
+    /** Je li zadnji prijelaz u WITHDRAWN povlačenje istekom roka za očitovanje (T12). */
+    private boolean povucenIstekomRoka(String rn) {
+        return zadnjiUlazak(rn, RnStatus.WITHDRAWN)
+                .map(z -> RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED.name().equals(z.getTriggerName()))
+                .orElse(false);
     }
 
     /**
@@ -169,15 +192,21 @@ public class StrDocumentService {
      * očitovanje" — procesni okidač na mjestu na kojem čl. 98. st. 3 i 5 traže materijalni razlog.
      * Zato ta dva akta razlog čitaju s prijedloga, a ostali sa svog (zadnjeg) prijelaza.
      *
+     * <p>Povlačenje je od T12 dvofazno na isti način: prijedlog i obustava povlačenja čitaju razlog s
+     * prijedloga povlačenja, a povlačenje istekom roka također (bilješka posla nije razlog). Povijesno
+     * izravno povlačenje ({@code WITHDRAWAL}, bez prijedloga) čita svoj prijelaz kao i dosad.
+     *
      * <p>Zahtjev za opoziv je podnesak stranke: dobiva samo slobodan tekst koji je iznajmljivač
      * upisao, nikad natpis okidača.
      */
     private String razlogIzTraga(StrDocumentType type, String rn) {
-        Optional<RegistrationNumberLogEntity> zapisi = razlogSPrijedloga(type)
-                ? prijedlog(rn)
-                        // Jednofazna suspenzija iz starijih podataka nema prijedlog u tragu.
-                        .or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn))
-                : logRepository.findFirstByRnOrderByOccurredAtDesc(rn);
+        Optional<RegistrationNumberLogEntity> zapisi = switch (type) {
+            // Jednofazna suspenzija iz starijih podataka nema prijedlog u tragu — tada zadnji zapis.
+            case SUSPENZIJA, OBUSTAVA_SUSPENZIJE, OBUSTAVA_POVLACENJA, PRIJEDLOG_POVLACENJA ->
+                    prijedlog(type, rn).or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn));
+            case POVLACENJE -> zapisPovlacenja(rn);
+            default -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn);
+        };
         if (zapisi.isEmpty()) {
             return null;
         }
@@ -188,6 +217,9 @@ public class StrDocumentService {
         if (type == StrDocumentType.ZAHTJEV_OPOZIVA) {
             // Podnesak stranke navodi samo njezin razlog — natpis okidača bi joj podmetnuo tekst
             // koji nije napisala.
+            return null;
+        }
+        if (zapis.getTriggerName() == null) {
             return null;
         }
         try {
@@ -204,24 +236,66 @@ public class StrDocumentService {
      * zadnji zapis traga — akt se renderira i kasnije (konačni dokument nakon urudžbe, na zahtjev).
      */
     private void dopuniDatumPrijelaza(Map<String, String> ctx, StrDocumentType type, String rn) {
-        statusPrijelaza(type)
-                .flatMap(status -> logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, status.name()))
+        zapisPrijelaza(type, rn)
                 .ifPresent(zapis -> ZupContextFactory.putDatumPrijelaza(ctx, zapis.getOccurredAt()));
     }
 
-    private static Optional<RnStatus> statusPrijelaza(StrDocumentType type) {
+    /**
+     * Zapis prijelaza koji akt izriče — za datum učinka i potpisnika. Akti koji vode u ACTIVE traže se
+     * po okidaču, jer u ACTIVE vodi više prijelaza (obustava suspenzije, reaktivacija, obustava
+     * povlačenja, uvaženi prigovor na povlačenje).
+     */
+    private Optional<RegistrationNumberLogEntity> zapisPrijelaza(StrDocumentType type, String rn) {
         return switch (type) {
-            case PRIJEDLOG_SUSPENZIJE -> Optional.of(RnStatus.SUSPENSION_PROPOSED);
-            case SUSPENZIJA -> Optional.of(RnStatus.SUSPENDED);
-            case OBUSTAVA_SUSPENZIJE, REAKTIVACIJA -> Optional.of(RnStatus.ACTIVE);
-            case POVLACENJE -> Optional.of(RnStatus.WITHDRAWN);
-            case OPOZIV, ZAHTJEV_OPOZIVA -> Optional.of(RnStatus.REVOKED);
+            case PRIJEDLOG_SUSPENZIJE -> prijedlogSuspenzije(rn);
+            case SUSPENZIJA -> zadnjiUlazak(rn, RnStatus.SUSPENDED);
+            case OBUSTAVA_SUSPENZIJE -> poOkidacu(rn, RnTrigger.REVOKE_PROPOSAL);
+            case REAKTIVACIJA -> poOkidacu(rn, RnTrigger.REACTIVATE);
+            case PRIJEDLOG_POVLACENJA -> prijedlogPovlacenja(rn);
+            case OBUSTAVA_POVLACENJA -> poOkidacu(rn, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL);
+            case REAKTIVACIJA_POVLACENJA -> poOkidacu(rn, RnTrigger.REINSTATE);
+            case POVLACENJE -> zadnjiUlazak(rn, RnStatus.WITHDRAWN);
+            case OPOZIV, ZAHTJEV_OPOZIVA -> zadnjiUlazak(rn, RnStatus.REVOKED);
             default -> Optional.empty();
         };
     }
 
-    private Optional<RegistrationNumberLogEntity> prijedlog(String rn) {
-        return logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, RnStatus.SUSPENSION_PROPOSED.name());
+    /** Zadnji prijelaz zadanim okidačem — ulazak u ACTIVE ima više okidača (obustave, reaktivacije). */
+    private Optional<RegistrationNumberLogEntity> poOkidacu(String rn, RnTrigger trigger) {
+        return logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc(rn, trigger.name());
+    }
+
+    private Optional<RegistrationNumberLogEntity> zadnjiUlazak(String rn, RnStatus status) {
+        return logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(rn, status.name());
+    }
+
+    /** Prijedlog postupka kojem akt pripada: povlačenja za akte povlačenja, inače suspenzije. */
+    private Optional<RegistrationNumberLogEntity> prijedlog(StrDocumentType type, String rn) {
+        return switch (type) {
+            case PRIJEDLOG_POVLACENJA, OBUSTAVA_POVLACENJA, POVLACENJE -> prijedlogPovlacenja(rn);
+            default -> prijedlogSuspenzije(rn);
+        };
+    }
+
+    private Optional<RegistrationNumberLogEntity> prijedlogSuspenzije(String rn) {
+        return zadnjiUlazak(rn, RnStatus.SUSPENSION_PROPOSED);
+    }
+
+    private Optional<RegistrationNumberLogEntity> prijedlogPovlacenja(String rn) {
+        return zadnjiUlazak(rn, RnStatus.WITHDRAWAL_PROPOSED);
+    }
+
+    /**
+     * Zapis s kojeg akt povlačenja čita razlog: prijelaz u WITHDRAWN, osim povlačenja istekom roka,
+     * koje razlog uzima s prijedloga povlačenja. Bez prijelaza u tragu zadnji zapis, kao i dosad.
+     */
+    private Optional<RegistrationNumberLogEntity> zapisPovlacenja(String rn) {
+        Optional<RegistrationNumberLogEntity> povlacenje = zadnjiUlazak(rn, RnStatus.WITHDRAWN);
+        if (povlacenje.isPresent()
+                && RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED.name().equals(povlacenje.get().getTriggerName())) {
+            return prijedlogPovlacenja(rn).or(() -> povlacenje);
+        }
+        return povlacenje.or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn));
     }
 
     /**
@@ -238,10 +312,13 @@ public class StrDocumentService {
         if (!type.potpisujeSluzbenik()) {
             return;
         }
-        Optional<String> oib = logRepository.findFirstByRnOrderByOccurredAtDesc(rn)
+        // Zapis prijelaza koji akt izriče, a ne zadnji zapis traga: akt se renderira i kasnije (konačni
+        // dokument nakon urudžbe, na zahtjev), kad je zadnji prijelaz već neki drugi (npr. REINSTATE).
+        Optional<String> oib = zapisPrijelaza(type, rn)
+                .or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn))
                 .flatMap(StrDocumentService::oibSluzbenika);
-        if (oib.isEmpty() && razlogSPrijedloga(type)) {
-            oib = prijedlog(rn).flatMap(StrDocumentService::oibSluzbenika);
+        if (oib.isEmpty() && potpisSPrijedloga(type)) {
+            oib = prijedlog(type, rn).flatMap(StrDocumentService::oibSluzbenika);
         }
         oib.flatMap(o -> imeSluzbenika(o, rn)).ifPresent(ime -> ZupContextFactory.putSluzbenik(ctx, ime));
     }

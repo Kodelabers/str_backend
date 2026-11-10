@@ -129,11 +129,11 @@ class PriloziUgradnjaIntegrationTest {
         assertThat(prilogRepository.findById(tudi).orElseThrow().isVezan()).isFalse();
     }
 
-    /** Istekao (obrisan noćnim čišćenjem) prilog: 404, povlačenje se ne događa. */
+    /** Istekao (obrisan noćnim čišćenjem) prilog: 404, prijedlog povlačenja (T12) se ne događa. */
     @Test
-    void withdraw_expiredAttachment_rollsBackTheAction() {
-        assertThatThrownBy(() -> rnService.withdraw(RN, WithdrawalReason.DATA_NOT_CORRECTED, null, SLUZBENIK,
-                List.of(987_654L)))
+    void proposeWithdrawal_expiredAttachment_rollsBackTheAction() {
+        assertThatThrownBy(() -> rnService.proposeWithdrawal(RN, WithdrawalReason.DATA_NOT_CORRECTED,
+                LocalDate.now().plusDays(15), null, SLUZBENIK, List.of(987_654L)))
                 .isInstanceOfSatisfying(PrilogException.class,
                         e -> assertThat(e.getCode()).isEqualTo(PrilogException.NOT_FOUND));
 

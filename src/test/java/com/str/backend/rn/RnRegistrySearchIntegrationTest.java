@@ -325,6 +325,94 @@ class RnRegistrySearchIntegrationTest {
                 .andExpect(jsonPath("$.content[0].rn").value("HR00000001"));
     }
 
+    // --- T12: prijedlog povlačenja u registru ---
+
+    /** Prijedlog povlačenja s rokom, bez statusnog stroja. */
+    private void seedWithdrawalProposed(String rn, LocalDate deadline) {
+        RnEntity e = rnRepository.findById(rn).orElseThrow();
+        e.applyStatus(RnStatus.WITHDRAWAL_PROPOSED);
+        e.setWithdrawalDeadline(deadline);
+        rnRepository.save(e);
+    }
+
+    /**
+     * Prijedlog povlačenja je za oglašavanje valjan kao prijedlog suspenzije: u view=ACTIVE je, u
+     * view=INVALID nije. Radna lista view=WITHDRAWAL_PROPOSED nosi rok povlačenja.
+     */
+    @Test
+    void withdrawalProposal_isInActiveView_andHasItsWorkList() throws Exception {
+        seedWithdrawalProposed("HR00000001", LocalDate.now().plusDays(5));
+
+        mvc.perform(get("/api/rn").param("view", "ACTIVE").param("q", "korzo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].status").value("WITHDRAWAL_PROPOSED"));
+        mvc.perform(get("/api/rn").param("view", "INVALID"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/rn").param("view", "WITHDRAWAL_PROPOSED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].withdrawalDeadline").value(LocalDate.now().plusDays(5).toString()))
+                .andExpect(jsonPath("$.content[0].prijedlogIzSuspenzije").value(false));
+    }
+
+    /**
+     * Prijedlog povlačenja iz suspenzije javno ostaje suspendiran: view=ACTIVE ga ne uključuje, INVALID ga
+     * uključuje, a radna lista WITHDRAWAL_PROPOSED ga uključuje s oznakom {@code prijedlogIzSuspenzije}.
+     */
+    @Test
+    void withdrawalProposalFromSuspended_isInvalidInRegistry() throws Exception {
+        RnEntity e = rnRepository.findById("HR00000001").orElseThrow();
+        e.applyStatus(RnStatus.SUSPENDED);
+        e.applyStatus(RnStatus.WITHDRAWAL_PROPOSED);
+        e.setWithdrawalDeadline(LocalDate.now().plusDays(5));
+        e.markWithdrawalFromSuspended();
+        rnRepository.save(e);
+
+        mvc.perform(get("/api/rn").param("view", "ACTIVE").param("q", "korzo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/rn").param("view", "INVALID").param("q", "korzo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].prijedlogIzSuspenzije").value(true));
+        mvc.perform(get("/api/rn").param("view", "WITHDRAWAL_PROPOSED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/rn").param("view", "ACTIVE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+    }
+
+    /**
+     * Rok po pogledu i trenutnom statusu: WITHDRAWAL_PROPOSED gleda rok povlačenja, SUSPENSION_PROPOSED rok
+     * suspenzije, a ALL svakom broju njegov rok.
+     */
+    @Test
+    void deadlineWithinDays_usesDeadlineOfCurrentProcedure() throws Exception {
+        seedProposedWithDeadline("HR00000001", LocalDate.now().plusDays(3));
+        seedWithdrawalProposed("HR00000002", LocalDate.now().plusDays(30));
+        seedWithdrawalProposed("HR00000003", LocalDate.now().plusDays(4));
+
+        mvc.perform(get("/api/rn").param("view", "WITHDRAWAL_PROPOSED").param("deadlineWithinDays", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000003"));
+        mvc.perform(get("/api/rn").param("view", "SUSPENSION_PROPOSED").param("deadlineWithinDays", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000001"));
+        mvc.perform(get("/api/rn").param("view", "ALL").param("deadlineWithinDays", "7").param("sort", "rn,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000001"))
+                .andExpect(jsonPath("$.content[1].rn").value("HR00000003"));
+        mvc.perform(get("/api/rn").param("view", "ALL").param("deadlineWithinDays", "60"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3));
+    }
+
     /** Bez parametra filtar ne smije ništa odsjeći. */
     @Test
     void withoutDeadlineParam_allProposedRnsAreListed() throws Exception {

@@ -366,7 +366,7 @@ public class RegistrationService {
     }
 
     /**
-     * Surfaces a still-standing (ACTIVE/SUSPENSION_PROPOSED/SUSPENDED) RN that already covers
+     * Surfaces a still-standing (ACTIVE/SUSPENSION_PROPOSED/SUSPENDED/WITHDRAWAL_PROPOSED) RN that already covers
      * this address so the FE can prompt
      * for explicit confirmation (and only then proceed). Match is on the full address tuple
      * (county + city + street + streetNumber); when OIB is known it additionally narrows to

@@ -19,4 +19,11 @@ public class RnResponse {
     private LocalDate validFrom;
     private LocalDate validTo;
     private LocalDate suspensionDeadline;
+    /** Rok za očitovanje na prijedlog povlačenja; samo u statusu WITHDRAWAL_PROPOSED (T12). */
+    private LocalDate withdrawalDeadline;
+    /**
+     * Prijedlog povlačenja pokrenut iz suspenzije (T12): broj javno ostaje suspendiran. {@code true} samo u
+     * statusu WITHDRAWAL_PROPOSED.
+     */
+    private boolean prijedlogIzSuspenzije;
 }

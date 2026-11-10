@@ -65,6 +65,48 @@ class StrDocumentTypeTest {
         assertThat(StrDocumentType.fromSlug("zahtjev-opoziva")).contains(StrDocumentType.ZAHTJEV_OPOZIVA);
     }
 
+    /**
+     * T12: akti postupka povlačenja. Akti koji vode u ACTIVE (obustava povlačenja, reaktivacija povučenog
+     * broja) biraju se po okidaču.
+     */
+    @Test
+    void withdrawalProcedure_actsFollowTransitions() {
+        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL))
+                .contains(StrDocumentType.PRIJEDLOG_POVLACENJA);
+        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL))
+                .contains(StrDocumentType.OBUSTAVA_POVLACENJA);
+        // Povijesni zapisi izravnog povlačenja i dalje daju isti akt (ponovno slanje, MailRetryJob).
+        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL))
+                .contains(StrDocumentType.POVLACENJE);
+        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED))
+                .contains(StrDocumentType.POVLACENJE);
+        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REINSTATE))
+                .contains(StrDocumentType.REAKTIVACIJA_POVLACENJA);
+        // Ostali prijelazi u te statuse zadržavaju svoje akte.
+        assertThat(StrDocumentType.forTransition(RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION))
+                .contains(StrDocumentType.PRIJEDLOG_SUSPENZIJE);
+        assertThat(StrDocumentType.forTransition(RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED))
+                .contains(StrDocumentType.SUSPENZIJA);
+        assertThat(StrDocumentType.forTransition(RnStatus.ACTIVE, RnTrigger.REACTIVATE))
+                .contains(StrDocumentType.REAKTIVACIJA);
+    }
+
+    /** Prijedlog, obustavu i povlačenje potpisuje službenik; reaktivaciju povučenog broja tijelo. */
+    @Test
+    void withdrawalProcedure_signersAndDirection() {
+        assertThat(StrDocumentType.PRIJEDLOG_POVLACENJA.potpisujeSluzbenik()).isTrue();
+        assertThat(StrDocumentType.OBUSTAVA_POVLACENJA.potpisujeSluzbenik()).isTrue();
+        assertThat(StrDocumentType.POVLACENJE.potpisujeSluzbenik()).isTrue();
+        assertThat(StrDocumentType.REAKTIVACIJA_POVLACENJA.potpisujeSluzbenik()).isFalse();
+        assertThat(StrDocumentType.PRIJEDLOG_POVLACENJA.smjer()).isEqualTo(IZLAZNO);
+        assertThat(StrDocumentType.OBUSTAVA_POVLACENJA.smjer()).isEqualTo(IZLAZNO);
+        assertThat(StrDocumentType.REAKTIVACIJA_POVLACENJA.smjer()).isEqualTo(IZLAZNO);
+        assertThat(StrDocumentType.fromSlug("prijedlog-povlacenja")).contains(StrDocumentType.PRIJEDLOG_POVLACENJA);
+        assertThat(StrDocumentType.fromSlug("obustava-povlacenja")).contains(StrDocumentType.OBUSTAVA_POVLACENJA);
+        assertThat(StrDocumentType.fromSlug("reaktivacija-povlacenja"))
+                .contains(StrDocumentType.REAKTIVACIJA_POVLACENJA);
+    }
+
     /** Svako izlazno pismeno je akt tijela — inače bi u KP otišao dokument bez pečata tijela. */
     @Test
     void everyOutgoingType_isAnActOfTheAuthority() {

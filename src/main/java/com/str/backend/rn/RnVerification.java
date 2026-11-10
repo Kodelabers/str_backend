@@ -11,10 +11,12 @@ import java.util.stream.Stream;
 
 /**
  * STR-1.4-001: provjera registracijskog broja, ista za javnu provjeru ({@link VerifyController},
- * uz captchu) i za SDEP ({@code /api/sdep/v1/verify}, uz token SDEP-a). ACTIVE i SUSPENSION_PROPOSED
- * vraćaju podatke o objektu prikladne za oglas, uz stvarni status — prijedlog suspenzije tek
- * pokreće rok za očitovanje, a broj i dalje vrijedi. SUSPENDED vraća samo status. REVOKED,
- * WITHDRAWN i nepostojeći broj izgledaju isto, {@code {valid:false}} (čl. 4. st. 5. STR Uredbe).
+ * uz captchu) i za SDEP ({@code /api/sdep/v1/verify}, uz token SDEP-a). ACTIVE, SUSPENSION_PROPOSED i
+ * WITHDRAWAL_PROPOSED (T12) vraćaju podatke o objektu prikladne za oglas, uz stvarni status — prijedlog
+ * suspenzije ili povlačenja tek pokreće rok za očitovanje, a broj i dalje vrijedi. SUSPENDED vraća samo
+ * status; isto vraća i prijedlog povlačenja pokrenut iz suspenzije ({@link RnEntity#publicStatus}), koji
+ * javno ostaje suspendiran. REVOKED, WITHDRAWN i nepostojeći broj izgledaju isto, {@code {valid:false}} (čl. 4. st. 5. STR
+ * Uredbe).
  */
 @Component
 public class RnVerification {
@@ -27,8 +29,10 @@ public class RnVerification {
 
     @Transactional(readOnly = true)
     public VerifyResponse verify(String rn) {
-        RnStatus status = rnRepository.findById(rn).map(RnEntity::getStatus).orElse(null);
-        if (status != null && status.isActiveForPublicUse()) {
+        RnEntity entity = rnRepository.findById(rn).orElse(null);
+        // Javni status: prijedlog povlačenja iz suspenzije je i dalje SUSPENDED (T12).
+        RnStatus status = entity == null ? null : entity.publicStatus();
+        if (entity != null && entity.isValidForPublicUse()) {
             return rnRepository.findPublicView(rn)
                     .map(v -> toActive(status, v))
                     .orElseGet(VerifyResponse::invalid);

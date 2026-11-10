@@ -252,7 +252,7 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
                              OR EXISTS (SELECT 1 FROM str_rn.registration_number rn
                                           JOIN str_rn.accommodation ac ON ac.accommodation_id = rn.accommodation_id
                                          WHERE ac.facility_id = cast(f.id AS varchar(64))
-                                           AND rn.status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED')
+                                           AND rn.status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'WITHDRAWAL_PROPOSED')
                                            AND lower(rn.rn) LIKE lower(:pretraga) ESCAPE '!')))
             """;
 

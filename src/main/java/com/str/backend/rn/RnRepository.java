@@ -99,6 +99,26 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             """)
     List<String> findRnsWithSuspensionDeadlineBefore(@Param("date") LocalDate date);
 
+    /** RB-ovi u prijedlogu povlačenja kojima je rok za očitovanje istekao — {@code WithdrawalDeadlineJob}. */
+    @Query("""
+            SELECT r.rn FROM RnEntity r
+            WHERE r.status = com.str.backend.domain.RnStatus.WITHDRAWAL_PROPOSED
+              AND r.withdrawalDeadline < :date
+            """)
+    List<String> findRnsWithWithdrawalDeadlineBefore(@Param("date") LocalDate date);
+
+    /**
+     * RB-ovi izdani ponovnim zahtjevom (T15) na temelju zadanog broja ({@code accommodation.previous_rn}).
+     * {@code RnService#reinstate} po njima prati lanac: uvaženi prigovor ne smije vratiti povučen broj
+     * ako je za isti objekt u međuvremenu izdan novi.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT r FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE a.previousRn = :rn
+            """)
+    List<RnEntity> findReissuesOf(@Param("rn") String rn);
+
     /** STR-1.3 retencija: konačni RB-ovi kojima je valid_to (dan opoziva/povlačenja) stariji od praga. */
     List<RnEntity> findByStatusInAndValidToBefore(Collection<RnStatus> statuses, java.time.LocalDate cutoff);
 
@@ -115,7 +135,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
      * ne retryja i ne obara izdavanje). Bez ovog upita objekt s izdanim RB-om izgledao bi kao da
      * ga nema svaki put kad je upis u tuđu shemu pao.
      *
-     * <p>Uzimaju se samo još stojeći RB-ovi; {@code REVOKED} i {@code WITHDRAWN} su konačni.
+     * <p>Uzimaju se samo još stojeći RB-ovi; {@code REVOKED} i {@code WITHDRAWN} su konačni, a
+     * {@code WITHDRAWAL_PROPOSED} je još broj objekta (rok za očitovanje teče).
      * Statusi se nabrajaju eksplicitno da novi status ne bi tiho ušao u popis.
      */
     @Transactional(readOnly = true)
@@ -125,10 +146,19 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             WHERE a.facilityId IN :facilityIds
               AND r.status IN (com.str.backend.domain.RnStatus.ACTIVE,
                                com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED,
-                               com.str.backend.domain.RnStatus.SUSPENDED)
+                               com.str.backend.domain.RnStatus.SUSPENDED,
+                               com.str.backend.domain.RnStatus.WITHDRAWAL_PROPOSED)
             ORDER BY r.issueDate
             """)
     List<FacilityRnRow> findRnsByFacilityIds(@Param("facilityIds") List<String> facilityIds);
+
+    /** RB-ovi eTurizam objekta u zadanom statusu — {@code RnService#issue} zatvara prigovore na povučene (T12). */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT r.rn FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
+            WHERE a.facilityId = :facilityId AND r.status = :status
+            """)
+    List<String> findRnsOfFacilityInStatus(@Param("facilityId") String facilityId, @Param("status") RnStatus status);
 
     /**
      * Koji su od zadanih RB-ova konačni (opozvani ili povučeni). eTurizam
@@ -158,19 +188,21 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     /** STR statistics: counts of RNs grouped by accommodation county + RN status. */
     @Transactional(readOnly = true)
     @Query("""
-            SELECT a.county AS county, r.status AS status, COUNT(r) AS count
+            SELECT a.county AS county, r.status AS status, r.withdrawalFromSuspended AS withdrawalFromSuspended,
+                   COUNT(r) AS count
             FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
-            GROUP BY a.county, r.status
+            GROUP BY a.county, r.status, r.withdrawalFromSuspended
             """)
     List<CountyStatusCount> countByCountyAndStatus();
 
     /** STR statistics: same as above but only RNs issued within the given date range (inclusive). */
     @Transactional(readOnly = true)
     @Query("""
-            SELECT a.county AS county, r.status AS status, COUNT(r) AS count
+            SELECT a.county AS county, r.status AS status, r.withdrawalFromSuspended AS withdrawalFromSuspended,
+                   COUNT(r) AS count
             FROM RnEntity r JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
             WHERE r.issueDate BETWEEN :from AND :to
-            GROUP BY a.county, r.status
+            GROUP BY a.county, r.status, r.withdrawalFromSuspended
             """)
     List<CountyStatusCount> countByCountyAndStatusBetween(@Param("from") java.time.LocalDate from,
                                                           @Param("to") java.time.LocalDate to);
@@ -191,6 +223,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     interface CountyStatusCount {
         String getCounty();
         RnStatus getStatus();
+        /** Prijedlog povlačenja pokrenut iz suspenzije (T12) — statistika ga broji kao suspendiran. */
+        Boolean getWithdrawalFromSuspended();
         long getCount();
     }
 
@@ -241,14 +275,32 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " ELSE NULL END";
 
     /**
-     * {@code SuspensionObjectionStatus}: status zadnjeg prigovora na prijedlog suspenzije /
-     * suspenziju uz RB ili {@code NULL} kad ga nema. Neobrađen je najviše jedan (changeset 145),
-     * a dva prigovora istog RB-a ne dijele trenutak predaje.
+     * {@code SuspensionObjectionStatus}: status zadnjeg prigovora u postupku koji je u tijeku, ili
+     * {@code NULL} kad ga nema. Neobrađen je najviše jedan (changeset 145), a dva prigovora istog RB-a ne
+     * dijele trenutak predaje.
+     *
+     * <p>Postupak je vezan uz zadnji ulazak u njegov prijedlog (T12): u {@code SUSPENSION_PROPOSED} i
+     * {@code SUSPENDED} to je zadnji prijelaz u {@code SUSPENSION_PROPOSED}, a u {@code WITHDRAWAL_PROPOSED}
+     * i {@code WITHDRAWN} zadnji prijelaz u {@code WITHDRAWAL_PROPOSED} — prigovor na prijedlog vrijedi i
+     * nakon isteka roka, jer tada ostaje otvoren ({@code SuspensionObjectionLifecycleListener}). Stariji
+     * zapisi bez prijedloga (jednofazna suspenzija, izravno povlačenje prije T12) mjere se od ulaska u
+     * mjeru. Prigovor iz ranijeg postupka se ne prikazuje, a u {@code ACTIVE} i {@code REVOKED} statusa nema.
      */
     String OBJECTION_STATUS =
             "(SELECT o.status FROM SuspensionObjectionEntity o WHERE o.rn = r.rn" +
             " AND o.submittedAt = (SELECT MAX(o2.submittedAt) FROM SuspensionObjectionEntity o2" +
-            " WHERE o2.rn = r.rn))";
+            " WHERE o2.rn = r.rn)" +
+            " AND o.submittedAt >= (SELECT MAX(l.occurredAt) FROM RegistrationNumberLogEntity l WHERE l.rn = r.rn" +
+            "   AND ((r.status IN (com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED," +
+            "                      com.str.backend.domain.RnStatus.SUSPENDED)" +
+            "         AND (l.toStatus = 'SUSPENSION_PROPOSED'" +
+            "              OR (l.toStatus = 'SUSPENDED' AND NOT EXISTS (SELECT 1 FROM RegistrationNumberLogEntity p" +
+            "                  WHERE p.rn = r.rn AND p.toStatus = 'SUSPENSION_PROPOSED'))))" +
+            "     OR (r.status IN (com.str.backend.domain.RnStatus.WITHDRAWAL_PROPOSED," +
+            "                      com.str.backend.domain.RnStatus.WITHDRAWN)" +
+            "         AND (l.toStatus = 'WITHDRAWAL_PROPOSED'" +
+            "              OR (l.toStatus = 'WITHDRAWN' AND NOT EXISTS (SELECT 1 FROM RegistrationNumberLogEntity w" +
+            "                  WHERE w.rn = r.rn AND w.toStatus = 'WITHDRAWAL_PROPOSED')))))))";
 
     /**
      * Ono što stupac prikazuje, kao ime {@link RegistryDecisionFilter} — filtar registra. Isto kao
@@ -308,8 +360,12 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             // `ERROR: cannot cast type bytea to date`. Ovdje cast nije ni potreban — tip se
             // zaključuje iz usporedbe `r.suspensionDeadline <= :deadlineBefore`, pa Hibernate veže
             // null kao DATE. Ne vraćati CAST.
-            " AND (:deadlineBefore IS NULL OR (r.suspensionDeadline IS NOT NULL" +
-            "      AND r.suspensionDeadline <= :deadlineBefore))" +
+            // Rok trenutnog postupka (T12): svaki rok postoji samo u svom prijedlogu (RnEntity.applyStatus
+            // briše ga izvan njega), pa je dovoljno pitati oba — SUSPENSION_PROPOSED ima samo
+            // suspensionDeadline, WITHDRAWAL_PROPOSED samo withdrawalDeadline.
+            " AND (:deadlineBefore IS NULL" +
+            "      OR (r.suspensionDeadline IS NOT NULL AND r.suspensionDeadline <= :deadlineBefore)" +
+            "      OR (r.withdrawalDeadline IS NOT NULL AND r.withdrawalDeadline <= :deadlineBefore))" +
             " AND (CAST(:decision AS string) IS NULL OR " + CATEGORIZATION_SHOWN + " = CAST(:decision AS string))";
 
     /**
@@ -331,7 +387,15 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId" +
             " LEFT JOIN LessorEntity l ON l.lessorId =" +
             "     (SELECT s.lessorId FROM SubmissionEntity s WHERE s.submissionId = r.submissionId)" +
-            " WHERE r.status IN :statuses";
+            // Prijedlog povlačenja iz suspenzije javno je suspendiran (T12): pogled valjanih ga
+            // isključuje, pogled nevaljanih ga dodaje (RnRegistryView#validity).
+            " WHERE (r.status IN :statuses" +
+            "        OR (CAST(:validity AS string) = 'INVALID'" +
+            "            AND r.status = com.str.backend.domain.RnStatus.WITHDRAWAL_PROPOSED" +
+            "            AND r.withdrawalFromSuspended = true))" +
+            "   AND (CAST(:validity AS string) IS NULL OR CAST(:validity AS string) <> 'VALID'" +
+            "        OR r.status <> com.str.backend.domain.RnStatus.WITHDRAWAL_PROPOSED" +
+            "        OR r.withdrawalFromSuspended = false)";
 
     @Transactional(readOnly = true)
     @Query(value = "SELECT new com.str.backend.rn.dto.RnSummaryDto("
@@ -339,11 +403,13 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " a.accommodationId, a.county, a.city, a.street, a.streetNumber,"
             + " a.name, t.name,"
             + " l.lessorId, l.firstName, l.lastName, l.legalEntityName,"
-            + " a.facilityId, " + CATEGORIZATION_REQUIRED + ", " + CATEGORIZATION_STATUS + ")"
+            + " a.facilityId, " + CATEGORIZATION_REQUIRED + ", " + CATEGORIZATION_STATUS + ","
+            + " r.withdrawalDeadline, r.withdrawalFromSuspended)"
             + RN_FROM + RN_TOKENS + RN_FILTERS + RN_VERIFIED_FILTER,
             countQuery = "SELECT COUNT(r)" + RN_FROM + RN_TOKENS + RN_FILTERS + RN_VERIFIED_FILTER)
     Page<RnSummaryDto> searchRegistry(
             @Param("statuses") List<RnStatus> statuses,
+            @Param("validity") String validity,
             @Param("tok0") String tok0, @Param("tok1") String tok1, @Param("tok2") String tok2,
             @Param("tok3") String tok3, @Param("tok4") String tok4, @Param("tok5") String tok5,
             @Param("tok6") String tok6, @Param("tok7") String tok7, @Param("tok8") String tok8,
@@ -374,6 +440,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " AND a.facilityId IS NOT NULL")
     List<String> findRegistryFacilityIds(
             @Param("statuses") List<RnStatus> statuses,
+            @Param("validity") String validity,
             @Param("tok0") String tok0, @Param("tok1") String tok1, @Param("tok2") String tok2,
             @Param("tok3") String tok3, @Param("tok4") String tok4, @Param("tok5") String tok5,
             @Param("tok6") String tok6, @Param("tok7") String tok7, @Param("tok8") String tok8,
@@ -402,7 +469,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
                 l.lessorId, l.firstName, l.lastName, l.legalEntityName, l.email, l.lessorOib,
                 l.legalEntityOwner, c.name, l.legalEntityCity, l.legalEntityRegistrationNumber,
                 l.representativeOib, l.legalRepresentativeName,
-                l.representativeEmail, l.representativePhone, l.representativeAddress
+                l.representativeEmail, l.representativePhone, l.representativeAddress,
+                r.withdrawalDeadline, r.withdrawalFromSuspended
             )
             FROM RnEntity r
             JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
@@ -466,7 +534,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " " + CATEGORIZATION_REQUIRED + ","
             + " " + CATEGORIZATION_STATUS + ","
             + " " + OBJECTION_STATUS + ","
-            + " a.facilityId)"
+            + " a.facilityId, r.withdrawalFromSuspended)"
             + " FROM RnEntity r"
             + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
             + " LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId"
@@ -514,7 +582,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " " + CATEGORIZATION_REQUIRED + ","
             + " " + CATEGORIZATION_STATUS + ","
             + " " + OBJECTION_STATUS + ","
-            + " a.facilityId)"
+            + " a.facilityId, r.withdrawalFromSuspended)"
             + " FROM RnEntity r"
             + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
             + " LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId"
@@ -524,8 +592,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " ORDER BY r.issueDate DESC")
     List<LessorRnSummaryDto> findByLessorOib(@Param("oib") String oib);
 
-    /** Duplicate-location check: is there a still-standing (ACTIVE, SUSPENSION_PROPOSED or
-     *  SUSPENDED) RN for an accommodation
+    /** Duplicate-location check: is there a still-standing (ACTIVE, SUSPENSION_PROPOSED,
+     *  SUSPENDED or WITHDRAWAL_PROPOSED) RN for an accommodation
      *  on this exact address (county + city + street + streetNumber, case- and whitespace-
      *  insensitive), optionally filtered to a specific lessor by OIB? When {@code oib} is
      *  null the address match alone is enough to surface a conflict; when set, the lessor
@@ -539,7 +607,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             LEFT JOIN LessorEntity l ON l.lessorId = s.lessorId
             WHERE r.status IN (com.str.backend.domain.RnStatus.ACTIVE,
                                com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED,
-                               com.str.backend.domain.RnStatus.SUSPENDED)
+                               com.str.backend.domain.RnStatus.SUSPENDED,
+                               com.str.backend.domain.RnStatus.WITHDRAWAL_PROPOSED)
               AND LOWER(TRIM(a.county)) = LOWER(TRIM(:county))
               AND LOWER(TRIM(a.city)) = LOWER(TRIM(:city))
               AND LOWER(TRIM(a.street)) = LOWER(TRIM(:street))
@@ -553,4 +622,35 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("street") String street,
             @Param("streetNumber") String streetNumber,
             @Param("oib") String oib);
+
+    /**
+     * T12: drugi još važeći broj istog iznajmljivača na istoj adresi kao broj {@code rn}. Adresa je ista
+     * kao kod {@link #findActiveOrSuspendedRnByAddressAndOib} i ne razlikuje stanove u zgradi, pa se
+     * uspoređuje samo s brojevima istog iznajmljivača: po OIB-u, a non-EU iznajmljivač (bez OIB-a) po
+     * svom zapisu. Broj susjednog apartmana drugog vlasnika tako ne blokira prigovor na povlačenje.
+     */
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT o.rn FROM RnEntity me
+            JOIN AccommodationEntity ma ON ma.accommodationId = me.accommodationId
+            JOIN SubmissionEntity ms ON ms.submissionId = me.submissionId
+            JOIN LessorEntity ml ON ml.lessorId = ms.lessorId,
+            RnEntity o
+            JOIN AccommodationEntity oa ON oa.accommodationId = o.accommodationId
+            JOIN SubmissionEntity os ON os.submissionId = o.submissionId
+            JOIN LessorEntity ol ON ol.lessorId = os.lessorId
+            WHERE me.rn = :rn
+              AND o.rn <> me.rn
+              AND o.status IN (com.str.backend.domain.RnStatus.ACTIVE,
+                               com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED,
+                               com.str.backend.domain.RnStatus.SUSPENDED,
+                               com.str.backend.domain.RnStatus.WITHDRAWAL_PROPOSED)
+              AND LOWER(TRIM(oa.county)) = LOWER(TRIM(ma.county))
+              AND LOWER(TRIM(oa.city)) = LOWER(TRIM(ma.city))
+              AND LOWER(TRIM(oa.street)) = LOWER(TRIM(ma.street))
+              AND LOWER(TRIM(oa.streetNumber)) = LOWER(TRIM(ma.streetNumber))
+              AND ((COALESCE(TRIM(ml.lessorOib), '') <> '' AND ol.lessorOib = ml.lessorOib)
+                   OR (COALESCE(TRIM(ml.lessorOib), '') = '' AND ol.lessorId = ml.lessorId))
+            """)
+    List<String> findStandingRnsOfSameLessorAtSameAddress(@Param("rn") String rn);
 }

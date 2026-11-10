@@ -15,6 +15,7 @@ import com.str.backend.registration.RnOwner;
 import com.str.backend.rn.RegistrationNumberLogEntity;
 import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnEntity;
+import com.str.backend.rn.RnReissueGuard;
 import com.str.backend.rn.RnRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -30,11 +31,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Predaja prigovora na prijedlog suspenzije ili na suspenziju RB-a. Iznajmljivač predaje samo
- * dokument; zapis čeka službenika ({@link SuspensionObjectionAdminService}). Kao i kod rješenja o
- * kategorizaciji, predaja ne mijenja status RB-a, ne ide u eGOP i ne šalje email — a ni rok za
- * očitovanje ne zaustavlja: ako službenik ne odluči na vrijeme, RB po roku prelazi u suspenziju,
- * a prigovor ostaje otvoren.
+ * Predaja prigovora na prijedlog suspenzije, suspenziju, prijedlog povlačenja ili povlačenje RB-a.
+ * Iznajmljivač predaje samo dokument; zapis čeka službenika ({@link SuspensionObjectionAdminService}).
+ * Kao i kod rješenja o kategorizaciji, predaja ne mijenja status RB-a, ne ide u eGOP i ne šalje email.
+ * Rok za očitovanje ne zaustavlja, osim prigovora predanog u roku: njega noćni posao
+ * ({@code SuspensionDeadlineJob}, {@code WithdrawalDeadlineJob}) čeka da službenik odluči.
  */
 @Service
 public class SuspensionObjectionService {
@@ -51,21 +52,28 @@ public class SuspensionObjectionService {
     static final String SUBMITTED_OBJECTION_INDEX = "uq_suspension_objection_rn_submitted";
     private static final String SQLSTATE_UNIQUE_VIOLATION = "23505";
 
-    /** Statusi RB-a na koje se prigovara; izvan njih prigovor nema predmeta. */
-    public static final Set<RnStatus> OBJECTION_ALLOWED_RN_STATUSES =
-            EnumSet.of(RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED);
+    /**
+     * Statusi RB-a na koje se prigovara; izvan njih prigovor nema predmeta. Uz prijedlog (suspenzije
+     * ili povlačenja) iznajmljivač ga vidi kao „očitovanje", a službenik, akti i eGOP i dalje kao
+     * prigovor (T12). Prigovor na povučen broj nema roka.
+     */
+    public static final Set<RnStatus> OBJECTION_ALLOWED_RN_STATUSES = EnumSet.of(
+            RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED, RnStatus.WITHDRAWAL_PROPOSED, RnStatus.WITHDRAWN);
 
     private final SuspensionObjectionRepository repository;
     private final RnRepository rnRepository;
     private final RegistrationNumberLogRepository rnLogRepository;
     private final LessorRepository lessorRepository;
     private final PrilogService prilogService;
+    private final RnReissueGuard reissueGuard;
 
     public SuspensionObjectionService(SuspensionObjectionRepository repository,
                                       RnRepository rnRepository,
                                       RegistrationNumberLogRepository rnLogRepository,
                                       LessorRepository lessorRepository,
-                                      PrilogService prilogService) {
+                                      PrilogService prilogService,
+                                      RnReissueGuard reissueGuard) {
+        this.reissueGuard = reissueGuard;
         this.repository = repository;
         this.rnRepository = rnRepository;
         this.rnLogRepository = rnLogRepository;
@@ -77,7 +85,8 @@ public class SuspensionObjectionService {
      * Predaja prigovora uz RB vlasnika {@code owner} — NIAS po OIB-u, non-EU po {@code lessorId}.
      *
      * <p>Redoslijed provjera kao kod rješenja: prvo vlasništvo (404 i za nepostojeći i za tuđi RB,
-     * da se ne otkriva postoji li), zatim smisao predaje (409), a tek onda datoteka (400).
+     * da se ne otkriva postoji li), zatim smisao predaje (409; uz povučen broj i
+     * {@code OBJECTION_RN_REISSUED} kad je za objekt izdan novi broj), a tek onda datoteka (400).
      *
      * <p>Dodatne datoteke ({@code datoteke}, T17) spremaju se uz prigovor u istoj transakciji; s
      * dokumentom prigovora najviše {@code app.attachments.max-per-owner} (400 {@code ATTACHMENT_COUNT}).
@@ -102,6 +111,11 @@ public class SuspensionObjectionService {
         }
         if (repository.existsByRnAndStatus(rn, SuspensionObjectionStatus.SUBMITTED)) {
             throw new ConflictException("error.objection.alreadySubmitted", "OBJECTION_ALREADY_SUBMITTED");
+        }
+        // Prigovor na povučen broj nema smisla kad je za objekt u međuvremenu izdan novi broj: uvažiti
+        // se ne bi mogao (RnService#reinstate), pa se odbija već pri predaji (T12).
+        if (rnStatus == RnStatus.WITHDRAWN && reissueGuard.noviBrojIzdan(rnEntity)) {
+            throw new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED");
         }
 
         MultipartFile file = req.getDatoteka();

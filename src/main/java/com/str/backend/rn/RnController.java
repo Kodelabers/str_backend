@@ -140,10 +140,10 @@ public class RnController {
      */
 
     /*
-     * Rok za očitovanje (suspend) i razlog povlačenja (withdraw) su obvezni, ali ih provjerava
-     * servis, ne `required = true`: nedostajući parametar bi završio u generičkom handleru kao
-     * 500, a servis vraća 400 s prevedenom porukom (error.rn.suspend.deadline.required,
-     * error.rn.withdraw.reason.required).
+     * Rok za očitovanje (suspend, propose-withdrawal) i razlog prijedloga povlačenja su obvezni, ali
+     * ih provjerava servis, ne `required = true`: nedostajući parametar bi završio u generičkom
+     * handleru kao 500, a servis vraća 400 s prevedenom porukom (error.rn.suspend.deadline.required,
+     * error.rn.withdraw.deadline.required, error.rn.withdraw.reason.required).
      *
      * Prilozi službenika (T17) idu kao ponovljeni query parametar `prilogIds=1&prilogIds=2` — id-evi
      * iz `POST /api/rn/attachments`, uz isti oblik zahtjeva kao ostali parametri (tijela nema), pa
@@ -176,15 +176,30 @@ public class RnController {
         return mapper.toResponse(service.reactivate(rn, actor(authentication)));
     }
 
-    @PostMapping("/{rn}/withdraw")
-    public RnResponse withdraw(@PathVariable String rn,
-                              @RequestParam(required = false) WithdrawalReason reason,
-                              @RequestParam(required = false) String note,
-                              @RequestParam(required = false) List<Long> prilogIds,
-                              Authentication authentication) {
+    /**
+     * T12: prijedlog povlačenja s rokom za očitovanje (iz ACTIVE, SUSPENSION_PROPOSED i SUSPENDED).
+     * Razlog i rok provjerava servis (400 s prevedenom porukom), kao kod {@link #suspend}. Ručne rute
+     * za povlačenje nema, kao ni za suspenziju: broj se povlači istekom roka ({@code WithdrawalDeadlineJob})
+     * ili kad službenik nakon roka ne uvaži očitovanje.
+     */
+    @PostMapping("/{rn}/propose-withdrawal")
+    public RnResponse proposeWithdrawal(
+            @PathVariable String rn,
+            @RequestParam(required = false) WithdrawalReason reason,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate withdrawalDeadline,
+            @RequestParam(required = false) String note,
+            @RequestParam(required = false) List<Long> prilogIds,
+            Authentication authentication) {
         requireInScope(rn, authentication);
-        return mapper.toResponse(service.withdraw(rn, reason, note, actor(authentication),
-                prilogIds != null ? prilogIds : List.of()));
+        return mapper.toResponse(service.proposeWithdrawal(rn, reason, withdrawalDeadline, note,
+                actor(authentication), prilogIds != null ? prilogIds : List.of()));
+    }
+
+    /** T12: obustava postupka povlačenja — broj se uvijek vraća u ACTIVE. */
+    @PostMapping("/{rn}/revoke-withdrawal-proposal")
+    public RnResponse revokeWithdrawalProposal(@PathVariable String rn, Authentication authentication) {
+        requireInScope(rn, authentication);
+        return mapper.toResponse(service.revokeWithdrawalProposal(rn, actor(authentication)));
     }
 
     /**

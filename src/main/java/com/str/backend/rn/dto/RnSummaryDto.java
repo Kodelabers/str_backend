@@ -39,7 +39,14 @@ public record RnSummaryDto(
         @JsonIgnore String facilityId,
         boolean categorizationRequired,
         CategorizationDecisionStatus categorizationStatus,
-        Boolean facilityVerified
+        Boolean facilityVerified,
+        /** Rok za očitovanje na prijedlog povlačenja; popunjen samo u statusu WITHDRAWAL_PROPOSED (T12). */
+        LocalDate withdrawalDeadline,
+        /**
+         * Prijedlog povlačenja pokrenut iz suspenzije (T12): broj javno ostaje suspendiran. {@code true}
+         * samo u statusu WITHDRAWAL_PROPOSED.
+         */
+        boolean prijedlogIzSuspenzije
 ) {
 
     /** Registar — {@code facilityVerified} se dopunjava nakon upita ({@link #withFacilityVerified}). */
@@ -49,11 +56,20 @@ public record RnSummaryDto(
                         String accommodationName, String accommodationTypeName, UUID lessorId,
                         String lessorFirstName, String lessorLastName, String lessorLegalEntityName,
                         String facilityId, boolean categorizationRequired,
-                        CategorizationDecisionStatus categorizationStatus) {
+                        CategorizationDecisionStatus categorizationStatus,
+                        LocalDate withdrawalDeadline, boolean prijedlogIzSuspenzije) {
         this(rn, status, issueDate, validFrom, validTo, suspensionDeadline, accommodationId, county,
                 city, street, streetNumber, accommodationName, accommodationTypeName, lessorId,
                 lessorFirstName, lessorLastName, lessorLegalEntityName, facilityId,
-                categorizationRequired, categorizationStatus, null);
+                categorizationRequired, categorizationStatus, null, withdrawalDeadline, prijedlogIzSuspenzije);
+    }
+
+    /**
+     * Rok za očitovanje trenutnog postupka (stupac izvoza registra): u prijedlogu povlačenja rok
+     * povlačenja, inače rok suspenzije. Izvan prijedloga oba su prazna.
+     */
+    public LocalDate rokZaOcitovanje() {
+        return status == RnStatus.WITHDRAWAL_PROPOSED ? withdrawalDeadline : suspensionDeadline;
     }
 
     public RnSummaryDto withFacilityVerified(Boolean verified) {
@@ -61,6 +77,6 @@ public record RnSummaryDto(
                 accommodationId, county, city, street, streetNumber, accommodationName,
                 accommodationTypeName, lessorId, lessorFirstName, lessorLastName,
                 lessorLegalEntityName, facilityId, categorizationRequired, categorizationStatus,
-                verified);
+                verified, withdrawalDeadline, prijedlogIzSuspenzije);
     }
 }

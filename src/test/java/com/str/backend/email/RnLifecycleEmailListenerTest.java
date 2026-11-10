@@ -162,6 +162,50 @@ class RnLifecycleEmailListenerTest {
         assertThat(mail.razlog()).isEqualTo("nalaz inspekcije");
     }
 
+    /**
+     * T12: poziv na očitovanje prije povlačenja nosi rok povlačenja, ne rok suspenzije (pravilo je
+     * {@code ZupContextFactory.rokOcitovanja}, zajedničko s aktom).
+     */
+    @Test
+    void withdrawalProposal_sendsMailWithWithdrawalDeadline() {
+        RnDetailDto d = detail("ana@example.com");
+        when(lookup.findDetail(RN)).thenReturn(Optional.of(new RnDetailDto(d.rn(), RnStatus.WITHDRAWAL_PROPOSED,
+                d.issueDate(), d.validFrom(), d.validTo(), d.suspensionDeadline(), d.createdAt(), d.updatedAt(),
+                d.submissionId(), d.accommodationId(), d.county(), d.city(), d.settlement(), d.street(),
+                d.streetNumber(), d.accommodationName(), d.accommodationTypeName(), d.maxBeds(), d.category(),
+                d.lessorId(), d.lessorFirstName(), d.lessorLastName(), d.lessorLegalEntityName(), d.lessorEmail(),
+                d.lessorOib(), d.legalEntityOwner(), d.legalEntityCountryName(), d.legalEntityCity(),
+                d.legalEntityRegistrationNumber(), d.representativeOib(), d.legalRepresentativeName(),
+                d.representativeEmail(), d.representativePhone(), d.representativeAddress(),
+                LocalDate.of(2026, 12, 1), false)));
+        when(documentService.razlogAkta(StrDocumentType.PRIJEDLOG_POVLACENJA, RN, "drugi razlozi"))
+                .thenReturn("drugi razlozi");
+
+        listener.onLifecycleChange(event(RnStatus.SUSPENSION_PROPOSED, RnStatus.WITHDRAWAL_PROPOSED,
+                RnTrigger.WITHDRAWAL_PROPOSAL, null, "drugi razlozi"));
+
+        RnLifecycleMail mail = captured();
+        assertThat(mail.template()).isEqualTo(MailTemplate.PRIJEDLOG_POVLACENJA);
+        assertThat(mail.rok()).isEqualTo("najkasnije do 01.12.2026.");
+    }
+
+    /** T12: obustava povlačenja, povlačenje istekom roka i reaktivacija povučenog broja imaju svoje poruke. */
+    @Test
+    void withdrawalProcedure_choosesItsTemplates() {
+        listener.onLifecycleChange(event(RnStatus.WITHDRAWAL_PROPOSED, RnStatus.ACTIVE,
+                RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL, null, null));
+        assertThat(captured().template()).isEqualTo(MailTemplate.OBUSTAVA_POVLACENJA);
+
+        org.mockito.Mockito.clearInvocations(emailService);
+        listener.onLifecycleChange(event(RnStatus.WITHDRAWN, RnStatus.ACTIVE, RnTrigger.REINSTATE, null, null));
+        assertThat(captured().template()).isEqualTo(MailTemplate.REAKTIVACIJA_POVLACENJA);
+
+        org.mockito.Mockito.clearInvocations(emailService);
+        listener.onLifecycleChange(event(RnStatus.WITHDRAWAL_PROPOSED, RnStatus.WITHDRAWN,
+                RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED, "SYSTEM", null));
+        assertThat(captured().template()).isEqualTo(MailTemplate.POVLACENJE);
+    }
+
     /** Reaktivacija ima predložak akta, pa ga i mail nosi. */
     @Test
     void reactivation_sendsMailWithAct() {

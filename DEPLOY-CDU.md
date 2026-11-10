@@ -162,6 +162,9 @@ STR_DOCUMENTS_RELOAD=false
 
 # --- eGOP ---
 # Prazno od 22.10.2026. (MINT je unio sve vrste pismena) — sve se urudžbira.
+# T12 (postupak povlačenja) dodaje tri izlazne vrste koje MINT još nije unio: prijedlog-povlacenja,
+# obustava-povlacenja, reaktivacija-povlacenja. Na CDU-u je eGOP mock, pa ništa ne treba. Uz
+# EGOP_ENABLED=true i bez EGOP_SIFRA_PISMENA_FALLBACK do unosa staviti ih ovdje (zarezom odvojeno).
 EGOP_AKTI_BEZ_SIFRE=
 # Vrsta priloga uz pismena (T17): šifra ili naziv iz MDM šifrarnika vrsta priloga. Na CDU-u je eGOP
 # mock pa se ne koristi; uz EGOP_ENABLED=true provjerava se pri startu (startup_egop_prilog_unresolved

@@ -76,6 +76,7 @@ class ReissueServiceTest {
     private CategorizationDecisionRepository decisionRepository;
     private LessorRepository lessorRepository;
     private ReissueService service;
+    private com.str.backend.rn.RnReissueGuard reissueGuard;
     private AccommodationEntity accommodation;
 
     @BeforeEach
@@ -89,8 +90,9 @@ class ReissueServiceTest {
         AddressIdResolver addressIdResolver = mock(AddressIdResolver.class);
         Clock clock = Clock.fixed(NOW, ZONE);
 
+        reissueGuard = mock(com.str.backend.rn.RnReissueGuard.class);
         service = new ReissueService(rnRepository, accommodationRepository, decisionRepository,
-                typeRepository, submissionRepository, lessorRepository, addressIdResolver, clock, 18);
+                typeRepository, submissionRepository, lessorRepository, addressIdResolver, clock, 18, reissueGuard);
 
         accommodation = object(a -> { });
         accommodation.setConsent(true, LocalDate.of(2025, 3, 1), null);
@@ -521,6 +523,48 @@ class ReissueServiceTest {
                 null, TODAY.minusMonths(2).plusMonths(18), TODAY, null, null, null, null, null);
     }
 
+    /**
+     * T12: {@code noviBrojIzdan} se računa samo za povučene ({@code WITHDRAWN}) retke — za ostale je
+     * {@code null} i provjera se ni ne poziva, da popis ne postane skup.
+     */
+    @Test
+    void withReissueDeadlines_flagsNewNumberOnlyForWithdrawnRows() {
+        when(rnRepository.findReissueCandidates(any())).thenReturn(List.of());
+        when(reissueGuard.noviBrojIzdan("HR3")).thenReturn(true);
+        when(reissueGuard.noviBrojIzdan("HR4")).thenReturn(false);
+        List<LessorRnSummaryDto> rows = List.of(summaryRow("HR1", RnStatus.ACTIVE),
+                summaryRow("HR2", RnStatus.REVOKED), summaryRow("HR3", RnStatus.WITHDRAWN),
+                summaryRow("HR4", RnStatus.WITHDRAWN));
+
+        assertThat(service.withReissueDeadlines(rows)).extracting(LessorRnSummaryDto::noviBrojIzdan)
+                .containsExactly(null, null, true, false);
+        verify(reissueGuard, never()).noviBrojIzdan("HR1");
+        verify(reissueGuard, never()).noviBrojIzdan("HR2");
+    }
+
+    /** Povučen redak s već predanim prigovorom ne računa {@code noviBrojIzdan} — gumb je ionako skriven. */
+    @Test
+    void withReissueDeadlines_skipsGuardForRowsWithSubmittedObjection() {
+        when(rnRepository.findReissueCandidates(any())).thenReturn(List.of());
+        LessorRnSummaryDto submitted = new LessorRnSummaryDto("HR3", RnStatus.WITHDRAWN, LocalDate.of(2026, 1, 1),
+                "Objekt", "Riva", "1", "Split", "Apartman", false, null,
+                com.str.backend.objection.SuspensionObjectionStatus.SUBMITTED, null);
+
+        assertThat(service.withReissueDeadlines(List.of(submitted))).singleElement()
+                .satisfies(r -> assertThat(r.noviBrojIzdan()).isNull());
+        verify(reissueGuard, never()).noviBrojIzdan("HR3");
+    }
+
+    /** T12: predaja ponovnog zahtjeva zaključava povučeni RB, da se uvažavanje prigovora serijalizira iza nje. */
+    @Test
+    void requireReusableForSubmission_locksWithdrawnRn() {
+        withdrawn(TODAY.minusMonths(2));
+
+        service.requireReusableForSubmission(RN, RnOwner.byOib(OIB));
+
+        verify(rnRepository).findForUpdate(RN);
+    }
+
     @Test
     void withReissueDeadlines_withoutWithdrawn_skipsQuery() {
         List<LessorRnSummaryDto> rows = List.of(summaryRow("HR1", RnStatus.ACTIVE));
@@ -542,7 +586,9 @@ class ReissueServiceTest {
         lenient().when(rn.getValidTo()).thenReturn(validTo);
         lenient().when(rn.getAccommodationId()).thenReturn(ACCOMMODATION_ID);
         lenient().when(rn.getSubmissionId()).thenReturn(SUBMISSION_ID);
-        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
+        lenient().when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
+        // Predaja ponovnog zahtjeva čita povučeni RB zaključan (T12, utrka s uvažavanjem prigovora).
+        lenient().when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
     }
 
     /** Smještaj povučenog RB-a: Riva 1, Split, vrsta 3, 4 kreveta. */

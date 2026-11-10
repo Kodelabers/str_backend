@@ -2,6 +2,7 @@ package com.str.backend.objection;
 
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
+import com.str.backend.common.Zagreb;
 import com.str.backend.domain.OfferType;
 import com.str.backend.domain.Offering;
 import com.str.backend.domain.RnStatus;
@@ -16,6 +17,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
 import com.str.backend.rn.SuspensionDeadlineJob;
+import com.str.backend.rn.WithdrawalDeadlineJob;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -67,6 +69,9 @@ class SuspensionObjectionIntegrationTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private SuspensionObjectionAdminService adminService;
     @Autowired private SuspensionDeadlineJob deadlineJob;
+    @Autowired private WithdrawalDeadlineJob withdrawalJob;
+    @Autowired private com.str.backend.rn.RnReissueGuard reissueGuard;
+    @Autowired private com.str.backend.rn.RnVerification verification;
     @Autowired private ApplicationEvents events;
 
     private UUID lessorId;
@@ -74,6 +79,8 @@ class SuspensionObjectionIntegrationTest {
     @BeforeEach
     void seed() {
         objectionRepository.deleteAll();
+        // Trag ostaje između testova, a brojevi se ponavljaju: stari zapisi bi pomiješali prijedloge.
+        jdbc.update("DELETE FROM str_rn.registration_number_log WHERE rn LIKE 'HR000000%'");
         rnRepository.deleteAll();
         accommodationRepository.deleteAll();
         submissionRepository.deleteAll();
@@ -87,6 +94,9 @@ class SuspensionObjectionIntegrationTest {
 
     @Test
     void summary_carriesStatusOfLatestObjection() throws InterruptedException {
+        rnService.suspend("HR00000022", RnTrigger.INSPECTION, Zagreb.today().plusDays(15), null, "INTERNAL:1", List.of());
+        rnService.suspend("HR00000023", RnTrigger.INSPECTION, Zagreb.today().plusDays(15), null, "INTERNAL:1", List.of());
+        Thread.sleep(5);    // prigovor je predan nakon prijedloga
         SuspensionObjectionEntity rejected = objectionRepository.saveAndFlush(objection("HR00000022"));
         rejected.reject("INTERNAL:12345678903", null);
         objectionRepository.saveAndFlush(rejected);
@@ -105,18 +115,332 @@ class SuspensionObjectionIntegrationTest {
         }
     }
 
-    /** Službenik povuče RB s otvorenim prigovorom — prigovor se zatvara u istoj transakciji. */
+    /**
+     * T12: službenik predloži povlačenje RB-a s otvorenim prigovorom na prijedlog suspenzije — prigovor
+     * se zatvara u istoj transakciji, a postupak suspenzije završava (rok suspenzije se briše).
+     */
     @Test
-    void withdrawingRn_closesSubmittedObjection() {
-        rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null,
+    void proposingWithdrawal_closesSubmittedObjection_andEndsSuspensionProcedure() {
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(15), null,
                 "INTERNAL:12345678903", List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
 
-        rnService.withdraw("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, null, "INTERNAL:12345678903", List.of());
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, "INTERNAL:12345678903", List.of());
 
         SuspensionObjectionEntity closed = objectionRepository.findById(id).orElseThrow();
         assertThat(closed.getStatus()).isEqualTo(SuspensionObjectionStatus.CLOSED);
         assertThat(closed.getResolvedBy()).isEqualTo("SYSTEM");
+        RnEntity rn = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWAL_PROPOSED);
+        assertThat(rn.getSuspensionDeadline()).isNull();
+        assertThat(rn.getWithdrawalDeadline()).isEqualTo(Zagreb.today().plusDays(8));
+        assertThat(rn.getStatus().isActiveForPublicUse()).isTrue();
+    }
+
+    /** Obustava povlačenja uvijek vraća broj u ACTIVE — i kad je pokrenuto iz bilo kojeg stojećeg statusa. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = RnStatus.class,
+            names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    void revokingWithdrawalProposal_alwaysReturnsToActive(RnStatus from) {
+        String official = "INTERNAL:12345678903";
+        if (from != RnStatus.ACTIVE) {
+            rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today(), null, official, List.of());
+        }
+        if (from == RnStatus.SUSPENDED) {
+            jdbc.update("UPDATE str_rn.registration_number SET suspension_deadline = ? WHERE rn = ?",
+                    Zagreb.today().minusDays(1), "HR00000021");
+            deadlineJob.run();
+        }
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(from);
+
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+        rnService.revokeWithdrawalProposal("HR00000021", official);
+
+        RnEntity back = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(back.getStatus()).isEqualTo(RnStatus.ACTIVE);
+        assertThat(back.getWithdrawalDeadline()).isNull();
+        assertThat(back.getSuspensionDeadline()).isNull();
+        deadlineJob.run();
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus())
+                .as("postupak suspenzije je završio").isEqualTo(RnStatus.ACTIVE);
+    }
+
+    /** Prijedlog povlačenja ne nastaje iz konačnog statusa ni iz već postojećeg prijedloga (409). */
+    @Test
+    void proposeWithdrawal_fromWithdrawalProposedRevokedOrWithdrawn_is409() {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+        assertThatThrownBy(() -> rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED,
+                Zagreb.today().plusDays(8), null, official, List.of()))
+                .as("WITHDRAWAL_PROPOSED")
+                .isInstanceOf(com.str.backend.exception.IllegalStatusTransitionException.class);
+
+        withdrawByDeadline("HR00000021");
+        assertThatThrownBy(() -> rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED,
+                Zagreb.today().plusDays(8), null, official, List.of()))
+                .as("WITHDRAWN")
+                .isInstanceOf(com.str.backend.exception.IllegalStatusTransitionException.class);
+
+        jdbc.update("UPDATE str_rn.registration_number SET status = 'REVOKED' WHERE rn = ?", "HR00000022");
+        assertThatThrownBy(() -> rnService.proposeWithdrawal("HR00000022", WithdrawalReason.DATA_NOT_CORRECTED,
+                Zagreb.today().plusDays(8), null, official, List.of()))
+                .as("REVOKED")
+                .isInstanceOf(com.str.backend.exception.IllegalStatusTransitionException.class);
+    }
+
+    /**
+     * Prigovor (očitovanje) na prijedlog povlačenja ostaje otvoren kroz WITHDRAWAL_PROPOSED → WITHDRAWN
+     * (istek roka): službenik o njemu i dalje odlučuje, a uvažavanje broj vraća u ACTIVE (REINSTATE).
+     */
+    @Test
+    void objectionSurvivesWithdrawal_andAcceptReinstates() {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+        UUID id = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWAL_PROPOSED))
+                .getObjectionId();
+
+        withdrawByDeadline("HR00000021");
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+        RnEntity withdrawn = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(withdrawn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+        assertThat(withdrawn.getValidTo()).isNotNull();
+
+        adminService.accept("HR00000021", id, official, null);
+
+        RnEntity reinstated = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(reinstated.getStatus()).isEqualTo(RnStatus.ACTIVE);
+        assertThat(reinstated.getValidTo()).isNull();
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.ACCEPTED);
+        assertThat(events.stream(RnLifecycleEvent.class).filter(e -> e.trigger() == RnTrigger.REINSTATE))
+                .singleElement();
+    }
+
+    /**
+     * Uvažavanje prigovora na povučen broj odbija se kad isti eTurizam objekt već ima drugi važeći
+     * broj: 409 OBJECTION_RN_REISSUED, a prigovor i status broja ostaju kakvi jesu (rollback).
+     */
+    @Test
+    void acceptOnWithdrawn_whenFacilityReissued_is409AndChangesNothing() {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+        withdrawByDeadline("HR00000021");
+        jdbc.update("UPDATE str_rn.accommodation SET facility_id = '777' WHERE accommodation_id IN"
+                + " (SELECT accommodation_id FROM str_rn.registration_number WHERE rn IN (?, ?))",
+                "HR00000021", "HR00000022");
+        UUID id = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWN)).getObjectionId();
+
+        assertThatThrownBy(() -> adminService.accept("HR00000021", id, official, null))
+                .isInstanceOfSatisfying(com.str.backend.exception.ConflictException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
+
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+    }
+
+    /**
+     * Novi broj istog iznajmljivača na istoj adresi (svjež zahtjev bez facility_id i previous_rn) samo
+     * upozorava (T12): prigovor se smije predati i uvažiti, a službenik u popisu prigovora vidi
+     * {@code brojeviNaIstojAdresi}. Broj drugog iznajmljivača u istoj zgradi se ne navodi.
+     */
+    @Test
+    void sameAddressSameLessor_onlyWarnsInObjectionList() {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+        withdrawByDeadline("HR00000021");
+        objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWN));
+        assertThat(reissueGuard.brojeviNaIstojAdresi("HR00000021")).isEmpty();
+
+        jdbc.update("UPDATE str_rn.accommodation SET street_number = '21' WHERE accommodation_id ="
+                + " (SELECT accommodation_id FROM str_rn.registration_number WHERE rn = ?)", "HR00000022");
+        assertThat(reissueGuard.noviBrojIzdan("HR00000021")).as("adresa ne blokira").isFalse();
+        assertThat(adminService.list("HR00000021"))
+                .singleElement()
+                .satisfies(d -> assertThat(d.brojeviNaIstojAdresi()).containsExactly("HR00000022"));
+
+        // Ista adresa ne razlikuje jedinice u zgradi: broj drugog iznajmljivača se ne navodi.
+        LessorEntity susjed = LessorEntity.create("Ana", "Anić", "Korzo", "21", "Rijeka",
+                "Primorsko-goranska županija", "susjed@example.hr");
+        susjed.setLessorOib("98765432106");
+        UUID susjedId = lessorRepository.save(susjed).getLessorId();
+        jdbc.update("UPDATE str_rn.submission SET lessor_id = ? WHERE submission_id ="
+                + " (SELECT submission_id FROM str_rn.registration_number WHERE rn = ?)", susjedId, "HR00000022");
+        assertThat(reissueGuard.brojeviNaIstojAdresi("HR00000021")).isEmpty();
+    }
+
+    /** Upozorenje o adresi puni se samo uz povučen broj; inače je prazna lista. */
+    @Test
+    void sameAddressWarning_onlyForWithdrawnRn() {
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(15), null,
+                "INTERNAL:12345678903", List.of());
+        objectionRepository.saveAndFlush(objection("HR00000021"));
+        jdbc.update("UPDATE str_rn.accommodation SET street_number = '21' WHERE accommodation_id ="
+                + " (SELECT accommodation_id FROM str_rn.registration_number WHERE rn = ?)", "HR00000022");
+
+        assertThat(adminService.list("HR00000021"))
+                .singleElement()
+                .satisfies(d -> assertThat(d.brojeviNaIstojAdresi()).isEmpty());
+    }
+
+    /**
+     * T12: novi broj za isti objekt zatvara otvoreni prigovor na povučeni broj u transakciji izdavanja — i za
+     * ponovni zahtjev (previous_rn) i za isti eTurizam objekt (facility_id).
+     */
+    @Test
+    void issuingNewNumber_closesObjectionOnWithdrawnNumber() {
+        String official = "INTERNAL:12345678903";
+        for (String rn : List.of("HR00000021", "HR00000022")) {
+            rnService.proposeWithdrawal(rn, WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8), null,
+                    official, List.of());
+            withdrawByDeadline(rn);
+        }
+        UUID naPrethodni = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWN)).getObjectionId();
+        UUID naObjekt = objectionRepository.saveAndFlush(objection("HR00000022", RnStatus.WITHDRAWN)).getObjectionId();
+
+        // Ponovni zahtjev (previous_rn = HR00000021).
+        RnEntity novi = issueNew(a -> a.markReissueOf("HR00000021"));
+        SuspensionObjectionEntity zatvoren = objectionRepository.findById(naPrethodni).orElseThrow();
+        assertThat(zatvoren.getStatus()).isEqualTo(SuspensionObjectionStatus.CLOSED);
+        assertThat(zatvoren.getResolvedBy()).isEqualTo("SYSTEM");
+        assertThat(zatvoren.getResolutionNote()).contains("Izdan je novi registracijski broj " + novi.getRn());
+        assertThat(objectionRepository.findById(naObjekt).orElseThrow().getStatus())
+                .as("prigovor na drugi objekt ostaje").isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+
+        // Isti eTurizam objekt (facility_id).
+        jdbc.update("UPDATE str_rn.accommodation SET facility_id = '555' WHERE accommodation_id ="
+                + " (SELECT accommodation_id FROM str_rn.registration_number WHERE rn = ?)", "HR00000022");
+        issueNew(a -> a.setFacilityId("555"));
+        assertThat(objectionRepository.findById(naObjekt).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.CLOSED);
+    }
+
+    /**
+     * Status prigovora na popisu iznajmljivača vezan je uz postupak u tijeku: prigovor iz postupka
+     * suspenzije ne prikazuje se u postupku povlačenja, prigovor na prijedlog povlačenja vrijedi i u
+     * WITHDRAWN, a u ACTIVE statusa nema.
+     */
+    @Test
+    void lessorSummary_objectionStatusFollowsCurrentProcedure() throws InterruptedException {
+        String official = "INTERNAL:12345678903";
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(15), null, official, List.of());
+        Thread.sleep(5);
+        SuspensionObjectionEntity naSuspenziju = objectionRepository.saveAndFlush(objection("HR00000021"));
+        naSuspenziju.reject(official, null);
+        objectionRepository.saveAndFlush(naSuspenziju);
+        assertThat(objectionStatusOf("HR00000021")).isEqualTo(SuspensionObjectionStatus.REJECTED);
+
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+        assertThat(objectionStatusOf("HR00000021")).as("prigovor iz postupka suspenzije").isNull();
+
+        Thread.sleep(5);
+        UUID ocitovanje = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWAL_PROPOSED))
+                .getObjectionId();
+        assertThat(objectionStatusOf("HR00000021")).isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+        withdrawByDeadline("HR00000021");
+        assertThat(objectionStatusOf("HR00000021")).as("očitovanje vrijedi i u WITHDRAWN")
+                .isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+
+        adminService.accept("HR00000021", ocitovanje, official, null);
+        assertThat(objectionStatusOf("HR00000021")).as("ACTIVE").isNull();
+    }
+
+    /**
+     * T12: prijedlog povlačenja iz suspenzije javno ostaje suspendiran (verify, inactive, popis
+     * iznajmljivača), a obustava ga ipak vraća u ACTIVE.
+     */
+    @Test
+    void withdrawalProposalFromSuspended_staysPubliclySuspended_untilRevoked() {
+        String official = "INTERNAL:12345678903";
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today(), null, official, List.of());
+        jdbc.update("UPDATE str_rn.registration_number SET suspension_deadline = ? WHERE rn = ?",
+                Zagreb.today().minusDays(1), "HR00000021");
+        deadlineJob.run();
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+
+        RnEntity rn = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(rn.isWithdrawalFromSuspended()).isTrue();
+        assertThat(rn.isValidForPublicUse()).isFalse();
+        assertThat(rn.publicStatus()).isEqualTo(RnStatus.SUSPENDED);
+        assertThat(verification.verify("HR00000021").status()).isEqualTo(RnStatus.SUSPENDED);
+        assertThat(verification.verify("HR00000021").registrationNumber()).isNull();
+        assertThat(rnService.inactive(null)).extracting(RnEntity::getRn).contains("HR00000021");
+        assertThat(rnRepository.findByLessorOib(OIB)).filteredOn(r -> r.rn().equals("HR00000021"))
+                .singleElement().satisfies(r -> assertThat(r.prijedlogIzSuspenzije()).isTrue());
+
+        rnService.revokeWithdrawalProposal("HR00000021", official);
+        RnEntity back = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(back.getStatus()).isEqualTo(RnStatus.ACTIVE);
+        assertThat(back.isWithdrawalFromSuspended()).isFalse();
+        assertThat(verification.verify("HR00000021").status()).isEqualTo(RnStatus.ACTIVE);
+    }
+
+    /**
+     * Očitovanje predano u roku zadržava noćno povlačenje; neuvažavanje nakon isteka roka odmah povlači
+     * (jedan prijelaz WITHDRAWAL_DEADLINE_EXCEEDED, u ime službenika), a prigovor ostaje REJECTED.
+     */
+    @Test
+    void withdrawalDeadline_objectionInTimeHoldsJob_rejectWithdrawsOnce() {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today(), null,
+                official, List.of());
+        UUID id = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWAL_PROPOSED))
+                .getObjectionId();
+        LocalDate yesterday = Zagreb.today().minusDays(1);
+        jdbc.update("UPDATE str_rn.registration_number SET withdrawal_deadline = ? WHERE rn = ?",
+                yesterday, "HR00000021");
+        jdbc.update("UPDATE str_rn.suspension_objection SET submitted_at = ?, rn_log_id = (SELECT log_id FROM"
+                        + " str_rn.registration_number_log WHERE rn = ? AND to_status = 'WITHDRAWAL_PROPOSED')"
+                        + " WHERE objection_id = ?",
+                Timestamp.from(yesterday.atTime(12, 0).atZone(ZoneId.of("Europe/Zagreb")).toInstant()),
+                "HR00000021", id);
+
+        withdrawalJob.run();
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus())
+                .as("očitovanje predano u roku zadržava povlačenje")
+                .isEqualTo(RnStatus.WITHDRAWAL_PROPOSED);
+
+        adminService.reject("HR00000021", id, official, null);
+        withdrawalJob.run();
+
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+        assertThat(events.stream(RnLifecycleEvent.class).filter(e -> e.to() == RnStatus.WITHDRAWN))
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.trigger()).isEqualTo(RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED);
+                    assertThat(e.actor()).isEqualTo(official);
+                });
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.REJECTED);
+    }
+
+    /** Bez očitovanja u roku noćni posao povlači; očitovanje predano nakon roka ne zadržava. */
+    @Test
+    void withdrawalJob_withdrawsWhenObjectionIsLate() {
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today(), null,
+                "INTERNAL:12345678903", List.of());
+        UUID id = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWAL_PROPOSED))
+                .getObjectionId();
+        jdbc.update("UPDATE str_rn.registration_number SET withdrawal_deadline = ? WHERE rn = ?",
+                Zagreb.today().minusDays(2), "HR00000021");
+
+        withdrawalJob.run();
+
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+        assertThat(events.stream(RnLifecycleEvent.class).filter(e -> e.to() == RnStatus.WITHDRAWN))
+                .singleElement()
+                .satisfies(e -> assertThat(e.actor()).isEqualTo("SYSTEM"));
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .as("prigovor ostaje otvoren za službenika").isEqualTo(SuspensionObjectionStatus.SUBMITTED);
     }
 
     /**
@@ -127,9 +451,9 @@ class SuspensionObjectionIntegrationTest {
     @Test
     void rejectAfterDeadline_suspendsOnce_andKeepsRejection() {
         String official = "INTERNAL:12345678903";
-        rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now(), null, official, List.of());
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today(), null, official, List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
-        LocalDate yesterday = LocalDate.now().minusDays(1);
+        LocalDate yesterday = Zagreb.today().minusDays(1);
         jdbc.update("UPDATE str_rn.registration_number SET suspension_deadline = ? WHERE rn = ?",
                 yesterday, "HR00000021");
         jdbc.update("UPDATE str_rn.suspension_objection SET submitted_at = ? WHERE objection_id = ?",
@@ -163,7 +487,7 @@ class SuspensionObjectionIntegrationTest {
     /** Dok rok teče, neuvažavanje RB ostavlja pred suspenzijom. */
     @Test
     void rejectBeforeDeadline_keepsProposal() {
-        rnService.suspend("HR00000021", RnTrigger.INSPECTION, LocalDate.now(), null, "INTERNAL:12345678903", List.of());
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today(), null, "INTERNAL:12345678903", List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
 
         adminService.reject("HR00000021", id, "INTERNAL:12345678903", null);
@@ -271,8 +595,37 @@ class SuspensionObjectionIntegrationTest {
         throw new IllegalStateException(CHANGESET + " nema <sql> blok");
     }
 
+    private SuspensionObjectionStatus objectionStatusOf(String rn) {
+        return rnRepository.findByLessorOib(OIB).stream().filter(r -> r.rn().equals(rn)).findFirst()
+                .orElseThrow().objectionStatus();
+    }
+
+    /** Novi RB kroz {@link RnService#issue}, za smještaj uređen zadanom izmjenom (npr. previous_rn). */
+    private RnEntity issueNew(java.util.function.Consumer<AccommodationEntity> izmjena) {
+        SubmissionEntity submission = submissionRepository.save(
+                SubmissionEntity.create("FN-NEW-" + UUID.randomUUID(), lessorId, 1L, Instant.now(), null, null));
+        AccommodationEntity acc = AccommodationEntity.create(submission.getSubmissionId(),
+                "Primorsko-goranska županija", "Rijeka", "Obala", "1",
+                4, 8, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, true, false, true);
+        izmjena.accept(acc);
+        accommodationRepository.save(acc);
+        return rnService.issue(submission.getSubmissionId(), acc.getAccommodationId());
+    }
+
+    /** Povlačenje istekom roka: rok je jučer, noćni posao povlači. */
+    private void withdrawByDeadline(String rn) {
+        jdbc.update("UPDATE str_rn.registration_number SET withdrawal_deadline = ? WHERE rn = ?",
+                Zagreb.today().minusDays(1), rn);
+        withdrawalJob.run();
+        assertThat(rnRepository.findById(rn).orElseThrow().getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+    }
+
     private SuspensionObjectionEntity objection(String rn) {
-        return SuspensionObjectionEntity.createForOib(OIB, rn, RnStatus.SUSPENSION_PROPOSED, null, "NIAS:" + OIB,
+        return objection(rn, RnStatus.SUSPENSION_PROPOSED);
+    }
+
+    private SuspensionObjectionEntity objection(String rn, RnStatus rnStatus) {
+        return SuspensionObjectionEntity.createForOib(OIB, rn, rnStatus, null, "NIAS:" + OIB,
                 "prigovor.pdf", "application/pdf", PDF);
     }
 
@@ -291,6 +644,6 @@ class SuspensionObjectionIntegrationTest {
                 4, 8, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, true, false, true);
         acc.setName("Objekt " + rn);
         accommodationRepository.save(acc);
-        rnRepository.save(RnEntity.issue(rn, submission.getSubmissionId(), acc.getAccommodationId(), LocalDate.now()));
+        rnRepository.save(RnEntity.issue(rn, submission.getSubmissionId(), acc.getAccommodationId(), Zagreb.today()));
     }
 }

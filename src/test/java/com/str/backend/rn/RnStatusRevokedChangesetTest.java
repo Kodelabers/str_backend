@@ -45,6 +45,15 @@ class RnStatusRevokedChangesetTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    /**
+     * CHECK iz changeseta 137 ne zna za kasnije statuse (WITHDRAWAL_PROPOSED, changeset 155), a DDL u
+     * H2 ostaje za cijeli kontekst: nakon testa se uklanja, kao što ga ni Hibernate shema nema.
+     */
+    @org.junit.jupiter.api.AfterEach
+    void dropChangesetConstraint() {
+        jdbc.execute("ALTER TABLE str_rn.registration_number DROP CONSTRAINT IF EXISTS chk_rn_status");
+    }
+
     @Test
     void lessorWithdrawals_becomeRevoked_officialOnesStayWithdrawn() throws Exception {
         String lessor = withdrawn("HR100000000000000001", "LESSOR:" + UUID.randomUUID());

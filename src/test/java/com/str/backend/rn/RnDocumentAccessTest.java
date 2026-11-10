@@ -163,9 +163,9 @@ class RnDocumentAccessTest {
     void backOfficeRnEndpoints_unauthenticated_return401() throws Exception {
         mvc.perform(get("/api/rn/inactive")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/rn")).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/rn/{rn}/withdraw", RN)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN)).andExpect(status().isUnauthorized());
 
-        verify(service, never()).withdraw(any(), any(), any(), any(), any());
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -177,7 +177,7 @@ class RnDocumentAccessTest {
         UUID lessorId = UUID.randomUUID();
         when(rnRepository.isOwnedByLessor(RN, lessorId)).thenReturn(true);
 
-        mvc.perform(post("/api/rn/{rn}/withdraw", RN).with(authentication(principalAuth(lessorId))))
+        mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN).with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/rn/{rn}/suspend", RN).param("reason", "INSPECTION")
                         .with(authentication(principalAuth(lessorId))))
@@ -189,7 +189,7 @@ class RnDocumentAccessTest {
                         .with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).withdraw(any(), any(), any(), any(), any());
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
         verify(service, never()).suspend(any(), any(), any(), any(), any(), any());
         verifyNoInteractions(registrySearch, exportService);
     }
@@ -265,18 +265,44 @@ class RnDocumentAccessTest {
         verify(service).detailView(RN);
     }
 
+    /** T12: ručne rute za povlačenje više nema — broj se povlači samo istekom roka. */
     @Test
-    void backOfficeRnEndpoints_withRole_pass() throws Exception {
+    void manualWithdrawRoute_isGone() throws Exception {
         when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
-
-        when(internalAccess.actorFor(any())).thenReturn(java.util.Optional.of("INTERNAL:" + OFFICIAL_OIB));
 
         mvc.perform(post("/api/rn/{rn}/withdraw", RN).param("reason", "DATA_NOT_CORRECTED")
                         .with(authentication(official())).with(ajax()))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                        .isIn(404, 405));
+    }
+
+    /** T12: prijedlog i obustava povlačenja — query parametri kao kod suspenzije, ponovljivi prilogIds. */
+    @Test
+    void withdrawalProposalEndpoints_withRole_passParametersToService() throws Exception {
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(internalAccess.actorFor(any())).thenReturn(java.util.Optional.of("INTERNAL:" + OFFICIAL_OIB));
+
+        mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN).param("reason", "OTHER")
+                        .param("withdrawalDeadline", "2099-01-31").param("note", "opis")
+                        .param("prilogIds", "11").param("prilogIds", "12")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/rn/{rn}/revoke-withdrawal-proposal", RN)
+                        .with(authentication(official())).with(ajax()))
                 .andExpect(status().isOk());
 
-        verify(service).withdraw(RN, com.str.backend.domain.WithdrawalReason.DATA_NOT_CORRECTED, null,
-                "INTERNAL:" + OFFICIAL_OIB, java.util.List.of());
+        verify(service).proposeWithdrawal(RN, com.str.backend.domain.WithdrawalReason.OTHER,
+                java.time.LocalDate.of(2099, 1, 31), "opis", "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L));
+        verify(service).revokeWithdrawalProposal(RN, "INTERNAL:" + OFFICIAL_OIB);
+    }
+
+    /** Bez prijave nema prijedloga povlačenja. */
+    @Test
+    void withdrawalProposal_withoutAuthentication_is401() throws Exception {
+        mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/rn/{rn}/revoke-withdrawal-proposal", RN)).andExpect(status().isUnauthorized());
+
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -284,7 +310,7 @@ class RnDocumentAccessTest {
      * isti oblik zahtjeva kao bez priloga.
      */
     @Test
-    void suspendAndWithdraw_withRepeatedPrilogIds_passAttachmentsToService() throws Exception {
+    void suspend_withRepeatedPrilogIds_passAttachmentsToService() throws Exception {
         when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
         when(internalAccess.actorFor(any())).thenReturn(java.util.Optional.of("INTERNAL:" + OFFICIAL_OIB));
 
@@ -293,15 +319,9 @@ class RnDocumentAccessTest {
                         .param("prilogIds", "11").param("prilogIds", "12")
                         .with(authentication(official())).with(ajax()))
                 .andExpect(status().isOk());
-        mvc.perform(post("/api/rn/{rn}/withdraw", RN).param("reason", "DATA_NOT_CORRECTED")
-                        .param("prilogIds", "13")
-                        .with(authentication(official())).with(ajax()))
-                .andExpect(status().isOk());
 
         verify(service).suspend(RN, com.str.backend.domain.RnTrigger.INSPECTION, java.time.LocalDate.of(2099, 1, 31),
                 null, "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L));
-        verify(service).withdraw(RN, com.str.backend.domain.WithdrawalReason.DATA_NOT_CORRECTED, null,
-                "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(13L));
     }
 
     /** CSRF: bez X-Requested-With mutirajuća radnja ne prolazi ni službeniku s rolom. */
@@ -309,10 +329,10 @@ class RnDocumentAccessTest {
     void backOfficeRnEndpoints_withoutAjaxHeader_returns403() throws Exception {
         when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
 
-        mvc.perform(post("/api/rn/{rn}/withdraw", RN).with(authentication(official())))
+        mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN).with(authentication(official())))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).withdraw(any(), any(), any(), any(), any());
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
     }
 
     /**

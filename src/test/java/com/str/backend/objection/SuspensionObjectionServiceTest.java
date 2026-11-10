@@ -58,8 +58,9 @@ class SuspensionObjectionServiceTest {
     private final RegistrationNumberLogRepository logRepository = mock(RegistrationNumberLogRepository.class);
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
     private final PrilogService prilogService = mock(PrilogService.class);
-    private final SuspensionObjectionService service =
-            new SuspensionObjectionService(repository, rnRepository, logRepository, lessorRepository, prilogService);
+    private final com.str.backend.rn.RnReissueGuard reissueGuard = mock(com.str.backend.rn.RnReissueGuard.class);
+    private final SuspensionObjectionService service = new SuspensionObjectionService(
+            repository, rnRepository, logRepository, lessorRepository, prilogService, reissueGuard);
 
     private final RnEntity rn = mock(RnEntity.class);
 
@@ -123,6 +124,38 @@ class SuspensionObjectionServiceTest {
         assertThat(saved.getRnLogId()).isEqualTo(suspensionLogId);
     }
 
+    /** T12: očitovanje na prijedlog povlačenja i prigovor na povučen broj vežu se uz svoj prijelaz. */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"WITHDRAWAL_PROPOSED", "WITHDRAWN"})
+    void withdrawalProposalAndWithdrawn_acceptObjection(RnStatus status) {
+        when(rn.getStatus()).thenReturn(status);
+        RegistrationNumberLogEntity transition = mock(RegistrationNumberLogEntity.class);
+        UUID transitionLogId = UUID.randomUUID();
+        when(transition.getLogId()).thenReturn(transitionLogId);
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, status.name()))
+                .thenReturn(Optional.of(transition));
+
+        SuspensionObjectionEntity saved = capture(OWNER, request(file("prigovor.pdf", PDF)));
+
+        assertThat(saved.getRnStatus()).isEqualTo(status);
+        assertThat(saved.getRnLogId()).isEqualTo(transitionLogId);
+    }
+
+    /**
+     * T12: prigovor na povučen broj za čiji je objekt u međuvremenu izdan novi broj odbija se već pri
+     * predaji (uvažiti se ne bi mogao) — 409 OBJECTION_RN_REISSUED, ništa se ne sprema.
+     */
+    @Test
+    void withdrawnRn_withNewNumberIssued_is409OnSubmit() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+        when(reissueGuard.noviBrojIzdan(rn)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.submit(OWNER, SUBMITTED_BY, request(file("prigovor.pdf", PDF))))
+                .isInstanceOfSatisfying(ConflictException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
+        verify(repository, never()).saveAndFlush(any());
+    }
+
     @Test
     void nonEuLessor_ownedByLessorId_withEmailSnapshot() {
         when(rnRepository.isOwnedByLessor(RN, LESSOR_ID)).thenReturn(true);
@@ -147,7 +180,7 @@ class SuspensionObjectionServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "REVOKED", "WITHDRAWN"})
+    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "REVOKED"})
     void rnOutsideProposalAndSuspension_is409(RnStatus status) {
         when(rn.getStatus()).thenReturn(status);
 

@@ -172,8 +172,10 @@ class ZupTemplateLoaderTest {
     }
 
     /**
-     * Jedini tip bez vrste u eGOP šifrarniku: zahtjev za promjenu podataka vodi se u eTurizmu i
-     * nikad se ne urudžbira ({@code EgopAktiBezSifre.UVIJEK_BEZ_SIFRE}).
+     * Tipovi bez vrste u eGOP šifrarniku: zahtjev za promjenu podataka vodi se u eTurizmu i
+     * nikad se ne urudžbira ({@code EgopAktiBezSifre.UVIJEK_BEZ_SIFRE}). Tri akta postupka povlačenja
+     * (T12) MINT još nije unio — do tada idu pod zamjenskom šifrom ili na popis
+     * {@code EGOP_AKTI_BEZ_SIFRE} (DEPLOY-*.md); kad ih unese, premjestiti ih u šifrarnik ovdje i gore.
      *
      * <p>Popis, a ne broj tipova: novi tip mora natjerati autora da svjesno odluči ima li vrstu
      * u eGOP šifrarniku, a ne samo da podigne brojku.
@@ -195,6 +197,7 @@ class ZupTemplateLoaderTest {
 
         assertThat(StrDocumentType.values())
                 .filteredOn(t -> !uSifrarniku.contains(t.egopVrstaNaziv()))
-                .containsExactly(StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA);
+                .containsExactly(StrDocumentType.PRIJEDLOG_POVLACENJA, StrDocumentType.OBUSTAVA_POVLACENJA,
+                        StrDocumentType.REAKTIVACIJA_POVLACENJA, StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA);
     }
 }

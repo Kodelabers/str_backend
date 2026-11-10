@@ -98,6 +98,29 @@ class FacilityRegistrationNumberWriteBackTest {
 
     // --- brisanje pri povlačenju ---
 
+    /** T12: uvaženi prigovor na povlačenje — broj se ponovno upisuje istim uvjetom kao pri izdavanju. */
+    @Test
+    void restore_writesRnBackToFacility() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenReturn(Optional.of("1448035"));
+        when(facilityRepository.writeBackRegistrationNumber(1448035L, RN)).thenReturn(1);
+
+        writeBack.restore(RN);
+
+        verify(facilityRepository).writeBackRegistrationNumber(1448035L, RN);
+    }
+
+    /** Pad upisa ne smije poništiti reaktivaciju; broj bez tuStart objekta preskače se. */
+    @Test
+    void restore_swallowsFailure_andSkipsRnWithoutFacility() {
+        when(rnRepository.findFacilityIdByRn(RN)).thenReturn(Optional.of("1448035"));
+        when(facilityRepository.writeBackRegistrationNumber(1448035L, RN))
+                .thenThrow(new IllegalStateException("permission denied for table facility"));
+        assertThatCode(() -> writeBack.restore(RN)).doesNotThrowAnyException();
+
+        when(rnRepository.findFacilityIdByRn("HR000000000000000000")).thenReturn(Optional.empty());
+        assertThatCode(() -> writeBack.restore("HR000000000000000000")).doesNotThrowAnyException();
+    }
+
     /** Povučeni RB briše se iz eTurizma, da objekt može dobiti novi broj. */
     @Test
     void clear_removes_withdrawn_rn_from_facility() {

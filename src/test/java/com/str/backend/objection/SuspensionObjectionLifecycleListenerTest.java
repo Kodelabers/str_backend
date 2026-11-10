@@ -39,8 +39,14 @@ class SuspensionObjectionLifecycleListenerTest {
     @CsvSource({
             "SUSPENSION_PROPOSED, ACTIVE, REVOKE_PROPOSAL",
             "SUSPENDED, ACTIVE, REACTIVATE",
-            "SUSPENSION_PROPOSED, WITHDRAWN, WITHDRAWAL",
-            "SUSPENDED, REVOKED, REVOCATION"
+            "SUSPENDED, REVOKED, REVOCATION",
+            // T12: prijedlog povlačenja zatvara otvoren prigovor na postupak suspenzije.
+            "ACTIVE, WITHDRAWAL_PROPOSED, WITHDRAWAL_PROPOSAL",
+            "SUSPENSION_PROPOSED, WITHDRAWAL_PROPOSED, WITHDRAWAL_PROPOSAL",
+            "SUSPENDED, WITHDRAWAL_PROPOSED, WITHDRAWAL_PROPOSAL",
+            // Obustava povlačenja (uvijek u ACTIVE) zatvara očitovanje.
+            "WITHDRAWAL_PROPOSED, ACTIVE, REVOKE_WITHDRAWAL_PROPOSAL",
+            "WITHDRAWAL_PROPOSED, REVOKED, REVOCATION"
     })
     void leavingProposalOrSuspension_closesSubmittedObjection(RnStatus from, RnStatus to, String trigger) {
         listener.onTransition(event(from, to, trigger));
@@ -54,6 +60,16 @@ class SuspensionObjectionLifecycleListenerTest {
     @Test
     void deadlineExceeded_keepsObjectionOpen() {
         listener.onTransition(event(RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED, "DEADLINE_EXCEEDED"));
+
+        assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+        verifyNoInteractions(repository);
+    }
+
+    /** T12: istek roka prijedlog povlačenja pretvara u povlačenje — prigovor ostaje otvoren. */
+    @ParameterizedTest
+    @CsvSource({"WITHDRAWAL_DEADLINE_EXCEEDED"})
+    void withdrawalFromProposal_keepsObjectionOpen(String trigger) {
+        listener.onTransition(event(RnStatus.WITHDRAWAL_PROPOSED, RnStatus.WITHDRAWN, trigger));
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.SUBMITTED);
         verifyNoInteractions(repository);

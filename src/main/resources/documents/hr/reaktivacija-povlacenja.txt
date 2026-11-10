@@ -1,0 +1,23 @@
+# Obavijest o reaktivaciji povučenog registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o reaktivaciji povučenog registracijskog broja" — izlazno, ide u KP.
+# Nova vrsta (T12): dok je MINT ne unese u eGOP šifrarnik, ide pod zamjenskom vrstom
+# (EGOP_SIFRA_PISMENA_FALLBACK ili STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK) ili na popis
+# EGOP_AKTI_BEZ_SIFRE (DEPLOY-*.md).
+#
+# Po uzoru na reaktivaciju nakon suspenzije: službenik je uvažio prigovor stranke na povlačenje
+# (RnService.reinstate), pa je povučeni broj odmah ponovno aktivan i upisuje se natrag u eTurizam.
+# Status se mijenja pri uvažavanju, a ne dostavom, pa točka 2. važenje ne veže uz dan dostave. Akt je
+# stranci u korist, pa po čl. 30. st. 2 ZUP-a nema obrazloženja ni upute o pravnom lijeku.
+#
+# Struktura je ista kao na obavijesti o reaktivaciji: stranka je imenovana u uvodu, potpisuje
+# tijelo. Propis o nadležnosti je čl. 48. st. 2. (STR_PROPIS_POSTUPCI).
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po službenoj dužnosti, stranka: ${stranka.naziv}, ${stranka.identifikator}, izdaje
+
+[IZREKA]
+1. Uvažava se prigovor stranke i ukida povlačenje registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
+
+2. Registracijski broj ponovno je važeći i smještajna jedinica smije se oglašavati na internetskim platformama za kratkoročno iznajmljivanje smještaja.

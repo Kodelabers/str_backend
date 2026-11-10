@@ -1,0 +1,30 @@
+# Obavijest o obustavi postupka povlačenja registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o obustavi postupka povlačenja registracijskog broja" — izlazno,
+# ide u KP. Nova vrsta (T12): dok je MINT ne unese u eGOP šifrarnik, ide pod zamjenskom vrstom
+# (EGOP_SIFRA_PISMENA_FALLBACK ili STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK) ili na popis
+# EGOP_AKTI_BEZ_SIFRE (DEPLOY-*.md).
+#
+# Akt zatvara postupak pokrenut „Obaviješću o prijedlogu povlačenja": službenik ga je obustavio ili je
+# uvažio očitovanje stranke. Stranci je u korist, pa po čl. 30. st. 2 ZUP-a nema obrazloženja ni
+# upute o pravnom lijeku.
+#
+# Obustava uvijek vraća broj u ACTIVE (odluka korisnika, T12; RnService.revokeWithdrawalProposal), i
+# kad je povlačenje predloženo iz suspenzije ili prijedloga suspenzije — postupak suspenzije time
+# završava. Tekst je zato neutralan: ne tvrdi da su razlozi otklonjeni ni da je broj „ostao" važeći (mogao je
+# biti suspendiran), nego samo da je važeći.
+# Akt potpisuje službenik koji je postupak obustavio.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po službenoj dužnosti, izdaje
+
+[IZREKA]
+1. Obustavlja se postupak povlačenja registracijskog broja ${rn.broj}, dodijeljenog na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
+
+2. Registracijski broj je važeći.
+
+[POTPISNIK]
+${sluzbenik.potpisTijela}
+${sluzbenik.funkcija}
+${sluzbenik.ime}
