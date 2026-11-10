@@ -6,7 +6,6 @@ import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.GlobalExceptionHandler;
 import com.str.backend.lookup.OnlinePlatformEntity;
-import com.str.backend.lookup.OnlinePlatformRepository;
 import com.str.backend.rn.RnMapper;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
@@ -77,14 +76,14 @@ public class SdepIntegrationController {
 
     private final RnVerification verification;
     private final AccommodationActivityService activities;
-    private final OnlinePlatformRepository platforms;
+    private final SdepPlatforms platforms;
     private final RnService rnService;
     private final RnMapper rnMapper;
     private final RnRepository rnRepository;
     private final MessageSource messages;
 
     public SdepIntegrationController(RnVerification verification, AccommodationActivityService activities,
-                                     OnlinePlatformRepository platforms, RnService rnService, RnMapper rnMapper,
+                                     SdepPlatforms platforms, RnService rnService, RnMapper rnMapper,
                                      RnRepository rnRepository, MessageSource messages) {
         this.verification = verification;
         this.activities = activities;
@@ -107,17 +106,13 @@ public class SdepIntegrationController {
     /**
      * STR-3.1: predaja aktivnosti, uz ispravke i otkazivanja (T6). Odgovor je raščlamba
      * {@code {received, inserted, updated, unchanged}}. Platforma se traži po nazivu iz SDEP-a, bez
-     * razlike velikih i malih slova. Nepoznata platforma je 400: nova se zasad ne dodaje sama
-     * (T3, čeka dogovor o registraciji platformi).
+     * razlike velikih i malih slova. Nepoznata platforma je 400 (T3, čeka dogovor o registraciji
+     * platformi), osim na testu, gdje je STR doda sam ({@link SdepPlatforms}).
      */
     @PostMapping("/activities")
     public ResponseEntity<AccommodationActivityService.IngestResult> activities(
             @Valid @RequestBody SdepActivitiesRequest req, @AuthenticationPrincipal Jwt jwt) {
-        OnlinePlatformEntity platform = platforms.findFirstByActiveTrueAndNameIgnoreCase(req.getPlatformName().strip())
-                .orElseThrow(() -> {
-                    log.warn("sdep_ingest_unknown_platform zahtjev={} platforma='{}'", jwt.getId(), req.getPlatformName());
-                    return new BusinessException("error.sdep.platform.unknown");
-                });
+        OnlinePlatformEntity platform = platforms.resolve(req.getPlatformName(), jwt.getId());
         log.info("sdep_ingest_request zahtjev={} platforma='{}' count={}", jwt.getId(), platform.getName(),
                 req.getEntries().size());
         return ResponseEntity.status(HttpStatus.CREATED)
