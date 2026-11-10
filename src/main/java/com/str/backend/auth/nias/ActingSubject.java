@@ -1,5 +1,7 @@
 package com.str.backend.auth.nias;
 
+import com.str.backend.registries.eovlastenja.LegalForm;
+
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.Instant;
@@ -21,6 +23,8 @@ import java.util.Optional;
  *
  * @param functions        nazivi funkcija iz e-Zastupanja (npr. „Direktor")
  * @param representativeOib OIB NIAS osobe koja je provjerena — subjekt vrijedi samo za nju
+ * @param legalForm        registar subjekta (tvrtka, obrt, OPG) — određuje što subjekt smije
+ *                         prijaviti (T13) i šalje se pri ponovnoj provjeri zastupanja
  */
 public record ActingSubject(
         String legalOib,
@@ -29,7 +33,8 @@ public record ActingSubject(
         String representativeOib,
         String representativeFirstName,
         String representativeLastName,
-        Instant verifiedAt
+        Instant verifiedAt,
+        LegalForm legalForm
 ) implements Serializable {
 
     @Serial
@@ -37,6 +42,14 @@ public record ActingSubject(
 
     public ActingSubject {
         functions = List.copyOf(functions);
+        legalForm = legalForm == null ? LegalForm.TVRTKA : legalForm;
+    }
+
+    /** Tvrtka (sudski registar) — oblik koji je postojao prije obrta i OPG-a. */
+    public ActingSubject(String legalOib, String legalName, List<String> functions, String representativeOib,
+                         String representativeFirstName, String representativeLastName, Instant verifiedAt) {
+        this(legalOib, legalName, functions, representativeOib, representativeFirstName,
+                representativeLastName, verifiedAt, LegalForm.TVRTKA);
     }
 
     /** Oblik za sesiju: samo {@code String}, {@code ArrayList} i {@code HashMap}. */
@@ -49,6 +62,7 @@ public record ActingSubject(
         value.put("representativeFirstName", representativeFirstName);
         value.put("representativeLastName", representativeLastName);
         value.put("verifiedAt", verifiedAt.toString());
+        value.put("legalForm", legalForm.name());
         return value;
     }
 
@@ -68,7 +82,9 @@ public record ActingSubject(
                     (String) map.get("representativeOib"),
                     (String) map.get("representativeFirstName"),
                     (String) map.get("representativeLastName"),
-                    Instant.parse((String) map.get("verifiedAt"))));
+                    Instant.parse((String) map.get("verifiedAt")),
+                    // Sesija spremljena prije obrta i OPG-a nema oblik — tada je to bila tvrtka.
+                    map.get("legalForm") == null ? LegalForm.TVRTKA : LegalForm.valueOf((String) map.get("legalForm"))));
         } catch (RuntimeException e) {
             return Optional.empty();
         }

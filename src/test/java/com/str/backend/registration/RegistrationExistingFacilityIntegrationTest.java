@@ -81,7 +81,7 @@ class RegistrationExistingFacilityIntegrationTest {
         when(facility.getName()).thenReturn("Apartman Marija");
         when(facility.getBeds()).thenReturn(4);
         when(facility.getAuxiliaryBeds()).thenReturn(2);
-        when(facilityClaimVerifier.verify(eq(OIB), eq("700001"), any())).thenReturn(Optional.of(facility));
+        when(facilityClaimVerifier.verify(eq(OIB), eq("700001"), any(), any())).thenReturn(Optional.of(facility));
 
         JsonNode body = submit("700001");
 
@@ -103,7 +103,7 @@ class RegistrationExistingFacilityIntegrationTest {
     @Test
     void issuesRn_evenWhenEturizamKnowsNothing() throws Exception {
         FacilityOwnershipRow facility = verifiedFacility();
-        when(facilityClaimVerifier.verify(eq(OIB), eq("700002"), any())).thenReturn(Optional.of(facility));
+        when(facilityClaimVerifier.verify(eq(OIB), eq("700002"), any(), any())).thenReturn(Optional.of(facility));
 
         JsonNode body = submit("700002", 4);
 
@@ -118,7 +118,7 @@ class RegistrationExistingFacilityIntegrationTest {
     @Test
     void rejects_whenNeitherEturizamNorUserKnowsMaxGuests() throws Exception {
         FacilityOwnershipRow facility = verifiedFacility();
-        when(facilityClaimVerifier.verify(eq(OIB), eq("700003"), any())).thenReturn(Optional.of(facility));
+        when(facilityClaimVerifier.verify(eq(OIB), eq("700003"), any(), any())).thenReturn(Optional.of(facility));
 
         mvc.perform(post("/api/generateRegistrationNumber")
                         .contentType(MediaType.APPLICATION_JSON)

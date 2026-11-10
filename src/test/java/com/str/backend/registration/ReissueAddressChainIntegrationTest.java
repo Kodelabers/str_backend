@@ -14,6 +14,9 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRnActionService;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeEntity;
+import com.str.backend.lookup.ObjectGroupEntity;
+import com.str.backend.lookup.ObjectGroupRepository;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.rn.RnEntity;
@@ -32,6 +35,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,6 +94,7 @@ class ReissueAddressChainIntegrationTest {
     @Autowired private AccommodationRepository accommodationRepository;
     @Autowired private CategorizationDecisionRepository decisionRepository;
     @Autowired private AccommodationTypeRepository accommodationTypeRepository;
+    @Autowired private ObjectGroupRepository objectGroupRepository;
 
     /** Identitet i adresa podnositelja nisu predmet testa. */
     @MockBean private SubjectProfileService subjectProfileService;
@@ -105,8 +110,11 @@ class ReissueAddressChainIntegrationTest {
                     l.setLessorOib((String) inv.getArgument(0));
                     return l;
                 });
+        // T13: skupina vrste mora postojati i biti dopuštena fizičkoj osobi (changeset 156).
+        objectGroupRepository.save(new ObjectGroupEntity("FT_UGOST_USL_U_DOM", "Domaćinstvo", 0,
+                Set.of(SubjectCategory.FIZICKA_OSOBA)));
         typeId = String.valueOf(accommodationTypeRepository
-                .save(new AccommodationTypeEntity("Apartman", true, "OBITELJSKI")).getTypeId());
+                .save(new AccommodationTypeEntity("Apartman", true, "FT_UGOST_USL_U_DOM")).getTypeId());
         seedAddressRegistry();
     }
 

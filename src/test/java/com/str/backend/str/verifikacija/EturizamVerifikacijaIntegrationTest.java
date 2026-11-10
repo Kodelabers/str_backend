@@ -270,7 +270,7 @@ class EturizamVerifikacijaIntegrationTest {
         document(951003, UNIT);
         FacilityOwnershipRow facility = facilityRow(951003L);
         when(facility.getVerified()).thenReturn(true);
-        when(facilityClaimVerifier.verify(eq(OIB), eq("951103"), any())).thenReturn(Optional.of(facility));
+        when(facilityClaimVerifier.verify(eq(OIB), eq("951103"), any(), any())).thenReturn(Optional.of(facility));
 
         String rn = submit("951103");
 
@@ -1054,7 +1054,7 @@ class EturizamVerifikacijaIntegrationTest {
     private void unverifiedFacility(String facilityId, Long documentId) {
         FacilityOwnershipRow facility = facilityRow(documentId);
         when(facility.getVerified()).thenReturn(false);
-        when(facilityClaimVerifier.verify(eq(OIB), eq(facilityId), any())).thenReturn(Optional.of(facility));
+        when(facilityClaimVerifier.verify(eq(OIB), eq(facilityId), any(), any())).thenReturn(Optional.of(facility));
     }
 
     private String submit(String facilityId) throws Exception {

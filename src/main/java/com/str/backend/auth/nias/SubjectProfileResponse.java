@@ -3,6 +3,7 @@ package com.str.backend.auth.nias;
 import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
+import com.str.backend.lookup.SubjectCategory;
 
 /**
  * Podaci o podnositelju za prikaz na formi zahtjeva za RB (stavka 2: sva polja vidljiva, ništa
@@ -43,7 +44,13 @@ public record SubjectProfileResponse(
         String kontaktOsoba,
         String kontaktEmail,
         /** Odakle je kontakt: {@code RB} (zadnji izdani RB) ili {@code DOKUMENT}; {@code null} kad ga nema. */
-        SubjectContact.Source kontaktIzvor
+        SubjectContact.Source kontaktIzvor,
+        /**
+         * Vrsta subjekta (T13): {@code FIZICKA_OSOBA} u svoje ime, {@code OPG} u ime OPG-a,
+         * {@code OSTALI_POSLOVNI_SUBJEKT} u ime tvrtke ili obrta. Po njoj obrazac nudi stavke i tekst
+         * upozorenja; predaju svejedno provjerava backend, po sesiji.
+         */
+        SubjectCategory kategorijaSubjekta
 ) {
 
     /** Korisnik djeluje u svoje ime: podaci o njemu iz NIAS-a i registra. */
@@ -52,7 +59,8 @@ public record SubjectProfileResponse(
                 p.oib(), p.firstName(), p.lastName(), p.nameSource(), p.legalEntityName(),
                 p.street(), p.streetNumber(), p.place(), p.postalCode(), p.municipality(),
                 p.county(), p.addressSource(), null,
-                contact.mobile(), contact.phone(), contact.name(), contact.email(), contact.source());
+                contact.mobile(), contact.phone(), contact.name(), contact.email(), contact.source(),
+                SubjectCategory.FIZICKA_OSOBA);
     }
 
     /** Korisnik djeluje u ime tvrtke: jedan zastupnik i tvrtka s MBS-om i sjedištem. */
@@ -62,6 +70,7 @@ public record SubjectProfileResponse(
                 r.oib(), r.firstName(), r.lastName(), r.nameSource(), null,
                 r.street(), r.streetNumber(), r.place(), r.postalCode(), r.municipality(),
                 r.county(), r.addressSource(), ActingSubjectResponse.of(s, p),
-                contact.mobile(), contact.phone(), contact.name(), contact.email(), contact.source());
+                contact.mobile(), contact.phone(), contact.name(), contact.email(), contact.source(),
+                s.legalForm().subjectCategory());
     }
 }

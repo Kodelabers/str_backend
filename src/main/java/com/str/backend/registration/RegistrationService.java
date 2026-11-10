@@ -27,6 +27,8 @@ import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.registration.dto.AccommodationRequest;
 import com.str.backend.registration.dto.PodnositeljUnos;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
@@ -81,6 +83,7 @@ public class RegistrationService {
     private final ReissueService reissueService;
     private final PrilogService prilogService;
     private final VerifikacijaOutbox verifikacijaOutbox;
+    private final ObjectGroupPolicy objectGroupPolicy;
 
     public RegistrationService(LessorRepository lessorRepository,
                                AccommodationRepository accommodationRepository,
@@ -100,7 +103,8 @@ public class RegistrationService {
                                SubmissionDraftService submissionDraftService,
                                ReissueService reissueService,
                                PrilogService prilogService,
-                               VerifikacijaOutbox verifikacijaOutbox) {
+                               VerifikacijaOutbox verifikacijaOutbox,
+                               ObjectGroupPolicy objectGroupPolicy) {
         this.lessorRepository = lessorRepository;
         this.accommodationRepository = accommodationRepository;
         this.submissionRepository = submissionRepository;
@@ -120,6 +124,7 @@ public class RegistrationService {
         this.reissueService = reissueService;
         this.prilogService = prilogService;
         this.verifikacijaOutbox = verifikacijaOutbox;
+        this.objectGroupPolicy = objectGroupPolicy;
     }
 
     /** Bez NIAS assertiona (local/mock, testovi): identitet je samo OIB iz zahtjeva. */
@@ -153,7 +158,12 @@ public class RegistrationService {
         String previousRn = requireReissue(req, RnOwner.byOib(req.oib()));
         AccommodationEntity accommodation = buildAccommodation(req, countyName(req.countyId()));
         markReissue(accommodation, previousRn);
-        FacilityOwnershipRow facility = verifyAndCompleteFacility(req.oib(), accommodation);
+        // Kategorija iz potvrđenog subjekta (sesija), ne iz zahtjeva — izbornik na obrascu samo sužava izbor.
+        SubjectCategory category = legalEntity != null
+                ? legalEntity.legalForm().subjectCategory()
+                : SubjectCategory.FIZICKA_OSOBA;
+        FacilityOwnershipRow facility = verifyAndCompleteFacility(req.oib(), accommodation, category);
+        objectGroupPolicy.requireTypeAllowed(accommodation.getAccommodationTypeId(), category);
         requireMaxBeds(accommodation);
         checkDuplicateLocation(req.oib(), accommodation, req.confirmDuplicateLocation());
 
@@ -165,7 +175,8 @@ public class RegistrationService {
         if (legalEntity != null) {
             lessor = subjectProfileService.resolveLegalLessor(legalEntity.legalOib(), legalEntity.legalName(),
                     legalEntity.representativeOib(), legalEntity.representativeFirstName(),
-                    legalEntity.representativeLastName(), entered);
+                    legalEntity.representativeLastName(), entered, legalEntity.legalForm());
+            lessor.applyLegalForm(legalEntity.legalForm());
         } else {
             boolean sameOib = niasIdentity != null && req.oib().equals(niasIdentity.oib());
             lessor = subjectProfileService.resolveLessor(req.oib(),
@@ -193,7 +204,10 @@ public class RegistrationService {
         String previousRn = requireReissue(req, RnOwner.byLessor(lessorId));
         AccommodationEntity accommodation = buildAccommodation(req, countyName);
         markReissue(accommodation, previousRn);
-        FacilityOwnershipRow facility = verifyAndCompleteFacility(lessor.getLessorOib(), accommodation);
+        // Non-EU iznajmljivač nema e-Ovlaštenja: prijavljuje kao fizička osoba (T13).
+        FacilityOwnershipRow facility = verifyAndCompleteFacility(lessor.getLessorOib(), accommodation,
+                SubjectCategory.FIZICKA_OSOBA);
+        objectGroupPolicy.requireTypeAllowed(accommodation.getAccommodationTypeId(), SubjectCategory.FIZICKA_OSOBA);
         requireMaxBeds(accommodation);
         checkDuplicateLocation(lessor.getLessorOib(), accommodation, req.confirmDuplicateLocation());
 
@@ -313,7 +327,8 @@ public class RegistrationService {
      * @return provjereni eTurizam zapis objekta — {@code commitRegistration} po njemu odlučuje treba li
      * eTurizmu zahtjev za žurnu verifikaciju; {@code null} za novi objekt (bez {@code facilityId})
      */
-    private FacilityOwnershipRow verifyAndCompleteFacility(String oib, AccommodationEntity accommodation) {
+    private FacilityOwnershipRow verifyAndCompleteFacility(String oib, AccommodationEntity accommodation,
+                                                           SubjectCategory category) {
         Optional<FacilityOwnershipRow> facility = facilityClaimVerifier.verify(oib, accommodation.getFacilityId(),
                         new FacilityClaimVerifier.Claim(
                                 accommodation.getAccommodationTypeId(),
@@ -323,18 +338,19 @@ public class RegistrationService {
                                 accommodation.getCity(),
                                 accommodation.getSettlement(),
                                 accommodation.getStreet(),
-                                accommodation.getStreetNumber()));
-        facility.ifPresent(f -> accommodation.completeFrom(facilityData(f)));
+                                accommodation.getStreetNumber()),
+                        category);
+        facility.ifPresent(f -> accommodation.completeFrom(facilityData(f, category)));
         return facility.orElse(null);
     }
 
     /** Ono što eTurizam stvarno zna o objektu, u obliku za dopunu; popunjivači postaju {@code null}. */
-    private AccommodationEntity.FacilityData facilityData(FacilityOwnershipRow facility) {
-        String subtypeCode = FacilityClaimVerifier.knownOrNull(facility.getSubtypeCode());
-        Long typeId = subtypeCode == null ? null
-                : accommodationTypeRepository.findByCodeIgnoreCase(subtypeCode)
-                        .map(AccommodationTypeEntity::getTypeId)
-                        .orElse(null);
+    private AccommodationEntity.FacilityData facilityData(FacilityOwnershipRow facility, SubjectCategory category) {
+        // Vrsta za fizičku osobu i OPG, skupina za ostale poslovne subjekte (T13) — isti redak koji
+        // FacilityClaimVerifier provjerava i claim nudi obrascu.
+        Long typeId = facilityClaimVerifier.facilityType(facility, category)
+                .map(AccommodationTypeEntity::getTypeId)
+                .orElse(null);
         return new AccommodationEntity.FacilityData(
                 FacilityClaimVerifier.objectName(facility),
                 typeId,

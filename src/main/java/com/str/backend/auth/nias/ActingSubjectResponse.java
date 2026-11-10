@@ -2,6 +2,7 @@ package com.str.backend.auth.nias;
 
 import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.SubjectDataSource;
+import com.str.backend.registries.eovlastenja.LegalForm;
 
 import java.time.Instant;
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.List;
  * @param mbs        matični broj subjekta (Uredba 2024/1028, čl. 5(1)(c)(ii)); {@code null} kad ga
  *                   OIB sustav nema
  * @param adresaIzvor izvor MBS-a i sjedišta; {@code null} kad nisu dohvaćeni
+ * @param pravniOblik registar subjekta (TVRTKA, OBRT, OPG — T13); MBS se traži samo od tvrtke
  */
 public record ActingSubjectResponse(
         String oib,
@@ -35,14 +37,15 @@ public record ActingSubjectResponse(
         String postanskiBroj,
         String opcina,
         String zupanija,
-        SubjectDataSource adresaIzvor
+        SubjectDataSource adresaIzvor,
+        LegalForm pravniOblik
 ) {
 
     static ActingSubjectResponse of(ActingSubject s) {
         return new ActingSubjectResponse(s.legalOib(), s.legalName(), s.functions(),
                 s.representativeOib(), s.representativeFirstName(), s.representativeLastName(),
                 s.verifiedAt(), "E_OVLASTENJA",
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, s.legalForm());
     }
 
     static ActingSubjectResponse of(ActingSubject s, LegalEntityProfile p) {
@@ -50,6 +53,6 @@ public record ActingSubjectResponse(
                 s.representativeOib(), s.representativeFirstName(), s.representativeLastName(),
                 s.verifiedAt(), "E_OVLASTENJA",
                 p.registrationNumber(), p.street(), p.streetNumber(), p.place(), p.postalCode(),
-                p.municipality(), p.county(), p.seatSource());
+                p.municipality(), p.county(), p.seatSource(), s.legalForm());
     }
 }

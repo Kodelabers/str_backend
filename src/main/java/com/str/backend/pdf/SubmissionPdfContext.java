@@ -10,6 +10,8 @@ import com.str.backend.str.FacilityRooms.Rooms;
  * kojem su četiri uzastopna bila {@code String} pa ih se moglo zamijeniti bez ijedne greške
  * kompajlera; {@code countyName} se pritom uopće nije čitao.
  *
+ * @param groupName          skupina objekta ({@code str_rn.object_group}) po vrsti — tvrtka prijavljuje
+ *                           ostale ugostiteljske objekte, a ne domaćinstvo (T13); {@code null} bez vrste
  * @param maxGuests          maksimalan broj gostiju (kreveti + pomoćni kreveti) — obrazac ga
  *                           od stavke 2 prikazuje kao jedan podatak, bez podjele na krevete;
  *                           {@code null} za postojeći eTurizam objekt kojem ga eTurizam ne zna
@@ -28,6 +30,7 @@ public record SubmissionPdfContext(
         String cityName,
         Integer maxGuests,
         String typeName,
+        String groupName,
         String category,
         Rooms rooms,
         LessorEntity lessor,
@@ -36,7 +39,8 @@ public record SubmissionPdfContext(
 ) {
 
     public static SubmissionPdfContext of(AccommodationEntity accommodation, LessorEntity lessor,
-                                          String typeName, Rooms rooms, String registrationNumber,
+                                          String typeName, String groupName, Rooms rooms,
+                                          String registrationNumber,
                                           FilingReference filing) {
         return new SubmissionPdfContext(
                 accommodation.getName(),
@@ -46,6 +50,7 @@ public record SubmissionPdfContext(
                 accommodation.getCity(),
                 accommodation.getMaxGuests(),
                 typeName,
+                groupName,
                 category(accommodation),
                 rooms,
                 lessor,
@@ -66,6 +71,6 @@ public record SubmissionPdfContext(
 
     public SubmissionPdfContext withFiling(FilingReference value) {
         return new SubmissionPdfContext(accommodationName, street, streetNumber, postalCode,
-                cityName, maxGuests, typeName, category, rooms, lessor, value, registrationNumber);
+                cityName, maxGuests, typeName, groupName, category, rooms, lessor, value, registrationNumber);
     }
 }

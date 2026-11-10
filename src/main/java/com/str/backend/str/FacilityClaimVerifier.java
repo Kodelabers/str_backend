@@ -3,7 +3,8 @@ package com.str.backend.str;
 import com.str.backend.address.CountyNames;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.lookup.AccommodationTypeEntity;
-import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.StrFacilityRepository.FacilityOwnershipRow;
 import org.springframework.stereotype.Service;
@@ -23,8 +24,8 @@ import java.util.Optional;
  *       RB u {@code str.facility} za poslani {@code facilityId}. Bez provjere se može poslati
  *       tuđi ID i RB završi na tuđem objektu u tuđem registru.</li>
  *   <li><b>Vrsta, kapacitet, adresa i naziv.</b> Primjedba s UAT-a: za postojeći objekt se gornji
- *       podaci ne smiju mijenjati. Šifra podvrste u eTurizmu ({@code FS_*}) je ista kao
- *       {@code accommodation_type.code}, pa je usporedba direktna; broj kreveta (osnovni +
+ *       podaci ne smiju mijenjati. Šifra podvrste ({@code FS_*}) ili skupine ({@code FT_*}) u
+ *       eTurizmu je ista kao {@code accommodation_type.code}, pa je usporedba direktna; broj kreveta (osnovni +
  *       pomoćni) kategoriziran je rješenjem, a ne slobodan unos.</li>
  *   <li><b>Dvostruki RB.</b> Objekt koji već ima stojeći RB ne smije dobiti drugi. Postojeći
  *       {@code checkDuplicateLocation} to ne pokriva: gleda adresu (županija + grad + ulica + kbr),
@@ -32,9 +33,9 @@ import java.util.Optional;
  *       dva zahtjeva za isti objekt ne prepoznaju kao ista lokacija. Opozvani ili povučeni RB ne
  *       blokira novi zahtjev, jer su {@code REVOKED} i {@code WITHDRAWN} konačni i objekt smije
  *       proći novi postupak.</li>
- *   <li><b>Vrsta objekta.</b> Popis objekata prikazuje samo privatni smještaj, ali tuStart URL
- *       može nositi bilo koji vlastiti objekt (hotel, restoran, agenciju) — v.
- *       {@link #isRegistrableType}.</li>
+ *   <li><b>Vrsta objekta.</b> Popis objekata prikazuje samo ono što subjekt njegove vrste smije
+ *       prijaviti (T13), ali tuStart URL može nositi bilo koji vlastiti objekt — v.
+ *       {@link #isRegistrable}.</li>
  * </ul>
  *
  * <p><b>Usporedba se preskače kad eTurizam podatak ne zna.</b> Adrese u {@code str.address} su
@@ -66,14 +67,14 @@ public class FacilityClaimVerifier {
     public static final String FIELD_STREET_NUMBER = "streetNumber";
 
     private final StrFacilityRepository facilityRepository;
-    private final AccommodationTypeRepository accommodationTypeRepository;
+    private final ObjectGroupPolicy objectGroupPolicy;
     private final RnRepository rnRepository;
 
     public FacilityClaimVerifier(StrFacilityRepository facilityRepository,
-                                 AccommodationTypeRepository accommodationTypeRepository,
+                                 ObjectGroupPolicy objectGroupPolicy,
                                  RnRepository rnRepository) {
         this.facilityRepository = facilityRepository;
-        this.accommodationTypeRepository = accommodationTypeRepository;
+        this.objectGroupPolicy = objectGroupPolicy;
         this.rnRepository = rnRepository;
     }
 
@@ -96,7 +97,8 @@ public class FacilityClaimVerifier {
      *         donio; prazno za novi objekt
      */
     @Transactional(readOnly = true)
-    public Optional<FacilityOwnershipRow> verify(String oib, String facilityId, Claim claim) {
+    public Optional<FacilityOwnershipRow> verify(String oib, String facilityId, Claim claim,
+                                                 SubjectCategory category) {
         if (facilityId == null || facilityId.isBlank()) {
             return Optional.empty();
         }
@@ -119,14 +121,19 @@ public class FacilityClaimVerifier {
         if (!rnRepository.findRnsByFacilityIds(List.of(facilityId.trim())).isEmpty()) {
             throw new BusinessException("error.facility.alreadyRegistered");
         }
-        // Prije usporedbi: vrsta koja nije privatni smještaj (hotel, restoran, agencija) ne dobiva
-        // RB bez obzira na ostalo. Ne smije ovisiti o tome je li zahtjev vrstu uopće poslao —
-        // inače bi izostavljen typeId preskočio i ovu provjeru i zabranu u RnService.issue().
-        if (!isRegistrableType(facility, accommodationTypeRepository)) {
+        // Prije usporedbi: objekt koji subjekt te vrste ne prijavljuje (T13: tvrtka i objekt u
+        // domaćinstvu, fizička osoba i hotel…) ne dobiva RB bez obzira na ostalo. Ne smije ovisiti o
+        // tome je li zahtjev vrstu uopće poslao — inače bi izostavljen typeId preskočio i ovu provjeru
+        // i zabranu u RnService.issue().
+        if (!isRegistrable(facility, category)) {
             throw new BusinessException("error.facility.type.notAllowed");
         }
 
-        if (differs(facility.getSubtypeCode(), resolveSubmittedCode(claim.accommodationTypeId()))) {
+        // Vrsta iz zahtjeva mora biti redak u koji se objekt razrješava: vrsta (FS_*) za fizičku
+        // osobu i OPG, skupina (FT_*) za ostale poslovne subjekte. Nepoznato se ne uspoređuje.
+        Long expectedType = facilityType(facility, category).map(AccommodationTypeEntity::getTypeId).orElse(null);
+        if (expectedType != null && claim.accommodationTypeId() != null
+                && !expectedType.equals(claim.accommodationTypeId())) {
             throw new BusinessException("error.facility.type.mismatch");
         }
 
@@ -150,23 +157,19 @@ public class FacilityClaimVerifier {
     }
 
     /**
-     * Smije li objekt te vrste dobiti RB: vrsta mora biti poznata vrsta privatnog smještaja iz
-     * šifrarnika (ista koju prikazuje popis objekata, {@code findAllCodes}) i dopuštena
-     * ({@code registrationNumberAllowed}).
-     *
-     * <p>Kad eTurizam vrstu ne zna, zabrana se ne može utemeljiti, pa RB nije blokiran — postojeći
-     * objekt mora u svakom trenutku moći dobiti RB, a {@code RnService.issue()} provjerava vrstu
-     * čim je poznata.
+     * Redak šifrarnika u koji se objekt razrješava za subjekt te vrste — prvo po vrsti, pa po
+     * skupini ({@link ObjectGroupPolicy#resolveFacilityType}); prazno kad ga subjekt ne prijavljuje
+     * ili eTurizam vrstu i skupinu ne zna.
      */
-    public static boolean isRegistrableType(FacilityOwnershipRow facility,
-                                            AccommodationTypeRepository accommodationTypeRepository) {
-        String code = facility.getSubtypeCode();
-        if (!known(code)) {
-            return true;
-        }
-        return accommodationTypeRepository.findByCodeIgnoreCase(code.trim())
-                .map(AccommodationTypeEntity::isRegistrationNumberAllowed)
-                .orElse(false);
+    public Optional<AccommodationTypeEntity> facilityType(FacilityOwnershipRow facility, SubjectCategory category) {
+        return objectGroupPolicy.resolveFacilityType(
+                knownOrNull(facility.getSubtypeCode()), knownOrNull(facility.getTypeCode()), category);
+    }
+
+    /** Smije li subjekt te vrste za objekt dobiti RB — v. {@link ObjectGroupPolicy#isRegistrable}. */
+    public boolean isRegistrable(FacilityOwnershipRow facility, SubjectCategory category) {
+        return objectGroupPolicy.isRegistrable(
+                knownOrNull(facility.getSubtypeCode()), knownOrNull(facility.getTypeCode()), category);
     }
 
     /**
@@ -225,20 +228,6 @@ public class FacilityClaimVerifier {
         if (known(facility.getStreetName())) locked.add(FIELD_STREET);
         if (known(facility.getHouseNumber())) locked.add(FIELD_STREET_NUMBER);
         return locked;
-    }
-
-    /**
-     * Vrsta iz zahtjeva u {@code FS_*} šifru. Vrsta bez šifre (npr. hotel — šifru imaju samo
-     * vrste privatnog smještaja, changeset 060) daje {@code null}, pa se usporedba preskače
-     * umjesto da lažno padne.
-     */
-    private String resolveSubmittedCode(Long accommodationTypeId) {
-        if (accommodationTypeId == null) {
-            return null;
-        }
-        return accommodationTypeRepository.findById(accommodationTypeId)
-                .map(AccommodationTypeEntity::getCode)
-                .orElse(null);
     }
 
     /**

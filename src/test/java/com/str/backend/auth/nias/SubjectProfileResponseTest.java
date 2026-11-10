@@ -3,6 +3,8 @@ package com.str.backend.auth.nias;
 import com.str.backend.lessor.LegalEntityProfile;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
+import com.str.backend.lookup.SubjectCategory;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -31,6 +33,22 @@ class SubjectProfileResponseTest {
         return new LegalEntityProfile("45645645646", "PERINA TESTNA FIRMA D.O.O", "080123456",
                 "ULICA CVIJETE ZUZORIĆ", "3", "ZAGREB", "10000", "GRAD ZAGREB", "Grad Zagreb",
                 SubjectDataSource.OIB_REGISTAR, representative);
+    }
+
+    /** T13: kategorija subjekta slijedi pravni oblik iz e-Ovlaštenja. */
+    @Test
+    void legalEntity_categoryFollowsLegalForm() {
+        ActingSubject opg = new ActingSubject("45645645646", "OPG", List.of("Nositelj"), "70000000004", "Ana",
+                "Horvat", Instant.parse("2026-11-10T10:00:00Z"), LegalForm.OPG);
+        ActingSubject obrt = new ActingSubject("45645645646", "OBRT", List.of("Vlasnik"), "70000000004", "Ana",
+                "Horvat", Instant.parse("2026-11-10T10:00:00Z"), LegalForm.OBRT);
+
+        assertThat(SubjectProfileResponse.ofLegalEntity(ACTING, profile(), contact()).kategorijaSubjekta())
+                .isEqualTo(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT);
+        assertThat(SubjectProfileResponse.ofLegalEntity(opg, profile(), contact()).kategorijaSubjekta())
+                .isEqualTo(SubjectCategory.OPG);
+        assertThat(SubjectProfileResponse.ofLegalEntity(obrt, profile(), contact()).kategorijaSubjekta())
+                .isEqualTo(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT);
     }
 
     @Test

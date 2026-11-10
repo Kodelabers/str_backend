@@ -177,7 +177,7 @@ class RnLifecycleEmailListenerTest {
                 d.lessorOib(), d.legalEntityOwner(), d.legalEntityCountryName(), d.legalEntityCity(),
                 d.legalEntityRegistrationNumber(), d.representativeOib(), d.legalRepresentativeName(),
                 d.representativeEmail(), d.representativePhone(), d.representativeAddress(),
-                LocalDate.of(2026, 12, 1), false)));
+                LocalDate.of(2026, 12, 1), false, null)));
         when(documentService.razlogAkta(StrDocumentType.PRIJEDLOG_POVLACENJA, RN, "drugi razlozi"))
                 .thenReturn("drugi razlozi");
 

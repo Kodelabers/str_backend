@@ -1,5 +1,6 @@
 package com.str.backend.auth.nias;
 
+import com.str.backend.lookup.SubjectCategory;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
@@ -38,6 +39,18 @@ public class EffectiveOibResolver {
         return actingSubject(personOib.get())
                 .map(ActingSubject::legalOib)
                 .or(() -> personOib);
+    }
+
+    /**
+     * Vrsta subjekta za koji se radi (T13): po pravnom obliku subjekta iz e-Ovlaštenja — OPG je
+     * {@link SubjectCategory#OPG}, tvrtka i obrt {@link SubjectCategory#OSTALI_POSLOVNI_SUBJEKT} — a
+     * osoba u svoje ime {@link SubjectCategory#FIZICKA_OSOBA}. Isto pravilo kao pri predaji
+     * ({@code RegistrationService}), da izbornik, popis i provjera vide istu kategoriju.
+     */
+    public SubjectCategory subjectCategory(Authentication authentication) {
+        return actingSubject(authentication)
+                .map(subject -> subject.legalForm().subjectCategory())
+                .orElse(SubjectCategory.FIZICKA_OSOBA);
     }
 
     /** Pravna osoba u čije ime se djeluje, ako je odabrana (i to za istu NIAS osobu). */

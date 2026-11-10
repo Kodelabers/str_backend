@@ -37,7 +37,7 @@ class EOvlastenjaConfigTest {
     void disabled_withoutMockPairs_isUnavailable() {
         EOvlastenjaClient client = config.eOvlastenjaClientWhenDisabled(disabled(null), true);
 
-        assertThatThrownBy(() -> client.verifyRepresentation("s", "99999999990", "33333333360"))
+        assertThatThrownBy(() -> client.verifyRepresentation("s", "99999999990", "33333333360", LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("nisu uključena");
         assertThatThrownBy(() -> client.representedCompanies("s", "99999999990"))
@@ -82,9 +82,9 @@ class EOvlastenjaConfigTest {
     void disabled_mockPairsWithoutNias_mockRuns() {
         EOvlastenjaClient client = config.eOvlastenjaClientWhenDisabled(disabled(List.of(PAIR)), false);
 
-        assertThat(client.verifyRepresentation(null, "99999999990", "33333333360").legalName())
+        assertThat(client.verifyRepresentation(null, "99999999990", "33333333360", LegalForm.TVRTKA).legalName())
                 .isEqualTo("TESTNA TVRTKA d.o.o.");
-        assertThatThrownBy(() -> client.verifyRepresentation(null, "99999999990", "85821130368"))
+        assertThatThrownBy(() -> client.verifyRepresentation(null, "99999999990", "85821130368", LegalForm.TVRTKA))
                 .isInstanceOfSatisfying(EOvlastenjaException.class,
                         e -> assertThat(e.reason()).isEqualTo(EOvlastenjaException.Reason.NOT_REPRESENTATIVE));
     }

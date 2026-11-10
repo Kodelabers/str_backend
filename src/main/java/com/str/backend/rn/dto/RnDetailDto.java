@@ -52,10 +52,16 @@ public record RnDetailDto(
          * Prijedlog povlačenja pokrenut iz suspenzije (T12): broj javno ostaje suspendiran. {@code true}
          * samo u statusu WITHDRAWAL_PROPOSED.
          */
-        boolean prijedlogIzSuspenzije
+        boolean prijedlogIzSuspenzije,
+
+        /**
+         * Naziv skupine objekta ({@code str_rn.object_group}) po vrsti smještaja; {@code null} kad vrsta
+         * nije zadana. Akti ga ispisuju umjesto natpisa iz znamenki RB-a (T13).
+         */
+        String accommodationGroupName
 ) {
 
-    /** Bez podataka o prijedlogu povlačenja — za RB izvan tog postupka (testovi, pregledi). */
+    /** Bez podataka o prijedlogu povlačenja i skupini — za RB izvan tog postupka (testovi, pregledi). */
     public RnDetailDto(String rn, RnStatus status, LocalDate issueDate, LocalDate validFrom, LocalDate validTo,
                        LocalDate suspensionDeadline, Instant createdAt, Instant updatedAt, UUID submissionId,
                        UUID accommodationId, String county, String city, String settlement, String street,
@@ -71,6 +77,6 @@ public record RnDetailDto(
                 accommodationTypeName, maxBeds, category, lessorId, lessorFirstName, lessorLastName,
                 lessorLegalEntityName, lessorEmail, lessorOib, legalEntityOwner, legalEntityCountryName,
                 legalEntityCity, legalEntityRegistrationNumber, representativeOib, legalRepresentativeName,
-                representativeEmail, representativePhone, representativeAddress, null, false);
+                representativeEmail, representativePhone, representativeAddress, null, false, null);
     }
 }

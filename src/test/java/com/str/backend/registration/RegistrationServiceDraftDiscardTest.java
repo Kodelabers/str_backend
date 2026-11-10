@@ -17,6 +17,7 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
@@ -78,7 +79,7 @@ class RegistrationServiceDraftDiscardTest {
                 accommodationTypeRepository, mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                draftService, mock(ReissueService.class), mock(PrilogService.class), mock(VerifikacijaOutbox.class));
+                draftService, mock(ReissueService.class), mock(PrilogService.class), mock(VerifikacijaOutbox.class), mock(ObjectGroupPolicy.class));
 
         when(countyRepository.findById(7L)).thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));
         lenient().when(rnRepository.findActiveOrSuspendedRnByAddressAndOib(

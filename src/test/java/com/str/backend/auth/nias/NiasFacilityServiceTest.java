@@ -6,7 +6,9 @@ import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ResourceNotFoundException;
-import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.AccommodationTypeEntity;
+import com.str.backend.lookup.ObjectGroupPolicy;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnRepository.FacilityRnRow;
 import com.str.backend.str.StrFacilityRepository;
@@ -40,18 +42,19 @@ class NiasFacilityServiceTest {
             List.of("FS_SOBA", "FS_APARTMAN", "FS_STUDIO_APARTMAN", "FS_KUCA_ZA_ODMOR");
 
     private final StrFacilityRepository facilityRepository = mock(StrFacilityRepository.class);
-    private final AccommodationTypeRepository typeRepository = mock(AccommodationTypeRepository.class);
+    private final ObjectGroupPolicy groupPolicy = mock(ObjectGroupPolicy.class);
     private final RnRepository rnRepository = mock(RnRepository.class);
     private final CategorizationDecisionRepository decisionRepository = mock(CategorizationDecisionRepository.class);
 
     private static final String ETURIZAM_BASE = "https://et2-test-external-eturizam.gov.hr";
 
     private final NiasFacilityService service = new NiasFacilityService(
-            facilityRepository, typeRepository, rnRepository, decisionRepository, ETURIZAM_BASE);
+            facilityRepository, groupPolicy, rnRepository, decisionRepository, ETURIZAM_BASE);
 
     @BeforeEach
     void setUp() {
-        lenient().when(typeRepository.findAllCodes()).thenReturn(CODES);
+        lenient().when(groupPolicy.allowedTypeCodes(any())).thenReturn(CODES);
+        lenient().when(groupPolicy.isRegistrable(any(), any(), any())).thenReturn(true);
         lenient().when(decisionRepository
                 .findByLessorOibAndFacilityIdIsNullAndRnIsNullAndStatusNotOrderByUploadedAtDesc(anyString(), any()))
                 .thenReturn(List.of());
@@ -62,7 +65,7 @@ class NiasFacilityServiceTest {
     void maps_eturizamRowToResponse() {
         stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", null, 2));
 
-        FacilityPageResponse page = service.list(OIB, null, null, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, null, null, null);
 
         assertThat(page.total()).isEqualTo(1);
         assertThat(page.totalUnits()).isEqualTo(1);
@@ -84,7 +87,7 @@ class NiasFacilityServiceTest {
     void mapsUnverifiedFlag() {
         stubFacilities(row(153049L, "uuid-m", false, "Soba 1", "FS_SOBA", "Soba", null, 2));
 
-        assertThat(service.list(OIB, 0, 20, null).items().getFirst().verificiran()).isFalse();
+        assertThat(service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null).items().getFirst().verificiran()).isFalse();
     }
 
     /**
@@ -99,7 +102,7 @@ class NiasFacilityServiceTest {
         when(unit.getObjectLevelCapacity()).thenReturn(true);
         stubFacilities(unit);
 
-        FacilityResponse item = service.list(OIB, 0, 20, null).items().getFirst();
+        FacilityResponse item = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null).items().getFirst();
 
         assertThat(item.brKreveta()).isNull();
         assertThat(item.brPomocnihKreveta()).isNull();
@@ -111,7 +114,7 @@ class NiasFacilityServiceTest {
     void leavesObjectFieldsEmpty_whenCapacityBelongsToUnit() {
         stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", null, 2));
 
-        FacilityResponse item = service.list(OIB, 0, 20, null).items().getFirst();
+        FacilityResponse item = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null).items().getFirst();
 
         assertThat(item.brKreveta()).isEqualTo(2);
         assertThat(item.objektBrKreveta()).isNull();
@@ -129,7 +132,7 @@ class NiasFacilityServiceTest {
         FacilityRnRow ourRn = rnRow("153049", "HR100000000000000001");
         when(rnRepository.findRnsByFacilityIds(List.of("153049"))).thenReturn(List.of(ourRn));
 
-        FacilityPageResponse page = service.list(OIB, 0, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
 
         assertThat(page.items().getFirst().registracijskiBroj()).isEqualTo("HR100000000000000001");
     }
@@ -138,7 +141,7 @@ class NiasFacilityServiceTest {
     void prefersEturizamRegistrationNumber_andSkipsOwnLookup() {
         stubFacilities(row(153049L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", "HR100000000000000009", 2));
 
-        FacilityPageResponse page = service.list(OIB, 0, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
 
         assertThat(page.items().getFirst().registracijskiBroj()).isEqualTo("HR100000000000000009");
         verify(rnRepository, never()).findRnsByFacilityIds(any());
@@ -154,7 +157,7 @@ class NiasFacilityServiceTest {
         when(rnRepository.findWithdrawnRns(List.of("HR100000000000000009")))
                 .thenReturn(List.of("HR100000000000000009"));
 
-        FacilityPageResponse page = service.list(OIB, 0, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
 
         assertThat(page.items().getFirst().registracijskiBroj()).isNull();
     }
@@ -169,7 +172,7 @@ class NiasFacilityServiceTest {
         when(rnRepository.findWithdrawnRns(List.of("HR100000000000000009", "HR100000000000000008")))
                 .thenReturn(List.of("HR100000000000000009"));
 
-        FacilityPageResponse page = service.list(OIB, 0, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
 
         assertThat(page.items()).extracting(i -> i.registracijskiBroj())
                 .containsExactly(null, "HR100000000000000008", null);
@@ -185,7 +188,7 @@ class NiasFacilityServiceTest {
         FacilityRnRow ourRn = rnRow("153049", "HR100000000000000010");
         when(rnRepository.findRnsByFacilityIds(List.of("153049"))).thenReturn(List.of(ourRn));
 
-        FacilityPageResponse page = service.list(OIB, 0, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
 
         assertThat(page.items().getFirst().registracijskiBroj()).isEqualTo("HR100000000000000010");
     }
@@ -205,7 +208,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        FacilityResponse item = service.list(OIB, 0, 20, null).items().getFirst();
+        FacilityResponse item = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null).items().getFirst();
 
         assertThat(item.id()).isEqualTo(decision.getDecisionId().toString());
         assertThat(item.naziv()).isEqualTo("Soba Marija");
@@ -226,7 +229,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        assertThat(service.list(OIB, 0, 20, null).items().getFirst().naziv()).isEqualTo("skan-rjesenja.pdf");
+        assertThat(service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null).items().getFirst().naziv()).isEqualTo("skan-rjesenja.pdf");
     }
 
     /** Redoslijed: eTurizam objekti (verificirani pa neverificirani, iz upita), zatim privremena rješenja. */
@@ -235,7 +238,7 @@ class NiasFacilityServiceTest {
         stubDecisions(decision("Soba iz rjesenja.pdf"));
         stubFacilities(row(1L, "uuid-a", true, "Soba 1", "FS_SOBA", "Soba", null, 2, 1, 1));
 
-        FacilityPageResponse page = service.list(OIB, 0, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
 
         assertThat(page.total()).isEqualTo(2);
         assertThat(page.totalUnits()).isEqualTo(2);
@@ -257,7 +260,7 @@ class NiasFacilityServiceTest {
                 row(2L, "uuid-a", true, "Apartman A2", "FS_APARTMAN", "Apartman", null, 2, 3, 4),
                 row(3L, "uuid-b", false, "Soba B1", "FS_SOBA", "Soba", null, 2, 3, 4));
 
-        FacilityPageResponse page = service.list(OIB, 0, 2, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 2, null);
 
         assertThat(page.items()).hasSize(3);
         assertThat(page.items()).extracting(FacilityResponse::izvor).containsOnly(FacilitySource.ETURIZAM);
@@ -273,7 +276,7 @@ class NiasFacilityServiceTest {
         stubDecisions(decision("Skan 1"), decision("Skan 2"), decision("Skan 3"));
         stubFacilities(row(21L, "uuid-z", true, "Soba Z", "FS_SOBA", "Soba", null, 2, 21, 21));
 
-        FacilityPageResponse page = service.list(OIB, 1, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 1, 20, null);
 
         // stranica 2 nosi 21. eTurizam objekt i prva 3 rješenja (ukupno 4 objekta < 20)
         assertThat(page.items()).extracting(FacilityResponse::izvor).containsExactly(
@@ -293,7 +296,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(10, 15);
 
-        FacilityPageResponse page = service.list(OIB, 1, 10, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 1, 10, null);
 
         // svih 10 eTurizam objekata je na prvoj stranici; druga počinje prvim rješenjem
         assertThat(page.items()).hasSize(3);
@@ -307,7 +310,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(8, 8);
 
-        FacilityPageResponse page = service.list(OIB, 2, 5, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 2, 5, null);
 
         // pomak 10: 8 eTurizam objekata + 2 rješenja su na prethodnim stranicama → ostaje treće
         assertThat(page.items()).extracting(FacilityResponse::naziv).containsExactly("Skan 3");
@@ -320,7 +323,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(5, 7);
 
-        FacilityPageResponse page = service.list(OIB, Integer.MAX_VALUE, 100, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, Integer.MAX_VALUE, 100, null);
 
         assertThat(page.items()).isEmpty();
         assertThat(page.total()).isEqualTo(5);
@@ -332,7 +335,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        FacilityPageResponse page = service.list(OIB, -5, 5000, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, -5, 5000, null);
 
         assertThat(page.page()).isZero();
         assertThat(page.size()).isEqualTo(NiasFacilityService.MAX_PAGE_SIZE);
@@ -341,10 +344,10 @@ class NiasFacilityServiceTest {
     /** Bez šifara u našem šifrarniku nema filtra, pa se eTurizam ne pita — IN () nije valjan SQL. */
     @Test
     void skipsEturizam_whenNoKnownCodes() {
-        when(typeRepository.findAllCodes()).thenReturn(List.of());
+        when(groupPolicy.allowedTypeCodes(any())).thenReturn(List.of());
         stubDecisions(decision("Skan.pdf"));
 
-        FacilityPageResponse page = service.list(OIB, 0, 20, null);
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
 
         assertThat(page.total()).isEqualTo(1);
         assertThat(page.items()).hasSize(1);
@@ -357,8 +360,8 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        service.list(OIB, 0, 20, null);
-        service.list(OIB, 0, 20, "   ");
+        service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, null);
+        service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "   ");
 
         verify(facilityRepository, times(2)).findListingByOib(OIB, CODES, "", 20, 0L);
     }
@@ -369,7 +372,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        service.list(OIB, 0, 20, "  50%_off!  ");
+        service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "  50%_off!  ");
 
         verify(facilityRepository).findListingByOib(OIB, CODES, "%50!%!_off!!%", 20, 0L);
         verify(facilityRepository).countListingByOib(OIB, CODES, "%50!%!_off!!%");
@@ -380,7 +383,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        service.list(OIB, 0, 20, "ŠIBENIK");
+        service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "ŠIBENIK");
 
         verify(facilityRepository).findListingByOib(OIB, CODES, "%sibenik%", 20, 0L);
     }
@@ -391,7 +394,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        service.list(OIB, 0, 20, "vila\u0000kuca\u0000");
+        service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "vila\u0000kuca\u0000");
 
         verify(facilityRepository).findListingByOib(OIB, CODES, "%vila kuca%", 20, 0L);
     }
@@ -402,9 +405,9 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        assertThat(service.list(OIB, 0, 20, "sibenik").items())
+        assertThat(service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "sibenik").items())
                 .extracting(FacilityResponse::naziv).containsExactly("Vila Šibenik");
-        assertThat(service.list(OIB, 0, 20, "ČAKOVEC").items())
+        assertThat(service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "ČAKOVEC").items())
                 .extracting(FacilityResponse::naziv).containsExactly("Kuca");
     }
 
@@ -414,7 +417,7 @@ class NiasFacilityServiceTest {
         stubTotals(0, 0);
         String maximum = "a".repeat(NiasFacilityService.MAX_SEARCH_LENGTH);
 
-        service.list(OIB, 0, 20, maximum + "viska");
+        service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, maximum + "viska");
 
         verify(facilityRepository).findListingByOib(OIB, CODES, "%" + maximum + "%", 20, 0L);
     }
@@ -425,9 +428,9 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        assertThat(service.list(OIB, 0, 20, "vila").items())
+        assertThat(service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "vila").items())
                 .extracting(FacilityResponse::naziv).containsExactly("Vila Marija");
-        assertThat(service.list(OIB, 0, 20, "makarska").items())
+        assertThat(service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "makarska").items())
                 .extracting(FacilityResponse::naziv).containsExactly("Kuca");
     }
 
@@ -437,7 +440,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        assertThat(service.list(OIB, 0, 20, "%").items())
+        assertThat(service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 0, 20, "%").items())
                 .extracting(FacilityResponse::naziv).containsExactly("Vila 100%");
     }
 
@@ -448,7 +451,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(0, 0);
 
-        FacilityPageResponse page = service.list(OIB, 1, 1, "skan");
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 1, 1, "skan");
 
         assertThat(page.items()).extracting(FacilityResponse::naziv).containsExactly("Skan 2");
         assertThat(page.total()).isEqualTo(2);
@@ -462,7 +465,7 @@ class NiasFacilityServiceTest {
         stubFacilities();
         stubTotals(1, 3);
 
-        FacilityPageResponse page = service.list(OIB, 1, 1, "vila");
+        FacilityPageResponse page = service.list(OIB, SubjectCategory.FIZICKA_OSOBA, 1, 1, "vila");
 
         assertThat(page.items()).extracting(FacilityResponse::naziv).containsExactly("Vila iz rjesenja");
         assertThat(page.total()).isEqualTo(2);
@@ -481,7 +484,7 @@ class NiasFacilityServiceTest {
         when(row.getCurrent()).thenReturn(true);
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
 
-        FacilityClaimResponse claim = service.claim(OIB, "153049");
+        FacilityClaimResponse claim = service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049");
 
         assertThat(claim.brKreveta()).isEqualTo(6);
         assertThat(claim.zakljucanaPolja()).contains("maxBeds");
@@ -504,7 +507,7 @@ class NiasFacilityServiceTest {
         when(row.getCurrent()).thenReturn(true);
         when(facilityRepository.findOwnership(85064L)).thenReturn(Optional.of(row));
 
-        FacilityClaimResponse claim = service.claim(OIB, "85064");
+        FacilityClaimResponse claim = service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "85064");
 
         assertThat(claim.brKreveta()).isNull();
         assertThat(claim.zakljucanaPolja()).doesNotContain("maxBeds");
@@ -517,7 +520,7 @@ class NiasFacilityServiceTest {
         when(row.getDocumentId()).thenReturn(892408L);
         when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
 
-        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isEqualTo(
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").zahtjevPromjenaUrl()).isEqualTo(
                 ETURIZAM_BASE + "/tu-start/podnesi-novi-zahtjev-za-promjenu-podataka/892408?idZahtjeva=454");
     }
 
@@ -527,16 +530,16 @@ class NiasFacilityServiceTest {
         FacilityOwnershipRow row = activeOwnRow();
         when(row.getDocumentId()).thenReturn(null);
         when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
-        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isNull();
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").zahtjevPromjenaUrl()).isNull();
 
         when(row.getDocumentId()).thenReturn(892408L);
         when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.empty());
-        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isNull();
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").zahtjevPromjenaUrl()).isNull();
 
         when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
         NiasFacilityService bezEturizma = new NiasFacilityService(
-                facilityRepository, typeRepository, rnRepository, decisionRepository, "");
-        assertThat(bezEturizma.claim(OIB, "153049").zahtjevPromjenaUrl()).isNull();
+                facilityRepository, groupPolicy, rnRepository, decisionRepository, "");
+        assertThat(bezEturizma.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").zahtjevPromjenaUrl()).isNull();
     }
 
     /**
@@ -551,7 +554,7 @@ class NiasFacilityServiceTest {
         when(row.getDocumentId()).thenReturn(892408L);
         when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
 
-        FacilityClaimResponse claim = service.claim(OIB, "153049");
+        FacilityClaimResponse claim = service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049");
 
         assertThat(claim.zahtjevPromjenaUrl()).isNull();
         assertThat(claim.verificiran()).isFalse();
@@ -565,7 +568,7 @@ class NiasFacilityServiceTest {
         when(row.getDocumentId()).thenReturn(892408L);
         when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
 
-        assertThat(service.claim(OIB, "153049").zahtjevPromjenaUrl()).isNotNull();
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").zahtjevPromjenaUrl()).isNotNull();
     }
 
     /** Šifrarnik se ne mijenja: id se čita jednom, ne pri svakom claimu. */
@@ -575,8 +578,8 @@ class NiasFacilityServiceTest {
         when(row.getDocumentId()).thenReturn(892408L);
         when(facilityRepository.findCodebookElementId("DST_Z_PROMJ_POD")).thenReturn(Optional.of(454L));
 
-        service.claim(OIB, "153049");
-        service.claim(OIB, "153049");
+        service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049");
+        service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049");
 
         verify(facilityRepository, times(1)).findCodebookElementId("DST_Z_PROMJ_POD");
     }
@@ -586,10 +589,10 @@ class NiasFacilityServiceTest {
     void claim_carriesVerifiedFlag() {
         FacilityOwnershipRow row = activeOwnRow();
         when(row.getVerified()).thenReturn(false);
-        assertThat(service.claim(OIB, "153049").verificiran()).isFalse();
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").verificiran()).isFalse();
 
         when(row.getVerified()).thenReturn(true);
-        assertThat(service.claim(OIB, "153049").verificiran()).isTrue();
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").verificiran()).isTrue();
     }
 
     @Test
@@ -623,9 +626,78 @@ class NiasFacilityServiceTest {
         when(row.getCurrent()).thenReturn(true);
         when(row.getSubtypeCode()).thenReturn("FS_HOTEL");
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
-        when(typeRepository.findByCodeIgnoreCase("FS_HOTEL")).thenReturn(Optional.empty());
+        when(groupPolicy.isRegistrable("FS_HOTEL", null, SubjectCategory.FIZICKA_OSOBA)).thenReturn(false);
 
-        assertThat(service.claim(OIB, "153049").vrstaDopustena()).isFalse();
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").vrstaDopustena()).isFalse();
+    }
+
+    /** T13: tvrtka ne smije objekt u domaćinstvu, pa ga claim označi kao nedopušten i obrazac se blokira. */
+    @Test
+    void claim_flagsTypeNotAllowedForSubject() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn(OIB);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getCurrent()).thenReturn(true);
+        when(row.getSubtypeCode()).thenReturn("FS_SOBA");
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+        when(groupPolicy.isRegistrable("FS_SOBA", null, SubjectCategory.OSTALI_POSLOVNI_SUBJEKT)).thenReturn(false);
+
+        assertThat(service.claim(OIB, SubjectCategory.OSTALI_POSLOVNI_SUBJEKT, "153049").vrstaDopustena()).isFalse();
+        assertThat(service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049").vrstaDopustena()).isTrue();
+    }
+
+    /**
+     * T13: tvrtka bira skupinu, pa claim njezina hotela vraća šifru skupine (FT_HOTEL) — po njoj obrazac
+     * predpopuni stavku, a vrsta iz eTurizma (FS_HOTEL_FAMILY) u izborniku tvrtke ne postoji.
+     */
+    @Test
+    void claim_companyHotel_returnsGroupCode() {
+        FacilityOwnershipRow row = mock(FacilityOwnershipRow.class);
+        when(row.getOib()).thenReturn(OIB);
+        when(row.getActive()).thenReturn(true);
+        when(row.getBusinessStatusCode()).thenReturn("FBS_ACTIVE");
+        when(row.getCurrent()).thenReturn(true);
+        when(row.getSubtypeCode()).thenReturn("FS_HOTEL_FAMILY");
+        when(row.getTypeCode()).thenReturn("FT_HOTEL");
+        when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
+        AccommodationTypeEntity hoteli = mock(AccommodationTypeEntity.class);
+        when(hoteli.getCode()).thenReturn("FT_HOTEL");
+        when(groupPolicy.resolveFacilityType("FS_HOTEL_FAMILY", "FT_HOTEL", SubjectCategory.OSTALI_POSLOVNI_SUBJEKT))
+                .thenReturn(Optional.of(hoteli));
+
+        FacilityClaimResponse claim = service.claim(OIB, SubjectCategory.OSTALI_POSLOVNI_SUBJEKT, "153049");
+
+        assertThat(claim.vrstaSifra()).isEqualTo("FT_HOTEL");
+        assertThat(claim.vrstaDopustena()).isTrue();
+    }
+
+    /** T13: stavka popisa tvrtke nosi šifru skupine (kao claim), da obrazac zna predpopuniti stavku. */
+    @Test
+    void list_companyItem_carriesGroupCode() {
+        List<String> skupine = List.of("FT_HOTEL", "FT_OST_KAT");
+        when(groupPolicy.allowedTypeCodes(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT)).thenReturn(skupine);
+        FacilityListingRow hotel = row(300L, "uuid-h", true, "Hotel Sunce", "FS_HOTEL_FAMILY", "Hotel FAMILY", null, 40);
+        when(hotel.getTypeCode()).thenReturn("FT_HOTEL");
+        when(facilityRepository.findListingByOib(eq(OIB), eq(skupine), anyString(), anyInt(), anyLong())).thenReturn(List.of(hotel));
+
+        FacilityResponse item = service.list(OIB, SubjectCategory.OSTALI_POSLOVNI_SUBJEKT, 0, 20, null).items().getFirst();
+
+        assertThat(item.vrstaSifra()).isEqualTo("FT_HOTEL");
+    }
+
+    /** T13: popis traži samo vrste iz skupina koje subjekt te vrste smije imati. */
+    @Test
+    void list_usesTypeCodesAllowedForSubject() {
+        List<String> ostali = List.of("FS_OSTALI_T13");
+        when(groupPolicy.allowedTypeCodes(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT)).thenReturn(ostali);
+        when(facilityRepository.findListingByOib(OIB, ostali, "", 20, 0L)).thenReturn(List.of());
+        ListingTotals prazno = mock(ListingTotals.class);
+        when(facilityRepository.countListingByOib(OIB, ostali, "")).thenReturn(prazno);
+
+        service.list(OIB, SubjectCategory.OSTALI_POSLOVNI_SUBJEKT, 0, 20, null);
+
+        verify(facilityRepository).findListingByOib(OIB, ostali, "", 20, 0L);
     }
 
     /**
@@ -640,7 +712,7 @@ class NiasFacilityServiceTest {
         when(row.getBusinessStatusCode()).thenReturn("FBS_INACTIVE");
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
 
-        assertThatThrownBy(() -> service.claim(OIB, "153049"))
+        assertThatThrownBy(() -> service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.inactive");
     }
@@ -654,7 +726,7 @@ class NiasFacilityServiceTest {
         FacilityOwnershipRow row = activeOwnRow();
         when(row.getCurrent()).thenReturn(false);
 
-        assertThatThrownBy(() -> service.claim(OIB, "153049"))
+        assertThatThrownBy(() -> service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("error.facility.inactive");
     }
@@ -667,7 +739,7 @@ class NiasFacilityServiceTest {
         when(row.getBusinessStatusCode()).thenReturn("FBS_INACTIVE");
         when(facilityRepository.findOwnership(153049L)).thenReturn(Optional.of(row));
 
-        assertThatThrownBy(() -> service.claim(OIB, "153049"))
+        assertThatThrownBy(() -> service.claim(OIB, SubjectCategory.FIZICKA_OSOBA, "153049"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

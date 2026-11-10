@@ -52,4 +52,22 @@ class EOvlastenjaRequestTest {
         assertThatThrownBy(() -> EOvlastenjaRequest.of("s", "70000000004", "3333333336"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    /** T13: obrt i OPG šalju svoj registar i u JipsTo i u IdentfiersFor. */
+    @Test
+    void buildsRequestForFamilyFarm_withItsRegistry() {
+        EOvlastenjaRequest r = EOvlastenjaRequest.of("3B51-9ACB-EAE9-801A", "70000000004", "33333333360", "3");
+
+        assertThat(r.xml()).containsSubsequence("<JipsTo>", "<b:IZVOR_REG>3</b:IZVOR_REG>",
+                "<IdentfiersFor>", "<b:IZVOR_REG>3</b:IZVOR_REG>");
+        assertThat(r.xml()).doesNotContain("<b:IZVOR_REG>1</b:IZVOR_REG>");
+    }
+
+    /** Registar ide u XML, pa se, kao OIB, ne prihvaća proizvoljan tekst. */
+    @Test
+    void rejectsUnknownRegistry() {
+        assertThatThrownBy(() -> EOvlastenjaRequest.of("3B51-9ACB-EAE9-801A", "70000000004", "33333333360",
+                "1</b:IZVOR_REG><x>"))
+                .isInstanceOf(RuntimeException.class);
+    }
 }

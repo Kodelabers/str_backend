@@ -5,6 +5,7 @@ import com.str.backend.address.CountyByMunicipalityResolver;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.lessor.LegalRepresentativeSource.Representative;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -282,10 +283,14 @@ public class SubjectProfileService {
      */
     public LessorEntity resolveLegalLessor(String legalOib, String legalName,
                                            String niasOib, String niasFirstName, String niasLastName,
-                                           EnteredAddress entered) {
+                                           EnteredAddress entered, LegalForm legalForm) {
         LegalEntityProfile p = loadLegal(legalOib, legalName, niasOib, niasFirstName, niasLastName);
         if (p.seatSource() == null) {
             p = withSeat(p, requireAddress(entered));
+        }
+        // MBS je broj sudskog registra — obrt i OPG ga nemaju, pa se od njih ne traži (T13).
+        if (legalForm != LegalForm.TVRTKA) {
+            return toLegalLessor(p);
         }
         if (!known(p.registrationNumber())) {
             if (entered == null || !known(entered.registrationNumber())) {

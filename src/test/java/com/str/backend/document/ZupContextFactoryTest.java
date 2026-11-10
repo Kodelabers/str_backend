@@ -110,6 +110,19 @@ class ZupContextFactoryTest {
                 .isEqualTo("Objekti u kojima se pružaju ugostiteljske usluge u domaćinstvu");
     }
 
+    /**
+     * T13: kad je vrsta poznata, skupina je iz {@code str_rn.object_group}, a ne iz znamenki RB-a —
+     * RB tvrtke nosi {@code 00} dok MINTS ne potvrdi oznaku, a akt ne smije tvrditi domaćinstvo.
+     */
+    @Test
+    void group_fromObjectGroup_winsOverRegistrationNumber() {
+        Map<String, String> ctx = factory(false).forRn(StrDocumentType.DODJELA,
+                detail(LocalDate.of(2026, 9, 9), "HR180000123456789001", "Ostali ugostiteljski objekti za smještaj"),
+                null, FilingReference.NONE);
+
+        assertThat(ctx.get("objekt.skupina")).isEqualTo("Ostali ugostiteljski objekti za smještaj");
+    }
+
     @Test
     void unknownGroup_showsVisibleMarker() {
         Map<String, String> ctx = factory(false).forRn(StrDocumentType.DODJELA,
@@ -200,6 +213,10 @@ class ZupContextFactoryTest {
     }
 
     private static RnDetailDto detail(LocalDate issueDate, String rn) {
+        return detail(issueDate, rn, null);
+    }
+
+    private static RnDetailDto detail(LocalDate issueDate, String rn, String groupName) {
         return new RnDetailDto(rn, RnStatus.ACTIVE,
                 issueDate, issueDate, null,
                 null, null, null, UUID.randomUUID(),
@@ -207,6 +224,6 @@ class ZupContextFactoryTest {
                 "Apartman Sunce", "Apartman", 4, "3*",
                 UUID.randomUUID(), "Ana", "Anić", null, "ana@example.com", "98765432109",
                 false, null, null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, null, false, groupName);
     }
 }

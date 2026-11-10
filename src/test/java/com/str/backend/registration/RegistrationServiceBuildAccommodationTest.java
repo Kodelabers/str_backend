@@ -17,6 +17,7 @@ import com.str.backend.exception.BusinessException;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnRepository;
@@ -80,7 +81,7 @@ class RegistrationServiceBuildAccommodationTest {
                 addressValidator,
                 mock(ApplicationEventPublisher.class),
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                mock(PrilogService.class), mock(VerifikacijaOutbox.class));
+                mock(PrilogService.class), mock(VerifikacijaOutbox.class), mock(ObjectGroupPolicy.class));
     }
 
     private static HouseNumberRepository.CadastreRow registryRow(String broj, String ulica,

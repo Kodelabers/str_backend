@@ -19,6 +19,7 @@ import com.str.backend.lessor.LessorRnSummaryDto;
 import com.str.backend.lessor.SubjectDataSource;
 import com.str.backend.lessor.SubjectProfile;
 import com.str.backend.lessor.SubjectProfileService;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.objection.SuspensionObjectionService;
 import com.str.backend.registration.ReissueService;
 import com.str.backend.registration.RnOwner;
@@ -28,6 +29,7 @@ import com.str.backend.domain.Offering;
 import com.str.backend.exception.GoneException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.str.RnFacilityVerification;
@@ -151,7 +153,7 @@ class NiasFacilityControllerTest {
     @Test
     void selectActingSubject_returnsVerifiedCompany() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(actingSubjectService.select(any(), eq(new NiasIdentity(OIB, null, null)), eq(COMPANY_OIB)))
+        when(actingSubjectService.select(any(), eq(new NiasIdentity(OIB, null, null)), eq(COMPANY_OIB), eq(LegalForm.TVRTKA)))
                 .thenReturn(companySubject());
 
         mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
@@ -167,7 +169,7 @@ class NiasFacilityControllerTest {
     @Test
     void selectActingSubject_notRepresentative_is403() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(actingSubjectService.select(any(), any(), any())).thenThrow(new EOvlastenjaException(
+        when(actingSubjectService.select(any(), any(), any(), any())).thenThrow(new EOvlastenjaException(
                 EOvlastenjaException.Reason.NOT_REPRESENTATIVE, null, "ne"));
 
         mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
@@ -179,7 +181,7 @@ class NiasFacilityControllerTest {
     @Test
     void selectActingSubject_expiredNiasSession_is401() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(actingSubjectService.select(any(), any(), any())).thenThrow(new EOvlastenjaException(
+        when(actingSubjectService.select(any(), any(), any(), any())).thenThrow(new EOvlastenjaException(
                 EOvlastenjaException.Reason.SESSION, "200", "istekla"));
 
         mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
@@ -200,11 +202,25 @@ class NiasFacilityControllerTest {
     void facilities_useCompanyOib_whenActingForCompany() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
         when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(companySubject()));
-        when(facilityService.list(any(), any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
+        when(facilityService.list(any(), any(), any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
 
         mvc.perform(get("/api/nias/facilities")).andExpect(status().isOk());
 
-        verify(facilityService).list(eq(COMPANY_OIB), any(), any(), any());
+        verify(facilityService).list(eq(COMPANY_OIB), eq(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT), any(), any(), any());
+    }
+
+    /** T13: OPG iz e-Ovlaštenja dobiva svoju kategoriju, ne kategoriju tvrtke. */
+    @Test
+    void facilities_familyFarm_usesOpgCategory() throws Exception {
+        when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
+        when(actingSubjectService.current(any(), eq(OIB))).thenReturn(Optional.of(new ActingSubject(COMPANY_OIB,
+                "OPG TESTNI", List.of("Nositelj"), OIB, "Test", "Korisnik", Instant.parse("2026-11-10T10:00:00Z"),
+                LegalForm.OPG)));
+        when(facilityService.list(any(), any(), any(), any(), any())).thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
+
+        mvc.perform(get("/api/nias/facilities")).andExpect(status().isOk());
+
+        verify(facilityService).list(eq(COMPANY_OIB), eq(SubjectCategory.OPG), any(), any(), any());
     }
 
     /** Stupac „Verificiran": popis nosi facilityVerified, a interni facilityId ne izlazi u odgovor. */
@@ -446,7 +462,7 @@ class NiasFacilityControllerTest {
     @Test
     void selectActingSubject_rateLimited_is429() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(actingSubjectService.select(any(), any(), any())).thenThrow(new ActingSubjectRateLimitException(42));
+        when(actingSubjectService.select(any(), any(), any(), any())).thenThrow(new ActingSubjectRateLimitException(42));
 
         mvc.perform(post("/api/nias/acting-subject").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"oib\":\"" + COMPANY_OIB + "\"}"))
@@ -683,7 +699,7 @@ class NiasFacilityControllerTest {
     @Test
     void returnsFacilityPage() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(facilityService.list(eq(OIB), any(), any(), any())).thenReturn(new FacilityPageResponse(
+        when(facilityService.list(eq(OIB), eq(SubjectCategory.FIZICKA_OSOBA), any(), any(), any())).thenReturn(new FacilityPageResponse(
                 List.of(new FacilityResponse("153049", "Soba 1", "FS_SOBA", "Soba", "Tri zvjezdice",
                         "Aktivan", 2, null, "Splitsko-dalmatinska", "Makarska", "Makarska",
                         "Kraljevska", "88", "21300", "Kraljevska 88", null,
@@ -707,13 +723,13 @@ class NiasFacilityControllerTest {
     @Test
     void passesSearchToService_withOibFromSession() throws Exception {
         when(oibResolver.resolve(any())).thenReturn(Optional.of(OIB));
-        when(facilityService.list(any(), any(), any(), any()))
+        when(facilityService.list(any(), any(), any(), any(), any()))
                 .thenReturn(new FacilityPageResponse(List.of(), 0, 20, 0, 0));
 
         mvc.perform(get("/api/nias/facilities").param("q", "Vila").param("oib", "12312312316"))
                 .andExpect(status().isOk());
 
-        verify(facilityService).list(eq(OIB), any(), any(), eq("Vila"));
+        verify(facilityService).list(eq(OIB), any(), any(), any(), eq("Vila"));
     }
 
     @Test
@@ -721,7 +737,7 @@ class NiasFacilityControllerTest {
         when(oibResolver.resolve(any())).thenReturn(Optional.empty());
 
         mvc.perform(get("/api/nias/facilities")).andExpect(status().isUnauthorized());
-        verify(facilityService, never()).list(any(), any(), any(), any());
+        verify(facilityService, never()).list(any(), any(), any(), any(), any());
     }
 
     @Test

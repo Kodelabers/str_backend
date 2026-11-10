@@ -50,10 +50,10 @@ class EOvlastenjaHttpClientTest {
      */
     @Test
     void missingSesijaId_isUnavailable_withoutCall() {
-        assertThatThrownBy(() -> client.verifyRepresentation(null, PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation(null, PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("sesija_id");
-        assertThatThrownBy(() -> client.verifyRepresentation("  ", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("  ", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class);
         server.verify();
     }
@@ -61,7 +61,7 @@ class EOvlastenjaHttpClientTest {
     /** Neočekivan format ne smije u XML, a ni kao 500 — dijagnoza mora biti čitljiva. */
     @Test
     void malformedSesijaId_isUnavailable_withoutCall() {
-        assertThatThrownBy(() -> client.verifyRepresentation("abc</Sesija_Id>", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("abc</Sesija_Id>", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("sesija_id");
         server.verify();
@@ -74,7 +74,7 @@ class EOvlastenjaHttpClientTest {
                 .andExpect(content().string(containsString("<Sesija_Id>sesija-1</Sesija_Id>")))
                 .andRespond(withSuccess("<nesto/>", MediaType.APPLICATION_XML));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("root");
         server.verify();
@@ -102,7 +102,7 @@ class EOvlastenjaHttpClientTest {
             return answer;
         });
 
-        Zastupanje z = client.verifyRepresentation("sesija-1", PERSON, COMPANY);
+        Zastupanje z = client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA);
 
         assertThat(z.legalName()).isEqualTo("ĐURĐEVIĆ ČŠŽ d.o.o.");
         assertThat(z.functions()).hasSize(2);
@@ -118,7 +118,7 @@ class EOvlastenjaHttpClientTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"Code\":\"100\",\"Message\":\"100: Pristup metodi nije dozvoljen!\"}"));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("100");
     }
@@ -129,7 +129,7 @@ class EOvlastenjaHttpClientTest {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"203\",\"Message\":\"Sesija ne postoji\"}"));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOfSatisfying(EOvlastenjaException.class,
                         e -> assertThat(e.reason()).isEqualTo(EOvlastenjaException.Reason.SESSION));
     }
@@ -139,7 +139,7 @@ class EOvlastenjaHttpClientTest {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"400\",\"Message\":\"-\"}"));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOfSatisfying(EOvlastenjaException.class,
                         e -> assertThat(e.reason()).isEqualTo(EOvlastenjaException.Reason.NOT_REPRESENTATIVE));
     }
@@ -150,7 +150,7 @@ class EOvlastenjaHttpClientTest {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"999\",\"Message\":\"?\"}"));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("šifra 999")
                 .hasNoCause();
@@ -179,7 +179,7 @@ class EOvlastenjaHttpClientTest {
                 .contentType(MediaType.APPLICATION_XML)
                 .body("<Error xmlns=\"http://eovlastenja.fina.hr/authorizationbase/v2\"><Code>203</Code><Message>-</Message></Error>"));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOfSatisfying(EOvlastenjaException.class,
                         e -> assertThat(e.reason()).isEqualTo(EOvlastenjaException.Reason.SESSION));
     }
@@ -203,7 +203,7 @@ class EOvlastenjaHttpClientTest {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.TEXT_HTML).body("<html>Bad Request</html>"));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("nisu dostupna");
     }
@@ -214,7 +214,7 @@ class EOvlastenjaHttpClientTest {
         server.expect(requestTo(URL)).andRespond(withStatus(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.APPLICATION_JSON).body("{\"Code\":\"100\\nINFO lažni redak\"}"));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("nisu dostupna")
                 .hasMessageNotContaining("lažni");
@@ -264,7 +264,7 @@ class EOvlastenjaHttpClientTest {
     void serverError_isUnavailable() {
         server.expect(method(HttpMethod.POST)).andRespond(withStatus(HttpStatus.BAD_GATEWAY));
 
-        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY))
+        assertThatThrownBy(() -> client.verifyRepresentation("sesija-1", PERSON, COMPANY, LegalForm.TVRTKA))
                 .isInstanceOf(ExternalRegistryException.class)
                 .hasMessageContaining("nisu dostupna");
     }

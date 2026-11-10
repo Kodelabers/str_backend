@@ -23,6 +23,7 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.registration.dto.RegistrationResponse;
@@ -97,7 +98,7 @@ class RegistrationServiceReissueTest {
                 mock(AccommodationTypeRepository.class), mock(FacilityClaimVerifier.class),
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 mock(ApplicationEventPublisher.class),
-                mock(SubmissionDraftService.class), reissueService, mock(PrilogService.class), mock(VerifikacijaOutbox.class));
+                mock(SubmissionDraftService.class), reissueService, mock(PrilogService.class), mock(VerifikacijaOutbox.class), mock(ObjectGroupPolicy.class));
 
         lenient().when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(county(7L, "Splitsko-dalmatinska županija")));
@@ -165,7 +166,7 @@ class RegistrationServiceReissueTest {
         LessorEntity companyLessor = LessorEntity.create("ANA", "ANIĆ", "Riva", "2", "Split",
                 "Splitsko-dalmatinska županija", null);
         companyLessor.setLessorOib(COMPANY_OIB);
-        when(subjectProfileService.resolveLegalLessor(any(), any(), any(), any(), any(), any())).thenReturn(companyLessor);
+        when(subjectProfileService.resolveLegalLessor(any(), any(), any(), any(), any(), any(), any())).thenReturn(companyLessor);
 
         service.generateRegistrationNumber(RegistrationRequest.withOib(request(PREVIOUS_RN, null), COMPANY_OIB),
                 new NiasIdentity(OIB, "ANA", "ANIĆ"), company);

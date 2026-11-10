@@ -2,6 +2,7 @@ package com.str.backend.lessor;
 
 import com.str.backend.address.CountryRepository;
 import com.str.backend.address.CountyByMunicipalityResolver;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,7 +77,7 @@ class NiasLessorCountryOfResidenceTest {
     void newNiasLegalEntity_isStoredWithCroatia() {
         LessorEntity lessor = profiles(mock(SubjectRegistry.class)).resolveLegalLessor(
                 "33333333360", "TESTNA TVRTKA d.o.o.", "70000000004", "Ana", "Horvat",
-                new EnteredAddress("Ilica", "1", "10000", "Zagreb", null, "Grad Zagreb", "080123456"));
+                new EnteredAddress("Ilica", "1", "10000", "Zagreb", null, "Grad Zagreb", "080123456"), LegalForm.TVRTKA);
         lessorRepository.saveAndFlush(lessor);
 
         assertThat(storedCountry(lessor.getLessorId())).isEqualTo(CROATIA_ID);

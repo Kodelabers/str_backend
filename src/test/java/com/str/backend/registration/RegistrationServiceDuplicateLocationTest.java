@@ -15,6 +15,7 @@ import com.str.backend.domain.Offering;
 import com.str.backend.exception.DuplicateLocationException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.registration.dto.RegistrationRequest;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.request.SubmissionRepository;
@@ -97,7 +98,7 @@ class RegistrationServiceDuplicateLocationTest {
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 eventPublisher,
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                mock(PrilogService.class), mock(VerifikacijaOutbox.class));
+                mock(PrilogService.class), mock(VerifikacijaOutbox.class), mock(ObjectGroupPolicy.class));
 
         CountyEntity county = buildCountyEntity(7L, "Splitsko-dalmatinska županija");
         when(countyRepository.findById(7L)).thenReturn(Optional.of(county));

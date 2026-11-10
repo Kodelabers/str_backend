@@ -2,6 +2,7 @@ package com.str.backend.auth.nias;
 
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaClient;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import com.str.backend.registries.eovlastenja.ZastupanaTvrtka;
 import com.str.backend.registries.eovlastenja.Zastupanje;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class SharedSessionAttributesTest {
 
     @Test
     void niasFlow_leavesNoStrClassesInSession() throws Exception {
-        when(client.verifyRepresentation(any(), any(), any())).thenReturn(new Zastupanje(PERSON, "ANA", "HORVAT",
+        when(client.verifyRepresentation(any(), any(), any(), any())).thenReturn(new Zastupanje(PERSON, "ANA", "HORVAT",
                 COMPANY, "TESTNA TVRTKA d.o.o.", List.of(new Zastupanje.Funkcija("034", "Direktor", "0"))));
         when(client.representedCompanies(any(), any())).thenReturn(List.of(new ZastupanaTvrtka(COMPANY, "TVRTKA")));
 

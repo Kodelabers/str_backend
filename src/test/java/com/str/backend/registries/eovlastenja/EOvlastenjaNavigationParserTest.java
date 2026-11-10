@@ -33,19 +33,27 @@ class EOvlastenjaNavigationParserTest {
         assertThat(companies).containsExactly(new ZastupanaTvrtka("85821130368", "FINANCIJSKA AGENCIJA"));
     }
 
-    /** e-Zastupanje bez LegalPersonTo (osoba kao građanin) također ulazi; obrt (IZVOR_REG=2) ne. */
+    /**
+     * e-Zastupanje bez LegalPersonTo (osoba kao građanin) također ulazi. T13: obrt (2) i OPG (3) ulaze
+     * sa svojim registrom; ostali registri (tijela i sl.) ne.
+     */
     @Test
-    void representationAsCitizen_isListed_craftIsNot() {
+    void representationAsCitizen_isListed_craftAndFamilyFarmToo() {
         String extra = representationItem("ĐURĐEVIĆ D.O.O.", "39986540678", "1")
-                + representationItem("OBRT PERO", "19819819816", "2");
+                + representationItem("OBRT PERO", "19819819816", "2")
+                + representationItem("OPG IVO", "44444444446", "3")
+                + representationItem("OPĆINA", "55555555551", "9");
 
         List<ZastupanaTvrtka> companies = parse(navigationResponse(REQUEST_ID, PERSON_OIB, extra, ""));
 
-        assertThat(companies).extracting(ZastupanaTvrtka::oib).containsExactly("85821130368", "39986540678");
+        assertThat(companies).extracting(ZastupanaTvrtka::oib)
+                .containsExactly("85821130368", "39986540678", "19819819816", "44444444446");
         assertThat(companies.get(1).naziv()).isEqualTo("ĐURĐEVIĆ D.O.O.");
+        assertThat(companies).extracting(ZastupanaTvrtka::legalForm)
+                .containsExactly(LegalForm.TVRTKA, LegalForm.TVRTKA, LegalForm.OBRT, LegalForm.OPG);
     }
 
-    /** Unutar obrta (LegalPersonTo s IZVOR_REG≠1) — nije tvrtka u okviru koje se provjerava. */
+    /** Unutar obrta istog OIB-a (drugi registar) — to nije subjekt u okviru kojeg se provjerava. */
     @Test
     void representationWithinNonCompany_isNotListed() {
         String extra = """

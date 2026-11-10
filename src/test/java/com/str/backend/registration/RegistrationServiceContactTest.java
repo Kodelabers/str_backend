@@ -23,9 +23,12 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.SubjectProfileService;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
+import com.str.backend.lookup.SubjectCategory;
 import com.str.backend.registration.dto.PodnositeljUnos;
 import com.str.backend.registration.dto.RegistrationExternalRequest;
 import com.str.backend.registration.dto.RegistrationRequest;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
@@ -50,6 +53,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -69,6 +74,7 @@ class RegistrationServiceContactTest {
     private SubjectProfileService subjectProfileService;
     private RnService rnService;
     private PrilogService prilogService;
+    private ObjectGroupPolicy objectGroupPolicy;
     private RegistrationService service;
 
     @BeforeEach
@@ -88,6 +94,7 @@ class RegistrationServiceContactTest {
 
         lenient().when(accommodationTypeRepository.existsById(anyLong())).thenReturn(true);
         prilogService = mock(PrilogService.class);
+        objectGroupPolicy = mock(ObjectGroupPolicy.class);
 
         service = new RegistrationService(
                 lessorRepository, accommodationRepository, submissionRepository,
@@ -97,7 +104,7 @@ class RegistrationServiceContactTest {
                 new CadastreResolver(mock(HouseNumberRepository.class)), mock(AddressHierarchyValidator.class),
                 eventPublisher,
                 mock(SubmissionDraftService.class), mock(ReissueService.class),
-                prilogService, mock(VerifikacijaOutbox.class));
+                prilogService, mock(VerifikacijaOutbox.class), objectGroupPolicy);
 
         when(countyRepository.findById(7L))
                 .thenReturn(Optional.of(buildCounty(7L, "Splitsko-dalmatinska županija")));
@@ -171,7 +178,7 @@ class RegistrationServiceContactTest {
                 OIB, "Ana", "Anić", java.time.Instant.now());
         LessorEntity legal = LessorEntity.create("Ana", "Anić", "", "", "", "", null);
         legal.setLessorOib("33333333360");
-        when(subjectProfileService.resolveLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.", OIB, "Ana", "Anić", null))
+        when(subjectProfileService.resolveLegalLessor("33333333360", "TESTNA TVRTKA d.o.o.", OIB, "Ana", "Anić", null, LegalForm.TVRTKA))
                 .thenReturn(legal);
 
         service.generateRegistrationNumber(
@@ -180,6 +187,68 @@ class RegistrationServiceContactTest {
 
         assertThat(savedLessor().getLessorOib()).isEqualTo("33333333360");
         verify(subjectProfileService, never()).resolveLessor(any(), any(), any(), any());
+    }
+
+    /** T13: u ime tvrtke vrsta objekta mora biti iz skupine koju smije poslovni subjekt. */
+    @Test
+    void legalFlow_checksTypeGroupForCompany() {
+        ActingSubject company = new ActingSubject("33333333360", "TESTNA TVRTKA d.o.o.", List.of("Direktor"),
+                OIB, "Ana", "Anić", java.time.Instant.now());
+        LessorEntity legal = LessorEntity.create("Ana", "Anić", "", "", "", "", null);
+        legal.setLessorOib("33333333360");
+        when(subjectProfileService.resolveLegalLessor(any(), any(), any(), any(), any(), any(), any())).thenReturn(legal);
+
+        service.generateRegistrationNumber(
+                RegistrationRequest.withOib(request("ana@example.com", "0991234567", null, null), "33333333360"),
+                new NiasIdentity(OIB, "Ana", "Anić"), company);
+
+        verify(objectGroupPolicy).requireTypeAllowed(any(), eq(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT));
+    }
+
+    /** T13: OPG iz e-Ovlaštenja prijavljuje vrste OPG-a, a iznajmljivač pamti pravni oblik za PDF. */
+    @Test
+    void legalFlow_familyFarm_checksOpgGroup_andStoresLegalForm() {
+        ActingSubject opg = new ActingSubject("55555555551", "OPG TESTNI", List.of("Nositelj"),
+                OIB, "Ana", "Anić", java.time.Instant.now(), LegalForm.OPG);
+        LessorEntity legal = LessorEntity.create("Ana", "Anić", "", "", "", "", null);
+        legal.setLessorOib("55555555551");
+        when(subjectProfileService.resolveLegalLessor(any(), any(), any(), any(), any(), any(), any())).thenReturn(legal);
+
+        service.generateRegistrationNumber(
+                RegistrationRequest.withOib(request("ana@example.com", "0991234567", null, null), "55555555551"),
+                new NiasIdentity(OIB, "Ana", "Anić"), opg);
+
+        verify(objectGroupPolicy).requireTypeAllowed(any(), eq(SubjectCategory.OPG));
+        assertThat(savedLessor().getLegalForm()).isEqualTo(LegalForm.OPG);
+    }
+
+    /** T13: osoba u svoje ime prijavljuje kao fizička osoba. */
+    @Test
+    void niasFlow_checksTypeGroupForNaturalPerson() {
+        when(subjectProfileService.resolveLessor(any(), any(), any(), any())).thenReturn(lessorWithoutContact());
+
+        service.generateRegistrationNumber(request("ana@example.com", "0991234567", null, null),
+                new NiasIdentity(OIB, "Ana", "Anić"));
+
+        verify(objectGroupPolicy).requireTypeAllowed(any(), eq(SubjectCategory.FIZICKA_OSOBA));
+    }
+
+    /** T13: vrsta koju subjekt ne smije imati odbija zahtjev prije iznajmljivača i izdavanja broja. */
+    @Test
+    void legalFlow_typeNotAllowedForCompany_rejectsAndStoresNothing() {
+        ActingSubject company = new ActingSubject("33333333360", "T", List.of("Direktor"),
+                OIB, "Ana", "Anić", java.time.Instant.now());
+        doThrow(new BusinessException("error.accommodation.type.notAllowedForSubject"))
+                .when(objectGroupPolicy).requireTypeAllowed(any(), eq(SubjectCategory.OSTALI_POSLOVNI_SUBJEKT));
+
+        assertThatThrownBy(() -> service.generateRegistrationNumber(
+                RegistrationRequest.withOib(request("ana@example.com", "0991234567", null, null), "33333333360"),
+                new NiasIdentity(OIB, "Ana", "Anić"), company))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.accommodation.type.notAllowedForSubject");
+        verify(subjectProfileService, never()).resolveLegalLessor(any(), any(), any(), any(), any(), any(), any());
+        verify(lessorRepository, never()).save(any());
+        verify(rnService, never()).issue(any(), any());
     }
 
     /** Zahtjev ne smije nositi drugi OIB od tvrtke u čije se ime djeluje. */
@@ -287,6 +356,9 @@ class RegistrationServiceContactTest {
         when(lessorRepository.findById(lessorId)).thenReturn(Optional.of(postojeci));
 
         service.generateRegistrationNumberExternal(externalRequest(null, "0911112222"), lessorId);
+
+        // T13: non-EU iznajmljivač nema e-Ovlaštenja i prijavljuje kao fizička osoba.
+        verify(objectGroupPolicy).requireTypeAllowed(any(), eq(SubjectCategory.FIZICKA_OSOBA));
 
         assertThat(postojeci.getContactName()).isEqualTo("Pero Perić");
         assertThat(postojeci.getPhoneNumber()).isEqualTo("021111222");

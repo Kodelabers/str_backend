@@ -15,6 +15,7 @@ import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.lookup.ObjectGroupPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +47,7 @@ class RnServiceTest {
     private PrilogService prilogService;
     private RnReissueGuard reissueGuard;
     private com.str.backend.objection.SuspensionObjectionRepository objectionRepository;
+    private ObjectGroupPolicy objectGroupPolicy;
     private final Clock clock = Clock.fixed(Instant.parse("2026-04-30T10:00:00Z"), ZoneId.of("UTC"));
     /** Valjan rok za očitovanje (u budućnosti u odnosu na {@link #clock}). */
     private static final LocalDate DEADLINE = LocalDate.of(2026, 5, 15);
@@ -61,9 +63,10 @@ class RnServiceTest {
         prilogService = mock(PrilogService.class);
         reissueGuard = mock(RnReissueGuard.class);
         objectionRepository = mock(com.str.backend.objection.SuspensionObjectionRepository.class);
+        objectGroupPolicy = mock(ObjectGroupPolicy.class);
         service = new RnService(repository, transitionService, accommodationRepository,
                 accommodationTypeRepository, clock, new DocumentLabels(), prilogService, reissueGuard,
-                objectionRepository);
+                objectionRepository, objectGroupPolicy);
     }
 
     @Test
@@ -114,6 +117,24 @@ class RnServiceTest {
         when(repository.existsByRn(anyString())).thenReturn(false);
 
         assertThat(service.issue(UUID.randomUUID(), accommodationId).getRn()).startsWith("HR18");
+    }
+
+    /** T13: oznaka skupine u RB-u (znamenke 5–6) je iz skupine vrste, ne tvrdo 00. */
+    @Test
+    void issue_groupCodeComesFromObjectGroupOfType() {
+        UUID accommodationId = UUID.randomUUID();
+        Long typeId = 7L;
+        AccommodationEntity splitska = AccommodationEntity.create(
+                UUID.randomUUID(), "Splitsko-dalmatinska", "Split", null, null,
+                4, 4, OfferType.PRIMARY_RESIDENCE, Offering.WHOLE, false, false, false);
+        splitska.setAccommodationTypeId(typeId);
+        when(accommodationRepository.findById(accommodationId)).thenReturn(Optional.of(splitska));
+        when(accommodationTypeRepository.findById(typeId))
+                .thenReturn(Optional.of(new AccommodationTypeEntity("Hoteli", true, "FT_HOTEL")));
+        when(objectGroupPolicy.rbGroupCode(typeId)).thenReturn(3);
+        when(repository.existsByRn(anyString())).thenReturn(false);
+
+        assertThat(service.issue(UUID.randomUUID(), accommodationId).getRn()).startsWith("HR180307");
     }
 
     @Test

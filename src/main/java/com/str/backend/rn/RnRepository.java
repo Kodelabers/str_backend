@@ -470,11 +470,13 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
                 l.legalEntityOwner, c.name, l.legalEntityCity, l.legalEntityRegistrationNumber,
                 l.representativeOib, l.legalRepresentativeName,
                 l.representativeEmail, l.representativePhone, l.representativeAddress,
-                r.withdrawalDeadline, r.withdrawalFromSuspended
+                r.withdrawalDeadline, r.withdrawalFromSuspended,
+                g.name
             )
             FROM RnEntity r
             JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
             LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
+            LEFT JOIN ObjectGroupEntity g ON g.code = t.group
             LEFT JOIN LessorEntity l ON l.lessorId =
                 (SELECT s.lessorId FROM SubmissionEntity s WHERE s.submissionId = r.submissionId)
             LEFT JOIN CountryEntity c ON c.id = l.legalEntityCountryId
@@ -503,10 +505,11 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
     @Transactional(readOnly = true)
     @Query("""
             SELECT new com.str.backend.rn.dto.RnPublicView(
-                r.rn, a.name, a.category, a.street, a.streetNumber, a.city, t.group, t.name)
+                r.rn, a.name, a.category, a.street, a.streetNumber, a.city, coalesce(g.name, t.group), t.name)
             FROM RnEntity r
             JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId
             LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId
+            LEFT JOIN ObjectGroupEntity g ON g.code = t.group
             WHERE r.rn = :rn
             """)
     Optional<RnPublicView> findPublicView(@Param("rn") String rn);

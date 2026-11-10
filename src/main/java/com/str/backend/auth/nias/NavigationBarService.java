@@ -3,6 +3,7 @@ package com.str.backend.auth.nias;
 import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ExternalRegistryException;
 import com.str.backend.registries.eovlastenja.EOvlastenjaException;
+import com.str.backend.registries.eovlastenja.LegalForm;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
@@ -50,8 +51,6 @@ public class NavigationBarService {
     static final String CHANGE_ENTITY_PATH = "/api/nias/acting-subject/change-entity";
     private static final String LOGIN_PATH = "/saml2/authenticate/nias";
     private static final String ATTR_NAV_TOKEN = "nav_token";
-    /** IZVOR_REG sudskog registra — jedini koji prihvaćamo (samo tvrtke, v. docs/EOVLASTENJA.md). */
-    private static final String COMPANY_REGISTRY = "1";
 
     private static final Logger log = LoggerFactory.getLogger(NavigationBarService.class);
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -120,7 +119,7 @@ public class NavigationBarService {
                 + "?toLegalIps={ToLegalIps}&toLegalIzvorReg={ToLegalIzvor_reg}&forPersonOib={ForPersonOib}"
                 + "&state=" + state(session));
         params.put("ToLegalIps", acting.map(ActingSubject::legalOib).orElse(""));
-        params.put("ToLegalIzvor_reg", acting.isPresent() ? COMPANY_REGISTRY : "");
+        params.put("ToLegalIzvor_reg", acting.map(a -> a.legalForm().izvorReg()).orElse(""));
         params.put("show_entities", "True");
         params.put("show_entity_search", promptEntitySearch(session, acting.isPresent()) ? "True" : "False");
         params.put("language", "hr");
@@ -163,18 +162,26 @@ public class NavigationBarService {
         // Jednokratan: sljedeća adresa skripte (nakon povratka stranica se učitava iznova) nosi novi.
         session.removeAttribute(STATE_KEY);
         String self = person.get().oib();
-        if (legalIps == null || legalIps.equals(self)) {
+        // Tvrtka, obrt i OPG (T13); ostali registri (tijela i sl.) nisu podržani. Bez registra u adresi
+        // traka ga nije poslala — kao prije, to je tvrtka.
+        Optional<LegalForm> legalForm = izvorReg == null || izvorReg.isBlank()
+                ? Optional.of(LegalForm.TVRTKA)
+                : LegalForm.fromIzvorReg(izvorReg);
+        // Vlastiti OIB je „u svoje ime" — osim za obrt i OPG, koji često nose OIB vlasnika: njih
+        // određuje registar iz trake.
+        boolean registrySubject = legalForm.filter(f -> f != LegalForm.TVRTKA).isPresent();
+        if (legalIps == null || (legalIps.equals(self) && !registrySubject)) {
             if (forPersonOib != null && !forPersonOib.equals(self)) {
                 return Outcome.UNSUPPORTED;   // druga fizička osoba (e-Punomoć) — ne podržavamo
             }
             actingSubjectService.clear(session);
             return Outcome.SELF;
         }
-        if (izvorReg != null && !COMPANY_REGISTRY.equals(izvorReg)) {
+        if (legalForm.isEmpty()) {
             return Outcome.UNSUPPORTED;
         }
         try {
-            actingSubjectService.select(session, person.get(), legalIps);
+            actingSubjectService.select(session, person.get(), legalIps, legalForm.get());
             return Outcome.OK;
         } catch (BusinessException e) {
             return Outcome.INVALID;
