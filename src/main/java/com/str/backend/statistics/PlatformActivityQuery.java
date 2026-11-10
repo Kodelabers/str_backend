@@ -38,17 +38,26 @@ class PlatformActivityQuery {
     private static final TypeReference<List<PlatformChipDto>> CHIPS_TYPE = new TypeReference<>() {};
 
     /**
+     * Status RB-a kako ga pregled prikazuje i filtrira: prijedlog povlačenja pokrenut iz suspenzije (T12)
+     * javno ostaje suspendiran, pa je ovdje {@code SUSPENDED} — token „suspendiran", anomalija i
+     * „nevažeći". Jedan izraz za stupac, filtre i broj anomalija.
+     */
+    static final String RN_STATUS =
+            "(CASE WHEN rn.status = 'WITHDRAWAL_PROPOSED' AND rn.withdrawal_from_suspended THEN 'SUSPENDED'"
+          + " ELSE rn.status END)";
+
+    /**
      * Spec §2.10: what counts as an anomaly ("suspektan" RB) — activity reported on a registration
-     * number that is no longer valid for advertising. SUSPENSION_PROPOSED is not one of those: the
-     * proposal only opens the response deadline and the RN keeps holding until it expires, so
-     * advertising under it is legitimate.
+     * number that is no longer valid for advertising. SUSPENSION_PROPOSED and WITHDRAWAL_PROPOSED (T12)
+     * are not among those: a proposal only opens the response deadline and the RN keeps holding until it
+     * expires, so advertising under it is legitimate.
      *
      * <p>Shared by the header count and the "anomalies only" filter — the spec requires the number
      * in the header to equal the number of registration numbers left after applying the filter, so
      * the two must never drift apart.
      */
     private static final String ANOMALY_PREDICATE =
-            "rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED')";
+            RN_STATUS + " NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'WITHDRAWAL_PROPOSED')";
 
     /** Filtar „nevažeći" — v. {@link #WHERE_FILTERS}. */
     private static final String INVALID_STATUS = "INVALID";
@@ -96,8 +105,9 @@ class PlatformActivityQuery {
           + "  AND (:municipality IS NULL OR a.city = :municipality)\n"
           // 'nevažeći' (INVALID) nije status nego skupina — RnRegistryView.INVALID: suspendirani,
           // opozvani i povučeni. Uspoređivao se s nepostojećim statusom INVALID i vraćao prazno.
-          + "  AND (:rnStatus IS NULL OR rn.status = :rnStatus\n"
-          + "       OR (:rnStatus = '" + INVALID_STATUS + "' AND (rn.rn IS NULL OR rn.status IN (:invalidStatuses))))\n"
+          + "  AND (:rnStatus IS NULL OR " + RN_STATUS + " = :rnStatus\n"
+          + "       OR (:rnStatus = '" + INVALID_STATUS + "' AND (rn.rn IS NULL OR " + RN_STATUS
+          + " IN (:invalidStatuses))))\n"
           // Partial match, matching the public registry's `rb` filter — the same field behaving
           // differently on two screens was an accident, not a design decision.
           + "  AND (:rn IS NULL OR aa.rn ILIKE :rnLike)\n"
@@ -126,7 +136,7 @@ class PlatformActivityQuery {
                 a.city,
                 a.county AS county_id,
                 a.county AS county_name,
-                rn.status AS rn_status,
+                {RN_STATUS} AS rn_status,
                 aa.period_from,
                 aa.period_to,
                 SUM({NIGHTS}) AS nights,
@@ -141,9 +151,9 @@ class PlatformActivityQuery {
             + WHERE_FILTERS
             + """
             GROUP BY aa.rn, a.street, a.street_number, a.city, a.county,
-                     rn.status, l.first_name, l.last_name, aa.period_from, aa.period_to
+                     {RN_STATUS}, l.first_name, l.last_name, aa.period_from, aa.period_to
             ORDER BY aa.period_from DESC, aa.rn
-            """).replace("{NIGHTS}", NIGHTS_IN_RANGE);
+            """).replace("{NIGHTS}", NIGHTS_IN_RANGE).replace("{RN_STATUS}", RN_STATUS);
 
     private static final String COUNT_SQL = "SELECT COUNT(*) FROM (" + BASE_SQL + ") AS sub";
 
@@ -274,6 +284,7 @@ class PlatformActivityQuery {
             case "ACTIVE" -> "aktivan";
             case "SUSPENSION_PROPOSED" -> "pred_suspenzijom";
             case "SUSPENDED" -> "suspendiran";
+            case "WITHDRAWAL_PROPOSED" -> "pred_povlacenjem";
             case "REVOKED" -> "opozvan";
             case "WITHDRAWN" -> "povucen";
             case "INVALID" -> "nevažeći";
@@ -289,6 +300,7 @@ class PlatformActivityQuery {
             case "aktivan" -> "ACTIVE";
             case "pred_suspenzijom" -> "SUSPENSION_PROPOSED";
             case "suspendiran" -> "SUSPENDED";
+            case "pred_povlacenjem" -> "WITHDRAWAL_PROPOSED";
             case "opozvan" -> "REVOKED";
             case "povucen" -> "WITHDRAWN";
             case "nevažeći" -> INVALID_STATUS;

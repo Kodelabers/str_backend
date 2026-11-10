@@ -52,12 +52,16 @@ class RnStatusTest {
         assertThat(RnStatus.SUSPENSION_PROPOSED.canTransitionTo(RnStatus.SUSPENDED, RnTrigger.OTHER)).isFalse();
     }
 
-    /** Withdrawal is permanent (čl. 6 STR Uredbe) — no trigger leads back out. */
+    /**
+     * Withdrawal is final (čl. 6 STR Uredbe): the only way out is an accepted objection (T12,
+     * REINSTATE → ACTIVE). No other trigger leads back out.
+     */
     @ParameterizedTest
     @EnumSource(RnTrigger.class)
-    void withdrawnIsTerminal(RnTrigger trigger) {
+    void withdrawnLeavesOnlyThroughReinstate(RnTrigger trigger) {
         for (RnStatus target : RnStatus.values()) {
-            assertThat(RnStatus.WITHDRAWN.canTransitionTo(target, trigger)).isFalse();
+            assertThat(RnStatus.WITHDRAWN.canTransitionTo(target, trigger))
+                    .isEqualTo(trigger == RnTrigger.REINSTATE && target == RnStatus.ACTIVE);
         }
     }
 
@@ -70,17 +74,61 @@ class RnStatusTest {
         }
     }
 
-    /** The lessor may revoke from every standing status. */
+    /** The lessor may revoke from every standing status, including a pending withdrawal proposal. */
     @ParameterizedTest
-    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    @EnumSource(value = RnStatus.class,
+            names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED", "WITHDRAWAL_PROPOSED"})
     void revocationLeadsToRevokedFromEveryStandingStatus(RnStatus from) {
         assertThat(from.canTransitionTo(RnStatus.REVOKED, RnTrigger.REVOCATION)).isTrue();
-        assertThat(from.canTransitionTo(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL)).isTrue();
+    }
+
+    /** T12: withdrawal is two-phase — every standing status goes to a proposal first, never directly. */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    void withdrawalIsProposedFirst(RnStatus from) {
+        assertThat(from.canTransitionTo(RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL)).isTrue();
+        for (RnTrigger trigger : RnTrigger.values()) {
+            assertThat(from.canTransitionTo(RnStatus.WITHDRAWN, trigger)).isFalse();
+        }
+    }
+
+    /** A proposal can be raised only from a standing status — not again, and not from a final one. */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"WITHDRAWAL_PROPOSED", "REVOKED", "WITHDRAWN"})
+    void withdrawalCannotBeProposedFrom(RnStatus from) {
+        assertThat(from.canTransitionTo(RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL)).isFalse();
+    }
+
+    /**
+     * T12: from the proposal only the deadline withdraws (no manual withdrawal, just like suspension),
+     * revocation is possible, and discontinuation always returns to ACTIVE.
+     */
+    @Test
+    void withdrawalProposal_transitions() {
+        RnStatus wp = RnStatus.WITHDRAWAL_PROPOSED;
+        assertThat(wp.canTransitionTo(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED)).isTrue();
+        assertThat(wp.canTransitionTo(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL)).isFalse();
+        assertThat(wp.canTransitionTo(RnStatus.REVOKED, RnTrigger.REVOCATION)).isTrue();
+        assertThat(wp.canTransitionTo(RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL)).isTrue();
+        assertThat(wp.canTransitionTo(RnStatus.SUSPENSION_PROPOSED, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL)).isFalse();
+        assertThat(wp.canTransitionTo(RnStatus.SUSPENDED, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL)).isFalse();
+        assertThat(wp.canTransitionTo(RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED)).isFalse();
+        assertThat(wp.isTerminal()).isFalse();
+    }
+
+    /** WITHDRAWAL is historical: no status may be withdrawn with it any more. */
+    @ParameterizedTest
+    @EnumSource(RnStatus.class)
+    void historicalWithdrawalTrigger_isNeverAccepted(RnStatus from) {
+        for (RnStatus target : RnStatus.values()) {
+            assertThat(from.canTransitionTo(target, RnTrigger.WITHDRAWAL)).isFalse();
+        }
     }
 
     /** Each final status has its own trigger: the official cannot "revoke", the lessor cannot "withdraw". */
     @ParameterizedTest
-    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    @EnumSource(value = RnStatus.class,
+            names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED", "WITHDRAWAL_PROPOSED"})
     void finalStatusesDoNotShareTriggers(RnStatus from) {
         assertThat(from.canTransitionTo(RnStatus.WITHDRAWN, RnTrigger.REVOCATION)).isFalse();
         assertThat(from.canTransitionTo(RnStatus.REVOKED, RnTrigger.WITHDRAWAL)).isFalse();
@@ -104,6 +152,8 @@ class RnStatusTest {
     @Test
     void proposedSuspensionStillCountsAsActive() {
         assertThat(RnStatus.SUSPENSION_PROPOSED.isActiveForPublicUse()).isTrue();
+        // T12: a withdrawal proposal likewise only opens the response deadline.
+        assertThat(RnStatus.WITHDRAWAL_PROPOSED.isActiveForPublicUse()).isTrue();
         assertThat(RnStatus.ACTIVE.isActiveForPublicUse()).isTrue();
 
         assertThat(RnStatus.SUSPENDED.isActiveForPublicUse()).isFalse();

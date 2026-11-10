@@ -26,12 +26,32 @@ class RnWithdrawnListenerTest {
         return new RnLifecycleEvent(UUID.randomUUID(), RN, from, to, trigger, "NIAS:12312312316", null);
     }
 
+    /** Od T12 povlačenje ide samo iz prijedloga — odlukom službenika ili istekom roka. */
     @ParameterizedTest
-    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
-    void withdrawal_fromAnyStandingStatus_clearsRnInEturizam(RnStatus from) {
-        listener.onLifecycleChange(event(from, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL));
+    @EnumSource(value = RnTrigger.class, names = {"WITHDRAWAL", "WITHDRAWAL_DEADLINE_EXCEEDED"})
+    void withdrawal_fromProposal_clearsRnInEturizam(RnTrigger trigger) {
+        listener.onLifecycleChange(event(RnStatus.WITHDRAWAL_PROPOSED, RnStatus.WITHDRAWN, trigger));
 
         verify(writeBack).clear(RN);
+    }
+
+    /** Uvaženi prigovor na povlačenje: broj je opet broj objekta i vraća se u eTurizam. */
+    @Test
+    void reinstate_restoresRnInEturizam() {
+        listener.onLifecycleChange(event(RnStatus.WITHDRAWN, RnStatus.ACTIVE, RnTrigger.REINSTATE));
+
+        verify(writeBack).restore(RN);
+        verify(writeBack, org.mockito.Mockito.never()).clear(RN);
+    }
+
+    /** Prijedlog povlačenja i njegova obustava broj ostavljaju u eTurizmu. */
+    @Test
+    void withdrawalProposalAndRevocation_keepRnInEturizam() {
+        listener.onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL));
+        listener.onLifecycleChange(event(RnStatus.WITHDRAWAL_PROPOSED, RnStatus.ACTIVE,
+                RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL));
+
+        verifyNoInteractions(writeBack);
     }
 
     /** Opoziv iznajmljivača oslobađa objekt jednako kao povlačenje. */

@@ -1,13 +1,16 @@
 # Obavijest o povlačenju registracijskog broja
 # Vrsta pismena (eGOP): „Obavijest o povlačenju registracijskog broja" — izlazno
 #
-# Povlačenje je trajno (RnStatus.WITHDRAWN je terminalan). Po predlošku MINTS-a (studeni 2026.)
-# nema obrazloženja ni zasebne upute o pravnom lijeku: prigovor u roku od osam dana je točka 4.
-# izreke, pa ${uputa.tekst} ovdje više nije u upotrebi.
+# Od T12 povlačenju prethodi prijedlog povlačenja s rokom za očitovanje; broj se povlači istekom
+# roka (WithdrawalDeadlineJob) ili odlukom službenika. RnStatus.WITHDRAWN je konačan, ali uvaženi
+# prigovor iz točke 4. vraća broj u ACTIVE (akt reaktivacija-povlacenja). Po predlošku MINTS-a
+# (studeni 2026.) nema obrazloženja ni zasebne upute o pravnom lijeku: prigovor u roku od osam dana je
+# točka 4. izreke, pa ${uputa.tekst} ovdje više nije u upotrebi.
 #
-# Razlog u točki 1. je razlog povlačenja koji je službenik odabrao (WithdrawalReason, MINTS):
-# RnService.withdraw upisuje njegov natpis, odnosno opis uz „drugi razlozi", u
-# registration_number_log.reason, a StrDocumentService ga čita odande.
+# Razlog u točki 1. je razlog povlačenja koji je službenik odabrao (WithdrawalReason, MINTS), s
+# prijedloga povlačenja (RnService.proposeWithdrawal ga upisuje u registration_number_log.reason).
+# Povlačenje istekom roka razlog i potpisnika uzima s prijedloga, a ne bilješku posla
+# (StrDocumentService.razlogIzTraga).
 #
 # MINTS, studeni 2026.: propis o nadležnosti čl. 48. st. 2.; stranka se ne imenuje u uvodu nego u
 # točki 1. („dodijeljen na zahtjev stranke: …"); točka 2. s danom povlačenja (datum prijelaza statusa,

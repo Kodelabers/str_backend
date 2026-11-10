@@ -8,14 +8,19 @@ import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.address.CountyNames;
 import com.str.backend.common.SearchTokens;
 import com.str.backend.common.Strings;
+import com.str.backend.common.Zagreb;
 import com.str.backend.document.DocumentLabels;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.domain.RegistrationNumber;
 import com.str.backend.domain.WithdrawalReason;
 import com.str.backend.exception.BusinessException;
+import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeRepository;
+import com.str.backend.objection.SuspensionObjectionEntity;
+import com.str.backend.objection.SuspensionObjectionRepository;
+import com.str.backend.objection.SuspensionObjectionStatus;
 import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnDetailExtras;
 import com.str.backend.rn.dto.RnDetailResponse;
@@ -32,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +51,8 @@ public class RnService {
     private static final int MAX_RN_ATTEMPTS = 5;
     /** Deset godina — dovoljno za svaki stvarni rok, a drži datum unutar raspona DB tipa `date`. */
     private static final int MAX_DEADLINE_WINDOW_DAYS = 3650;
+    /** Najdulja bilješka službenika — širina {@code registration_number_log.reason}. */
+    static final int MAX_NOTE_LENGTH = 1024;
     /**
      * Lista za {@code :verifiedIds} kad filtra „Verificiran" nema: uvjet je tada istinit bez
      * obzira na listu, pa vrijednost nije važna, ali Hibernate ne smije dobiti praznu kolekciju
@@ -90,11 +98,16 @@ public class RnService {
     private final Clock clock;
     private final DocumentLabels labels;
     private final PrilogService prilogService;
+    private final RnReissueGuard reissueGuard;
+    private final SuspensionObjectionRepository objectionRepository;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
                      AccommodationTypeRepository accommodationTypeRepository, Clock clock,
-                     DocumentLabels labels, PrilogService prilogService) {
+                     DocumentLabels labels, PrilogService prilogService, RnReissueGuard reissueGuard,
+                     SuspensionObjectionRepository objectionRepository) {
+        this.reissueGuard = reissueGuard;
+        this.objectionRepository = objectionRepository;
         this.repository = repository;
         this.transitionService = transitionService;
         this.accommodationRepository = accommodationRepository;
@@ -127,10 +140,45 @@ public class RnService {
                 RnEntity rn = RnEntity.issue(candidate, submissionId, accommodationId, today);
                 repository.save(rn);
                 log.info("rn_issued rn={} submission={} accommodation={}", candidate, submissionId, accommodationId);
+                zatvoriPrigovoreZamijenjenihBrojeva(accommodation, candidate);
                 return rn;
             }
         }
         throw new BusinessException("error.rn.generation.failed");
+    }
+
+    /** Akter zatvaranja prigovora kad je za objekt izdan novi broj — kao u {@code SuspensionObjectionLifecycleListener}. */
+    private static final String SYSTEM_ACTOR = "SYSTEM";
+
+    /**
+     * Novi broj za isti objekt (isti {@code facility_id} ili ponovni zahtjev s {@code previous_rn}) zatvara
+     * otvoreni prigovor na povučeni broj (T12): uvažiti se više ne bi mogao ({@link RnReissueGuard}).
+     * Ista transakcija kao izdavanje. Stari broj se zaključava prije prigovora — isti redoslijed kao
+     * uvažavanje ({@code SuspensionObjectionAdminService#accept}), pa nema ni zastarjelog čitanja ni
+     * međusobnog čekanja.
+     */
+    private void zatvoriPrigovoreZamijenjenihBrojeva(AccommodationEntity accommodation, String noviRn) {
+        Set<String> stari = new LinkedHashSet<>();
+        if (accommodation.getPreviousRn() != null) {
+            stari.add(accommodation.getPreviousRn());
+        }
+        String facilityId = Strings.blankToNull(accommodation.getFacilityId());
+        if (facilityId != null) {
+            stari.addAll(repository.findRnsOfFacilityInStatus(facilityId, RnStatus.WITHDRAWN));
+        }
+        stari.remove(noviRn);
+        for (String stariRn : stari) {
+            RnEntity stariBroj = repository.findForUpdate(stariRn).orElse(null);
+            if (stariBroj == null || stariBroj.getStatus() != RnStatus.WITHDRAWN) {
+                continue;
+            }
+            for (SuspensionObjectionEntity prigovor
+                    : objectionRepository.findByRnAndStatus(stariRn, SuspensionObjectionStatus.SUBMITTED)) {
+                prigovor.close(SYSTEM_ACTOR, "Izdan je novi registracijski broj " + noviRn + " za isti objekt.");
+                log.info("suspension_objection_closed_new_rn rn={} objection={} newRn={}",
+                        stariRn, prigovor.getObjectionId(), noviRn);
+            }
+        }
     }
 
     /**
@@ -142,11 +190,12 @@ public class RnService {
      * zauvijek visio u {@code SUSPENSION_PROPOSED}.
      *
      * <p>{@code actor} je službenik ({@code INTERNAL:<oib>}) — zapisuje se u revizijski trag, kao i
-     * kod obustave, reaktivacije i povlačenja.
+     * kod obustave, reaktivacije i prijedloga povlačenja.
      *
      * <p>U {@code registration_number_log.reason} ide natpis razloga, a bilješka službenika samo uz
-     * {@link RnTrigger#OTHER} (kao kod {@link #withdraw}): akt i obavijest razlog čitaju odande, pa bi
-     * bilješka uz kodirani razlog zamijenila natpis koji MINTS traži.
+     * {@link RnTrigger#OTHER} (kao kod {@link #proposeWithdrawal}): akt i obavijest razlog čitaju odande,
+     * pa bi bilješka uz kodirani razlog zamijenila natpis koji MINTS traži. Bilješka ima najviše
+     * {@value #MAX_NOTE_LENGTH} znakova (stupac {@code reason}).
      *
      * <p>Prilozi službenika ({@code prilogIds} iz staginga, T17) vežu se uz novi zapis
      * {@code registration_number_log} u istoj transakciji, pa ih AFTER_COMMIT listeneri (eGOP, e-pošta)
@@ -158,7 +207,8 @@ public class RnService {
         if (!RnTrigger.SUSPENSION_REASONS.contains(trigger)) {
             throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
-        if (trigger == RnTrigger.OTHER && Strings.blankToNull(note) == null) {
+        String cleanNote = trigger == RnTrigger.OTHER ? biljeska(note) : null;
+        if (trigger == RnTrigger.OTHER && cleanNote == null) {
             throw new BusinessException("error.rn.suspend.note.required");
         }
         if (suspensionDeadline == null) {
@@ -170,7 +220,7 @@ public class RnService {
         if (suspensionDeadline.isBefore(danas())) {
             throw new BusinessException("error.rn.suspend.deadline.past");
         }
-        String logged = trigger == RnTrigger.OTHER ? Strings.blankToNull(note) : labels.trigger(trigger);
+        String logged = trigger == RnTrigger.OTHER ? cleanNote : labels.trigger(trigger);
         RnEntity e = loadForUpdate(rn);
         UUID logId = transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, logged);
         e.setSuspensionDeadline(suspensionDeadline);
@@ -192,14 +242,7 @@ public class RnService {
      */
     @Transactional
     public boolean suspendIfDeadlineExpired(String rn, String actor) {
-        RnEntity e = loadForUpdate(rn);
-        if (e.getStatus() != RnStatus.SUSPENSION_PROPOSED || e.getSuspensionDeadline() == null
-                || !e.getSuspensionDeadline().isBefore(danas())) {
-            return false;
-        }
-        transitionService.transition(e, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED, actor,
-                SuspensionDeadlineJob.DEADLINE_EXCEEDED_NOTE);
-        return true;
+        return expireIfDeadlinePassed(ProposalProcedure.SUSPENSION, rn, actor);
     }
 
     @Transactional
@@ -217,39 +260,119 @@ public class RnService {
     }
 
     /**
-     * Officer-initiated withdrawal (povlačenje) of a registration number → WITHDRAWN.
-     * Permanent: allowed from ACTIVE, SUSPENSION_PROPOSED and SUSPENDED, never reactivated
-     * (čl. 6 STR Uredbe). The lessor's own revocation (opoziv) is a separate final status,
-     * {@code REVOKED} — see {@code LessorRnActionService}.
-     * STR-2.1-002.
+     * Prva faza povlačenja (T12, po uzoru na {@link #suspend}): stranka se poziva na očitovanje, a broj
+     * se povlači tek istekom roka — noćnim poslom ({@link WithdrawalDeadlineJob}) ili kad službenik nakon
+     * roka ne uvaži očitovanje ({@link #withdrawIfDeadlineExpired}). Ručnog povlačenja nema, kao ni ručne
+     * suspenzije. Dopušteno iz {@code ACTIVE}, {@code SUSPENSION_PROPOSED} i {@code SUSPENDED}; postupak
+     * suspenzije koji je bio u tijeku time završava (rok suspenzije se briše). Prijedlog iz
+     * {@code SUSPENDED} javno ostaje nevaljan ({@code withdrawal_from_suspended}, {@link RnEntity#isValidForPublicUse}).
      *
-     * <p>Razlog je obvezan i bira se s popisa ({@link WithdrawalReason}, MINTS). Okidač prijelaza
-     * ostaje {@link RnTrigger#WITHDRAWAL}, a razlog ide u {@code registration_number_log.reason}
-     * kao tekst koji akt ispisuje: natpis razloga, a uz {@link WithdrawalReason#OTHER} opis
-     * službenika (obvezan). Opis uz kodirani razlog se ne upisuje — kao ni bilješka uz kodirani
-     * razlog suspenzije, frontend ga tada ni ne šalje.
+     * <p>Razlog je obvezan i bira se s popisa ({@link WithdrawalReason}, MINTS). U
+     * {@code registration_number_log.reason} ide natpis razloga, a uz {@link WithdrawalReason#OTHER}
+     * opis službenika (obvezan, najviše {@value #MAX_NOTE_LENGTH} znakova). Odatle ga čitaju akti
+     * prijedloga, obustave i povlačenja.
      *
-     * <p>Prilozi službenika (T17) vežu se uz novi zapis prijelaza kao kod {@link #suspend}.
-     *
-     * <p>TODO (zasebni epic, "Zajedničke backend teme"): obavijest Internetskim platformama
-     * (mail/M2M); akt o povlačenju ide u KP kroz eGOP tok. Retencija (18 mj.) se računa iz {@code valid_to}
-     * koji {@link RnEntity#applyStatus} postavlja na dan povlačenja.
+     * <p>Rok za očitovanje je obvezan i ne smije biti u prošlosti (po hrvatskom vremenu), iz istih
+     * razloga kao kod suspenzije. Prilozi službenika (T17) vežu se uz zapis prijelaza kao kod
+     * {@link #suspend}.
      */
     @Transactional
-    public RnEntity withdraw(String rn, WithdrawalReason reason, String note, String actor,
-                             Collection<Long> prilogIds) {
+    public RnEntity proposeWithdrawal(String rn, WithdrawalReason reason, LocalDate withdrawalDeadline,
+                                      String note, String actor, Collection<Long> prilogIds) {
         if (reason == null) {
             throw new BusinessException("error.rn.withdraw.reason.required");
         }
-        String cleanNote = Strings.blankToNull(note);
+        String cleanNote = reason.requiresNote() ? biljeska(note) : null;
         if (reason.requiresNote() && cleanNote == null) {
             throw new BusinessException("error.rn.withdraw.note.required");
         }
+        if (withdrawalDeadline == null) {
+            throw new BusinessException("error.rn.withdraw.deadline.required");
+        }
+        if (withdrawalDeadline.isBefore(danas())) {
+            throw new BusinessException("error.rn.withdraw.deadline.past");
+        }
         String logged = reason.requiresNote() ? cleanNote : labels.withdrawalReason(reason);
         RnEntity e = loadForUpdate(rn);
-        UUID logId = transitionService.transition(e, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, logged);
+        boolean izSuspenzije = e.getStatus() == RnStatus.SUSPENDED;
+        UUID logId = transitionService.transition(e, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
+                actor, logged);
+        e.setWithdrawalDeadline(withdrawalDeadline);
+        if (izSuspenzije) {
+            // Suspendiran broj javno ostaje nevaljan i dok traje postupak povlačenja.
+            e.markWithdrawalFromSuspended();
+        }
         bindPrilozi(actor, prilogIds, logId);
         return e;
+    }
+
+    /**
+     * Obustava postupka povlačenja — ručna ili uvaženim očitovanjem: broj se uvijek vraća u
+     * {@code ACTIVE} (odluka korisnika, T12), bez obzira na to iz kojeg je statusa povlačenje predloženo.
+     */
+    @Transactional
+    public RnEntity revokeWithdrawalProposal(String rn, String actor) {
+        RnEntity e = loadForUpdate(rn);
+        if (e.getStatus() != RnStatus.WITHDRAWAL_PROPOSED) {
+            throw new ConflictException("error.rn.withdraw.proposal.notPending", "RN_NOT_WITHDRAWAL_PROPOSED");
+        }
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL, actor, null);
+        return e;
+    }
+
+    /**
+     * Povlačenje istekom roka, odmah, u ime službenika — kad službenik ne uvaži prigovor (očitovanje)
+     * predan u roku. Takav prigovor zadržava {@link WithdrawalDeadlineJob}, pa bi bez ovoga broj nakon
+     * neuvažavanja čekao noćni posao. Isti prijelaz i isti uvjet kao u poslu
+     * ({@code WITHDRAWAL_DEADLINE_EXCEEDED}, rok strogo prije danas), pa nastaje isti akt; razlog je
+     * uvijek onaj s prijedloga. Broj koji više nije predložen za povlačenje ili mu rok još teče ostaje
+     * kakav jest.
+     *
+     * @return je li broj povučen
+     */
+    @Transactional
+    public boolean withdrawIfDeadlineExpired(String rn, String actor) {
+        return expireIfDeadlinePassed(ProposalProcedure.WITHDRAWAL, rn, actor);
+    }
+
+    /** Zajednički uvjet i prijelaz istekom roka za {@link #suspendIfDeadlineExpired} i {@link #withdrawIfDeadlineExpired}. */
+    private boolean expireIfDeadlinePassed(ProposalProcedure procedure, String rn, String actor) {
+        RnEntity e = loadForUpdate(rn);
+        if (!procedure.isExpired(e, danas())) {
+            return false;
+        }
+        transitionService.transition(e, procedure.target(), procedure.trigger(), actor, procedure.note());
+        return true;
+    }
+
+    /**
+     * Uvaženi prigovor na povučen broj (T12): {@code WITHDRAWN} → {@code ACTIVE}, bez roka za
+     * prigovor. {@link RnEntity#applyStatus} briše {@code valid_to}, a {@code RnWithdrawnListener} broj
+     * nakon commita ponovno upisuje u eTurizam.
+     *
+     * <p>Odbija se s 409 {@code OBJECTION_RN_REISSUED} kad za isti objekt već postoji drugi važeći
+     * broj ({@link RnReissueGuard}). Dva važeća broja za isti objekt ne smiju postojati.
+     */
+    @Transactional
+    public RnEntity reinstate(String rn, String actor) {
+        RnEntity e = loadForUpdate(rn);
+        if (e.getStatus() == RnStatus.WITHDRAWN && reissueGuard.noviBrojIzdan(e)) {
+            throw new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED");
+        }
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REINSTATE, actor, null);
+        return e;
+    }
+
+    /**
+     * Bilješka službenika uz prijedlog (suspenzije ili povlačenja), očišćena; {@code null} kad je prazna.
+     * Ide u {@code registration_number_log.reason}, pa preduga je 400, a ne 500 iz baze.
+     */
+    private static String biljeska(String note) {
+        String clean = Strings.blankToNull(note);
+        if (clean != null && clean.length() > MAX_NOTE_LENGTH) {
+            throw new BusinessException("error.rn.note.tooLong");
+        }
+        return clean;
     }
 
     /**
@@ -268,9 +391,9 @@ public class RnService {
         prilogService.bind(actor, prilogIds, PrilogVlasnik.prijelaz(logId));
     }
 
-    /** Današnji dan za rokove suspenzije — po hrvatskom vremenu, kao {@link SuspensionDeadlineJob}. */
+    /** Današnji dan za rokove suspenzije i povlačenja — po hrvatskom vremenu, kao noćni poslovi. */
     private LocalDate danas() {
-        return LocalDate.now(clock.withZone(SuspensionDeadlineJob.ZAGREB));
+        return Zagreb.today(clock);
     }
 
     @Transactional(readOnly = true)
@@ -285,18 +408,22 @@ public class RnService {
 
     /**
      * STR-1.5: list of inactive RNs (SUSPENDED + REVOKED + WITHDRAWN), for display to competent authority.
-     * SUSPENSION_PROPOSED is deliberately absent — the proposal only opens the response deadline
-     * and the RN keeps holding until it expires. That work list is {@code view=SUSPENSION_PROPOSED}
-     * on the registry endpoint.
+     * SUSPENSION_PROPOSED and WITHDRAWAL_PROPOSED are deliberately absent — a proposal only opens the
+     * response deadline and the RN keeps holding until it expires. Their work lists are
+     * {@code view=SUSPENSION_PROPOSED} and {@code view=WITHDRAWAL_PROPOSED} on the registry endpoint.
+     * Exception (T12): a withdrawal proposal raised from SUSPENDED stays publicly suspended, so it is listed
+     * ({@link RnEntity#isValidForPublicUse}).
      *
      * @param scopeCounties opseg službenika ({@code accommodation.county}); {@code null} = cijela RH
      */
     @Transactional(readOnly = true)
     public List<RnEntity> inactive(List<String> scopeCounties) {
-        List<RnStatus> statuses = List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN);
-        return scopeCounties == null
+        List<RnStatus> statuses = List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWAL_PROPOSED, RnStatus.REVOKED,
+                RnStatus.WITHDRAWN);
+        List<RnEntity> rows = scopeCounties == null
                 ? repository.findByStatusInOrderByUpdatedAtDesc(statuses)
                 : repository.findByStatusInAndCountyIn(statuses, scopeCounties);
+        return rows.stream().filter(e -> !e.isValidForPublicUse()).toList();
     }
 
     /**
@@ -315,7 +442,7 @@ public class RnService {
         }
         String[] t = SearchTokens.slots(filter.q());
         String verifiedMode = verifiedMode(filter.verified(), verifiedFacilityIds);
-        return repository.searchRegistry(filter.view().statuses(),
+        return repository.searchRegistry(filter.view().statuses(), filter.view().validity(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
                 Strings.blankToNull(filter.county()),
                 filter.scopeCounties() == null ? null : "ON",
@@ -350,7 +477,7 @@ public class RnService {
     @Transactional(readOnly = true)
     public List<String> registryFacilityIds(RnRegistryFilter filter) {
         String[] t = SearchTokens.slots(filter.q());
-        return repository.findRegistryFacilityIds(filter.view().statuses(),
+        return repository.findRegistryFacilityIds(filter.view().statuses(), filter.view().validity(),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
                 Strings.blankToNull(filter.county()),
                 filter.scopeCounties() == null ? null : "ON",

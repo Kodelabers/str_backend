@@ -67,12 +67,12 @@ class PlatformActivityQuerySqlTest {
         // SUSPENSION_PROPOSED is not an anomaly: the proposal only opens the response deadline,
         // so the registration number still covers the reported activity.
         assertThat(summarySql)
-                .contains("COUNT(DISTINCT CASE WHEN rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED')"
+                .contains("COUNT(DISTINCT CASE WHEN " + PlatformActivityQuery.RN_STATUS + " NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'WITHDRAWAL_PROPOSED')"
                         + " THEN aa.rn END) AS anomalies")
-                .contains("AND (:anomaliesOnly = FALSE OR rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED'))");
+                .contains("AND (:anomaliesOnly = FALSE OR " + PlatformActivityQuery.RN_STATUS + " NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'WITHDRAWAL_PROPOSED'))");
 
         assertThat(captureRowSql())
-                .contains("AND (:anomaliesOnly = FALSE OR rn.status NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED'))");
+                .contains("AND (:anomaliesOnly = FALSE OR " + PlatformActivityQuery.RN_STATUS + " NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'WITHDRAWAL_PROPOSED'))");
     }
 
     /** Registry and activity screens must treat a registration number the same way. */
@@ -150,7 +150,7 @@ class PlatformActivityQuerySqlTest {
         MapSqlParameterSource params = captureParams();
         assertThat(params.getValue("rnStatus")).isEqualTo("INVALID");
         assertThat(params.getValue("invalidStatuses")).isEqualTo(List.of("SUSPENDED", "REVOKED", "WITHDRAWN"));
-        assertThat(captureRowSql()).contains("OR (:rnStatus = 'INVALID' AND (rn.rn IS NULL OR rn.status IN (:invalidStatuses)))");
+        assertThat(captureRowSql()).contains("OR (:rnStatus = 'INVALID' AND (rn.rn IS NULL OR " + PlatformActivityQuery.RN_STATUS + " IN (:invalidStatuses)))");
     }
 
     /** T7 (dogovoreno sa STR-om 3.11.): broj kojeg nema u registru vidi se u pregledu. */
@@ -186,8 +186,31 @@ class PlatformActivityQuerySqlTest {
 
         ArgumentCaptor<String> count = ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForObject(count.capture(), any(SqlParameterSource.class), eq(Long.class));
-        assertThat(count.getValue()).contains("rn.status IN (:invalidStatuses)");
-        assertThat(captureSummarySql()).contains("rn.status IN (:invalidStatuses)");
+        assertThat(count.getValue()).contains(PlatformActivityQuery.RN_STATUS + " IN (:invalidStatuses)");
+        assertThat(captureSummarySql()).contains(PlatformActivityQuery.RN_STATUS + " IN (:invalidStatuses)");
+    }
+
+    /** T12: prijedlog povlačenja je valjan kao prijedlog suspenzije — nije anomalija, a ima svoj token filtra. */
+    @Test
+    void withdrawalProposal_isNotAnAnomaly_andHasItsOwnToken() {
+        query.queryAll(new PlatformActivityFilter(
+                null, null, null, null, null, "pred_povlacenjem", null, null, false, null, false), null, ANY_LIMIT);
+
+        assertThat(captureParams().getValue("rnStatus")).isEqualTo("WITHDRAWAL_PROPOSED");
+        assertThat(captureRowSql()).contains("NOT IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'WITHDRAWAL_PROPOSED')");
+    }
+
+    /** Prijedlog povlačenja iz suspenzije u pregledu je suspendiran: stupac, filtri i anomalija. */
+    @Test
+    void withdrawalProposalFromSuspended_isShownAndFilteredAsSuspended() {
+        assertThat(PlatformActivityQuery.RN_STATUS)
+                .isEqualTo("(CASE WHEN rn.status = 'WITHDRAWAL_PROPOSED' AND rn.withdrawal_from_suspended"
+                        + " THEN 'SUSPENDED' ELSE rn.status END)");
+        query.queryAll(PlatformActivityFilter.none(), null, ANY_LIMIT);
+        assertThat(captureRowSql())
+                .contains(PlatformActivityQuery.RN_STATUS + " AS rn_status")
+                .contains(PlatformActivityQuery.RN_STATUS + " = :rnStatus")
+                .doesNotContain("{RN_STATUS}");
     }
 
     /** Jedan izvor istine s registrom — novi nevažeći status ne smije ispasti samo ovdje. */

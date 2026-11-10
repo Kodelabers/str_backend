@@ -30,6 +30,10 @@ public enum MailTemplate {
     OBUSTAVA_SUSPENZIJE("obustava-suspenzije", Keys.LIFECYCLE),
     REAKTIVACIJA("reaktivacija", Keys.LIFECYCLE),
     POVLACENJE("povlacenje", Keys.LIFECYCLE),
+    /** T12: prijedlog povlačenja, obustava postupka povlačenja i reaktivacija povučenog broja. */
+    PRIJEDLOG_POVLACENJA("prijedlog-povlacenja", Keys.LIFECYCLE),
+    OBUSTAVA_POVLACENJA("obustava-povlacenja", Keys.LIFECYCLE),
+    REAKTIVACIJA_POVLACENJA("reaktivacija-povlacenja", Keys.LIFECYCLE),
     OPOZIV("opoziv", Keys.LIFECYCLE);
 
     /**

@@ -154,9 +154,10 @@ public class ZupContextFactory {
         ctx.put("objekt.skupina", skupina(d.rn()));
         ctx.put("objekt.kapacitet", d.maxBeds() == null ? "" : String.valueOf(d.maxBeds()));
 
-        ctx.put("rok.ispravak", d.suspensionDeadline() == null
+        LocalDate rok = rokOcitovanja(type, d);
+        ctx.put("rok.ispravak", rok == null
                 ? labels.get("rok.default")
-                : labels.format("rok.doDatuma", d.suspensionDeadline().format(DATE)));
+                : labels.format("rok.doDatuma", rok.format(DATE)));
 
         ctx.put("uputa.tekst", properties.uputaZa(type));
 
@@ -168,6 +169,16 @@ public class ZupContextFactory {
         }
 
         return ctx;
+    }
+
+    /**
+     * Rok za očitovanje koji akt (i obavijest e-poštom uz njega) navodi: prijedlog povlačenja nosi rok
+     * povlačenja (T12), ostali rok suspenzije. Jedino pravilo — čita ga i {@code RnLifecycleEmailListener}.
+     *
+     * @return {@code null} kad roka nema (stariji predmet, ili je broj u međuvremenu napustio prijedlog)
+     */
+    public static LocalDate rokOcitovanja(StrDocumentType type, RnDetailDto d) {
+        return type == StrDocumentType.PRIJEDLOG_POVLACENJA ? d.withdrawalDeadline() : d.suspensionDeadline();
     }
 
     /**

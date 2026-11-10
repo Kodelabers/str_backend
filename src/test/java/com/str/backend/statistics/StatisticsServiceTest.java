@@ -116,6 +116,31 @@ class StatisticsServiceTest {
         assertThat(res.counties().get(0).registrationRate()).isEqualTo(50.0);
     }
 
+    /** T12: prijedlog povlačenja je valjan broj kao prijedlog suspenzije — broji se u aktivne. */
+    @Test
+    void str_countsWithdrawalProposalsAsActive() {
+        when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
+                county(1L, "Istarska županija")
+        ));
+        when(accommodationRepository.countByCounty()).thenReturn(List.of(
+                accCount("Istarska županija", 10L)
+        ));
+        when(rnRepository.countByCountyAndStatus()).thenReturn(List.of(
+                rnCount("Istarska županija", RnStatus.ACTIVE, 1L),
+                rnCount("Istarska županija", RnStatus.WITHDRAWAL_PROPOSED, 2L),
+                rnCount("Istarska županija", RnStatus.WITHDRAWAL_PROPOSED, true, 4L),
+                rnCount("Istarska županija", RnStatus.SUSPENDED, 3L)
+        ));
+        when(facilityRepository.countByActiveTrue()).thenReturn(10L);
+
+        StrResponse res = service.str(null, null, WHOLE_COUNTRY);
+
+        // Prijedlog povlačenja iz suspenzije broji se u suspendirane.
+        assertThat(res.counties().get(0).activeRn()).isEqualTo(3L);
+        assertThat(res.counties().get(0).suspendedRn()).isEqualTo(7L);
+        assertThat(res.totals().totalRn()).isEqualTo(10L);
+    }
+
     @Test
     void str_surfacesOrphanCountiesUnderOtherBucket_andTotalsRemainEqualToSumOfRows() {
         when(countyRepository.findAllByOrderByZuRb()).thenReturn(List.of(
@@ -217,9 +242,15 @@ class StatisticsServiceTest {
     }
 
     private static RnRepository.CountyStatusCount rnCount(String county, RnStatus status, long count) {
+        return rnCount(county, status, false, count);
+    }
+
+    private static RnRepository.CountyStatusCount rnCount(String county, RnStatus status, boolean fromSuspended,
+                                                           long count) {
         return new RnRepository.CountyStatusCount() {
             @Override public String getCounty() { return county; }
             @Override public RnStatus getStatus() { return status; }
+            @Override public Boolean getWithdrawalFromSuspended() { return fromSuspended; }
             @Override public long getCount() { return count; }
         };
     }

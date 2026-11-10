@@ -48,8 +48,10 @@ class SuspensionObjectionAdminServiceTest {
     private final InternalAccessService internalAccess = mock(InternalAccessService.class);
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
     private final PrilogService prilogService = mock(PrilogService.class);
+    private final com.str.backend.rn.RnReissueGuard reissueGuard = mock(com.str.backend.rn.RnReissueGuard.class);
     private final SuspensionObjectionAdminService service = new SuspensionObjectionAdminService(
-            repository, rnRepository, rnService, auditService, internalAccess, lessorRepository, prilogService);
+            repository, rnRepository, rnService, auditService, internalAccess, lessorRepository, prilogService,
+            reissueGuard);
 
     private final RnEntity rn = mock(RnEntity.class);
     private SuspensionObjectionEntity objection;
@@ -91,7 +93,7 @@ class SuspensionObjectionAdminServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "REVOKED", "WITHDRAWN"})
+    @EnumSource(value = RnStatus.class, names = {"ACTIVE", "REVOKED"})
     void accept_whenRnLeftProposalAndSuspension_is409(RnStatus status) {
         when(rn.getStatus()).thenReturn(status);
 
@@ -121,6 +123,74 @@ class SuspensionObjectionAdminServiceTest {
         verifyNoMoreInteractions(rnService);
         verify(auditService).record(ACTOR, "OBJECTION_REJECT", "SUSPENSION_OBJECTION",
                 objection.getObjectionId().toString(), "Nije dostavljena suglasnost");
+    }
+
+    // ---- T12: prigovor (očitovanje) na prijedlog povlačenja i na povučen broj
+
+    /** Uvaženo očitovanje na prijedlog povlačenja obustavlja postupak (povratak u status prije prijedloga). */
+    @Test
+    void accept_onWithdrawalProposal_revokesWithdrawalProposal() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWAL_PROPOSED);
+
+        service.accept(RN, objection.getObjectionId(), ACTOR, null);
+
+        assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
+        verify(rnService).revokeWithdrawalProposal(RN, ACTOR);
+        verifyNoMoreInteractions(rnService);
+    }
+
+    /** Uvaženi prigovor na povučen broj vraća ga u ACTIVE. */
+    @Test
+    void accept_onWithdrawn_reinstates() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+
+        service.accept(RN, objection.getObjectionId(), ACTOR, null);
+
+        assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
+        verify(rnService).reinstate(RN, ACTOR);
+        verifyNoMoreInteractions(rnService);
+    }
+
+    /**
+     * Za objekt je u međuvremenu izdan novi broj: 409 OBJECTION_RN_REISSUED izlazi iz transakcijske
+     * metode (rollback i prigovora) i ništa se ne audita.
+     */
+    @Test
+    void accept_onWithdrawn_reissued_is409() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+        when(rnService.reinstate(RN, ACTOR))
+                .thenThrow(new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED"));
+
+        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, null))
+                .isInstanceOfSatisfying(ConflictException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
+        verifyNoInteractions(auditService);
+    }
+
+    /** Neuvaženo očitovanje na prijedlog povlačenja: povlači odmah ako je rok istekao. */
+    @Test
+    void reject_onWithdrawalProposal_withdrawsIfDeadlineExpired() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWAL_PROPOSED);
+        when(rnService.withdrawIfDeadlineExpired(RN, ACTOR)).thenAnswer(inv -> {
+            assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
+            return true;
+        });
+
+        service.reject(RN, objection.getObjectionId(), ACTOR, null);
+
+        verify(rnService).withdrawIfDeadlineExpired(RN, ACTOR);
+        verifyNoMoreInteractions(rnService);
+    }
+
+    /** Neuvaženi prigovor na povučen broj ne mijenja broj. */
+    @Test
+    void reject_onWithdrawn_keepsRn() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+
+        service.reject(RN, objection.getObjectionId(), ACTOR, null);
+
+        assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
+        verifyNoInteractions(rnService);
     }
 
     /** Na suspendiranom RB-u neuvažavanje ne radi ništa s RB-om. */
@@ -164,7 +234,7 @@ class SuspensionObjectionAdminServiceTest {
         SuspensionObjectionRepository.ObjectionSummary row = mock(SuspensionObjectionRepository.ObjectionSummary.class);
         when(row.getObjectionId()).thenReturn(id);
         when(row.getRn()).thenReturn(RN);
-        when(rnRepository.existsById(RN)).thenReturn(true);
+        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
         when(repository.findSummariesByRn(RN)).thenReturn(List.of(row));
         when(internalAccess.displayNames(any())).thenReturn(new java.util.HashMap<>());
         when(prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, List.of(id))).thenReturn(java.util.Map.of(id, List.of(
@@ -176,12 +246,31 @@ class SuspensionObjectionAdminServiceTest {
         assertThat(dtos).singleElement().satisfies(d -> {
             assertThat(d.prilozi()).extracting(PrilogDto::naziv).containsExactly("foto.png", "dopis.pdf");
             assertThat(d.prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/attachments/21");
+            assertThat(d.brojeviNaIstojAdresi()).as("RB nije povučen").isEmpty();
         });
+        verify(reissueGuard, never()).brojeviNaIstojAdresi(any());
+    }
+
+    /** T12: uz povučen RB stavke nose važeće brojeve istog iznajmljivača na istoj adresi (upozorenje). */
+    @Test
+    void list_onWithdrawnRn_carriesNumbersAtSameAddress() {
+        SuspensionObjectionRepository.ObjectionSummary row = mock(SuspensionObjectionRepository.ObjectionSummary.class);
+        when(row.getObjectionId()).thenReturn(objection.getObjectionId());
+        when(row.getRn()).thenReturn(RN);
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
+        when(repository.findSummariesByRn(RN)).thenReturn(List.of(row));
+        when(internalAccess.displayNames(any())).thenReturn(new java.util.HashMap<>());
+        when(prilogService.zaVlasnike(any(), any())).thenReturn(java.util.Map.of());
+        when(reissueGuard.brojeviNaIstojAdresi(RN)).thenReturn(List.of("HR120001000000000999"));
+
+        assertThat(service.list(RN)).singleElement()
+                .satisfies(d -> assertThat(d.brojeviNaIstojAdresi()).containsExactly("HR120001000000000999"));
     }
 
     @Test
     void list_unknownRn_is404() {
-        when(rnRepository.existsById(RN)).thenReturn(false);
+        when(rnRepository.findById(RN)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.list(RN)).isInstanceOf(ResourceNotFoundException.class);
     }

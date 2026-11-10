@@ -68,6 +68,37 @@ public class FacilityRegistrationNumberWriteBack {
         }
     }
 
+    /**
+     * Uvaženi prigovor na povlačenje (T12): broj je opet broj objekta, pa se ponovno upisuje u eTurizam.
+     * Isti uvjet kao kod izdavanja ({@link StrFacilityRepository#writeBackRegistrationNumber}): polje
+     * mora biti prazno ili držati konačan broj, pa se drugi važeći broj nikad ne pregazi. Ne ruši
+     * prijelaz — kao i {@link #writeBack}, neuspjeh se samo logira.
+     */
+    public void restore(String rn) {
+        Long id;
+        try {
+            id = numericId("restore", rnRepository.findFacilityIdByRn(rn).orElse(null), rn);
+        } catch (RuntimeException e) {
+            log.error("facility_restore_failed rn={} — dohvat objekta RB-a nije uspio, reaktivacija ostaje valjana", rn, e);
+            return;
+        }
+        if (id == null) {
+            return;
+        }
+        try {
+            int updated = facilityRepository.writeBackRegistrationNumber(id, rn);
+            if (updated == 0) {
+                log.warn("facility_restore_no_row facility={} rn={} — objekt ne postoji u str.facility,"
+                        + " već ima taj broj ili drugi broj koji nije konačan", id, rn);
+            } else {
+                log.info("facility_restore_ok facility={} rn={}", id, rn);
+            }
+        } catch (RuntimeException e) {
+            // Namjerno se guta: reaktivacija je već commitana, a ovo je upis u tuđi registar.
+            log.error("facility_restore_failed facility={} rn={} — reaktivacija ostaje valjana", id, rn, e);
+        }
+    }
+
     /** Povučeni RB više nije broj objekta — briše se iz eTurizma, ako je ondje upravo on. */
     public void clear(String rn) {
         Long id;

@@ -58,7 +58,7 @@ class RnRegistrySearchTest {
     @Test
     void exportOverLimit_isRejectedBeforeAskingETurizam() {
         RnSummaryDto row = new RnSummaryDto("HR1", null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, "10", false, null);
+                null, null, null, null, null, null, null, null, "10", false, null, null, null, false);
         when(rnService.searchRegistryForExport(any(), anySet(), eq(2))).thenReturn(List.of(row, row, row));
 
         assertThatThrownBy(() -> search.searchForExport(filter(null), 2))

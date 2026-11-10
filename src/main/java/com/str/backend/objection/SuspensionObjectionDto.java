@@ -16,6 +16,9 @@ import java.util.UUID;
  *
  * <p>{@code prilozi} su dodatne datoteke prigovora (T17), bez dokumenta prigovora ({@code fileName});
  * preuzimaju se preko {@code href} ({@code GET /api/rn/{rn}/attachments/{id}}).
+ *
+ * <p>{@code brojeviNaIstojAdresi} (T12): kad je RB povučen, važeći brojevi istog iznajmljivača na istoj
+ * adresi — upozorenje službeniku prije uvažavanja prigovora na povlačenje (ne blokira ga). Inače prazna lista.
  */
 public record SuspensionObjectionDto(
         UUID objectionId,
@@ -32,11 +35,13 @@ public record SuspensionObjectionDto(
         String resolvedBy,
         Instant resolvedAt,
         String resolutionNote,
-        List<PrilogDto> prilozi
+        List<PrilogDto> prilozi,
+        List<String> brojeviNaIstojAdresi
 ) {
 
     public static SuspensionObjectionDto of(SuspensionObjectionRepository.ObjectionSummary o, String resolvedBy,
-                                            String lessorTaxNumber, List<PrilogDto> prilozi) {
+                                            String lessorTaxNumber, List<PrilogDto> prilozi,
+                                            List<String> brojeviNaIstojAdresi) {
         return new SuspensionObjectionDto(
                 o.getObjectionId(),
                 o.getRn(),
@@ -52,6 +57,7 @@ public record SuspensionObjectionDto(
                 resolvedBy,
                 o.getResolvedAt(),
                 o.getResolutionNote(),
-                prilozi);
+                prilozi,
+                brojeviNaIstojAdresi);
     }
 }

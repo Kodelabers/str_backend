@@ -23,4 +23,7 @@ public interface RegistrationNumberLogRepository extends JpaRepository<Registrat
      */
     Optional<RegistrationNumberLogEntity> findFirstByRnAndToStatusOrderByOccurredAtDesc(
             String rn, String toStatus);
+
+    /** Zadnji prijelaz zadanim okidačem — za akte čiji ciljni status ima više ulaza (ACTIVE). */
+    Optional<RegistrationNumberLogEntity> findFirstByRnAndTriggerNameOrderByOccurredAtDesc(String rn, String triggerName);
 }

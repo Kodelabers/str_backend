@@ -8,6 +8,7 @@ import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionRepository.DecisionSummary;
 import com.str.backend.categorization.CategorizationDecisionService;
+import com.str.backend.common.Zagreb;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.GoneException;
@@ -15,12 +16,14 @@ import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.lessor.LessorRnSummaryDto;
+import com.str.backend.objection.SuspensionObjectionStatus;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
 import com.str.backend.registration.dto.ReissuePrefillResponse;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RnEntity;
+import com.str.backend.rn.RnReissueGuard;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnRepository.ReissueCandidateRow;
 import org.slf4j.Logger;
@@ -75,7 +78,7 @@ import java.util.Optional;
  * ({@link #isSameObject}); inače novi RB ostaje bez rješenja i korisnik ga predaje kao za novi objekt.
  *
  * <p>TODO (potvrditi s klijentom): pravila ne razlikuju opoziv iznajmljivača ({@code REVOKED}) od
- * povlačenja po službenoj dužnosti ({@code WITHDRAWN}, {@code RnService.withdraw}) — do uvođenja
+ * povlačenja po službenoj dužnosti ({@code WITHDRAWN}, istekom roka prijedloga povlačenja) — do uvođenja
  * {@code REVOKED} oba su bila {@code WITHDRAWN}, pa se ponašanje zadržava. Treba potvrditi smije li
  * se ponovni zahtjev s preuzetim podacima (i prenesenim rješenjem) podnijeti i nakon službenog
  * povlačenja — ako ne, u {@link #eligibility} prihvatiti samo {@code REVOKED}.
@@ -111,6 +114,7 @@ public class ReissueService {
     private final AddressIdResolver addressIdResolver;
     private final Clock clock;
     private final int retentionMonths;
+    private final RnReissueGuard reissueGuard;
 
     public ReissueService(RnRepository rnRepository,
                           AccommodationRepository accommodationRepository,
@@ -120,7 +124,9 @@ public class ReissueService {
                           LessorRepository lessorRepository,
                           AddressIdResolver addressIdResolver,
                           Clock clock,
-                          @Value("${app.rn.retention-months:18}") int retentionMonths) {
+                          @Value("${app.rn.retention-months:18}") int retentionMonths,
+                          RnReissueGuard reissueGuard) {
+        this.reissueGuard = reissueGuard;
         this.rnRepository = rnRepository;
         this.accommodationRepository = accommodationRepository;
         this.decisionRepository = decisionRepository;
@@ -202,11 +208,16 @@ public class ReissueService {
     /**
      * Provjera ponovnog zahtjeva pri predaji, prije GO pipelinea. Utrku dviju istodobnih predaja ova
      * provjera ne zatvara — zatvara je {@value #PREVIOUS_RN_INDEX} pri upisu smještaja.
+     *
+     * <p>Povučeni broj se zaključava ({@code findForUpdate}) do kraja transakcije izdavanja (T12): uvaženi
+     * prigovor ({@code RnService#reinstate}) zaključava isti redak, pa se serijalizira iza izdavanja i tada
+     * vidi novi broj ({@code OBJECTION_RN_REISSUED}), umjesto da oba prođu. Izdavanje zaključava samo taj
+     * redak (i, pri zatvaranju prigovora, opet njega), pa redoslijed zaključavanja ne može stvoriti deadlock.
      */
     @Transactional
     public void requireReusableForSubmission(String rn, RnOwner owner) {
         requireOwned(rn, owner);
-        RnEntity withdrawn = rnRepository.findById(rn).orElseThrow(ReissueService::notFound);
+        RnEntity withdrawn = rnRepository.findForUpdate(rn).orElseThrow(ReissueService::notFound);
         require(withdrawn, accommodationOf(withdrawn), activeDecisionSummary(rn));
     }
 
@@ -256,7 +267,12 @@ public class ReissueService {
 
     /**
      * Dopunjava popis „Mojih registracijskih brojeva" rokom ponovnog zahtjeva po {@link #eligibility}
-     * (vlasništvo je popis već riješio). Jedan upit za sve povučene.
+     * (vlasništvo je popis već riješio; jedan upit za sve konačne) i, samo za povučene ({@code WITHDRAWN}),
+     * oznakom {@code noviBrojIzdan} ({@link RnReissueGuard}, T12) — po njoj frontend skriva prigovor.
+     *
+     * <p>Trošak: {@code noviBrojIzdan} su do tri upita po povučenom retku (eTurizam objekt i lanac ponovnih
+     * zahtjeva). Preskaču se retci koji već imaju predan prigovor ({@code SUBMITTED}) — gumb je tada ionako
+     * skriven — pa se računa samo za povučene brojeve na kojima se prigovor još može predati.
      */
     @Transactional(readOnly = true)
     public List<LessorRnSummaryDto> withReissueDeadlines(List<LessorRnSummaryDto> rows) {
@@ -268,7 +284,14 @@ public class ReissueService {
         if (withdrawn.isEmpty()) {
             return rows;
         }
-        LocalDate today = LocalDate.now(clock);
+        Map<String, Boolean> noviBroj = new HashMap<>();
+        rows.stream()
+                .filter(r -> r.status() == RnStatus.WITHDRAWN)
+                .filter(r -> r.objectionStatus() != SuspensionObjectionStatus.SUBMITTED)
+                .map(LessorRnSummaryDto::rn)
+                .distinct()
+                .forEach(rn -> noviBroj.put(rn, reissueGuard.noviBrojIzdan(rn)));
+        LocalDate today = Zagreb.today(clock);
         Map<String, LocalDate> deadlines = new HashMap<>();
         for (ReissueCandidateRow row : rnRepository.findReissueCandidates(withdrawn)) {
             boolean inETurizam = !isBlank(row.getFacilityId()) || Boolean.TRUE.equals(row.getDecisionInETurizam());
@@ -279,7 +302,7 @@ public class ReissueService {
             }
         }
         return rows.stream()
-                .map(r -> r.withPonovniZahtjevDo(deadlines.get(r.rn())))
+                .map(r -> r.withPonovniZahtjevDo(deadlines.get(r.rn())).withNoviBrojIzdan(noviBroj.get(r.rn())))
                 .toList();
     }
 
@@ -290,7 +313,7 @@ public class ReissueService {
         boolean inETurizam = !isBlank(accommodation.getFacilityId())
                 || decision.map(d -> !isBlank(d.getFacilityId())).orElse(false);
         Eligibility e = eligibility(withdrawn.getStatus(), withdrawn.getValidTo(), inETurizam,
-                accommodationRepository.existsByPreviousRn(withdrawn.getRn()), LocalDate.now(clock), retentionMonths);
+                accommodationRepository.existsByPreviousRn(withdrawn.getRn()), Zagreb.today(clock), retentionMonths);
         return switch (e.outcome()) {
             case ALLOWED -> e.until();
             case NOT_WITHDRAWN -> throw new ConflictException("error.reissue.notWithdrawn", "REISSUE_NOT_WITHDRAWN");

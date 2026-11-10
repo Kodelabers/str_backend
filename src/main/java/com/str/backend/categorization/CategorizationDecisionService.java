@@ -42,13 +42,14 @@ public class CategorizationDecisionService {
     private static final String SQLSTATE_UNIQUE_VIOLATION = "23505";
 
     /**
-     * Statusi RB-a uz koje se rješenje smije predati. Suspendiran i predložen za suspenziju
-     * su namjerno tu: predaja rješenja upravo je odgovor na suspenziju zbog nepotpune
-     * dokumentacije. Povučen RB je konačan i rješenje uz njega nema svrhu. Uz prijedlog
-     * suspenzije rješenje smije i objekt iz eTurizma (v. {@link #upload}).
+     * Statusi RB-a uz koje se rješenje smije predati. Suspendiran, predložen za suspenziju i
+     * predložen za povlačenje (T12) su namjerno tu: predaja rješenja upravo je odgovor na postupak
+     * zbog nepotpune dokumentacije, a u prijedlogu broj još pripada objektu. Opozvan i povučen RB
+     * su konačni i rješenje uz njih nema svrhu. Uz prijedlog suspenzije rješenje smije i objekt iz
+     * eTurizma (v. {@link #upload}).
      */
-    public static final Set<RnStatus> UPLOAD_ALLOWED_RN_STATUSES =
-            EnumSet.of(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED);
+    public static final Set<RnStatus> UPLOAD_ALLOWED_RN_STATUSES = EnumSet.of(
+            RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENDED, RnStatus.WITHDRAWAL_PROPOSED);
 
     /** Rješenje u ovim statusima „zauzima" RB — novo je dopušteno tek nakon odbijanja. */
     public static final Set<CategorizationDecisionStatus> ACTIVE_DECISION_STATUSES =

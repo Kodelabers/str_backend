@@ -23,6 +23,8 @@ interface StatisticsRepository extends Repository<RnEntity, String> {
         String getCategory();
         String getOfferType();
         String getStatus();
+        /** Prijedlog povlačenja pokrenut iz suspenzije (T12). */
+        Boolean getWithdrawalFromSuspended();
         LocalDate getIssueDate();
         LocalDate getValidFrom();
         LocalDate getValidTo();
@@ -41,6 +43,7 @@ interface StatisticsRepository extends Repository<RnEntity, String> {
                 a.category                        AS category,
                 a.offer_type                      AS "offerType",
                 r.status                          AS status,
+                r.withdrawal_from_suspended       AS "withdrawalFromSuspended",
                 r.issue_date                      AS "issueDate",
                 r.valid_from                      AS "validFrom",
                 r.valid_to                        AS "validTo",

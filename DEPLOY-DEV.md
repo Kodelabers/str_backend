@@ -90,4 +90,8 @@ Drugi upit je i **popis za storniranje** kad InfoDom dostavi prave šifre vrsta:
 `egop_vrsta_privremena = true` urudžbirano je pod tuđom vrstom. Tada se zamijene `EGOP_SIFRA_*`
 u `.env.dev`, postavi `EGOP_SIFRE_PRIVREMENE=false` i restarta — bez izmjene koda.
 
+T12 (postupak povlačenja) dodaje izlazne vrste `prijedlog-povlacenja`, `obustava-povlacenja` i
+`reaktivacija-povlacenja`. Ovdje ih pokriva `EGOP_SIFRA_PISMENA_FALLBACK=57` („Obavijest"), pa nova
+varijabla nije potrebna; i one ulaze u popis za storniranje dok MINT ne unese prave vrste.
+
 Detalji o šifrarnicima i odabranim šiframa: `docs/eGOP-endpoint-analiza.md` §17.9.

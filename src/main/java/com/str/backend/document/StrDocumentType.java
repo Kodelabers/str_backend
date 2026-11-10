@@ -142,6 +142,38 @@ public enum StrDocumentType {
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
+     * Poziv na očitovanje prije povlačenja (T12), po uzoru na {@link #PRIJEDLOG_SUSPENZIJE}: rok za
+     * očitovanje je u izreci (čl. 98. st. 3), posljedice propuštanja roka u točkama 3. i 4.
+     *
+     * <p>Nova vrsta pismena: dok je MINT ne unese u eGOP šifrarnik, urudžbira se pod zamjenskom šifrom
+     * ({@code EGOP_SIFRA_PISMENA_FALLBACK}) ili se drži na popisu {@code EGOP_AKTI_BEZ_SIFRE}.
+     */
+    PRIJEDLOG_POVLACENJA("prijedlog-povlacenja",
+            "Obavijest o prijedlogu povlačenja registracijskog broja", Smjer.IZLAZNO, true, null,
+            "OBAVIJEST O PRIJEDLOGU POVLAČENJA REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
+     * Postupak povlačenja obustavljen (T12), po uzoru na {@link #OBUSTAVA_SUSPENZIJE}: stranci u korist,
+     * pa nema obrazloženja ni upute o pravnom lijeku. Broj se uvijek vraća u ACTIVE. Nova vrsta
+     * pismena u eGOP-u, kao {@link #PRIJEDLOG_POVLACENJA}.
+     */
+    OBUSTAVA_POVLACENJA("obustava-povlacenja",
+            "Obavijest o obustavi postupka povlačenja registracijskog broja", Smjer.IZLAZNO, true, null,
+            "OBAVIJEST O OBUSTAVI POSTUPKA POVLAČENJA REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
+     * Uvaženi prigovor na povlačenje (T12): povučeni broj ponovno je aktivan. Po uzoru na
+     * {@link #REAKTIVACIJA} — stranci u korist, bez obrazloženja i upute, potpisuje tijelo. Nova vrsta
+     * pismena u eGOP-u, kao {@link #PRIJEDLOG_POVLACENJA}.
+     */
+    REAKTIVACIJA_POVLACENJA("reaktivacija-povlacenja",
+            "Obavijest o reaktivaciji povučenog registracijskog broja", Smjer.IZLAZNO, true, null,
+            "OBAVIJEST O REAKTIVACIJI POVUČENOG REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
      * Podnesak stranke, kao {@link #PRIGOVOR}: iznajmljivač je pri izdavanju RB-a označio da
      * podaci preuzeti iz registra eTurizma nisu točni, pa ga forma preusmjerava na eTurizmov
      * obrazac „Zahtjev za promjenu podataka". Pismeno bilježi u našem spisu da je taj zahtjev
@@ -272,6 +304,16 @@ public enum StrDocumentType {
      * vodi u {@code REVOKED}, povlačenje po službenoj dužnosti u {@code WITHDRAWN}.
      */
     public static Optional<StrDocumentType> forTransition(RnStatus to, RnTrigger trigger) {
+        // U ACTIVE vodi više prijelaza, pa akte koji ondje završavaju bira okidač.
+        if (to == RnStatus.ACTIVE && trigger == RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL) {
+            return Optional.of(OBUSTAVA_POVLACENJA);
+        }
+        if (to == RnStatus.WITHDRAWAL_PROPOSED) {
+            return Optional.of(PRIJEDLOG_POVLACENJA);
+        }
+        if (to == RnStatus.ACTIVE && trigger == RnTrigger.REINSTATE) {
+            return Optional.of(REAKTIVACIJA_POVLACENJA);
+        }
         if (to == RnStatus.SUSPENSION_PROPOSED) {
             return Optional.of(PRIJEDLOG_SUSPENZIJE);
         }
@@ -316,11 +358,12 @@ public enum StrDocumentType {
     /**
      * Akt izdaje službenik u postupku suspenzije odnosno povlačenja, pa ga potpisuje službena
      * osoba (naziv službene dužnosti i ime, MINTS, studeni 2026.), a ne samo tijelo. Dodjelu i
-     * opoziv sustav izdaje automatski; reaktivacija zasad zadržava potpis tijela.
+     * opoziv sustav izdaje automatski; reaktivacija (i reaktivacija povučenog broja) zasad zadržava
+     * potpis tijela.
      */
     public boolean potpisujeSluzbenik() {
         return this == PRIJEDLOG_SUSPENZIJE || this == OBUSTAVA_SUSPENZIJE || this == SUSPENZIJA
-                || this == POVLACENJE;
+                || this == PRIJEDLOG_POVLACENJA || this == OBUSTAVA_POVLACENJA || this == POVLACENJE;
     }
 
     /** Tipovi koji se renderiraju iz predloška — ono što {@link ZupTemplateLoader} učitava. */

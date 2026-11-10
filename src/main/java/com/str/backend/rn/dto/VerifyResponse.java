@@ -8,8 +8,8 @@ import com.str.backend.domain.RnStatus;
  *
  * <ul>
  *   <li>ACTIVE + verified → {@code valid=true}, {@code status=ACTIVE} + advertise-safe object data.</li>
- *   <li>SUSPENSION_PROPOSED + verified → same payload, {@code status=SUSPENSION_PROPOSED}: the
- *       registration number still holds while the response deadline runs, so it verifies like an
+ *   <li>SUSPENSION_PROPOSED or WITHDRAWAL_PROPOSED (T12) + verified → same payload, with that status:
+ *       the registration number still holds while the response deadline runs, so it verifies like an
  *       active one; the status is reported truthfully rather than folded into ACTIVE.</li>
  *   <li>SUSPENDED → {@code valid=true}, {@code status=SUSPENDED}, no object data
  *       (invalid for advertising).</li>
@@ -45,7 +45,8 @@ public record VerifyResponse(
 
     /**
      * Valid for advertising — full advertise-safe object data. The status is passed in because
-     * both {@link RnStatus#ACTIVE} and {@link RnStatus#SUSPENSION_PROPOSED} land here.
+     * {@link RnStatus#ACTIVE}, {@link RnStatus#SUSPENSION_PROPOSED} and {@link RnStatus#WITHDRAWAL_PROPOSED}
+     * land here.
      */
     public static VerifyResponse active(RnStatus status, String registrationNumber, String accommodationName,
                                         String category, String address, String group, String type) {

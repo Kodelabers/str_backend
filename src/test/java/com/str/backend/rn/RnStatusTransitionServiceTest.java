@@ -70,19 +70,28 @@ class RnStatusTransitionServiceTest {
     }
 
     @Test
-    void suspension_proposed_to_withdrawn_via_withdrawal() {
+    void suspension_proposed_to_withdrawal_proposed_endsSuspensionProcedure() {
         RnEntity rn = suspensionProposed();
-        service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
-        assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
-        verifyLog("SUSPENSION_PROPOSED", "WITHDRAWN", "WITHDRAWAL");
+        rn.setSuspensionDeadline(LocalDate.now().plusDays(5));
+        service.transition(rn, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWAL_PROPOSED);
+        assertThat(rn.getSuspensionDeadline()).as("postupak suspenzije završava").isNull();
+        verifyLog("SUSPENSION_PROPOSED", "WITHDRAWAL_PROPOSED", "WITHDRAWAL_PROPOSAL");
     }
 
     @Test
-    void active_to_withdrawn_via_withdrawal() {
+    void withdrawal_proposed_to_withdrawn_onlyByDeadline() {
         RnEntity rn = active();
-        service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
+        rn.applyStatus(RnStatus.WITHDRAWAL_PROPOSED);
+        rn.setWithdrawalDeadline(LocalDate.now().minusDays(1));
+        assertThatThrownBy(() -> service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL))
+                .as("ručnog povlačenja nema").isInstanceOf(IllegalStatusTransitionException.class);
+
+        service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED);
         assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
-        verifyLog("ACTIVE", "WITHDRAWN", "WITHDRAWAL");
+        assertThat(rn.getWithdrawalDeadline()).isNull();
+        assertThat(rn.getValidTo()).isEqualTo(LocalDate.now(java.time.ZoneId.of("Europe/Zagreb")));
+        verifyLog("WITHDRAWAL_PROPOSED", "WITHDRAWN", "WITHDRAWAL_DEADLINE_EXCEEDED");
     }
 
     @Test
@@ -94,11 +103,23 @@ class RnStatusTransitionServiceTest {
     }
 
     @Test
-    void suspended_to_withdrawn_via_withdrawal() {
+    void suspended_cannot_be_withdrawn_directly() {
         RnEntity rn = suspended();
-        service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL);
-        assertThat(rn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
-        verifyLog("SUSPENDED", "WITHDRAWN", "WITHDRAWAL");
+        assertThatThrownBy(() -> service.transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL))
+                .isInstanceOf(IllegalStatusTransitionException.class);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENDED);
+    }
+
+    /** T12: uvaženi prigovor vraća povučen broj u ACTIVE i briše dan povlačenja. */
+    @Test
+    void withdrawn_to_active_via_reinstate_clearsValidTo() {
+        RnEntity rn = active();
+        rn.applyStatus(RnStatus.WITHDRAWN);
+        assertThat(rn.getValidTo()).isNotNull();
+        service.transition(rn, RnStatus.ACTIVE, RnTrigger.REINSTATE);
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.ACTIVE);
+        assertThat(rn.getValidTo()).isNull();
+        verifyLog("WITHDRAWN", "ACTIVE", "REINSTATE");
     }
 
     // --- Illegal transitions ---

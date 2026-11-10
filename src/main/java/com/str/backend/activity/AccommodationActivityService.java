@@ -173,7 +173,8 @@ public class AccommodationActivityService {
             RnEntity e = known.get(rn);
             checks.put(rn, !wellFormed.contains(rn) ? RnCheck.INVALID_FORMAT
                     : e == null ? RnCheck.UNKNOWN
-                    : e.getStatus().isActiveForPublicUse() ? RnCheck.VALID
+                    // Prijedlog povlačenja iz suspenzije javno ostaje suspendiran (T12).
+                    : e.isValidForPublicUse() ? RnCheck.VALID
                     : RnCheck.NOT_ACTIVE);
         }
         return checks;

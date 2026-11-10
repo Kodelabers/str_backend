@@ -7,6 +7,7 @@ import com.str.backend.common.Strings;
 import com.str.backend.document.DocumentLabels;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
+import com.str.backend.document.ZupContextFactory;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.egop.EgopAktiBezSifre;
@@ -24,6 +25,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.util.unit.DataSize;
 
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
@@ -161,7 +163,7 @@ public class RnLifecycleEmailListener {
                 event.rn(),
                 objekt(detail),
                 razlog,
-                rok(detail),
+                rok(akt.get(), detail),
                 pdf,
                 dostava,
                 prilozi.uPrivitku(),
@@ -286,6 +288,9 @@ public class RnLifecycleEmailListener {
             case REAKTIVACIJA -> MailTemplate.REAKTIVACIJA;
             case PRIJEDLOG_SUSPENZIJE -> MailTemplate.PRIJEDLOG_SUSPENZIJE;
             case OBUSTAVA_SUSPENZIJE -> MailTemplate.OBUSTAVA_SUSPENZIJE;
+            case PRIJEDLOG_POVLACENJA -> MailTemplate.PRIJEDLOG_POVLACENJA;
+            case OBUSTAVA_POVLACENJA -> MailTemplate.OBUSTAVA_POVLACENJA;
+            case REAKTIVACIJA_POVLACENJA -> MailTemplate.REAKTIVACIJA_POVLACENJA;
             // ZAHTJEV/DODJELA/PRIGOVOR ne nastaju iz prijelaza statusa.
             default -> throw new IllegalStateException("Nema poruke za vrstu akta " + type);
         };
@@ -315,10 +320,12 @@ public class RnLifecycleEmailListener {
         return razlog != null && !razlog.isBlank() ? razlog.strip() : labels.trigger(event.trigger());
     }
 
-    private String rok(RnDetailDto detail) {
-        return detail.suspensionDeadline() == null
+    /** Rok za očitovanje po istom pravilu kao u aktu ({@link ZupContextFactory#rokOcitovanja}). */
+    private String rok(StrDocumentType akt, RnDetailDto detail) {
+        LocalDate rok = ZupContextFactory.rokOcitovanja(akt, detail);
+        return rok == null
                 ? labels.get("rok.default")
-                : labels.format("rok.doDatuma", detail.suspensionDeadline().format(DATE));
+                : labels.format("rok.doDatuma", rok.format(DATE));
     }
 
     private String ime(RnDetailDto detail) {

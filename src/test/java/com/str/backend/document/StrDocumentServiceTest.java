@@ -65,7 +65,10 @@ class StrDocumentServiceTest {
                     "prijedlog-suspenzije", PROPIS_POSTUPCI,
                     "obustava-suspenzije", PROPIS_POSTUPCI,
                     "suspenzija", PROPIS_POSTUPCI,
-                    "povlacenje", PROPIS_POSTUPCI));
+                    "povlacenje", PROPIS_POSTUPCI,
+                    "prijedlog-povlacenja", PROPIS_POSTUPCI,
+                    "obustava-povlacenja", PROPIS_POSTUPCI,
+                    "reaktivacija-povlacenja", PROPIS_POSTUPCI));
 
     private static final DocumentProperties PROPERTIES_S_PECATOM = new DocumentProperties(
             PROPERTIES.tijelo(), PROPERTIES.potpisnik(),
@@ -590,6 +593,94 @@ class StrDocumentServiceTest {
         assertThat(text).doesNotContain("Rok za rješavanje");
     }
 
+    /**
+     * T12: povlačenje istekom roka radi sustav — akt ispisuje razlog s prijedloga povlačenja i
+     * potpisuje ga službenik koji je povlačenje predložio, a ne bilješku posla.
+     */
+    @Test
+    void withdrawalByDeadline_citesProposalReason_andIsSignedByProposingOfficial() throws IOException {
+        RegistrationNumberLogEntity povlacenje = RegistrationNumberLogEntity.transition(RN, "WITHDRAWAL_PROPOSED",
+                "WITHDRAWN", "WITHDRAWAL_DEADLINE_EXCEEDED", "SYSTEM",
+                "Rok za očitovanje na prijedlog povlačenja istekao.");
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(povlacenje));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "WITHDRAWN"))
+                .thenReturn(Optional.of(povlacenje));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "WITHDRAWAL_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "SUSPENDED",
+                        "WITHDRAWAL_PROPOSED", "WITHDRAWAL_PROPOSAL", "INTERNAL:12345678903",
+                        "dostavljene su nevjerodostojne ili nevaljane informacije")));
+        when(internalUsers.findNames(Set.of("12345678903"))).thenReturn(Map.of("12345678903", "Ana Službenica"));
+
+        String text = textOf(service.render(StrDocumentType.POVLACENJE, RN,
+                "Rok za očitovanje na prijedlog povlačenja istekao."));
+
+        assertThat(text).endsWith("Ana Službenica ");
+        assertThat(text).contains("zbog sljedećeg razloga: dostavljene su nevjerodostojne ili nevaljane informacije.");
+        assertThat(text).doesNotContain("Rok za očitovanje na prijedlog");
+        assertThat(service.razlogAkta(StrDocumentType.POVLACENJE, RN, "Rok za očitovanje na prijedlog povlačenja istekao."))
+                .isEqualTo("dostavljene su nevjerodostojne ili nevaljane informacije");
+    }
+
+    /** T12: prijedlog povlačenja nosi svoj rok u izreci, a obustava razlog s prijedloga. */
+    @Test
+    void withdrawalProposalAndRevocation_followSuspensionTemplates() throws IOException {
+        RnDetailDto detail = detailWithWithdrawalDeadline(LocalDate.of(2026, 12, 1));
+        when(rnRepository.findDetail(RN)).thenReturn(Optional.of(detail));
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "WITHDRAWAL_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE",
+                        "WITHDRAWAL_PROPOSED", "WITHDRAWAL_PROPOSAL", "INTERNAL:12345678903",
+                        "namjerno ili krajnjom nepažnjom nisu ispravljeni podaci")));
+
+        String prijedlog = textOf(service.render(StrDocumentType.PRIJEDLOG_POVLACENJA, RN, null))
+                .replaceAll("\\s+", " ");
+        assertThat(prijedlog).contains("1. Pokrenut je postupak povlačenja registracijskog broja " + RN);
+        assertThat(prijedlog).contains("zbog sljedećeg razloga: namjerno ili krajnjom nepažnjom nisu ispravljeni podaci.");
+        assertThat(prijedlog).contains("najkasnije do 01. prosinca 2026.");
+        assertThat(prijedlog).as("rok suspenzije nije rok ovog akta").doesNotContain("kolovoza 2026");
+        assertThat(prijedlog).contains("Registracijski broj automatski će se povući");
+
+        String obustava = textOf(service.render(StrDocumentType.OBUSTAVA_POVLACENJA, RN, null))
+                .replaceAll("\\s+", " ");
+        assertThat(obustava).contains("1. Obustavlja se postupak povlačenja registracijskog broja " + RN);
+        assertThat(obustava).contains("2. Registracijski broj je važeći.");
+        assertThat(obustava).doesNotContain("otklonjeni");
+
+        String reaktivacija = textOf(service.render(StrDocumentType.REAKTIVACIJA_POVLACENJA, RN, null))
+                .replaceAll("\\s+", " ");
+        assertThat(reaktivacija).contains("ukida povlačenje registracijskog broja " + RN);
+        assertThat(reaktivacija).contains("na temelju " + PROPIS_POSTUPCI + ",");
+        assertThat(reaktivacija).contains("2. Registracijski broj ponovno je važeći")
+                .doesNotContain("od dana dostave");
+    }
+
+    /**
+     * Potpisnik se čita sa zapisa prijelaza koji akt izriče, ne sa zadnjeg zapisa traga: prijedlog
+     * povlačenja renderiran nakon povlačenja istekom roka (SYSTEM) i nakon REINSTATE (drugi službenik)
+     * i dalje potpisuje službenik koji je povlačenje predložio.
+     */
+    @Test
+    void reRenderedWithdrawalProposal_isSignedByProposer_notByLaterTransition() throws IOException {
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "WITHDRAWAL_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE",
+                        "WITHDRAWAL_PROPOSED", "WITHDRAWAL_PROPOSAL", "INTERNAL:12345678903", "drugi razlozi")));
+        when(internalUsers.findNames(Set.of("12345678903"))).thenReturn(Map.of("12345678903", "Ana Službenica"));
+        when(internalUsers.findNames(Set.of("98765432109"))).thenReturn(Map.of("98765432109", "Ivo Drugi"));
+
+        // Zadnji zapis: povlačenje istekom roka (SYSTEM).
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "WITHDRAWAL_PROPOSED", "WITHDRAWN",
+                        "WITHDRAWAL_DEADLINE_EXCEEDED", "SYSTEM", null)));
+        assertThat(textOf(service.render(StrDocumentType.PRIJEDLOG_POVLACENJA, RN, null)))
+                .endsWith("Ana Službenica ");
+
+        // Zadnji zapis: REINSTATE drugog službenika.
+        when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, "WITHDRAWN", "ACTIVE", "REINSTATE",
+                        "INTERNAL:98765432109", null)));
+        String text = textOf(service.render(StrDocumentType.PRIJEDLOG_POVLACENJA, RN, null));
+        assertThat(text).endsWith("Ana Službenica ").doesNotContain("Ivo Drugi");
+    }
+
     /** M-BE1: isto pravilo razloga za akt i obavijest e-poštom — suspenzija čita prijedlog. */
     @Test
     void razlogAkta_suspension_isProposalReason_notJobNote() {
@@ -930,6 +1021,19 @@ class StrDocumentServiceTest {
                 UUID.randomUUID(), "Ana", "Anić", null, "ana@example.com", "98765432109",
                 false, null, null, null,
                 null, null, null, null, null);
+    }
+
+    /** Prijedlog povlačenja s rokom; rok suspenzije je zapisan samo da se vidi da akt čita pravi rok. */
+    private static RnDetailDto detailWithWithdrawalDeadline(LocalDate withdrawalDeadline) {
+        return new RnDetailDto(RN, RnStatus.WITHDRAWAL_PROPOSED,
+                LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 1), null,
+                LocalDate.of(2026, 8, 15), null, null, UUID.randomUUID(),
+                UUID.randomUUID(), "Grad Zagreb", "Zagreb", null, "Ilica", "1",
+                "Apartman Sunce", "Apartman", 4, "3*",
+                UUID.randomUUID(), "Ana", "Anić", null, "ana@example.com", "98765432109",
+                false, null, null, null,
+                null, null, null, null, null,
+                withdrawalDeadline, false);
     }
 
     /** Sve neobavezno je null: non-EU iznajmljivač bez OIB-a, bez naziva objekta, bez roka. */

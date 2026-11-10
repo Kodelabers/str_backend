@@ -11,6 +11,7 @@ import com.str.backend.domain.WithdrawalReason;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
 import com.str.backend.exception.BusinessException;
+import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lookup.AccommodationTypeEntity;
 import com.str.backend.lookup.AccommodationTypeRepository;
@@ -43,6 +44,8 @@ class RnServiceTest {
     private AccommodationRepository accommodationRepository;
     private AccommodationTypeRepository accommodationTypeRepository;
     private PrilogService prilogService;
+    private RnReissueGuard reissueGuard;
+    private com.str.backend.objection.SuspensionObjectionRepository objectionRepository;
     private final Clock clock = Clock.fixed(Instant.parse("2026-04-30T10:00:00Z"), ZoneId.of("UTC"));
     /** Valjan rok za očitovanje (u budućnosti u odnosu na {@link #clock}). */
     private static final LocalDate DEADLINE = LocalDate.of(2026, 5, 15);
@@ -56,8 +59,11 @@ class RnServiceTest {
         accommodationRepository = mock(AccommodationRepository.class);
         accommodationTypeRepository = mock(AccommodationTypeRepository.class);
         prilogService = mock(PrilogService.class);
+        reissueGuard = mock(RnReissueGuard.class);
+        objectionRepository = mock(com.str.backend.objection.SuspensionObjectionRepository.class);
         service = new RnService(repository, transitionService, accommodationRepository,
-                accommodationTypeRepository, clock, new DocumentLabels(), prilogService);
+                accommodationTypeRepository, clock, new DocumentLabels(), prilogService, reissueGuard,
+                objectionRepository);
     }
 
     @Test
@@ -306,43 +312,207 @@ class RnServiceTest {
                 .transition(any(), any(), any(), anyString(), anyString());
     }
 
-    /** Kodirani razlog ide u trag kao natpis — akt povlačenja ga odande ispisuje. Okidač ostaje WITHDRAWAL. */
-    @Test
-    void withdraw_logsLabelOfCodedReason() {
-        RnEntity rn = activeRn();
+    // ---- T12: prijedlog povlačenja, obustava, istek roka i uvaženi prigovor
+
+    /** Prijedlog iz svakog stojećeg statusa: rok se pamti, a rok suspenzije briše (postupak suspenzije završava). */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = RnStatus.class,
+            names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
+    void proposeWithdrawal_setsDeadline(RnStatus from) {
+        RnEntity rn = rnIn(from);
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.withdraw(rn.getRn(), WithdrawalReason.INVALID_INFORMATION, "ne upisuje se", null, List.of());
+        service.proposeWithdrawal(rn.getRn(), WithdrawalReason.INVALID_INFORMATION, DEADLINE, "ne upisuje se",
+                "INTERNAL:12345678903", List.of());
 
-        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
-                null, "dostavljene su nevjerodostojne ili nevaljane informacije");
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
+                "INTERNAL:12345678903", "dostavljene su nevjerodostojne ili nevaljane informacije");
+        assertThat(rn.getWithdrawalDeadline()).isEqualTo(DEADLINE);
+    }
+
+    /** Prijedlog iz SUSPENDED javno ostaje suspendiran; iz ostalih statusa ne (T12). */
+    @Test
+    void proposeWithdrawal_fromSuspended_marksPublicSuspension() {
+        RnEntity fromSuspended = rnIn(RnStatus.SUSPENDED);
+        RnEntity fromActive = activeRn();
+        when(repository.findForUpdate(fromSuspended.getRn())).thenReturn(Optional.of(fromSuspended));
+
+        service.proposeWithdrawal(fromSuspended.getRn(), WithdrawalReason.DATA_NOT_CORRECTED, DEADLINE, null, null,
+                List.of());
+        assertThat(fromSuspended.isWithdrawalFromSuspended()).isTrue();
+
+        RnEntity other = RnEntity.issue("HR120001000000000002", UUID.randomUUID(), UUID.randomUUID(),
+                LocalDate.of(2026, 4, 1));
+        when(repository.findForUpdate(other.getRn())).thenReturn(Optional.of(other));
+        service.proposeWithdrawal(other.getRn(), WithdrawalReason.DATA_NOT_CORRECTED, DEADLINE, null, null, List.of());
+        assertThat(other.isWithdrawalFromSuspended()).isFalse();
+        assertThat(fromActive.isWithdrawalFromSuspended()).isFalse();
     }
 
     /** Uz „drugi razlozi" u trag (i akt) ide opis službenika. */
     @Test
-    void withdraw_logsNoteForOtherReason() {
+    void proposeWithdrawal_logsNoteForOtherReason() {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.withdraw(rn.getRn(), WithdrawalReason.OTHER, "  nedostaje suglasnost  ", null, List.of());
+        service.proposeWithdrawal(rn.getRn(), WithdrawalReason.OTHER, DEADLINE, "  nedostaje suglasnost  ",
+                null, List.of());
 
-        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL,
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
                 null, "nedostaje suglasnost");
     }
 
     @Test
-    void withdraw_requiresReason() {
-        assertThatThrownBy(() -> service.withdraw("HR120001000000000001", null, "opis", null, List.of()))
+    void proposeWithdrawal_requiresReason() {
+        assertThatThrownBy(() -> service.proposeWithdrawal("HR120001000000000001", null, DEADLINE, "opis", null,
+                List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.withdraw.reason.required");
         verify(transitionService, never()).transition(any(), any(), any(), any(), any());
     }
 
     @Test
-    void withdraw_requiresNote_forOtherReason() {
-        assertThatThrownBy(() -> service.withdraw("HR120001000000000001", WithdrawalReason.OTHER, "  ", null, List.of()))
+    void proposeWithdrawal_requiresNote_forOtherReason() {
+        assertThatThrownBy(() -> service.proposeWithdrawal("HR120001000000000001", WithdrawalReason.OTHER, DEADLINE,
+                "  ", null, List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.withdraw.note.required");
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    /** Bilješka ide u registration_number_log.reason (1024 znaka): preduga je 400, ne 500 iz baze. */
+    @Test
+    void notes_areLimitedTo1024Characters_forSuspensionAndWithdrawal() {
+        String tooLong = "x".repeat(RnService.MAX_NOTE_LENGTH + 1);
+        assertThatThrownBy(() -> service.proposeWithdrawal("HR120001000000000001", WithdrawalReason.OTHER, DEADLINE,
+                tooLong, null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.note.tooLong");
+        assertThatThrownBy(() -> service.suspend("HR120001000000000001", RnTrigger.OTHER, DEADLINE, tooLong, null,
+                List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.note.tooLong");
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        String exact = "y".repeat(RnService.MAX_NOTE_LENGTH);
+        service.proposeWithdrawal(rn.getRn(), WithdrawalReason.OTHER, DEADLINE, exact, null, List.of());
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
+                null, exact);
+    }
+
+    @Test
+    void proposeWithdrawal_requiresDeadline() {
+        assertThatThrownBy(() -> service.proposeWithdrawal("HR120001000000000001",
+                WithdrawalReason.DATA_NOT_CORRECTED, null, null, null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.withdraw.deadline.required");
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    /** Rok po hrvatskom vremenu: danas vrijedi, jučer ne. */
+    @Test
+    void proposeWithdrawal_rejectsDeadlineInThePast_acceptsToday() {
+        assertThatThrownBy(() -> service.proposeWithdrawal("HR120001000000000001",
+                WithdrawalReason.DATA_NOT_CORRECTED, LocalDate.of(2026, 4, 29), null, null, List.of()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("error.rn.withdraw.deadline.past");
+
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        service.proposeWithdrawal(rn.getRn(), WithdrawalReason.DATA_NOT_CORRECTED, LocalDate.of(2026, 4, 30),
+                null, null, List.of());
+        assertThat(rn.getWithdrawalDeadline()).isEqualTo(LocalDate.of(2026, 4, 30));
+    }
+
+    @Test
+    void proposeWithdrawal_withAttachments_bindsToNewLogEntry() {
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(eq(rn), eq(RnStatus.WITHDRAWAL_PROPOSED),
+                eq(RnTrigger.WITHDRAWAL_PROPOSAL), eq("INTERNAL:12345678903"), anyString())).thenReturn(logId);
+
+        service.proposeWithdrawal(rn.getRn(), WithdrawalReason.DATA_NOT_CORRECTED, DEADLINE, null,
+                "INTERNAL:12345678903", List.of(9L));
+
+        verify(prilogService).bind("INTERNAL:12345678903", List.of(9L), PrilogVlasnik.prijelaz(logId));
+    }
+
+    /** Obustava uvijek vraća u ACTIVE — i kad je povlačenje predloženo iz (prijedloga) suspenzije. */
+    @Test
+    void revokeWithdrawalProposal_alwaysReturnsToActive() {
+        RnEntity rn = withdrawalProposedRn(DEADLINE);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.revokeWithdrawalProposal(rn.getRn(), "INTERNAL:12345678903");
+
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL,
+                "INTERNAL:12345678903", null);
+    }
+
+    @Test
+    void revokeWithdrawalProposal_outsideProposal_is409() {
+        RnEntity rn = activeRn();
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        assertThatThrownBy(() -> service.revokeWithdrawalProposal(rn.getRn(), null))
+                .isInstanceOfSatisfying(ConflictException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("RN_NOT_WITHDRAWAL_PROPOSED"));
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    /** Neuvaženo očitovanje nakon isteka roka: odmah povlačenje, istim prijelazom kao posao. */
+    @Test
+    void withdrawIfDeadlineExpired_withdrawsInOfficialsName() {
+        RnEntity rn = withdrawalProposedRn(LocalDate.now(clock).minusDays(1));
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        assertThat(service.withdrawIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isTrue();
+
+        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED,
+                "INTERNAL:12345678903", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE);
+    }
+
+    @Test
+    void withdrawIfDeadlineExpired_keepsProposalWhileDeadlineRuns_andIgnoresOtherStatuses() {
+        RnEntity running = withdrawalProposedRn(LocalDate.now(clock));
+        when(repository.findForUpdate(running.getRn())).thenReturn(Optional.of(running));
+        assertThat(service.withdrawIfDeadlineExpired(running.getRn(), null)).isFalse();
+
+        RnEntity suspensionProposed = RnEntity.issue("HR120001000000000005", UUID.randomUUID(), UUID.randomUUID(),
+                LocalDate.of(2026, 4, 1));
+        suspensionProposed.applyStatus(RnStatus.SUSPENSION_PROPOSED);
+        suspensionProposed.setSuspensionDeadline(LocalDate.now(clock).minusDays(3));
+        when(repository.findForUpdate(suspensionProposed.getRn())).thenReturn(Optional.of(suspensionProposed));
+        assertThat(service.withdrawIfDeadlineExpired(suspensionProposed.getRn(), null)).isFalse();
+
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+    }
+
+    /** Uvaženi prigovor na povučen broj: WITHDRAWN → ACTIVE kad objekt nema drugi važeći broj. */
+    @Test
+    void reinstate_returnsWithdrawnToActive() {
+        RnEntity rn = rnIn(RnStatus.WITHDRAWN);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        when(reissueGuard.noviBrojIzdan(rn)).thenReturn(false);
+
+        service.reinstate(rn.getRn(), "INTERNAL:12345678903");
+
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REINSTATE, "INTERNAL:12345678903", null);
+    }
+
+    /** Za objekt je izdan drugi važeći broj → 409 OBJECTION_RN_REISSUED, bez prijelaza. */
+    @Test
+    void reinstate_rejectsWhenNewNumberIssued() {
+        RnEntity rn = rnIn(RnStatus.WITHDRAWN);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        when(reissueGuard.noviBrojIzdan(rn)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.reinstate(rn.getRn(), null))
+                .isInstanceOfSatisfying(ConflictException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
         verify(transitionService, never()).transition(any(), any(), any(), any(), any());
     }
 
@@ -379,14 +549,23 @@ class RnServiceTest {
         verify(transitionService, never()).transition(any(), any(), any(), any(), any());
     }
 
-    /** STR-1.5: nevažeći za oglašavanje su i opozvani i povučeni, ne samo suspendirani. */
+    /** STR-1.5: nevažeći za oglašavanje su i opozvani i povučeni, ne samo suspendirani; prijedlozi nisu, osim iz suspenzije. */
     @Test
     void inactive_listsSuspendedRevokedAndWithdrawn() {
-        service.inactive(null);
+        RnEntity suspended = rnIn(RnStatus.SUSPENDED);
+        RnEntity proposedFromSuspended = rnIn(RnStatus.SUSPENDED);
+        proposedFromSuspended.applyStatus(RnStatus.WITHDRAWAL_PROPOSED);
+        proposedFromSuspended.markWithdrawalFromSuspended();
+        RnEntity proposedFromActive = withdrawalProposedRn(DEADLINE);
+        when(repository.findByStatusInOrderByUpdatedAtDesc(INACTIVE_QUERY))
+                .thenReturn(List.of(suspended, proposedFromSuspended, proposedFromActive));
 
-        verify(repository).findByStatusInOrderByUpdatedAtDesc(
-                List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN));
+        // Prijedlog povlačenja iz suspenzije javno ostaje suspendiran (T12); iz ACTIVE vrijedi.
+        assertThat(service.inactive(null)).containsExactly(suspended, proposedFromSuspended);
     }
+
+    private static final List<RnStatus> INACTIVE_QUERY = List.of(RnStatus.SUSPENDED, RnStatus.WITHDRAWAL_PROPOSED,
+            RnStatus.REVOKED, RnStatus.WITHDRAWN);
 
     /** Županijski službenik: isti statusi, samo smještaji njegove županije. */
     @Test
@@ -395,14 +574,28 @@ class RnServiceTest {
 
         service.inactive(scope);
 
-        verify(repository).findByStatusInAndCountyIn(
-                List.of(RnStatus.SUSPENDED, RnStatus.REVOKED, RnStatus.WITHDRAWN), scope);
+        verify(repository).findByStatusInAndCountyIn(INACTIVE_QUERY, scope);
         verify(repository, never()).findByStatusInOrderByUpdatedAtDesc(any());
     }
 
     private RnEntity activeRn() {
         return RnEntity.issue("HR120001000000000001", UUID.randomUUID(), UUID.randomUUID(),
                 LocalDate.of(2026, 4, 30));
+    }
+
+    private RnEntity rnIn(RnStatus status) {
+        RnEntity rn = activeRn();
+        if (status != RnStatus.ACTIVE) {
+            rn.applyStatus(status);
+        }
+        return rn;
+    }
+
+    private RnEntity withdrawalProposedRn(LocalDate deadline) {
+        RnEntity rn = activeRn();
+        rn.applyStatus(RnStatus.WITHDRAWAL_PROPOSED);
+        rn.setWithdrawalDeadline(deadline);
+        return rn;
     }
 
     private RnEntity proposedRn(LocalDate deadline) {
@@ -435,9 +628,6 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         String actor = "INTERNAL:12345678903";
 
-        service.withdraw(rn.getRn(), WithdrawalReason.OTHER, "razlog", actor, List.of());
-        verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL, actor, "razlog");
-
         service.suspend(rn.getRn(), RnTrigger.INSPECTION, DEADLINE, null, actor, List.of());
         verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION, actor,
                 "nalaz inspekcijskog nadzora");
@@ -463,20 +653,6 @@ class RnServiceTest {
         service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null, "INTERNAL:12345678903", List.of(7L, 8L));
 
         verify(prilogService).bind("INTERNAL:12345678903", List.of(7L, 8L), PrilogVlasnik.prijelaz(logId));
-    }
-
-    @Test
-    void withdraw_withAttachments_bindsToNewLogEntry() {
-        RnEntity rn = mock(RnEntity.class);
-        when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
-        UUID logId = UUID.randomUUID();
-        when(transitionService.transition(eq(rn), eq(RnStatus.WITHDRAWN), eq(RnTrigger.WITHDRAWAL),
-                eq("INTERNAL:12345678903"), anyString())).thenReturn(logId);
-
-        service.withdraw("HR00000001", WithdrawalReason.DATA_NOT_CORRECTED, null, "INTERNAL:12345678903",
-                List.of(9L));
-
-        verify(prilogService).bind("INTERNAL:12345678903", List.of(9L), PrilogVlasnik.prijelaz(logId));
     }
 
     /** Bez priloga nema vezanja — ni poziva sa praznim popisom. */

@@ -109,6 +109,39 @@ class VerifyControllerTest {
                 .andExpect(jsonPath("$.status").doesNotExist());
     }
 
+    /**
+     * T12: prijedlog povlačenja tek otvara rok za očitovanje — broj vrijedi kao uz prijedlog suspenzije,
+     * a odgovor nosi stvarni status WITHDRAWAL_PROPOSED.
+     */
+    @Test
+    void withdrawalProposal_verifiesAsValid_withItsOwnStatus() throws Exception {
+        when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.of(rnWithStatus(RnStatus.WITHDRAWAL_PROPOSED)));
+        when(rnRepository.findPublicView(WELL_FORMED_RN)).thenReturn(Optional.of(new RnPublicView(
+                WELL_FORMED_RN, "Apartman More", "3 zvjezdice", "Korzo", "2", "Rijeka",
+                "Objekti u domaćinstvu", "Apartman")));
+
+        mvc.perform(get("/api/verify/{rn}", WELL_FORMED_RN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.status").value("WITHDRAWAL_PROPOSED"))
+                .andExpect(jsonPath("$.accommodationName").value("Apartman More"));
+    }
+
+    /** T12: prijedlog povlačenja iz suspenzije javno ostaje suspendiran — odgovor kao za SUSPENDED. */
+    @Test
+    void withdrawalProposalFromSuspended_answersAsSuspended() throws Exception {
+        RnEntity entity = rnWithStatus(RnStatus.SUSPENDED);
+        entity.applyStatus(RnStatus.WITHDRAWAL_PROPOSED);
+        entity.markWithdrawalFromSuspended();
+        when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.of(entity));
+
+        mvc.perform(get("/api/verify/{rn}", WELL_FORMED_RN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.status").value("SUSPENDED"))
+                .andExpect(jsonPath("$.accommodationName").doesNotExist());
+    }
+
     @Test
     void returns_valid_false_when_rn_does_not_exist() throws Exception {
         when(rnRepository.findById(WELL_FORMED_RN)).thenReturn(Optional.empty());
@@ -126,8 +159,11 @@ class VerifyControllerTest {
     }
 
     private static RnEntity rnWithStatus(RnStatus status) {
-        RnEntity entity = mock(RnEntity.class);
-        when(entity.getStatus()).thenReturn(status);
+        RnEntity entity = RnEntity.issue(WELL_FORMED_RN, null, java.util.UUID.randomUUID(), java.time.LocalDate.now());
+        if (status != RnStatus.ACTIVE) {
+            entity.applyStatus(status);
+        }
         return entity;
     }
+
 }

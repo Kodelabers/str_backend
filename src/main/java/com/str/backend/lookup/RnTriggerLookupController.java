@@ -37,8 +37,9 @@ class RnTriggerLookupController {
     static final List<RnTrigger> SUSPENSION_REASONS = RnTrigger.SUSPENSION_REASONS;
 
     /**
-     * Razlozi povlačenja (MINTS). Prijelaz uvijek nosi okidač {@link RnTrigger#WITHDRAWAL}, a
-     * razlog je zasebna šifra koju {@code RnService.withdraw} pretvara u tekst akta. Namjerno bez
+     * Razlozi povlačenja (MINTS), za prijedlog povlačenja (T12). Prijelaz nosi okidač
+     * {@link RnTrigger#WITHDRAWAL_PROPOSAL}, a razlog je zasebna šifra koju {@code RnService.proposeWithdrawal}
+     * pretvara u tekst akta. Namjerno bez
      * {@link RnTrigger#REVOCATION}: opoziv pokreće iznajmljivač sam, bez razloga i bez ovog
      * obrasca, pa ga službenik ne smije moći odabrati.
      */

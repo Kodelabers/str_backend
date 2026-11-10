@@ -105,12 +105,24 @@ class EmailTemplateTest {
     @ParameterizedTest
     @EnumSource(value = MailTemplate.class,
             names = {"RB_IZDAN", "PRIJEDLOG_SUSPENZIJE", "SUSPENZIJA", "OBUSTAVA_SUSPENZIJE",
-                    "REAKTIVACIJA", "POVLACENJE", "OPOZIV"})
+                    "REAKTIVACIJA", "POVLACENJE", "OPOZIV", "PRIJEDLOG_POVLACENJA", "OBUSTAVA_POVLACENJA",
+                    "REAKTIVACIJA_POVLACENJA"})
     void lifecycleTemplates_stateThatEmailIsNotService(MailTemplate template) {
         String html = templates.body(template, values());
 
         assertThat(html).contains("a ne dostava akta");
         assertThat(html).contains("korisnički pretinac");
+    }
+
+    /** T12: povučen broj više nije trajno izgubljen — poruka upućuje na prigovor, ne na novi zahtjev. */
+    @Test
+    void withdrawalMail_pointsToObjection_notPermanence() {
+        String html = templates.body(MailTemplate.POVLACENJE, values()).replaceAll("\\s+", " ");
+
+        assertThat(html).contains("možete izjaviti prigovor").doesNotContain("trajno")
+                .doesNotContain("ne može se reaktivirati");
+        assertThat(templates.body(MailTemplate.PRIJEDLOG_POVLACENJA, values()).replaceAll("\\s+", " "))
+                .contains("automatski će se povući");
     }
 
     /** MINTS: poruka s aktom ne smije tvrditi samo da je akt u pretincu, a bez akta ne smije spominjati privitak. */
@@ -127,7 +139,8 @@ class EmailTemplateTest {
     @ParameterizedTest
     @EnumSource(value = MailTemplate.class,
             names = {"RB_IZDAN", "PRIJEDLOG_SUSPENZIJE", "SUSPENZIJA", "OBUSTAVA_SUSPENZIJE",
-                    "REAKTIVACIJA", "POVLACENJE", "OPOZIV"})
+                    "REAKTIVACIJA", "POVLACENJE", "OPOZIV", "PRIJEDLOG_POVLACENJA", "OBUSTAVA_POVLACENJA",
+                    "REAKTIVACIJA_POVLACENJA"})
     void pretinac_carriesKpLinkWhenConfigured(MailTemplate template) {
         assertThat(templates("https://kp.example.hr/inbox").body(template, values(), Dostava.PRETINAC, true))
                 .contains("<a href=\"https://kp.example.hr/inbox\"");

@@ -16,7 +16,7 @@ class RnRegistryViewTest {
     @Test
     void activeViewIncludesProposedSuspensions() {
         assertThat(RnRegistryView.ACTIVE.statuses())
-                .containsExactlyInAnyOrder(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED);
+                .containsExactlyInAnyOrder(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED, RnStatus.WITHDRAWAL_PROPOSED);
     }
 
     @Test
@@ -38,6 +38,17 @@ class RnRegistryViewTest {
     void proposalsRemainReachableAsTheirOwnView() {
         assertThat(RnRegistryView.SUSPENSION_PROPOSED.statuses())
                 .containsExactly(RnStatus.SUSPENSION_PROPOSED);
+    }
+
+    /**
+     * T12: a withdrawal proposal is valid for advertising like a suspension proposal — in ACTIVE, never
+     * in INVALID — and has its own work list.
+     */
+    @Test
+    void withdrawalProposal_isValidAndHasItsOwnView() {
+        assertThat(RnRegistryView.ACTIVE.statuses()).contains(RnStatus.WITHDRAWAL_PROPOSED);
+        assertThat(RnRegistryView.INVALID.statuses()).doesNotContain(RnStatus.WITHDRAWAL_PROPOSED);
+        assertThat(RnRegistryView.WITHDRAWAL_PROPOSED.statuses()).containsExactly(RnStatus.WITHDRAWAL_PROPOSED);
     }
 
     /** No issued status may fall out of every view — ALL is what the officer's export uses. */

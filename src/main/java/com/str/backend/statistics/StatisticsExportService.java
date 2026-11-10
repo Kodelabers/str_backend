@@ -58,7 +58,8 @@ public class StatisticsExportService {
 
     private static final List<String> EXPORT_STATUSES =
             List.of(RnStatus.ACTIVE.name(), RnStatus.SUSPENSION_PROPOSED.name(),
-                    RnStatus.SUSPENDED.name(), RnStatus.REVOKED.name(), RnStatus.WITHDRAWN.name());
+                    RnStatus.SUSPENDED.name(), RnStatus.WITHDRAWAL_PROPOSED.name(),
+                    RnStatus.REVOKED.name(), RnStatus.WITHDRAWN.name());
 
     /**
      * Upper bound for a single activity export. Measured on this code path: 50k rows takes ~20s
@@ -200,7 +201,7 @@ public class StatisticsExportService {
               .append(csvEscape(row.getCounty())).append(',')
               .append(csvEscape(row.getCategory())).append(',')
               .append(csvEscape(row.getOfferType())).append(',')
-              .append(csvEscape(translateStatus(row.getStatus()))).append(',')
+              .append(csvEscape(statusLabel(row.getStatus(), Boolean.TRUE.equals(row.getWithdrawalFromSuspended())))).append(',')
               .append(csvEscape(formatDate(row.getIssueDate()))).append(',')
               .append(csvEscape(formatDate(row.getValidFrom()))).append(',')
               .append(csvEscape(formatDate(row.getValidTo()))).append(',')
@@ -247,7 +248,7 @@ public class StatisticsExportService {
                 r.createCell(4).setCellValue(nullToEmpty(row.getCounty()));
                 r.createCell(5).setCellValue(nullToEmpty(row.getCategory()));
                 r.createCell(6).setCellValue(nullToEmpty(row.getOfferType()));
-                r.createCell(7).setCellValue(translateStatus(row.getStatus()));
+                r.createCell(7).setCellValue(statusLabel(row.getStatus(), Boolean.TRUE.equals(row.getWithdrawalFromSuspended())));
                 r.createCell(8).setCellValue(formatDate(row.getIssueDate()));
                 r.createCell(9).setCellValue(formatDate(row.getValidFrom()));
                 r.createCell(10).setCellValue(formatDate(row.getValidTo()));
@@ -298,11 +299,11 @@ public class StatisticsExportService {
             for (RnSummaryDto r : rows) {
                 Row row = sheet.createRow(rowIdx++);
                 row.createCell(0).setCellValue(nullToEmpty(r.rn()));
-                row.createCell(1).setCellValue(translateStatus(r.status() != null ? r.status().name() : null));
+                row.createCell(1).setCellValue(statusLabel(r));
                 row.createCell(2).setCellValue(formatDate(r.issueDate()));
                 row.createCell(3).setCellValue(formatDate(r.validFrom()));
                 row.createCell(4).setCellValue(formatDate(r.validTo()));
-                row.createCell(5).setCellValue(formatDate(r.suspensionDeadline()));
+                row.createCell(5).setCellValue(formatDate(r.rokZaOcitovanje()));
                 row.createCell(6).setCellValue(nullToEmpty(r.accommodationName()));
                 row.createCell(7).setCellValue(nullToEmpty(r.accommodationTypeName()));
                 row.createCell(8).setCellValue(rnLessorLabel(r));
@@ -330,11 +331,11 @@ public class StatisticsExportService {
             out.write("\r\n");
             for (RnSummaryDto r : rows) {
                 out.write(csvEscape(r.rn()));                                       out.write(',');
-                out.write(csvEscape(translateStatus(r.status() != null ? r.status().name() : null))); out.write(',');
+                out.write(csvEscape(statusLabel(r))); out.write(',');
                 out.write(csvEscape(formatDate(r.issueDate())));                    out.write(',');
                 out.write(csvEscape(formatDate(r.validFrom())));                    out.write(',');
                 out.write(csvEscape(formatDate(r.validTo())));                      out.write(',');
-                out.write(csvEscape(formatDate(r.suspensionDeadline())));           out.write(',');
+                out.write(csvEscape(formatDate(r.rokZaOcitovanje())));           out.write(',');
                 out.write(csvEscape(r.accommodationName()));                        out.write(',');
                 out.write(csvEscape(r.accommodationTypeName()));                    out.write(',');
                 out.write(csvEscape(rnLessorLabel(r)));                             out.write(',');
@@ -371,11 +372,11 @@ public class StatisticsExportService {
             for (String h : RN_HEADERS) table.addCell(thCell(h));
             for (RnSummaryDto r : rows) {
                 table.addCell(tdCell(nullToEmpty(r.rn())));
-                table.addCell(tdCell(translateStatus(r.status() != null ? r.status().name() : null)));
+                table.addCell(tdCell(statusLabel(r)));
                 table.addCell(tdCell(formatDate(r.issueDate())));
                 table.addCell(tdCell(formatDate(r.validFrom())));
                 table.addCell(tdCell(formatDate(r.validTo())));
-                table.addCell(tdCell(formatDate(r.suspensionDeadline())));
+                table.addCell(tdCell(formatDate(r.rokZaOcitovanje())));
                 table.addCell(tdCell(nullToEmpty(r.accommodationName())));
                 table.addCell(tdCell(nullToEmpty(r.accommodationTypeName())));
                 table.addCell(tdCell(rnLessorLabel(r)));
@@ -548,6 +549,7 @@ public class StatisticsExportService {
             case "aktivan"          -> "Aktivan";
             case "pred_suspenzijom" -> "Pred suspenzijom";
             case "suspendiran"      -> "Suspendiran";
+            case "pred_povlacenjem" -> "Predložen za povlačenje";
             case "opozvan"          -> "Opozvan";
             case "povucen"          -> "Povučen";
             case "bez_rb"           -> "Bez RB";
@@ -563,12 +565,26 @@ public class StatisticsExportService {
         return number.isEmpty() ? street : street + " " + number;
     }
 
+    /** Natpis statusa retka registra — prijedlog povlačenja iz suspenzije posebno (T12). */
+    private static String statusLabel(RnSummaryDto r) {
+        return statusLabel(r.status() != null ? r.status().name() : null, r.prijedlogIzSuspenzije());
+    }
+
+    /** Prijedlog povlačenja pokrenut iz suspenzije javno ostaje suspendiran, pa izvoz to i kaže. */
+    private static String statusLabel(String status, boolean prijedlogIzSuspenzije) {
+        if (prijedlogIzSuspenzije && RnStatus.WITHDRAWAL_PROPOSED.name().equals(status)) {
+            return "Predložen za povlačenje (suspendiran)";
+        }
+        return translateStatus(status);
+    }
+
     private static String translateStatus(String status) {
         if (status == null) return "";
         return switch (status) {
             case "ACTIVE"              -> "Aktivan";
             case "SUSPENSION_PROPOSED" -> "Pred suspenzijom";
             case "SUSPENDED"           -> "Suspendiran";
+            case "WITHDRAWAL_PROPOSED" -> "Predložen za povlačenje";
             case "REVOKED"             -> "Opozvan";
             case "WITHDRAWN"           -> "Povučen";
             default                    -> status;

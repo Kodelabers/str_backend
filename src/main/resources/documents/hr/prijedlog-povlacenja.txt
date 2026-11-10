@@ -1,0 +1,34 @@
+# Obavijest o prijedlogu povlačenja registracijskog broja
+# Vrsta pismena (eGOP): „Obavijest o prijedlogu povlačenja registracijskog broja" — izlazno
+# Nova vrsta (T12): dok je MINT ne unese u eGOP šifrarnik, ide pod zamjenskom vrstom
+# (EGOP_SIFRA_PISMENA_FALLBACK ili STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK) ili na popis
+# EGOP_AKTI_BEZ_SIFRE (DEPLOY-*.md).
+#
+# Isto kao prijedlog suspenzije, samo za povlačenje: ovo NIJE rješenje nego poziv stranci na
+# očitovanje prije povlačenja (čl. 30. st. 2 ZUP-a), pa nema upute o pravnom lijeku.
+#
+# Rok za očitovanje MORA biti u izreci (čl. 98. st. 3). ${rok.ispravak} se ovdje puni iz
+# RnEntity.withdrawalDeadline, a ne iz roka suspenzije (ZupContextFactory); obje vrijednosti (i rok.default)
+# završavaju točkom, pa je točka 2. ne dodaje.
+#
+# Razlog u točki 1. je razlog povlačenja koji je službenik odabrao (WithdrawalReason, MINTS), odnosno
+# opis uz „drugi razlozi". Propis o nadležnosti je čl. 48. st. 2. (STR_PROPIS_POSTUPCI). Akt potpisuje
+# službenik koji je povlačenje predložio.
+#
+# Katalog placeholdera: docs/ZUP-predlosci.md
+
+[UVOD]
+${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po službenoj dužnosti, izdaje
+
+[IZREKA]
+1. Pokrenut je postupak povlačenja registracijskog broja ${rn.broj}, dodijeljenog na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}, zbog sljedećeg razloga: ${rn.razlog}.
+
+2. Poziva se stranka da dostavi očitovanje o razlozima povlačenja registracijskog broja s ispravnim podacima i dokumentacijom ${rok.ispravak}
+
+3. Registracijski broj automatski će se povući ako očitovanje iz točke 2. ove Obavijesti nije dostavljeno u ostavljenom roku.
+
+4. Na temelju dostavljenog očitovanja postupak povlačenja registracijskog broja bit će obustavljen ili će registracijski broj biti povučen sukladno članku 6. Uredbe (EU) 2024/1028 Europskog parlamenta i Vijeća od 11. travnja 2024. o prikupljanju i razmjeni podataka o uslugama kratkoročnog iznajmljivanja smještaja i izmjeni Uredbe (EU) 2018/1724 (SL L, 2024/1028, 29.4.2024.).
+[POTPISNIK]
+${sluzbenik.potpisTijela}
+${sluzbenik.funkcija}
+${sluzbenik.ime}

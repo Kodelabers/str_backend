@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+      T12: puni postupak povlačenja registracijskog broja. Povlačenje više nije izravno: službenik
+      predlaže povlačenje s rokom za očitovanje (status WITHDRAWAL_PROPOSED), a broj se povlači tek
+      istekom roka (WithdrawalDeadlineJob, ili odmah kad službenik nakon roka ne uvaži očitovanje).
+      Prijedlog je dopušten iz ACTIVE, SUSPENSION_PROPOSED i SUSPENDED; obustava vraća broj u ACTIVE.
+      Kao i prijedlog suspenzije, WITHDRAWAL_PROPOSED je za javnost valjan broj — osim kad je povlačenje
+      predloženo iz SUSPENDED: takav broj javno ostaje suspendiran.
+
+      1. chk_rn_status dopušta WITHDRAWAL_PROPOSED. Postojeći statusi ostaju, pa nijedan redak ne
+         pada na novoj provjeri.
+      2. withdrawal_deadline: rok za očitovanje na prijedlog povlačenja; vrijedi samo u statusu
+         WITHDRAWAL_PROPOSED (RnEntity.applyStatus ga briše izvan njega).
+      3. withdrawal_from_suspended: povlačenje je predloženo iz SUSPENDED, pa broj u WITHDRAWAL_PROPOSED
+         javno ostaje nevaljan. NOT NULL DEFAULT false: postojeći retci nikad nisu bili u prijedlogu
+         povlačenja; izvan njega RnEntity.applyStatus vraća false.
+
+      Rollback vraća CHECK bez WITHDRAWAL_PROPOSED i briše oba stupca. Prije rollbacka nijedan broj ne
+      smije biti u statusu WITHDRAWAL_PROPOSED (inače ADD CONSTRAINT pada): takve treba ručno vratiti
+      u ACTIVE ili povući.
+    -->
+    <changeSet id="155-rn-withdrawal-proposed" author="str-backend">
+        <sql>
+            ALTER TABLE str_rn.registration_number
+                DROP CONSTRAINT IF EXISTS chk_rn_status;
+            ALTER TABLE str_rn.registration_number
+                ADD CONSTRAINT chk_rn_status
+                    CHECK (status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'WITHDRAWAL_PROPOSED',
+                                      'REVOKED', 'WITHDRAWN'));
+            ALTER TABLE str_rn.registration_number
+                ADD COLUMN withdrawal_deadline DATE;
+            ALTER TABLE str_rn.registration_number
+                ADD COLUMN withdrawal_from_suspended BOOLEAN NOT NULL DEFAULT false;
+        </sql>
+        <rollback>
+            <sql>
+                ALTER TABLE str_rn.registration_number
+                    DROP COLUMN IF EXISTS withdrawal_from_suspended;
+                ALTER TABLE str_rn.registration_number
+                    DROP COLUMN IF EXISTS withdrawal_deadline;
+                ALTER TABLE str_rn.registration_number
+                    DROP CONSTRAINT IF EXISTS chk_rn_status;
+                ALTER TABLE str_rn.registration_number
+                    ADD CONSTRAINT chk_rn_status
+                        CHECK (status IN ('ACTIVE', 'SUSPENSION_PROPOSED', 'SUSPENDED', 'REVOKED', 'WITHDRAWN'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

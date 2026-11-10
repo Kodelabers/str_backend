@@ -84,9 +84,12 @@ public class StatisticsService {
 
         Map<String, Map<RnStatus, Long>> rnByCounty = new HashMap<>();
         for (var row : rnCounts) {
+            // Prijedlog povlačenja iz suspenzije javno ostaje suspendiran (T12) — broji se u suspendirane.
+            RnStatus status = row.getStatus() == RnStatus.WITHDRAWAL_PROPOSED
+                    && Boolean.TRUE.equals(row.getWithdrawalFromSuspended()) ? RnStatus.SUSPENDED : row.getStatus();
             rnByCounty
                     .computeIfAbsent(row.getCounty(), k -> new EnumMap<>(RnStatus.class))
-                    .merge(row.getStatus(), row.getCount(), Long::sum);
+                    .merge(status, row.getCount(), Long::sum);
         }
 
         if (scope.restricted()) {
@@ -167,11 +170,13 @@ public class StatisticsService {
 
     private static CountyStrDto buildRow(String id, String name, long accommodations,
                                           Map<RnStatus, Long> byStatus) {
-        // Prijedlog suspenzije je međukorak s otvorenim rokom, ne suspenzija — RB u tom statusu
-        // vrijedi, pa se broji kao aktivan. Bez toga bi ispao iz svih stupaca, a i iz ukupnog
-        // broja RB-ova, koji je zbroj ova četiri.
+        // Prijedlog suspenzije i prijedlog povlačenja (T12) su međukorak s otvorenim rokom, ne mjera —
+        // RB u tom statusu vrijedi, pa se broji kao aktivan (prijedlog povlačenja iz suspenzije je već
+        // pribrojen suspendiranima). Bez toga bi ispao iz svih stupaca, a i iz
+        // ukupnog broja RB-ova, koji je zbroj ova četiri.
         long active = byStatus.getOrDefault(RnStatus.ACTIVE, 0L)
-                + byStatus.getOrDefault(RnStatus.SUSPENSION_PROPOSED, 0L);
+                + byStatus.getOrDefault(RnStatus.SUSPENSION_PROPOSED, 0L)
+                + byStatus.getOrDefault(RnStatus.WITHDRAWAL_PROPOSED, 0L);
         long suspended = byStatus.getOrDefault(RnStatus.SUSPENDED, 0L);
         long revoked = byStatus.getOrDefault(RnStatus.REVOKED, 0L);
         long withdrawn = byStatus.getOrDefault(RnStatus.WITHDRAWN, 0L);

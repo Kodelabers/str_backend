@@ -52,9 +52,10 @@ public class LessorRnActionService {
 
     /**
      * Lessor-initiated revocation (opoziv) of their own RN → REVOKED ("Opozvan").
-     * Final, allowed from ACTIVE, SUSPENSION_PROPOSED or SUSPENDED (čl. 5. st. 5. STR Uredbe).
-     * STR-1.3-001. The officer's withdrawal (povlačenje) is a separate final status,
-     * {@code WITHDRAWN} — see {@code RnService#withdraw}.
+     * Final, allowed from ACTIVE, SUSPENSION_PROPOSED, SUSPENDED and WITHDRAWAL_PROPOSED (čl. 5. st. 5.
+     * STR Uredbe). STR-1.3-001. The official's withdrawal (povlačenje) is a separate final status,
+     * {@code WITHDRAWN}, reached only when the response deadline on a withdrawal proposal expires — see
+     * {@code RnService#proposeWithdrawal} and {@code WithdrawalDeadlineJob}.
      *
      * <p>Prilozi stranke ({@code prilogIds} iz {@code /api/lessor/attachments}, T17; neobavezni) vežu
      * se uz novi zapis prijelaza u istoj transakciji; kao prilozi stranke idu uz ulazno pismeno

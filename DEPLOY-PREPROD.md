@@ -742,7 +742,9 @@ i `NIAS_SLO_URL` i upišu vrijednosti koje je NIAS registrirao.
   Prefiks postoji upravo da se lažni brojevi razlikuju od pravih.
 - **Cron poslovi mutiraju kopiju od prvog dana.** `SuspensionDeadlineJob` (`0 0 1 * * *`, cron
   nije konfigurabilan) prevodi `SUSPENSION_PROPOSED` → `SUSPENDED` za sve prave RB-ove kojima je
-  rok prošao, što okida render akta i mock urudžbiranje. `DraftCleanupJob` briše skice starije od
+  rok prošao, što okida render akta i mock urudžbiranje. Isto radi `WithdrawalDeadlineJob` (T12, u
+  isto vrijeme) za `WITHDRAWAL_PROPOSED` → `WITHDRAWN`; nove vrste pismena postupka povlačenja mock
+  urudžbira bez dodatnih postavki. `DraftCleanupJob` briše skice starije od
   30 dana, `AccommodationActivityPurgeJob` čisti aktivnost. `WithdrawnRnRetentionJob` je samo
   detekcija (upisuje `RETENTION_DUE`, ne briše). Sve ostaje unutar kopije; **ugašena e-pošta je
   ono što sprječava vanjski efekt** — zato `APP_MAIL_ENABLED=false` ne pali bez izričite odluke.

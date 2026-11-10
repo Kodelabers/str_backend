@@ -46,9 +46,11 @@ paths:
       summary: Check registration number validity
       description: |
         Public endpoint used by SDEP and OTA platforms to check whether a registration
-        number is valid. ACTIVE and SUSPENSION_PROPOSED return valid=true with the status
-        and advertise-safe object data; SUSPENDED returns valid=true with status SUSPENDED
-        and no object data (not valid for advertising). Non-existent numbers and numbers in
+        number is valid. ACTIVE, SUSPENSION_PROPOSED and WITHDRAWAL_PROPOSED return valid=true
+        with the status and advertise-safe object data (a proposal only opens the response
+        deadline; the number keeps holding until it expires); SUSPENDED returns valid=true with status SUSPENDED
+        and no object data (not valid for advertising). A withdrawal proposal raised from SUSPENDED stays
+        publicly suspended and is answered exactly like SUSPENDED (status SUSPENDED, no object data). Non-existent numbers and numbers in
         a final status (REVOKED or WITHDRAWN) return only valid=false, so the two cannot be
         told apart and a final status is never disclosed. Always returns HTTP 200 for a
         well-formed registration number.
@@ -159,39 +161,86 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
 
-  /api/rn/{rn}/withdraw:
+  /api/rn/{rn}/propose-withdrawal:
     post:
       tags: [rn]
-      summary: Withdraw a registration number ex officio (final status WITHDRAWN)
+      summary: Propose withdrawal of a registration number (status WITHDRAWAL_PROPOSED)
       description: |
-        Official's withdrawal (povlačenje) → `WITHDRAWN` („Povučen"), allowed from ACTIVE,
-        SUSPENSION_PROPOSED and SUSPENDED. The lessor's own revocation (opoziv) is a
-        different action with its own final status `REVOKED` („Opozvan"), on
-        `POST /api/lessor/registrations/{rn}/withdraw` and
-        `POST /api/nias/registrations/{rn}/withdraw`. A registration number that is already
-        REVOKED or WITHDRAWN cannot change status (409).
-      operationId: withdrawRn
+        First phase of the official's withdrawal (povlačenje, T12), allowed from ACTIVE,
+        SUSPENSION_PROPOSED and SUSPENDED. The party is invited to respond by
+        `withdrawalDeadline`; the number stays valid meanwhile. There is no manual
+        withdrawal: the number becomes `WITHDRAWN` („Povučen") only when the deadline expires
+        (nightly job), or at once when the official rejects a response after the deadline.
+        A revocation proposal (`revoke-withdrawal-proposal`) or an accepted response returns
+        the number to ACTIVE. The lessor's own revocation (opoziv) is a different action with
+        its own final status `REVOKED` („Opozvan").
+      operationId: proposeWithdrawalRn
       parameters:
         - $ref: '#/components/parameters/rn'
         - name: reason
           in: query
-          required: false
-          description: Free-text rationale, stored on the audit log and printed in the act
+          required: true
           schema:
             type: string
+            enum: [DATA_NOT_CORRECTED, INVALID_INFORMATION, OTHER]
+        - name: withdrawalDeadline
+          in: query
+          required: true
+          description: Response deadline (ISO date, Europe/Zagreb), not in the past
+          schema:
+            type: string
+            format: date
+        - name: note
+          in: query
+          required: false
+          description: Mandatory with reason OTHER (printed in the act), at most 1024 characters
+          schema:
+            type: string
+            maxLength: 1024
+        - name: prilogIds
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
       responses:
         "200":
-          description: Registration number withdrawn
+          description: Withdrawal proposed
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RnResponse'
         "400":
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Missing reason (error.rn.withdraw.reason.required), missing description with OTHER
+            (error.rn.withdraw.note.required), description over 1024 characters (error.rn.note.tooLong),
+            missing deadline (error.rn.withdraw.deadline.required) or deadline in the past
+            (error.rn.withdraw.deadline.past)
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          description: Illegal status transition (e.g. the number is already REVOKED or WITHDRAWN)
+          description: Illegal status transition (e.g. REVOKED, WITHDRAWN or already WITHDRAWAL_PROPOSED)
+
+  /api/rn/{rn}/revoke-withdrawal-proposal:
+    post:
+      tags: [rn]
+      summary: Discontinue the withdrawal procedure (back to ACTIVE)
+      operationId: revokeWithdrawalProposalRn
+      parameters:
+        - $ref: '#/components/parameters/rn'
+      responses:
+        "200":
+          description: Withdrawal procedure discontinued, the number is ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RnResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          description: The number is not proposed for withdrawal (RN_NOT_WITHDRAWAL_PROPOSED)
 
   # ─────────────────────────────────────────────────────────────
   # Accommodation registration
@@ -1094,23 +1143,34 @@ components:
 
     RnStatus:
       type: string
-      enum: [ACTIVE, SUSPENSION_PROPOSED, SUSPENDED, REVOKED, WITHDRAWN]
+      enum: [ACTIVE, SUSPENSION_PROPOSED, SUSPENDED, WITHDRAWAL_PROPOSED, REVOKED, WITHDRAWN]
       description: |
+        - `SUSPENSION_PROPOSED` – Pred suspenzijom: response deadline runs, the number is still valid
+        - `WITHDRAWAL_PROPOSED` – Predložen za povlačenje: response deadline runs, the number is still valid
+          (except when proposed from SUSPENDED: then it stays publicly suspended)
         - `REVOKED` – Opozvan: revoked by the lessor themselves (final)
-        - `WITHDRAWN` – Povučen: withdrawn ex officio by the competent authority (final)
+        - `WITHDRAWN` – Povučen: withdrawn ex officio by the competent authority (final, except
+          `REINSTATE` after an accepted objection)
 
     RnTrigger:
       type: string
       enum: [CONSENT_EXPIRY, INSPECTION, INCOMPLETE_DOCUMENTATION, OTHER, WITHDRAWAL, REVOCATION,
-             REACTIVATE, REVOKE_PROPOSAL, DEADLINE_EXCEEDED]
+             REACTIVATE, REVOKE_PROPOSAL, DEADLINE_EXCEEDED, WITHDRAWAL_PROPOSAL,
+             REVOKE_WITHDRAWAL_PROPOSAL, WITHDRAWAL_DEADLINE_EXCEEDED, REINSTATE]
       description: |
         - `CONSENT_EXPIRY` – co-owner consent expired (allowed for suspend)
         - `INSPECTION` – inspection finding (allowed for suspend)
         - `INCOMPLETE_DOCUMENTATION` – incomplete documentation (allowed for suspend)
         - `OTHER` – other reason, requires a note (allowed for suspend)
-        - `WITHDRAWAL` – ex officio withdrawal by the competent authority → WITHDRAWN
+        - `WITHDRAWAL` – historical: direct ex officio withdrawal → WITHDRAWN (before T12; kept for old records,
+          never accepted)
         - `REVOCATION` – the lessor's own revocation → REVOKED (lessor endpoints only)
         - `REACTIVATE` – reactivation (allowed for reactivate)
+        - `WITHDRAWAL_PROPOSAL` – withdrawal proposed with a response deadline → WITHDRAWAL_PROPOSED
+        - `REVOKE_WITHDRAWAL_PROPOSAL` – withdrawal procedure discontinued → always ACTIVE
+        - `WITHDRAWAL_DEADLINE_EXCEEDED` – response deadline expired → WITHDRAWN (nightly job, or at once when
+          an official rejects a response after the deadline)
+        - `REINSTATE` – accepted objection on a withdrawn number → ACTIVE
         - `REVOKE_PROPOSAL` – suspension proposal cleared (system, `/revoke-proposal`)
         - `DEADLINE_EXCEEDED` – response deadline expired (system, nightly job)
 
@@ -1123,8 +1183,9 @@ components:
         valid:
           type: boolean
           description: |
-            True if the registration number exists and is ACTIVE, SUSPENSION_PROPOSED or
-            SUSPENDED; false when it does not exist or is REVOKED or WITHDRAWN.
+            True if the registration number exists and is ACTIVE, SUSPENSION_PROPOSED,
+            WITHDRAWAL_PROPOSED or SUSPENDED (a withdrawal proposal from SUSPENDED is reported as
+            SUSPENDED); false when it does not exist or is REVOKED or WITHDRAWN.
           example: true
 
     # ── Registration number ─────────────────────────────────────
@@ -1155,6 +1216,14 @@ components:
           type: string
           format: date
           nullable: true
+        withdrawalDeadline:
+          type: string
+          format: date
+          nullable: true
+          description: Response deadline of a withdrawal proposal; set only in WITHDRAWAL_PROPOSED
+        prijedlogIzSuspenzije:
+          type: boolean
+          description: True only in WITHDRAWAL_PROPOSED raised from SUSPENDED (the number stays publicly suspended)
 
     # ── Registration ───────────────────────────────────────────
 

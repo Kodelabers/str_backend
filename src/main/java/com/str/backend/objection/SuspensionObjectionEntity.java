@@ -144,6 +144,11 @@ public class SuspensionObjectionEntity {
         resolve(SuspensionObjectionStatus.CLOSED, actor, null);
     }
 
+    /** Zatvaranje uz zapisanu napomenu — npr. za objekt povučenog broja izdan je novi broj (T12). */
+    public void close(String actor, String note) {
+        resolve(SuspensionObjectionStatus.CLOSED, actor, note);
+    }
+
     /** Odlučuje se samo o neobrađenom (SUBMITTED) prigovoru — inače 409. */
     private void resolve(SuspensionObjectionStatus target, String actor, String note) {
         if (status != SuspensionObjectionStatus.SUBMITTED) {

@@ -59,7 +59,10 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | `prijedlog-suspenzije` | Obavijest o prijedlogu suspenzije registracijskog broja | izlazno | uvod, izreka; **rok u izreci** | `RnService.suspend` |
 | `suspenzija` | Obavijest o suspenziji registracijskog broja | izlazno | uvod, izreka (prigovor je t. 5.) | `SuspensionDeadlineJob` (istek roka) |
 | `obustava-suspenzije` | Obavijest o obustavi postupka suspenzije registracijskog broja | izlazno | kao `opoziv` | `RnService.revokeProposal` |
-| `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | uvod, izreka (prigovor je t. 4.) | `RnService.withdraw` |
+| `prijedlog-povlacenja` | Obavijest o prijedlogu povlačenja registracijskog broja | izlazno (nova vrsta, T12) | uvod, izreka; **rok u izreci** | `RnService.proposeWithdrawal` |
+| `obustava-povlacenja` | Obavijest o obustavi postupka povlačenja registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.revokeWithdrawalProposal` |
+| `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | uvod, izreka (prigovor je t. 4.) | `WithdrawalDeadlineJob` (istek roka) ili `RnService.withdrawIfDeadlineExpired` (neuvaženo očitovanje nakon roka) |
+| `reaktivacija-povlacenja` | Obavijest o reaktivaciji povučenog registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.reinstate` (uvaženi prigovor na povlačenje) |
 | `prigovor` | Prigovor na prijedlog suspenzije | **ulazno** | čl. 71. — podnesak stranke | ❌ nema |
 | `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `opoziv` | `RnService.reactivate` |
 | `zahtjev-promjene-podataka` | Zahtjev za promjenu podataka | **ulazno** | kao `prigovor` | `ChangeRequestFilingService.file` (`POST /api/nias/registrations/{rn}/zahtjev-promjene-podataka`) |
@@ -68,6 +71,26 @@ Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i 
 izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku roka prelazi u
 `SUSPENDED` i šalje `suspenzija`. Ispravi li stranka nedostatak, `revokeProposal` vraća RB u
 `ACTIVE` uz `obustava-suspenzije`.
+
+Od T12 je i povlačenje **dvofazno**, s istim tekstovima kao suspenzija, samo za povlačenje:
+`RnService.proposeWithdrawal()` (iz `ACTIVE`, `SUSPENSION_PROPOSED` ili `SUSPENDED`) ide u
+`WITHDRAWAL_PROPOSED` uz `prijedlog-povlacenja` s rokom za očitovanje iz `withdrawal_deadline`;
+broj se povlači (`WITHDRAWN`, `povlacenje`) samo istekom roka — `WithdrawalDeadlineJob` (osim uz
+očitovanje predano u roku) ili `withdrawIfDeadlineExpired` kad službenik nakon roka ne uvaži
+očitovanje. Ručnog povlačenja nema, kao ni ručne suspenzije. Obustava (`revokeWithdrawalProposal`, i
+uvaženo očitovanje) uvijek vraća broj u `ACTIVE` uz `obustava-povlacenja` („Registracijski broj je
+važeći."), i kad je povlačenje predloženo iz suspenzije — postupak suspenzije time završava. Dok rok
+teče, broj u `WITHDRAWAL_PROPOSED` vrijedi, kao i u `SUSPENSION_PROPOSED` — osim kad je povlačenje
+predloženo iz `SUSPENDED` (`withdrawal_from_suspended`): tada javno ostaje suspendiran.
+Uvaženi prigovor na povučen broj (`reinstate`) vraća ga u `ACTIVE` uz
+`reaktivacija-povlacenja`. Prijedlog, obustavu i povlačenje potpisuje službenik; reaktivaciju
+povučenog broja tijelo, kao i reaktivaciju. Pravni temelj svih triju novih akata je čl. 48. st. 2.
+(`STR_PROPIS_POSTUPCI`).
+
+Tri nove vrste pismena MINT još nije unio u eGOP: do tada ih pokriva zamjenska vrsta — šifra
+(`EGOP_SIFRA_PISMENA_FALLBACK`, `str.egop.vrste.sifre.pismena-fallback`) ili naziv
+(`STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK`, `str.egop.vrste.nazivi.pismena-fallback`) — ili popis
+`EGOP_AKTI_BEZ_SIFRE` (v. `DEPLOY-*.md`).
 
 Smjer je onaj koji je propisao MINT (22.10.2026.), uz T15 za opoziv. Samo izlazna pismena idu u
 korisnički pretinac. **Opoziv su dva pismena** istog prijelaza
@@ -254,7 +277,7 @@ i mora biti izričito u kontekstu.
 | `${opoziv.razlogRedak}` | slobodan tekst iznajmljivača (parametar → revizijski trag, bez natpisa okidača) | samo `zahtjev-opoziva`; „Kao razlog opoziva podnositelj navodi: …", prazno bez razloga |
 | `${objekt.naziv}`, `${objekt.adresa}`, `${objekt.mjesto}`, `${objekt.zupanija}`, `${objekt.vrsta}`, `${objekt.kapacitet}` | `RnDetailDto` | |
 | `${objekt.skupina}` | šifra skupine **iz RB-a** → `labels.properties` (`objekt.skupina.<kod>`) | danas samo `00` = domaćinstvo; nepoznata šifra daje vidljivu oznaku + ERROR, ne tiho domaćinstvo |
-| `${rok.ispravak}` | `RnEntity.suspensionDeadline` | rok je obvezan pri prijedlogu; bez roka (stariji predmeti, RB koji je napustio prijedlog) → `rok.default` iz `labels.properties` |
+| `${rok.ispravak}` | `RnEntity.suspensionDeadline`; za `prijedlog-povlacenja` `RnEntity.withdrawalDeadline` | rok je obvezan pri prijedlogu; bez roka (stariji predmeti, RB koji je napustio prijedlog) → `rok.default` iz `labels.properties` |
 | `${uputa.tekst}` | `str.documents.uputa.<slug>` | od T14 ga ne koristi nijedan predložak; vidi §6 |
 
 **Adresni placeholderi su ostali samo podnescima.** `${stranka.zastupnik}`, `${stranka.adresa}`,
@@ -290,6 +313,16 @@ Nema li prijedloga u tragu (jednofazna suspenzija iz starijih podataka), vrijedi
 Za ta dva akta trag ima prednost i pred proslijeđenim parametrom: urudžba i mail prosljeđuju razlog
 svog prijelaza, a to je za suspenziju istekom roka bilješka joba („Rok za rješavanje nepravilnosti
 istekao.") — tako je izgledao akt koji je MINTS komentirao („…razloga: Rok … istekao..").
+
+**Povlačenje (T12) po istom pravilu.** `PRIJEDLOG_POVLACENJA` i `OBUSTAVA_POVLACENJA` čitaju razlog
+s prijedloga povlačenja (zadnji prijelaz u `WITHDRAWAL_PROPOSED`), a tako i `POVLACENJE`, jer broj se
+povlači samo istekom roka (`WITHDRAWAL_DEADLINE_EXCEEDED`) — bilješka posla nije razlog, pa i ovdje
+trag ima prednost pred proslijeđenim parametrom. Povijesno izravno povlačenje (`WITHDRAWAL`, prije
+T12) čita svoj prijelaz kao i dosad.
+
+**Potpisnik** se čita sa zapisa prijelaza koji akt izriče (ne sa zadnjeg zapisa traga — akt se
+renderira i nakon kasnijih prijelaza, npr. `REINSTATE`). Kad je prijelaz napravio sustav (`SYSTEM`:
+suspenzija ili povlačenje istekom roka), potpisuje službenik koji je postupak pokrenuo prijedlogom.
 
 ---
 
@@ -335,7 +368,10 @@ odjednom poslati sve obavijesti iz razdoblja kad je bio ugašen.
 | `suspenzija` | prijelaz → `SUSPENDED` uz `DEADLINE_EXCEEDED` |
 | `obustava-suspenzije` | prijelaz → `ACTIVE` uz `REVOKE_PROPOSAL` |
 | `reaktivacija` | prijelaz → `ACTIVE` uz `REACTIVATE` |
-| `povlacenje` | prijelaz → `WITHDRAWN` uz `WITHDRAWAL` (po službenoj dužnosti) |
+| `prijedlog-povlacenja` | prijelaz → `WITHDRAWAL_PROPOSED` (rok iz `withdrawalDeadline`) |
+| `obustava-povlacenja` | prijelaz → `ACTIVE` uz `REVOKE_WITHDRAWAL_PROPOSAL` |
+| `povlacenje` | prijelaz → `WITHDRAWN` uz `WITHDRAWAL_DEADLINE_EXCEEDED` (povijesno `WITHDRAWAL`); upućuje na prigovor |
+| `reaktivacija-povlacenja` | prijelaz → `ACTIVE` uz `REINSTATE` (uvaženi prigovor na povlačenje) |
 | `opoziv` | prijelaz → `REVOKED` uz `REVOCATION` (na zahtjev iznajmljivača); privitak je obavijest, ne zahtjev |
 
 Događaj `RnLifecycleEvent` objavljuje se iz **`RnStatusTransitionService.transition()`** — jedine
@@ -345,7 +381,8 @@ nijednom budućem pozivatelju. `RnLifecycleEmailListener` radi `AFTER_COMMIT`, p
 
 Opoziv i povlačenje su dva zasebna konačna statusa, pa se akt bira po ciljnom statusu, ne po
 akteru: `REVOKED` („Opozvan", okidač `REVOCATION`, `LessorRnActionService`) daje `opoziv`,
-`WITHDRAWN` („Povučen", okidač `WITHDRAWAL`, `RnService.withdraw`) daje `povlacenje`. Akter
+`WITHDRAWN` („Povučen", od T12 okidač `WITHDRAWAL_DEADLINE_EXCEEDED`, povijesno `WITHDRAWAL`) daje
+`povlacenje`. Akter
 (`LESSOR:<uuid>`, `NIAS:<oib>` ili prazno za službenika) ostaje samo kao revizijski trag. Do
 changeseta 137 oba su završavala u `WITHDRAWN`/`WITHDRAWAL` i razlikovao ih je jedino prefiks
 aktera (`RnLifecycleEvent.initiatedByLessor()`, uklonjen); changeset 137 je po tom kriteriju
@@ -368,7 +405,7 @@ str.documents.tijelo.naziv=${STR_TIJELO_NAZIV:Ministarstvo turizma i sporta}
 str.documents.tijelo.oib=${STR_TIJELO_OIB:87892589782}
 str.documents.tijelo.propis-nadleznosti=${STR_TIJELO_PROPIS:<čl. 46. Zakona o ugostiteljskoj djelatnosti (NN ___)>}
 str.documents.propis.dodjela=${STR_PROPIS_DODJELA:<čl. 46. st. 3. …>}
-str.documents.propis.{opoziv,prijedlog-suspenzije,obustava-suspenzije,suspenzija,povlacenje}=${STR_PROPIS_POSTUPCI:<čl. 48. st. 2. …>}
+str.documents.propis.{opoziv,prijedlog-suspenzije,obustava-suspenzije,suspenzija,povlacenje,prijedlog-povlacenja,obustava-povlacenja,reaktivacija-povlacenja}=${STR_PROPIS_POSTUPCI:<čl. 48. st. 2. …>}
 str.documents.potpisnik.ime=${STR_POTPISNIK_IME:}
 str.documents.epecat.enabled=${STR_EPECAT_ENABLED:false}
 str.documents.epecat.izdavatelj-certifikata=${STR_EPECAT_IZDAVATELJ:}
