@@ -573,6 +573,30 @@ class StrDocumentServiceTest {
         assertThat(text).doesNotContain("Ivana Ivić");
     }
 
+    /**
+     * T16: akt županijskog službenika — izdavatelj je županija (zaglavlje, uvod, potpis), KLASA i URBROJ su
+     * ručni s prijelaza, a MINTS-ova e-pečata nema ni kad je pečat uključen.
+     */
+    @Test
+    void rucniAkt_izdajeZupanija_sRucnimBrojevima_bezEpecata() throws IOException {
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "SUSPENSION_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE", "SUSPENSION_PROPOSED",
+                        "INSPECTION", "INTERNAL:12345678903", null, new com.str.backend.rn.RucniAkt(
+                                "334-06/26-01/7", "2181-26-2", "Splitsko-dalmatinska županija", "40781519492",
+                                "Upravni odjel za turizam", 17))));
+
+        byte[] pdf = service(PROPERTIES_S_PECATOM).render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "razlog");
+        String text = textOf(pdf);
+
+        assertThat(text).contains("SPLITSKO-DALMATINSKA ŽUPANIJA");
+        assertThat(text).contains("Splitsko-dalmatinska županija, OIB: 40781519492");
+        assertThat(text).contains("KLASA: 334-06/26-01/7");
+        assertThat(text).contains("URBROJ: 2181-26-2");
+        assertThat(text).doesNotContain("MINISTARSTVO TURIZMA I SPORTA");
+        assertThat(text).doesNotContain("Vrijeme izdavanja");
+        assertThat(text).doesNotContain("Kontrolni broj");
+    }
+
     /** Suspenziju istekom roka radi sustav — potpisuje je službenik koji je postupak pokrenuo. */
     @Test
     void systemSuspension_isSignedByTheOfficialWhoProposedIt() throws IOException {

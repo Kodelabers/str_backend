@@ -150,6 +150,17 @@ public class EgopPismenoEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** T16: KLASA ručnog akta županijskog službenika (eGOP akti klasu drže na predmetu). */
+    @Column(name = "klasa", length = 64, updatable = false)
+    private String klasa;
+
+    /**
+     * T16: akt županijskog službenika s ručno upisanom KLASOM i URBROJEM — ne ide u eGOP (nikad se ne
+     * urudžbira, pečatira ni otprema kroz eGOP), nego u korisnički pretinac preko KP API-ja.
+     */
+    @Column(name = "rucno", nullable = false, updatable = false)
+    private boolean rucno;
+
     /**
      * Akt životnog ciklusa: zapisuje se prije slanja, s već renderiranim dokumentom.
      *
@@ -168,6 +179,21 @@ public class EgopPismenoEntity {
         e.status = EgopSyncStatus.NEW;
         e.createdAt = Instant.now();
         e.updatedAt = e.createdAt;
+        return e;
+    }
+
+    /**
+     * T16: akt županijskog službenika. Brojeve je upisao službenik, pa je odmah {@code SYNCED}: retry
+     * job, prilozi i eGOP KP otprema ga time preskaču.
+     */
+    public static EgopPismenoEntity rucniAkt(UUID submissionId, String rn, String actRef, String vrstaPismenaNaziv,
+                                             byte[] pdf, String klasa, String urBroj) {
+        EgopPismenoEntity e = forAct(submissionId, rn, actRef, vrstaPismenaNaziv, Smjer.IZLAZNO, pdf);
+        e.klasa = klasa;
+        e.urBroj = urBroj;
+        e.rucno = true;
+        e.status = EgopSyncStatus.SYNCED;
+        e.documentAttached = true;
         return e;
     }
 

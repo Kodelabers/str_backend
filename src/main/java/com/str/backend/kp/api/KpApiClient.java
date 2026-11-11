@@ -144,7 +144,12 @@ public class KpApiClient {
         return c.getClass().getSimpleName() + (c.getMessage() != null ? ": " + c.getMessage() : "");
     }
 
+    /** Tuđi tekst (odgovor KP API-ja) za log i {@code kp_poruka.greska}: bez kontrolnih znakova, skraćen. */
     static String skrati(String s) {
-        return s == null || s.length() <= KpPorukaEntity.MAX_GRESKA ? s : s.substring(0, KpPorukaEntity.MAX_GRESKA);
+        if (s == null) {
+            return null;
+        }
+        String cisto = s.replaceAll("\\p{Cntrl}", " ");
+        return cisto.length() <= KpPorukaEntity.MAX_GRESKA ? cisto : cisto.substring(0, KpPorukaEntity.MAX_GRESKA);
     }
 }

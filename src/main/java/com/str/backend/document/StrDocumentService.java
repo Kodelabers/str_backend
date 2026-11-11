@@ -8,6 +8,7 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.RegistrationNumberLogEntity;
+import com.str.backend.rn.RucniAkt;
 import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.dto.RnDetailDto;
@@ -99,10 +100,20 @@ public class StrDocumentService {
         RnDetailDto detail = rnRepository.findDetail(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
 
+        // T16: ručni akt županijskog službenika nosi KLASU i URBROJ koje je službenik upisao (ili izvedene s
+        // prijedloga) i županiju kao izdavatelja; eGOP oznaka (filing) postoji samo za akte kroz eGOP.
+        Optional<RucniAkt> rucni = filing != null ? Optional.empty()
+                : zapisPrijelaza(type, rn).flatMap(RegistrationNumberLogEntity::rucniAkt);
         FilingReference oznake = filing != null ? filing
-                : new FilingReference(klasaZa(type, detail), null);
+                : rucni.map(r -> new FilingReference(r.klasa(), r.urBroj()))
+                        .orElseGet(() -> new FilingReference(klasaZa(type, detail), null));
 
         Map<String, String> ctx = contextFactory.forRn(type, detail, razlogAkta(type, rn, razlog), oznake);
+        rucni.ifPresent(r -> {
+            ZupContextFactory.putIzdavatelj(ctx, r.izdavateljNaziv(), r.izdavateljOib(), r.izdavateljJedinica());
+            log.info("document_rucni_akt type={} rn={} izdavatelj='{}' oib={} klasa={} urbroj={}", type, rn,
+                    r.izdavateljNaziv(), r.izdavateljOib() != null, r.klasa(), r.urBroj());
+        });
         dopuniAdresu(ctx, detail);
         dopuniSluzbenika(ctx, type, rn);
         dopuniDatumPrijelaza(ctx, type, rn);

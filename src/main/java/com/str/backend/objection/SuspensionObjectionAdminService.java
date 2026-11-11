@@ -16,6 +16,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnReissueGuard;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
+import com.str.backend.rn.RucniAkt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -115,6 +116,12 @@ public class SuspensionObjectionAdminService {
      */
     @Transactional
     public void accept(String rn, UUID id, String actor, String note) {
+        accept(rn, id, actor, note, null);
+    }
+
+    /** @param rucni ručni akt županijskog službenika (T16); {@code null} = akt kroz eGOP */
+    @Transactional
+    public void accept(String rn, UUID id, String actor, String note, RucniAkt rucni) {
         RnEntity rnEntity = rnRepository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
         SuspensionObjectionEntity e = findOrThrow(rn, id);
@@ -126,10 +133,10 @@ public class SuspensionObjectionAdminService {
         // Prigovor prvi: zatvaranje neobrađenih prigovora pri prijelazu RB-a ovaj više ne dira.
         e.accept(actor, cleanNote);
         switch (rnStatus) {
-            case SUSPENSION_PROPOSED -> rnService.revokeProposal(rn, actor);
-            case SUSPENDED -> rnService.reactivate(rn, actor);
-            case WITHDRAWAL_PROPOSED -> rnService.revokeWithdrawalProposal(rn, actor);
-            case WITHDRAWN -> rnService.reinstate(rn, actor);
+            case SUSPENSION_PROPOSED -> rnService.revokeProposal(rn, actor, rucni);
+            case SUSPENDED -> rnService.reactivate(rn, actor, rucni);
+            case WITHDRAWAL_PROPOSED -> rnService.revokeWithdrawalProposal(rn, actor, rucni);
+            case WITHDRAWN -> rnService.reinstate(rn, actor, rucni);
             default -> throw new ConflictException("error.objection.rnStatus", "OBJECTION_RN_STATUS");
         }
         auditService.record(actor, "OBJECTION_ACCEPT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);

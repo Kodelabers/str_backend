@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -140,7 +141,7 @@ public class KpPorukaEntity {
         e.prilozi = prilozi.isEmpty() ? null
                 : prilozi.stream().map(String::valueOf).collect(Collectors.joining(","));
         e.status = Status.PENDING;
-        e.nextAttemptAt = now;
+        e.nextAttemptAt = mikro(now);
         e.createdAt = now;
         e.updatedAt = now;
         return e;
@@ -161,7 +162,7 @@ public class KpPorukaEntity {
     }
 
     void zauzmi(Instant now, Instant do_) {
-        this.nextAttemptAt = do_;
+        this.nextAttemptAt = mikro(do_);
         this.updatedAt = now;
     }
 
@@ -184,7 +185,7 @@ public class KpPorukaEntity {
     int neuspjeh(String greska, Instant sljedeci, Instant now) {
         this.attempts++;
         this.greska = skrati(greska, MAX_GRESKA);
-        this.nextAttemptAt = sljedeci;
+        this.nextAttemptAt = mikro(sljedeci);
         this.updatedAt = now;
         return attempts;
     }
@@ -192,8 +193,16 @@ public class KpPorukaEntity {
     /** Sesija nije prihvaćena: pokušaj se ne broji, poruka odmah čeka drugu sesiju. */
     void oslobodi(String greska, Instant now) {
         this.greska = skrati(greska, MAX_GRESKA);
-        this.nextAttemptAt = now;
+        this.nextAttemptAt = mikro(now);
         this.updatedAt = now;
+    }
+
+    /**
+     * Baza vrijeme drži na mikrosekunde i zaokružuje: {@code next_attempt_at = sada} s nanosekundama mogao bi se
+     * spremiti malo iza trenutka u kojem ga isti zahtjev odmah traži ({@code <= :now}), pa poruka ne bi bila slobodna.
+     */
+    private static Instant mikro(Instant t) {
+        return t == null ? null : t.truncatedTo(ChronoUnit.MICROS);
     }
 
     private static String skrati(String s, int max) {

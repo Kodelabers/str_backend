@@ -50,6 +50,7 @@ class BackOfficeSecurityTest {
 
     @Autowired MockMvc mvc;
 
+    @MockBean com.str.backend.rn.RucniAktService rucniAktService;
     @MockBean InternalAccessService internalAccess;
     @MockBean AdminPendingRegistrationService pendingRegistrationService;
     @MockBean UserDetailsService userDetailsService;

@@ -40,11 +40,12 @@ class SuspensionObjectionControllerTest {
     private final SuspensionObjectionAdminService service = mock(SuspensionObjectionAdminService.class);
     private final InternalAccessService internalAccess = mock(InternalAccessService.class);
     private final RnScopeGuard scopeGuard = mock(RnScopeGuard.class);
+    private final com.str.backend.rn.RucniAktService rucniAkt = mock(com.str.backend.rn.RucniAktService.class);
     private MockMvc mvc;
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.standaloneSetup(new SuspensionObjectionController(service, internalAccess, scopeGuard))
+        mvc = MockMvcBuilders.standaloneSetup(new SuspensionObjectionController(service, internalAccess, scopeGuard, rucniAkt))
                 .setControllerAdvice(new GlobalExceptionHandler(new StaticMessageSource()))
                 .build();
         when(internalAccess.actorFor(any())).thenReturn(Optional.of(ACTOR));
@@ -84,7 +85,7 @@ class SuspensionObjectionControllerTest {
                         .content("{\"note\":\"Dostavljena suglasnost\"}"))
                 .andExpect(status().isNoContent());
 
-        verify(service).accept(RN, id, ACTOR, "Dostavljena suglasnost");
+        verify(service).accept(RN, id, ACTOR, "Dostavljena suglasnost", null);
     }
 
     @Test

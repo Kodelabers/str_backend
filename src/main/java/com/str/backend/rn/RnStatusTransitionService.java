@@ -38,6 +38,16 @@ public class RnStatusTransitionService {
      */
     @Transactional
     public UUID transition(RnEntity rn, RnStatus target, RnTrigger trigger, String actor, String reason) {
+        return transition(rn, target, trigger, actor, reason, null);
+    }
+
+    /**
+     * @param rucni ručni akt županijskog službenika (T16) — KLASA, URBROJ i izdavatelj idu uz zapis
+     *              prijelaza u istoj transakciji; {@code null} = akt kroz eGOP
+     */
+    @Transactional
+    public UUID transition(RnEntity rn, RnStatus target, RnTrigger trigger, String actor, String reason,
+                           RucniAkt rucni) {
         RnStatus current = rn.getStatus();
         if (!current.canTransitionTo(target, trigger)) {
             throw new IllegalStatusTransitionException(
@@ -47,9 +57,10 @@ public class RnStatusTransitionService {
         // logId dodjeljuje factory, pa ga uzimamo s vlastite reference umjesto iz povratne
         // vrijednosti save() — identitet zapisa ne smije ovisiti o tome što repozitorij vrati.
         RegistrationNumberLogEntity zapis = RegistrationNumberLogEntity.transition(
-                rn.getRn(), current.name(), target.name(), trigger.name(), actor, reason);
+                rn.getRn(), current.name(), target.name(), trigger.name(), actor, reason, rucni);
         rnLogRepository.save(zapis);
-        log.info("rn_transition rn={} from={} to={} trigger={}", rn.getRn(), current, target, trigger);
+        log.info("rn_transition rn={} from={} to={} trigger={} rucni_akt={}", rn.getRn(), current, target, trigger,
+                rucni != null);
         // Objava je ovdje, a ne u RnService, jer je ovo jedini prolaz kroz koji status smije
         // proći — obavijest time ne može promaknuti ni jednom budućem pozivatelju. Slušatelji
         // rade AFTER_COMMIT, pa vide i podatke koje pozivatelj postavi nakon ovog poziva

@@ -96,6 +96,31 @@ public class InternalUserRepository {
                 rs.getString("county_name")), oib);
     }
 
+    private static final String IZDAVATELJ_BY_OIB = """
+            SELECT io.name AS naziv, io.pin AS oib, ou.name AS jedinica
+              FROM str.application_user u
+              JOIN str.internal_organization io ON io.id = u.internal_organization_id AND io.active = TRUE
+              JOIN str.codebook_element ce ON ce.id = io.type_id AND ce.code = 'IOT_ZUPANIJA'
+              LEFT JOIN str.organizational_unit ou ON ou.id = u.organizational_unit_id
+             WHERE u.username = ?
+               AND u.internal = TRUE
+               AND u.active = TRUE
+             ORDER BY io.id
+            """;
+
+    /**
+     * Izdavatelj akta županijskog službenika (T16): naziv i OIB ({@code pin}) njegove županijske
+     * organizacije i naziv njegove jedinice. Prazno kad službenik nije u aktivnoj županijskoj organizaciji.
+     */
+    public record Izdavatelj(String naziv, String oib, String jedinica) {}
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public Optional<Izdavatelj> findIzdavatelj(String oib) {
+        return jdbc.query(IZDAVATELJ_BY_OIB, (rs, row) -> new Izdavatelj(
+                rs.getString("naziv"), rs.getString("oib"), rs.getString("jedinica")), oib)
+                .stream().findFirst();
+    }
+
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Set<String> findRoles(String oib) {
         return Set.copyOf(jdbc.queryForList(ROLES_BY_OIB, String.class, oib));

@@ -74,7 +74,7 @@ class SuspensionObjectionAdminServiceTest {
         assertThat(objection.getResolvedBy()).isEqualTo(ACTOR);
         assertThat(objection.getResolvedAt()).isNotNull();
         assertThat(objection.getResolutionNote()).isEqualTo("Dostavljena suglasnost");
-        verify(rnService).revokeProposal(RN, ACTOR);
+        verify(rnService).revokeProposal(RN, ACTOR, null);
         verify(rnService, never()).reactivate(anyString(), anyString());
         verify(auditService).record(ACTOR, "OBJECTION_ACCEPT", "SUSPENSION_OBJECTION",
                 objection.getObjectionId().toString(), "Dostavljena suglasnost");
@@ -88,7 +88,7 @@ class SuspensionObjectionAdminServiceTest {
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
         assertThat(objection.getResolutionNote()).isNull();
-        verify(rnService).reactivate(RN, ACTOR);
+        verify(rnService).reactivate(RN, ACTOR, null);
         verify(rnService, never()).revokeProposal(anyString(), anyString());
     }
 
@@ -135,7 +135,7 @@ class SuspensionObjectionAdminServiceTest {
         service.accept(RN, objection.getObjectionId(), ACTOR, null);
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
-        verify(rnService).revokeWithdrawalProposal(RN, ACTOR);
+        verify(rnService).revokeWithdrawalProposal(RN, ACTOR, null);
         verifyNoMoreInteractions(rnService);
     }
 
@@ -147,7 +147,7 @@ class SuspensionObjectionAdminServiceTest {
         service.accept(RN, objection.getObjectionId(), ACTOR, null);
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
-        verify(rnService).reinstate(RN, ACTOR);
+        verify(rnService).reinstate(RN, ACTOR, null);
         verifyNoMoreInteractions(rnService);
     }
 
@@ -158,7 +158,7 @@ class SuspensionObjectionAdminServiceTest {
     @Test
     void accept_onWithdrawn_reissued_is409() {
         when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
-        when(rnService.reinstate(RN, ACTOR))
+        when(rnService.reinstate(RN, ACTOR, null))
                 .thenThrow(new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED"));
 
         assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, null))

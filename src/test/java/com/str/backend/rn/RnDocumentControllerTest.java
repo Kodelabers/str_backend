@@ -51,6 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RnDocumentControllerTest {
 
     /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean com.str.backend.rn.RucniAktService rucniAktService;
     @MockBean InternalAccessService internalAccess;
     @MockBean ActingSubjectService actingSubjectService;
 

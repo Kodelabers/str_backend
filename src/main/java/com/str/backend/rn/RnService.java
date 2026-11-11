@@ -102,12 +102,15 @@ public class RnService {
     private final RnReissueGuard reissueGuard;
     private final SuspensionObjectionRepository objectionRepository;
     private final ObjectGroupPolicy objectGroupPolicy;
+    private final RegistrationNumberLogRepository logRepository;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
                      AccommodationTypeRepository accommodationTypeRepository, Clock clock,
                      DocumentLabels labels, PrilogService prilogService, RnReissueGuard reissueGuard,
-                     SuspensionObjectionRepository objectionRepository, ObjectGroupPolicy objectGroupPolicy) {
+                     SuspensionObjectionRepository objectionRepository, ObjectGroupPolicy objectGroupPolicy,
+                     RegistrationNumberLogRepository logRepository) {
+        this.logRepository = logRepository;
         this.reissueGuard = reissueGuard;
         this.objectionRepository = objectionRepository;
         this.repository = repository;
@@ -209,6 +212,13 @@ public class RnService {
     @Transactional
     public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor,
                             Collection<Long> prilogIds) {
+        return suspend(rn, trigger, suspensionDeadline, note, actor, prilogIds, null);
+    }
+
+    /** @param rucni ručni akt županijskog službenika (T16); {@code null} = akt kroz eGOP */
+    @Transactional
+    public RnEntity suspend(String rn, RnTrigger trigger, LocalDate suspensionDeadline, String note, String actor,
+                            Collection<Long> prilogIds, RucniAkt rucni) {
         if (!RnTrigger.SUSPENSION_REASONS.contains(trigger)) {
             throw new BusinessException("error.rn.suspend.trigger.invalid");
         }
@@ -227,7 +237,7 @@ public class RnService {
         }
         String logged = trigger == RnTrigger.OTHER ? cleanNote : labels.trigger(trigger);
         RnEntity e = loadForUpdate(rn);
-        UUID logId = transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, logged);
+        UUID logId = transitionService.transition(e, RnStatus.SUSPENSION_PROPOSED, trigger, actor, logged, rucni);
         e.setSuspensionDeadline(suspensionDeadline);
         bindPrilozi(actor, prilogIds, logId);
         return e;
@@ -252,15 +262,25 @@ public class RnService {
 
     @Transactional
     public RnEntity revokeProposal(String rn, String actor) {
+        return revokeProposal(rn, actor, null);
+    }
+
+    @Transactional
+    public RnEntity revokeProposal(String rn, String actor, RucniAkt rucni) {
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null);
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null, rucni);
         return e;
     }
 
     @Transactional
     public RnEntity reactivate(String rn, String actor) {
+        return reactivate(rn, actor, null);
+    }
+
+    @Transactional
+    public RnEntity reactivate(String rn, String actor, RucniAkt rucni) {
         RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null);
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null, rucni);
         return e;
     }
 
@@ -284,6 +304,13 @@ public class RnService {
     @Transactional
     public RnEntity proposeWithdrawal(String rn, WithdrawalReason reason, LocalDate withdrawalDeadline,
                                       String note, String actor, Collection<Long> prilogIds) {
+        return proposeWithdrawal(rn, reason, withdrawalDeadline, note, actor, prilogIds, null);
+    }
+
+    /** @param rucni ručni akt županijskog službenika (T16); {@code null} = akt kroz eGOP */
+    @Transactional
+    public RnEntity proposeWithdrawal(String rn, WithdrawalReason reason, LocalDate withdrawalDeadline,
+                                      String note, String actor, Collection<Long> prilogIds, RucniAkt rucni) {
         if (reason == null) {
             throw new BusinessException("error.rn.withdraw.reason.required");
         }
@@ -301,7 +328,7 @@ public class RnService {
         RnEntity e = loadForUpdate(rn);
         boolean izSuspenzije = e.getStatus() == RnStatus.SUSPENDED;
         UUID logId = transitionService.transition(e, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
-                actor, logged);
+                actor, logged, rucni);
         e.setWithdrawalDeadline(withdrawalDeadline);
         if (izSuspenzije) {
             // Suspendiran broj javno ostaje nevaljan i dok traje postupak povlačenja.
@@ -317,11 +344,16 @@ public class RnService {
      */
     @Transactional
     public RnEntity revokeWithdrawalProposal(String rn, String actor) {
+        return revokeWithdrawalProposal(rn, actor, null);
+    }
+
+    @Transactional
+    public RnEntity revokeWithdrawalProposal(String rn, String actor, RucniAkt rucni) {
         RnEntity e = loadForUpdate(rn);
         if (e.getStatus() != RnStatus.WITHDRAWAL_PROPOSED) {
             throw new ConflictException("error.rn.withdraw.proposal.notPending", "RN_NOT_WITHDRAWAL_PROPOSED");
         }
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL, actor, null);
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL, actor, null, rucni);
         return e;
     }
 
@@ -346,7 +378,9 @@ public class RnService {
         if (!procedure.isExpired(e, danas())) {
             return false;
         }
-        transitionService.transition(e, procedure.target(), procedure.trigger(), actor, procedure.note());
+        // T16: ručni prijedlog daje ručni akt (KLASA i izdavatelj s prijedloga, URBROJ + 1), kao u noćnom poslu.
+        RucniAkt rucni = RucniAkt.izPrijedloga(logRepository, rn, procedure.proposed()).orElse(null);
+        transitionService.transition(e, procedure.target(), procedure.trigger(), actor, procedure.note(), rucni);
         return true;
     }
 
@@ -360,11 +394,16 @@ public class RnService {
      */
     @Transactional
     public RnEntity reinstate(String rn, String actor) {
+        return reinstate(rn, actor, null);
+    }
+
+    @Transactional
+    public RnEntity reinstate(String rn, String actor, RucniAkt rucni) {
         RnEntity e = loadForUpdate(rn);
         if (e.getStatus() == RnStatus.WITHDRAWN && reissueGuard.noviBrojIzdan(e)) {
             throw new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED");
         }
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REINSTATE, actor, null);
+        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REINSTATE, actor, null, rucni);
         return e;
     }
 

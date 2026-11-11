@@ -153,7 +153,9 @@ public class RnLifecycleEmailListener {
                 return;
             }
         } else {
-            pdf = aktPdf(akt.get(), event.rn(), razlog);
+            // T16: ručni akt županije ima spremljen PDF upravo ovog prijelaza — ponovljeno slanje (MailRetryJob)
+            // ne smije renderirati akt iz kasnijeg prijelaza iste vrste.
+            pdf = rucniAkt(event, akt.get()).orElseGet(() -> aktPdf(akt.get(), event.rn(), razlog));
         }
         PriloziAkta prilozi = priloziAkta(event, pdf);
         RnLifecycleMail mail = new RnLifecycleMail(
@@ -257,11 +259,13 @@ public class RnLifecycleEmailListener {
         if (p.isSealed()) {
             return Optional.ofNullable(p.getPdfContent());
         }
-        boolean nikadPecat = p.getSmjer() == EgopPismenoEntity.Smjer.ULAZNO || !bezSifre.urudzbiv(type);
+        // T16: ručni akt županijskog službenika ne ide kroz eGOP, pa ni ne dobiva MINTS-ov pečat.
+        boolean nikadPecat = p.getSmjer() == EgopPismenoEntity.Smjer.ULAZNO || !bezSifre.urudzbiv(type) || p.isRucno();
         if (nikadPecat && p.getPdfContent() != null) {
             log.warn("rn_lifecycle_mail_unsealed_act rn={} akt={} vrsta='{}' reason={} — akt se ne pečatira,"
                             + " dostavlja se nepečaćen", event.rn(), p.getId(), p.getVrstaPismenaNaziv(),
-                    p.getSmjer() == EgopPismenoEntity.Smjer.ULAZNO ? "ulazno_pismeno" : "vrsta_bez_sifre");
+                    p.isRucno() ? "rucni_akt_zupanije"
+                            : p.getSmjer() == EgopPismenoEntity.Smjer.ULAZNO ? "ulazno_pismeno" : "vrsta_bez_sifre");
             return Optional.of(p.getPdfContent());
         }
         return Optional.empty();
@@ -294,6 +298,17 @@ public class RnLifecycleEmailListener {
             // ZAHTJEV/DODJELA/PRIGOVOR ne nastaju iz prijelaza statusa.
             default -> throw new IllegalStateException("Nema poruke za vrstu akta " + type);
         };
+    }
+
+    /** Spremljeni PDF ručnog akta županije za ovaj prijelaz; prazno za akt kroz eGOP. */
+    private Optional<byte[]> rucniAkt(RnLifecycleEvent event, StrDocumentType type) {
+        if (event.logId() == null) {
+            return Optional.empty();
+        }
+        return pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(
+                        event.rn(), event.logId().toString(), type.vrstaPismenaNaziv())
+                .filter(EgopPismenoEntity::isRucno)
+                .map(EgopPismenoEntity::getPdfContent);
     }
 
     /**

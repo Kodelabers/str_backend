@@ -56,7 +56,8 @@ class KpZaostaleInterceptor implements HandlerInterceptor {
         try {
             pokreni(request);
         } catch (RuntimeException e) {
-            log.warn("kp_api_zaostale_failed — zahtjev ide dalje: {}", e.toString());
+            log.warn("kp_api_zaostale_failed path={} — zaostale poruke nisu pokrenute, zahtjev ide dalje",
+                    request.getRequestURI(), e);
         }
         return true;
     }

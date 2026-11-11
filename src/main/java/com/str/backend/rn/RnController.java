@@ -54,11 +54,14 @@ public class RnController {
     private final CountyScopeService countyScope;
     private final RnScopeGuard scopeGuard;
     private final RnAccessGuard accessGuard;
+    private final RucniAktService rucniAkt;
 
     public RnController(RnService service, RnMapper mapper, StrDocumentService documentService,
                         RnDocumentsService documentsService, StatisticsExportService exportService,
                         InternalAccessService internalAccess, RnRegistrySearch registrySearch,
-                        CountyScopeService countyScope, RnScopeGuard scopeGuard, RnAccessGuard accessGuard) {
+                        CountyScopeService countyScope, RnScopeGuard scopeGuard, RnAccessGuard accessGuard,
+                        RucniAktService rucniAkt) {
+        this.rucniAkt = rucniAkt;
         this.service = service;
         this.countyScope = countyScope;
         this.scopeGuard = scopeGuard;
@@ -145,6 +148,9 @@ public class RnController {
      * handleru kao 500, a servis vraća 400 s prevedenom porukom (error.rn.suspend.deadline.required,
      * error.rn.withdraw.deadline.required, error.rn.withdraw.reason.required).
      *
+     * T16: županijski službenik uz svaku radnju šalje i {@code klasa} i {@code urbroj} (ručni akt bez eGOP-a,
+     * {@link RucniAktService}); službeniku ministarstva se zanemaruju.
+     *
      * Prilozi službenika (T17) idu kao ponovljeni query parametar `prilogIds=1&prilogIds=2` — id-evi
      * iz `POST /api/rn/attachments`, uz isti oblik zahtjeva kao ostali parametri (tijela nema), pa
      * poziv bez priloga ostaje kakav je bio. Najviše 5 priloga i zajedno do
@@ -158,22 +164,33 @@ public class RnController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate suspensionDeadline,
             @RequestParam(required = false) String note,
             @RequestParam(required = false) List<Long> prilogIds,
+            @RequestParam(required = false) String klasa,
+            @RequestParam(required = false) String urbroj,
             Authentication authentication) {
         requireInScope(rn, authentication);
+        RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
         return mapper.toResponse(service.suspend(rn, reason, suspensionDeadline, note, actor(authentication),
-                prilogIds != null ? prilogIds : List.of()));
+                prilogIds != null ? prilogIds : List.of(), rucni));
     }
 
     @PostMapping("/{rn}/revoke-proposal")
-    public RnResponse revokeProposal(@PathVariable String rn, Authentication authentication) {
+    public RnResponse revokeProposal(@PathVariable String rn,
+                                     @RequestParam(required = false) String klasa,
+                                     @RequestParam(required = false) String urbroj,
+                                     Authentication authentication) {
         requireInScope(rn, authentication);
-        return mapper.toResponse(service.revokeProposal(rn, actor(authentication)));
+        RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
+        return mapper.toResponse(service.revokeProposal(rn, actor(authentication), rucni));
     }
 
     @PostMapping("/{rn}/reactivate")
-    public RnResponse reactivate(@PathVariable String rn, Authentication authentication) {
+    public RnResponse reactivate(@PathVariable String rn,
+                                 @RequestParam(required = false) String klasa,
+                                 @RequestParam(required = false) String urbroj,
+                                 Authentication authentication) {
         requireInScope(rn, authentication);
-        return mapper.toResponse(service.reactivate(rn, actor(authentication)));
+        RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
+        return mapper.toResponse(service.reactivate(rn, actor(authentication), rucni));
     }
 
     /**
@@ -189,17 +206,24 @@ public class RnController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate withdrawalDeadline,
             @RequestParam(required = false) String note,
             @RequestParam(required = false) List<Long> prilogIds,
+            @RequestParam(required = false) String klasa,
+            @RequestParam(required = false) String urbroj,
             Authentication authentication) {
         requireInScope(rn, authentication);
+        RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
         return mapper.toResponse(service.proposeWithdrawal(rn, reason, withdrawalDeadline, note,
-                actor(authentication), prilogIds != null ? prilogIds : List.of()));
+                actor(authentication), prilogIds != null ? prilogIds : List.of(), rucni));
     }
 
     /** T12: obustava postupka povlačenja — broj se uvijek vraća u ACTIVE. */
     @PostMapping("/{rn}/revoke-withdrawal-proposal")
-    public RnResponse revokeWithdrawalProposal(@PathVariable String rn, Authentication authentication) {
+    public RnResponse revokeWithdrawalProposal(@PathVariable String rn,
+                                               @RequestParam(required = false) String klasa,
+                                               @RequestParam(required = false) String urbroj,
+                                               Authentication authentication) {
         requireInScope(rn, authentication);
-        return mapper.toResponse(service.revokeWithdrawalProposal(rn, actor(authentication)));
+        RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
+        return mapper.toResponse(service.revokeWithdrawalProposal(rn, actor(authentication), rucni));
     }
 
     /**

@@ -68,7 +68,10 @@ abstract class ProposalDeadlineJob {
                 log.info("{}_skipped_objection rn={} deadline={}", key, id, deadline);
                 continue;
             }
-            transitionService.transition(rn, procedure.target(), procedure.trigger(), SYSTEM_ACTOR, procedure.note());
+            // T16: ručni prijedlog županijskog službenika daje ručni akt — KLASA i izdavatelj s prijedloga, URBROJ + 1.
+            RucniAkt rucni = RucniAkt.izPrijedloga(logRepository, id, procedure.proposed()).orElse(null);
+            transitionService.transition(rn, procedure.target(), procedure.trigger(), SYSTEM_ACTOR, procedure.note(),
+                    rucni);
             log.info("{}_exceeded rn={} deadline={}", key, id, deadline);
         }
     }

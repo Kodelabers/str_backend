@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        T16: akti županijskih službenika bez eGOP-a. Službenik upisuje KLASU i URBROJ; izdavatelj na aktu je
+        njegova županija (snimak iz str.internal_organization / organizational_unit u trenutku radnje).
+
+        registration_number_log.akt_*: popunjeno samo za ručni akt. Akt koji nastane kasnije iz istog
+        postupka (istek roka, neuvažavanje očitovanja) uzima KLASU i izdavatelja s prijedloga, a URBROJ + 1.
+
+        egop_pismeno.rucno / klasa: ručni akt se zapisuje kao SYNCED i ne ide u eGOP (urudžba, pečat, KP
+        otprema), nego u korisnički pretinac preko KP API-ja (str_rn.kp_poruka, changeset 157).
+    -->
+    <changeSet id="158-rucni-akt-log" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="registration_number_log">
+            <column name="akt_klasa" type="VARCHAR(64)" remarks="KLASA ručnog akta županijskog službenika"/>
+            <column name="akt_ur_broj" type="VARCHAR(64)" remarks="URBROJ ručnog akta županijskog službenika"/>
+            <column name="akt_izdavatelj_naziv" type="VARCHAR(255)" remarks="Županija izdavatelj (internal_organization.name)"/>
+            <column name="akt_izdavatelj_oib" type="VARCHAR(11)" remarks="OIB izdavatelja (internal_organization.pin)"/>
+            <column name="akt_izdavatelj_jedinica" type="VARCHAR(255)" remarks="Ustrojstvena jedinica službenika"/>
+            <column name="akt_izdavatelj_zu_rb" type="INTEGER" remarks="rpj_dgu.zupanije.zu_rb izdavatelja"/>
+        </addColumn>
+        <rollback>
+            <dropColumn schemaName="str_rn" tableName="registration_number_log" columnName="akt_klasa"/>
+            <dropColumn schemaName="str_rn" tableName="registration_number_log" columnName="akt_ur_broj"/>
+            <dropColumn schemaName="str_rn" tableName="registration_number_log" columnName="akt_izdavatelj_naziv"/>
+            <dropColumn schemaName="str_rn" tableName="registration_number_log" columnName="akt_izdavatelj_oib"/>
+            <dropColumn schemaName="str_rn" tableName="registration_number_log" columnName="akt_izdavatelj_jedinica"/>
+            <dropColumn schemaName="str_rn" tableName="registration_number_log" columnName="akt_izdavatelj_zu_rb"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="158-rucni-akt-pismeno" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="egop_pismeno">
+            <column name="klasa" type="VARCHAR(64)" remarks="KLASA ručnog akta (eGOP akti klasu drže na predmetu)"/>
+            <column name="rucno" type="BOOLEAN" defaultValueBoolean="false"
+                    remarks="Ručni akt županijskog službenika: ne ide u eGOP">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn schemaName="str_rn" tableName="egop_pismeno" columnName="klasa"/>
+            <dropColumn schemaName="str_rn" tableName="egop_pismeno" columnName="rucno"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

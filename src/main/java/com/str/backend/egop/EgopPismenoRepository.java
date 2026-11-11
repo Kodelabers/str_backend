@@ -34,6 +34,7 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
     @Query("""
             SELECT COUNT(p) FROM EgopPismenoEntity p
             WHERE p.urBroj IS NOT NULL
+              AND p.rucno = false
               AND p.submissionId IN (SELECT s.submissionId FROM SubmissionEntity s
                                       WHERE s.egopUredskaGodina = :uredskaGodina
                                         AND s.egopRbrPredmeta = :rbrPredmeta)

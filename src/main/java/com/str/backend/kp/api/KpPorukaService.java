@@ -145,6 +145,9 @@ public class KpPorukaService {
             try {
                 odgovor = client.posalji(sessionId, zahtjev(poruka));
             } catch (RuntimeException e) {
+                // PDF akta ili prilog nisu pročitani — puni uzrok ovdje, kratki u kp_poruka.greska.
+                log.warn("kp_api_priprema_pala id_poruke={} rn={} dio={} pismeno={}", id, poruka.getRn(), poruka.getDio(),
+                        poruka.getPismenoId(), e);
                 odgovor = new Odgovor(KpApiClient.Ishod.GRESKA, 0,
                         KpApiClient.skrati("priprema: " + e.getClass().getSimpleName() + ": " + e.getMessage()));
             }

@@ -341,7 +341,8 @@ public class ZupDocumentRenderer {
      */
     private void epecat(Odrediste odrediste, ZupTemplate template, Map<String, String> ctx)
             throws DocumentException, IOException {
-        if (!properties.epecat().enabled() || !aktTijela(template)) {
+        if (!properties.epecat().enabled() || !aktTijela(template)
+                || "true".equals(ctx.get(ZupContextFactory.BEZ_EPECATA))) {
             return;
         }
         Paragraph razmak = new Paragraph(" ", FNT_TEKST);

@@ -71,6 +71,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RnDocumentAccessTest {
 
     /** Bez odabrane pravne osobe (mock vraća prazno) — efektivni OIB je OIB osobe. */
+    @MockBean com.str.backend.rn.RucniAktService rucniAktService;
     @MockBean ActingSubjectService actingSubjectService;
 
     /** Bez stubiranja nitko nema rolu — pojedini testovi je daju službeniku. */
@@ -165,7 +166,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN)).andExpect(status().isUnauthorized());
 
-        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -189,8 +190,8 @@ class RnDocumentAccessTest {
                         .with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
-        verify(service, never()).suspend(any(), any(), any(), any(), any(), any());
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any(), any());
+        verify(service, never()).suspend(any(), any(), any(), any(), any(), any(), any());
         verifyNoInteractions(registrySearch, exportService);
     }
 
@@ -292,8 +293,8 @@ class RnDocumentAccessTest {
                 .andExpect(status().isOk());
 
         verify(service).proposeWithdrawal(RN, com.str.backend.domain.WithdrawalReason.OTHER,
-                java.time.LocalDate.of(2099, 1, 31), "opis", "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L));
-        verify(service).revokeWithdrawalProposal(RN, "INTERNAL:" + OFFICIAL_OIB);
+                java.time.LocalDate.of(2099, 1, 31), "opis", "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L), null);
+        verify(service).revokeWithdrawalProposal(RN, "INTERNAL:" + OFFICIAL_OIB, null);
     }
 
     /** Bez prijave nema prijedloga povlačenja. */
@@ -302,7 +303,7 @@ class RnDocumentAccessTest {
         mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN)).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/rn/{rn}/revoke-withdrawal-proposal", RN)).andExpect(status().isUnauthorized());
 
-        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -321,7 +322,7 @@ class RnDocumentAccessTest {
                 .andExpect(status().isOk());
 
         verify(service).suspend(RN, com.str.backend.domain.RnTrigger.INSPECTION, java.time.LocalDate.of(2099, 1, 31),
-                null, "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L));
+                null, "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L), null);
     }
 
     /** CSRF: bez X-Requested-With mutirajuća radnja ne prolazi ni službeniku s rolom. */
@@ -332,7 +333,7 @@ class RnDocumentAccessTest {
         mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN).with(authentication(official())))
                 .andExpect(status().isForbidden());
 
-        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any());
+        verify(service, never()).proposeWithdrawal(any(), any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -411,7 +412,7 @@ class RnDocumentAccessTest {
                 .andExpect(status().isNotFound());
 
         verify(service, never()).detailView(any());
-        verify(service, never()).suspend(any(), any(), any(), any(), any(), any());
+        verify(service, never()).suspend(any(), any(), any(), any(), any(), any(), any());
     }
 
     /** Ista županija zapisana drugačije (bez „županija") i dalje je u opsegu. */
@@ -431,7 +432,7 @@ class RnDocumentAccessTest {
 
         verify(service).detailView(RN);
         verify(service).suspend(eq(RN), eq(com.str.backend.domain.RnTrigger.INSPECTION), isNull(), isNull(),
-                eq("INTERNAL:" + OFFICIAL_OIB), eq(java.util.List.of()));
+                eq("INTERNAL:" + OFFICIAL_OIB), eq(java.util.List.of()), any());
     }
 
     /** Vlasnik vidi svoj RB bez obzira na opseg — opseg ograničava samo službenika. */
