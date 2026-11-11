@@ -691,24 +691,28 @@ ORDER BY o.id DESC LIMIT 50;
 
 Akti **županijskih službenika** (bez eGOP-a) idu u korisnički pretinac preko eTurizmova KP API-ja
 (`str-internal-api/kp-api`), samo fizičkim osobama; pravne osobe i non-EU samo e-poštom. Prijava je
-**isključivo NIAS sesijom** službenika: poruka se šalje odmah nakon radnje, a ono što tada ne prođe ili
-nastane bez sesije (noćni posao) šalje sljedeći zahtjev službenika iste županije. Adresa
+**HTTP Basic** tehničkim korisnikom STR-a (dostavlja eTurizam). Poruka se šalje odmah nakon radnje, a ono
+što ne prođe ili nastane u noćnom poslu šalje retry posao svakih 5 minuta. Adresa
 (`https://et2-test-internal-eturizam.gov.hr/str-internal-api/kp-api`) i šifra poruke (1741) su zadane u
 `application-cdu.properties`.
 
 ```bash
 STR_KP_API_ENABLED=true
+STR_KP_API_USERNAME=<korisnik od eTurizma>
+STR_KP_API_PASSWORD=<lozinka od eTurizma>
 #STR_KP_API_TIP_PORUKE=1741
 #STR_KP_API_BASE_URL=https://et2-test-internal-eturizam.gov.hr/str-internal-api/kp-api
 ```
 
 | Redak | Značenje |
 | :--- | :--- |
-| `startup_kp_api enabled=… base_url=… tip_poruke=…` | konfiguracija pri startu; WARN kad je uključeno, a nedostaje adresa ili šifra |
-| `kp_api_zabiljezeno rn=… poruka=N raspored=… sesija=true/false` | akt je dobio N poruka (više kad prilozi prelaze 3 MB); `sesija=false` = čeka službenika županije |
+| `startup_kp_api enabled=… aktivno=… korisnik=… lozinka=postavljena` | konfiguracija pri startu; WARN `nedostaje=[…]` kad je uključeno, a nešto fali |
+| `kp_api_zabiljezeno rn=… poruka=N raspored=…` | akt je dobio N poruka (više kad prilozi prelaze 3 MB); šalju se odmah nakon commita |
 | `kp_api_poslano id_poruke=…` | KP je zaprimio poruku |
 | `kp_api_konacno … ishod=NEMA_PRETINCA/ODBIJENO/NEISPRAVNO` | konačno, bez ponavljanja; akt je dostavljen e-poštom |
-| `kp_api_sesija … http=302/401` (WARN) | sesija nije prihvaćena; poruka čeka drugu sesiju, pokušaj se ne broji |
+| `kp_api_prijava_odbijena … http=401/403/302 greska=…` (**ERROR**) | KP API je odbio prijavu; `greska` nosi opis iz odgovora (npr. CSRF, uloga). Provjeriti korisnika i lozinku; poruka čeka 5 min, pokušaj se ne broji |
+| `kp_api_retry_start poruka=N` / `kp_api_retry_done predano=N` | retry posao predaje poolu poruke koje nisu otišle odmah; ishod svake je u `kp_api_*` retku s `id_poruke` |
+| `startup_kp_api_http` (WARN) | adresa je `http://` — lozinka ide nekriptirano; na CDU-u i produkciji mora biti `https://` |
 | `kp_api_neuspjeh … sljedeci=…` (WARN) | 502, timeout ili veza; ponavlja se s istim `idPoruke` nakon odgode |
 | `kp_api_exhausted …` (**ERROR**) | iscrpljeni pokušaji, poruka nije u pretincu |
 

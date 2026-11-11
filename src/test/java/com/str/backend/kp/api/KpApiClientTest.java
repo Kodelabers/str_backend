@@ -33,7 +33,9 @@ class KpApiClientTest {
 
     @BeforeEach
     void setUp() {
-        RestClient.Builder builder = RestClient.builder().baseUrl(BASE);
+        KpApiProperties properties = new KpApiProperties(true, BASE, "short-term-rental", "tajna", 1741, null, null,
+                null, null, null, null, null, null, null, null);
+        RestClient.Builder builder = KpApiConfig.configure(RestClient.builder(), properties);
         server = MockRestServiceServer.bindTo(builder).build();
         client = new KpApiClient(builder.build());
     }
@@ -48,13 +50,13 @@ class KpApiClientTest {
                 .andRespond(withStatus(status).contentType(MediaType.APPLICATION_JSON).body(tijelo));
     }
 
-    /** Sesija ide kao cookie SESSION=base64(id), kao u pregledniku; tijelo je oblik iz specifikacije. */
+    /** Prijava je HTTP Basic tehničkim korisnikom; tijelo je oblik iz specifikacije. */
     @Test
-    void posalji_saljeSesijuITijelo() {
-        String cookie = "SESSION=" + Base64.getEncoder().encodeToString("sesija-1".getBytes(StandardCharsets.UTF_8));
+    void posalji_saljeBasicPrijavuITijelo() {
+        String basic = "Basic " + Base64.getEncoder().encodeToString("short-term-rental:tajna".getBytes(StandardCharsets.UTF_8));
         server.expect(requestTo(BASE + "/poruke"))
                 .andExpect(method(org.springframework.http.HttpMethod.POST))
-                .andExpect(header("Cookie", cookie))
+                .andExpect(header("Authorization", basic))
                 .andExpect(jsonPath("$.idPoruke").value(ID.toString()))
                 .andExpect(jsonPath("$.tipPoruke").value(1741))
                 .andExpect(jsonPath("$.oib").value("12312312316"))
@@ -65,8 +67,25 @@ class KpApiClientTest {
                 .andRespond(withStatus(HttpStatus.CREATED).contentType(MediaType.APPLICATION_JSON)
                         .body("{\"status\":\"POSLANO\"}"));
 
-        assertThat(client.posalji("sesija-1", poruka("334-06/26-01/1")).ishod()).isEqualTo(Ishod.POSLANO);
+        assertThat(client.posalji(poruka("334-06/26-01/1")).ishod()).isEqualTo(Ishod.POSLANO);
         server.verify();
+    }
+
+    /** Lozinka sa znakom izvan ISO-8859-1 ne ruši start; kodira se UTF-8, kao što KP API dekodira. */
+    @Test
+    void lozinkaSaZnakovimaIzvanLatin1_utf8() {
+        KpApiProperties properties = new KpApiProperties(true, BASE, "short-term-rental", "lozinka-čćž€", 1741, null,
+                null, null, null, null, null, null, null, null, null);
+        RestClient.Builder builder = KpApiConfig.configure(RestClient.builder(), properties);
+        MockRestServiceServer utf8Server = MockRestServiceServer.bindTo(builder).build();
+        String basic = "Basic " + Base64.getEncoder()
+                .encodeToString("short-term-rental:lozinka-čćž€".getBytes(StandardCharsets.UTF_8));
+        utf8Server.expect(requestTo(BASE + "/poruke"))
+                .andExpect(header("Authorization", basic))
+                .andRespond(withStatus(HttpStatus.CREATED));
+
+        assertThat(new KpApiClient(builder.build()).posalji(poruka(null)).ishod()).isEqualTo(Ishod.POSLANO);
+        utf8Server.verify();
     }
 
     @Test
@@ -76,13 +95,13 @@ class KpApiClientTest {
                 .andExpect(jsonPath("$.urBroj").doesNotExist())
                 .andRespond(withStatus(HttpStatus.CREATED));
 
-        assertThat(client.posalji("s", poruka(null)).ishod()).isEqualTo(Ishod.POSLANO);
+        assertThat(client.posalji(poruka(null)).ishod()).isEqualTo(Ishod.POSLANO);
     }
 
     @Test
     void vecPoslana_200() {
         odgovor(HttpStatus.OK, "{\"status\":\"POSLANO\"}");
-        assertThat(client.posalji("s", poruka(null)).ishod()).isEqualTo(Ishod.POSLANO);
+        assertThat(client.posalji(poruka(null)).ishod()).isEqualTo(Ishod.POSLANO);
     }
 
     @Test
@@ -90,7 +109,7 @@ class KpApiClientTest {
         odgovor(HttpStatus.UNPROCESSABLE_ENTITY,
                 "{\"status\":\"NEMA_PRETINCA\",\"greska\":\"K006: OIB iz poruke nema aktivan Korisnički pretinac.\"}");
 
-        KpApiClient.Odgovor o = client.posalji("s", poruka(null));
+        KpApiClient.Odgovor o = client.posalji(poruka(null));
 
         assertThat(o.ishod()).isEqualTo(Ishod.NEMA_PRETINCA);
         assertThat(o.greska()).startsWith("K006");
@@ -101,20 +120,20 @@ class KpApiClientTest {
         odgovor(HttpStatus.UNPROCESSABLE_ENTITY,
                 "{\"status\":\"ODBIJENO\",\"greska\":\"K013: Niste registrirani za slanje navedenog tipa poruke\"}");
 
-        assertThat(client.posalji("s", poruka(null)).ishod()).isEqualTo(Ishod.ODBIJENO);
+        assertThat(client.posalji(poruka(null)).ishod()).isEqualTo(Ishod.ODBIJENO);
     }
 
     @Test
     void kpNedostupan_502_ponavlja() {
         odgovor(HttpStatus.BAD_GATEWAY, "{\"status\":\"GRESKA\",\"greska\":\"Greška u komunikaciji\"}");
-        assertThat(client.posalji("s", poruka(null)).ishod()).isEqualTo(Ishod.GRESKA);
+        assertThat(client.posalji(poruka(null)).ishod()).isEqualTo(Ishod.GRESKA);
     }
 
     @Test
     void sukob_409_ponavlja() {
         odgovor(HttpStatus.CONFLICT, "{\"greska\":\"SUKOB\",\"poruka\":\"idPoruke već je iskorišten\"}");
 
-        KpApiClient.Odgovor o = client.posalji("s", poruka(null));
+        KpApiClient.Odgovor o = client.posalji(poruka(null));
 
         assertThat(o.ishod()).isEqualTo(Ishod.GRESKA);
         assertThat(o.greska()).isEqualTo("SUKOB: idPoruke već je iskorišten");
@@ -123,25 +142,25 @@ class KpApiClientTest {
     @Test
     void neispravanZahtjev_400_konacno() {
         odgovor(HttpStatus.BAD_REQUEST, "{\"greska\":\"NEISPRAVAN_ZAHTJEV\",\"poruka\":\"oib mora sadržavati 11 znamenki\"}");
-        assertThat(client.posalji("s", poruka(null)).ishod()).isEqualTo(Ishod.NEISPRAVNO);
+        assertThat(client.posalji(poruka(null)).ishod()).isEqualTo(Ishod.NEISPRAVNO);
     }
 
-    /** Sesiju koju servis ne prepozna NIAS preusmjerava na prijavu (302), ili odbija (401). */
+    /** Odbijena prijava: preusmjerenje na prijavu (302) ili 401/403 — opis kaže zašto. */
     @Test
     void neprihvacenaSesija_302i401() {
         server.expect(requestTo(BASE + "/poruke")).andRespond(withStatus(HttpStatus.FOUND)
                 .header("Location", "/saml2/authenticate/nias"));
         server.expect(requestTo(BASE + "/poruke")).andRespond(withStatus(HttpStatus.UNAUTHORIZED));
 
-        assertThat(client.posalji("s", poruka(null)).ishod()).isEqualTo(Ishod.NEAUTORIZIRAN);
-        assertThat(client.posalji("s", poruka(null)).ishod()).isEqualTo(Ishod.NEAUTORIZIRAN);
+        assertThat(client.posalji(poruka(null)).ishod()).isEqualTo(Ishod.NEAUTORIZIRAN);
+        assertThat(client.posalji(poruka(null)).ishod()).isEqualTo(Ishod.NEAUTORIZIRAN);
     }
 
     @Test
     void greskaVeze_ponavlja() {
         server.expect(requestTo(BASE + "/poruke")).andRespond(withException(new java.net.SocketTimeoutException("Read timed out")));
 
-        KpApiClient.Odgovor o = client.posalji("s", poruka(null));
+        KpApiClient.Odgovor o = client.posalji(poruka(null));
 
         assertThat(o.ishod()).isEqualTo(Ishod.GRESKA);
         assertThat(o.greska()).contains("SocketTimeoutException");
@@ -151,5 +170,17 @@ class KpApiClientTest {
     void necitljivoTijelo_neRusi() {
         assertThat(KpApiClient.odgovor(500, "<html>").ishod()).isEqualTo(Ishod.GRESKA);
         assertThat(KpApiClient.odgovor(422, "").ishod()).isEqualTo(Ishod.ODBIJENO);
+    }
+
+    /** 403 nosi opis iz tijela (JSON ili HTML), 302 odredište — da se iz loga vidi zašto. */
+    @Test
+    void odbijenaPrijava_opisIzOdgovora() {
+        KpApiClient.Odgovor json = KpApiClient.odgovor(403, "{\"error\":\"Forbidden\",\"message\":\"Invalid CSRF token\"}", null);
+        KpApiClient.Odgovor html = KpApiClient.odgovor(403, "<html><body><h1>Pristup odbijen</h1></body></html>", null);
+        KpApiClient.Odgovor redirect = KpApiClient.odgovor(302, "", "/saml2/authenticate/nias");
+
+        assertThat(json.ishod()).isEqualTo(Ishod.NEAUTORIZIRAN);
+        assertThat(html.greska()).isEqualTo("prijava odbijena: HTTP 403 — Pristup odbijen");
+        assertThat(redirect.greska()).isEqualTo("prijava odbijena: HTTP 302 preusmjerenje na /saml2/authenticate/nias");
     }
 }

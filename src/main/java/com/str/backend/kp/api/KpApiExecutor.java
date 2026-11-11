@@ -8,8 +8,8 @@ import java.util.concurrent.Executor;
 
 /**
  * Ograničeni pool za slanje u KP API izvan niti zahtjeva, kao {@code EgopKpExecutor}: odgovor službeniku
- * ne čeka KP. Poruka je zapisana prije slanja, pa je odbijanje zadatka bezopasno — šalje je sljedeći
- * zahtjev službenika iste županije. Namjerno nije {@code Executor} bean ni {@code @Async}.
+ * ne čeka KP. Poruka je zapisana prije slanja, pa je odbijanje zadatka bezopasno — šalje je
+ * {@link KpApiRetryJob}. Namjerno nije {@code Executor} bean ni {@code @Async}.
  */
 public class KpApiExecutor {
 
@@ -24,7 +24,7 @@ public class KpApiExecutor {
         p.setMaxPoolSize(properties.poolSize());
         p.setQueueCapacity(properties.queueCapacity());
         p.setRejectedExecutionHandler((task, pool) ->
-                log.warn("kp_api_async_rejected queue={} — poruku šalje sljedeći zahtjev službenika",
+                log.warn("kp_api_async_rejected queue={} — poruku šalje retry posao",
                         pool.getQueue().size()));
         p.setWaitForTasksToCompleteOnShutdown(true);
         p.setAwaitTerminationSeconds(20);

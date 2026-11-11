@@ -22,7 +22,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -30,10 +29,10 @@ import java.util.regex.Pattern;
  * Dostava akata u korisnički pretinac preko KP API-ja (T16) — outbox {@code str_rn.kp_poruka}.
  *
  * <ul>
- *   <li>{@link #zabiljezi} — u transakciji radnje: poruke nastaju zajedno s aktom. Kad radnju radi
- *       službenik (postoji sesija), nakon commita se odmah šalju njegovom sesijom, izvan niti zahtjeva.</li>
- *   <li>{@link #posaljiZaostale} — poruke bez sesije (noćni posao) ili one koje nisu prošle šalje sljedeći
- *       zahtjev službenika iste županije ({@link KpZaostaleInterceptor}).</li>
+ *   <li>{@link #zabiljezi} — u transakciji radnje: poruke nastaju zajedno s aktom i nakon commita se odmah
+ *       šalju, izvan niti zahtjeva ({@link KpPorukaListener}).</li>
+ *   <li>{@link #posaljiDospjele} — što nije prošlo (502, timeout, odbijena prijava, pun pool) šalje
+ *       {@link KpApiRetryJob}.</li>
  *   <li>{@link #posalji} — jedan pokušaj: zauzmi poruku (kratka transakcija), pozovi KP API bez otvorene
  *       transakcije, zabilježi ishod (kratka transakcija). Nikad ne baca.</li>
  * </ul>
@@ -109,33 +108,35 @@ public class KpPorukaService {
                     KpPorukaPlan.ime(akt.nazivAkta()), d.prilozi(), now));
             ids.add(e.getIdPoruke());
         }
-        Optional<String> sesija = KpSesija.trenutna();
-        sesija.ifPresent(s -> events.publishEvent(new KpPorukeZabiljezene(ids, s)));
-        log.info("kp_api_zabiljezeno rn={} pismeno={} tip={} poruka={} raspored={} sesija={}",
-                akt.rn(), akt.pismenoId(), tip, ids.size(), KpPorukaPlan.opis(dijelovi), sesija.isPresent());
+        events.publishEvent(new KpPorukeZabiljezene(ids));
+        log.info("kp_api_zabiljezeno rn={} pismeno={} tip={} poruka={} raspored={}",
+                akt.rn(), akt.pismenoId(), tip, ids.size(), KpPorukaPlan.opis(dijelovi));
         return ids;
     }
 
-    /** Šalje poruke izvan niti zahtjeva, sesijom koja je predana. */
-    public void posaljiAsync(List<UUID> ids, String sessionId) {
+    /** Šalje poruke izvan niti zahtjeva. */
+    public void posaljiAsync(List<UUID> ids) {
         for (UUID id : ids) {
-            executor.submit(() -> posalji(id, sessionId));
+            executor.submit(() -> posalji(id));
         }
     }
 
-    /** Pokreće slanje najviše {@code max-po-zahtjevu} slobodnih poruka županije, sesijom službenika. */
-    public int posaljiZaostale(int zuRb, String sessionId) {
-        List<UUID> ids = repository.slobodneZupanije(zuRb, clock.instant(),
-                PageRequest.of(0, properties.maxPoZahtjevu()));
+    /**
+     * Predaje poolu do {@code batch-size} dospjelih poruka (retry posao); vraća koliko ih je uzeto.
+     * Ne šalje na niti posla: scheduler je zajednički (eGOP, noćni poslovi), a jedan poziv KP-a može čekati
+     * {@code connect-timeout + read-timeout}. Poruku koja se i dalje šalje zauzeće štiti od dvostrukog slanja.
+     */
+    public int posaljiDospjele() {
+        List<UUID> ids = repository.slobodne(clock.instant(), PageRequest.of(0, properties.batchSize()));
         if (!ids.isEmpty()) {
-            log.info("kp_api_zaostale zu_rb={} poruka={}", zuRb, ids.size());
-            posaljiAsync(ids, sessionId);
+            log.info("kp_api_retry_start poruka={}", ids.size());
+            posaljiAsync(ids);
         }
         return ids.size();
     }
 
     /** Jedan pokušaj slanja. Nikad ne baca. */
-    public void posalji(UUID id, String sessionId) {
+    public void posalji(UUID id) {
         try {
             KpPorukaEntity poruka = zauzmi(id);
             if (poruka == null) {
@@ -143,7 +144,7 @@ public class KpPorukaService {
             }
             Odgovor odgovor;
             try {
-                odgovor = client.posalji(sessionId, zahtjev(poruka));
+                odgovor = client.posalji(zahtjev(poruka));
             } catch (RuntimeException e) {
                 // PDF akta ili prilog nisu pročitani — puni uzrok ovdje, kratki u kp_poruka.greska.
                 log.warn("kp_api_priprema_pala id_poruke={} rn={} dio={} pismeno={}", id, poruka.getRn(), poruka.getDio(),
@@ -204,9 +205,12 @@ public class KpPorukaService {
                             id, e.getRn(), odgovor.ishod(), odgovor.greska());
                 }
                 case NEAUTORIZIRAN -> {
-                    e.oslobodi(odgovor.greska(), now);
-                    log.warn("kp_api_sesija id_poruke={} rn={} http={} — sesija nije prihvaćena, poruka čeka drugu "
-                            + "sesiju (pokušaj se ne broji)", id, e.getRn(), odgovor.httpStatus());
+                    // Prijava je konfiguracija, ne poruka: pokušaj se ne broji, poruka čeka da se prijava popravi.
+                    e.odgodi(odgovor.greska(), now.plus(properties.backoffBase()), now);
+                    log.error("kp_api_prijava_odbijena id_poruke={} rn={} http={} greska={} — provjeriti "
+                                    + "STR_KP_API_USERNAME / STR_KP_API_PASSWORD; poruka čeka (pokušaj se ne broji), "
+                                    + "sljedeći {}", id, e.getRn(), odgovor.httpStatus(), odgovor.greska(),
+                            e.getNextAttemptAt());
                 }
                 case GRESKA -> {
                     int pokusaja = e.getAttempts() + 1;
