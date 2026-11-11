@@ -125,9 +125,8 @@ public class StrDocumentService {
     }
 
     /**
-     * KLASA je na predmetu, a predmet na submissionu. Zahtjev, obavijest o dodjeli i zahtjev za
-     * promjenu podataka (odnosi se na registrirane podatke, ne urudžbira se) nose klasu registracije
-     * (334-06/10), akti nakon dodjele klasu predmeta akata (334-06/11). Dok predmet akata
+     * KLASA je na predmetu, a predmet na submissionu. Zahtjev i obavijest o dodjeli nose klasu
+     * registracije (334-06/10), akti nakon dodjele klasu predmeta akata (334-06/11). Dok predmet akata
      * ne postoji (prvi akt RB-a, prije urudžbe), klase nema — bolje nego klasa tuđeg predmeta;
      * konačni dokument s klasom i urbrojem renderira se nakon urudžbe ({@code EgopAktDispatcher}).
      */
@@ -135,8 +134,7 @@ public class StrDocumentService {
         if (detail.submissionId() == null) {
             return null;
         }
-        boolean registracija = type == StrDocumentType.DODJELA || type == StrDocumentType.ZAHTJEV
-                || type == StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA;
+        boolean registracija = type == StrDocumentType.DODJELA || type == StrDocumentType.ZAHTJEV;
         return submissionRepository.findById(detail.submissionId())
                 .map(s -> registracija ? s.getEgopKlasa() : s.getEgopAktiKlasa())
                 .orElse(null);

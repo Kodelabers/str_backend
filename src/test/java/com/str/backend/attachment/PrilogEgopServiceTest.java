@@ -288,8 +288,9 @@ class PrilogEgopServiceTest {
         when(repository.findSazeciVlasnika(VrstaVlasnika.RN_LOG, logId)).thenReturn(new ArrayList<>());
 
         service.prilozi(akt(logId, EgopPismenoEntity.Smjer.IZLAZNO, 1003), "x");
-        service.prilozi(EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", "ZAHTJEV_PROMJENE_PODATAKA",
-                "Zahtjev za promjenu podataka", EgopPismenoEntity.Smjer.ULAZNO, new byte[]{1}), "x");
+        // act_ref koji nije id zapisa u logu: pismo nema vlasnika priloga.
+        service.prilozi(EgopPismenoEntity.forAct(UUID.randomUUID(), "HR1", "BEZ_LOG_ID",
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, new byte[]{1}), "x");
 
         verifyNoInteractions(egopClient);
     }
