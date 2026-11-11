@@ -6,23 +6,30 @@ import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
+import com.str.backend.domain.RnStatus;
+import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.auth.internal.CountyScope;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.StrFacilityRepository;
+import com.str.backend.str.StrFacilityRepository.RegisteredFacilityRow;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Interni pregled skeniranih rješenja o kategorizaciji za nadležno tijelo. Radi isključivo nad
@@ -37,22 +44,28 @@ import java.util.stream.Collectors;
 @Service
 public class AdminCategorizationDecisionService {
 
+    /** Konačni statusi RB-a: uz njih se upis objekta u TuRegistar više ne potvrđuje (T19). */
+    private static final Set<RnStatus> FINAL_RN_STATUSES = Set.of(RnStatus.REVOKED, RnStatus.WITHDRAWN);
+
     private final CategorizationDecisionRepository repository;
     private final AdminAuditService auditService;
     private final InternalAccessService internalAccess;
     private final LessorRepository lessorRepository;
     private final RnRepository rnRepository;
+    private final StrFacilityRepository facilityRepository;
 
     public AdminCategorizationDecisionService(CategorizationDecisionRepository repository,
                                               AdminAuditService auditService,
                                               InternalAccessService internalAccess,
                                               LessorRepository lessorRepository,
-                                              RnRepository rnRepository) {
+                                              RnRepository rnRepository,
+                                              StrFacilityRepository facilityRepository) {
         this.repository = repository;
         this.auditService = auditService;
         this.internalAccess = internalAccess;
         this.lessorRepository = lessorRepository;
         this.rnRepository = rnRepository;
+        this.facilityRepository = facilityRepository;
     }
 
     /**
@@ -75,20 +88,52 @@ public class AdminCategorizationDecisionService {
                     : repository.findForReviewInCounties(scopeCounties, pageable);
         }
         // Jedan upit za imena svih službenika na stranici, ne po retku; isto za porezne brojeve.
-        Map<String, String> names = internalAccess.displayNames(
-                page.getContent().stream().map(CategorizationDecisionEntity::getVerifiedBy).toList());
+        Map<String, String> names = internalAccess.displayNames(page.getContent().stream()
+                .flatMap(e -> Stream.of(e.getVerifiedBy(), e.getRegisteredBy()))
+                .filter(Objects::nonNull)
+                .toList());
         Map<UUID, String> taxNumbers = taxNumbers(page.getContent());
-        return page.map(e -> CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy()),
-                taxNumbers.get(e.getLessorId())));
+        Map<String, RnStatus> rnStatuses = rnStatuses(page.getContent());
+        return page.map(e -> CategorizationDecisionAdminDto.of(e, name(names, e.getVerifiedBy()),
+                name(names, e.getRegisteredBy()), taxNumbers.get(e.getLessorId()),
+                registrationConfirmable(e, rnStatuses.get(e.getRn()))));
     }
 
     @Transactional(readOnly = true)
     public CategorizationDecisionAdminDto detail(UUID id, CountyScope scope) {
         CategorizationDecisionEntity e = findOrThrow(id, scope);
         Map<String, String> names = internalAccess.displayNames(
-                e.getVerifiedBy() == null ? List.of() : List.of(e.getVerifiedBy()));
-        return CategorizationDecisionAdminDto.of(e, names.get(e.getVerifiedBy()),
-                taxNumbers(List.of(e)).get(e.getLessorId()));
+                Stream.of(e.getVerifiedBy(), e.getRegisteredBy()).filter(Objects::nonNull).toList());
+        return CategorizationDecisionAdminDto.of(e, name(names, e.getVerifiedBy()), name(names, e.getRegisteredBy()),
+                taxNumbers(List.of(e)).get(e.getLessorId()),
+                registrationConfirmable(e, rnStatuses(List.of(e)).get(e.getRn())));
+    }
+
+    /** Status RB-a po broju, jednim upitom za cijelu stranicu; stari samostalni uploadi RB nemaju. */
+    private Map<String, RnStatus> rnStatuses(List<CategorizationDecisionEntity> decisions) {
+        Set<String> rns = decisions.stream()
+                .map(CategorizationDecisionEntity::getRn)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (rns.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return rnRepository.findAllById(rns).stream()
+                .collect(Collectors.toMap(RnEntity::getRn, RnEntity::getStatus));
+    }
+
+    /**
+     * Nudi li se „Potvrda upisa objekta" (T19) — isto pravilo kao {@link #confirmRegistration}, da sučelje
+     * ne nudi radnju koju backend odbija: prihvaćeno, još neupisano rješenje uz RB koji nije opozvan ni povučen.
+     */
+    private static boolean registrationConfirmable(CategorizationDecisionEntity e, RnStatus rnStatus) {
+        return e.getStatus() == CategorizationDecisionStatus.VERIFIED && !e.isRegistered()
+                && rnStatus != null && !FINAL_RN_STATUSES.contains(rnStatus);
+    }
+
+    /** Ime službenika; akter je {@code null} dok radnje nema (nepromjenjiva mapa ne podnosi {@code get(null)}). */
+    private static String name(Map<String, String> names, String actor) {
+        return actor == null ? null : names.get(actor);
     }
 
     /**
@@ -120,9 +165,56 @@ public class AdminCategorizationDecisionService {
         CategorizationDecisionEntity e = findOrThrow(id, scope);
         e.verify(actor);
         auditService.record(actor, "CATEGORIZATION_VERIFY", "CATEGORIZATION_DECISION", id.toString(), null);
-        // TODO(eTurizam): kad MINTS/Simon potvrde tko upisuje objekt u eTurizam registar, ovdje
-        //   ide upis objekta + dodjela facility_id (e.assignFacility(...)). Do tada je VERIFIED
-        //   čista oznaka — str.* nam je read-only, pa upis vjerojatno radi eTurizam servis.
+    }
+
+    /**
+     * „Potvrda upisa objekta" (T19). Nakon što prihvati rješenje, službenik novi objekt upisuje u
+     * interni eTurizam i pritom na njega upisuje dodijeljeni RB. Ovdje se provjerava da aktivna
+     * jedinica s tim RB-om postoji, pa se rješenje veže uz nju („Nije upisano" → „Upisano").
+     *
+     * <p>Vlasnik objekta se namjerno ne uspoređuje s iznajmljivačem RB-a: RB je upisao službenik, a
+     * obrt i OPG eTurizam vodi pod MBO/MIBPG, ne pod OIB-om. Veza se piše samo na rješenje, ne na
+     * {@code accommodation.facility_id} — ostali tokovi RB-a ga i dalje vide kao novi objekt.
+     *
+     * <p>Kad je RB upisan na jedinice dvaju različitih objekata, službenik to mora ispraviti u eTurizmu —
+     * STR ne bira umjesto njega. Jedinice istog objekta su u redu; veže se najnovija. Opozvan ili povučen RB
+     * se ne potvrđuje.
+     *
+     * <p>Dva službenika koja istodobno potvrde isto rješenje oba prođu provjeru i zapišu istu jedinicu
+     * (traži se po istom RB-u), pa je ishod isti; ostaju samo dva zapisa u auditu.
+     */
+    @Transactional
+    public void confirmRegistration(UUID id, CountyScope scope, String actor) {
+        CategorizationDecisionEntity e = findOrThrow(id, scope);
+        // Prije upita u eTurizam, da dvoklik ili već obrađen zapis ne čita str.* uzalud; isti 409 kao entitet.
+        e.requireRegistrable();
+        // Stari samostalni upload nema RB, pa ga se po RB-u ne može ni pronaći.
+        if (e.getRn() == null) {
+            throw new ConflictException("error.categorization.noRn", "CATEGORIZATION_NO_RN");
+        }
+        // Opozvan ili povučen broj više ne vrijedi — u TuRegistar se ne upisuje.
+        RnStatus rnStatus = rnRepository.findById(e.getRn()).map(RnEntity::getStatus).orElse(null);
+        if (rnStatus == null || FINAL_RN_STATUSES.contains(rnStatus)) {
+            throw new ConflictException("error.categorization.rnFinal", "CATEGORIZATION_RN_FINAL");
+        }
+        List<RegisteredFacilityRow> units = facilityRepository.findActiveByRegistrationNumber(e.getRn());
+        if (units.isEmpty()) {
+            throw new ConflictException("error.categorization.facilityNotFound", "CATEGORIZATION_FACILITY_NOT_FOUND");
+        }
+        long objects = units.stream()
+                .map(u -> u.getObjectId() != null ? u.getObjectId() : "unit:" + u.getFacilityId())
+                .distinct()
+                .count();
+        if (objects > 1) {
+            throw new ConflictException("error.categorization.facilityAmbiguous", "CATEGORIZATION_FACILITY_AMBIGUOUS");
+        }
+        String facilityId = String.valueOf(units.stream()
+                .max(Comparator.comparingLong(RegisteredFacilityRow::getFacilityId))
+                .orElseThrow()
+                .getFacilityId());
+        e.confirmRegistration(facilityId, actor);
+        auditService.record(actor, "CATEGORIZATION_REGISTRATION_CONFIRM", "CATEGORIZATION_DECISION", id.toString(),
+                "facilityId=" + facilityId);
     }
 
     @Transactional

@@ -89,9 +89,20 @@ public class CategorizationDecisionEntity {
     @Column(name = "rn", updatable = false, length = 20)
     private String rn;
 
-    /** Popunjava se kad nadležno tijelo objekt upiše u eTurizam; do tada zapis živi samo kod nas. */
+    /**
+     * Jedinica u TuRegistru ({@code str.facility.id}) koju je službenik potvrdio „Potvrdom upisa objekta"
+     * (T19). Zadan znači „Upisano"; {@code null} „Nije upisano". Na RB ({@code accommodation.facility_id})
+     * se ne prepisuje — ostali tokovi RB-a i dalje ga vide kao novi objekt.
+     */
     @Column(name = "facility_id", length = 64)
     private String facilityId;
+
+    /** Službenik koji je potvrdio upis objekta (T19, changeset 160). */
+    @Column(name = "registered_by", length = 255)
+    private String registeredBy;
+
+    @Column(name = "registered_at")
+    private Instant registeredAt;
 
     @Column(name = "uploaded_at", updatable = false, nullable = false)
     private Instant uploadedAt;
@@ -195,6 +206,8 @@ public class CategorizationDecisionEntity {
         e.maxBeds = source.maxBeds;
         e.note = source.note;
         e.facilityId = source.facilityId;
+        e.registeredBy = source.registeredBy;
+        e.registeredAt = source.registeredAt;
         if (source.status == CategorizationDecisionStatus.VERIFIED) {
             e.verifiedBy = source.verifiedBy;
             e.verifiedAt = source.verifiedAt;
@@ -206,9 +219,8 @@ public class CategorizationDecisionEntity {
     /**
      * Nadležno tijelo prihvaća rješenje. Dopušteno samo iz {@link CategorizationDecisionStatus#SUBMITTED}.
      *
-     * <p>{@code facilityId} se ovdje NE postavlja: upis objekta u eTurizam i dodjela oznake su
-     * odvojen korak koji radi eTurizam servis ({@code str.*} nam je read-only). Do potvrde tog
-     * ugovora s MINTS-om {@code VERIFIED} je čista oznaka — v. TODO u {@code AdminCategorizationDecisionService}.
+     * <p>{@code facilityId} se ovdje NE postavlja: objekt službenik upisuje u interni eTurizam
+     * zasebno, a vezu potvrđuje kasnije, {@link #confirmRegistration} (T19).
      */
     public void verify(String actor) {
         requireSubmitted();
@@ -223,6 +235,31 @@ public class CategorizationDecisionEntity {
         this.status = CategorizationDecisionStatus.REJECTED;
         this.verifiedBy = actor;
         this.verifiedAt = Instant.now();
+    }
+
+    /**
+     * Potvrda upisa objekta u TuRegistar (T19): službenik je objekt upisao u interni eTurizam s
+     * dodijeljenim RB-om, a pozivatelj je tu jedinicu pronašao. Dopušteno samo nad prihvaćenim
+     * rješenjem koje još nije upisano — inače 409.
+     */
+    public void confirmRegistration(String facilityId, String actor) {
+        requireRegistrable();
+        this.facilityId = Objects.requireNonNull(facilityId, "facilityId");
+        this.registeredBy = actor;
+        this.registeredAt = Instant.now();
+    }
+
+    /** Upis se potvrđuje samo nad prihvaćenim rješenjem koje još nije upisano — inače 409. */
+    public void requireRegistrable() {
+        if (status != CategorizationDecisionStatus.VERIFIED || isRegistered()) {
+            throw new IllegalStatusTransitionException("Rješenje " + decisionId
+                    + " nije prihvaćeno ili je objekt već upisan (status: " + status + ")");
+        }
+    }
+
+    /** „Upisano": objekt rješenja povezan je s jedinicom u TuRegistru. */
+    public boolean isRegistered() {
+        return facilityId != null && !facilityId.isBlank();
     }
 
     /** Verify i reject su dopušteni samo nad neobrađenim (SUBMITTED) zapisom — inače 409. */

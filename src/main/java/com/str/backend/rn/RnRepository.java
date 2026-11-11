@@ -246,6 +246,19 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             "EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn" +
             " AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED)";
 
+    /**
+     * Prihvaćeno rješenje čiji je objekt upisan u TuRegistar (T19, „Potvrda upisa objekta"): uz
+     * rješenje je zapisana jedinica TuRegistra. Podskup {@link #DECISION_VERIFIED_EXISTS}.
+     */
+    String DECISION_REGISTERED_EXISTS =
+            "EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn" +
+            " AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED" +
+            " AND d.facilityId IS NOT NULL AND TRIM(d.facilityId) <> '')";
+
+    /** {@code boolean}: je li objekt prihvaćenog rješenja upisan u TuRegistar („Upisano"). */
+    String CATEGORIZATION_REGISTERED =
+            "CASE WHEN " + DECISION_REGISTERED_EXISTS + " THEN true ELSE false END";
+
     String DECISION_SUBMITTED_EXISTS =
             "EXISTS (SELECT 1 FROM CategorizationDecisionEntity d WHERE d.rn = r.rn" +
             " AND d.status = com.str.backend.categorization.CategorizationDecisionStatus.SUBMITTED)";
@@ -308,6 +321,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
      */
     String CATEGORIZATION_SHOWN =
             "CASE" +
+            " WHEN " + DECISION_REGISTERED_EXISTS + " THEN 'REGISTERED'" +
             " WHEN " + DECISION_VERIFIED_EXISTS + " THEN 'VERIFIED'" +
             " WHEN " + DECISION_SUBMITTED_EXISTS + " THEN 'SUBMITTED'" +
             " WHEN " + DECISION_REJECTED_EXISTS + " THEN 'REJECTED'" +
@@ -404,6 +418,7 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " a.name, t.name,"
             + " l.lessorId, l.firstName, l.lastName, l.legalEntityName,"
             + " a.facilityId, " + CATEGORIZATION_REQUIRED + ", " + CATEGORIZATION_STATUS + ","
+            + " " + CATEGORIZATION_REGISTERED + ","
             + " r.withdrawalDeadline, r.withdrawalFromSuspended)"
             + RN_FROM + RN_TOKENS + RN_FILTERS + RN_VERIFIED_FILTER,
             countQuery = "SELECT COUNT(r)" + RN_FROM + RN_TOKENS + RN_FILTERS + RN_VERIFIED_FILTER)

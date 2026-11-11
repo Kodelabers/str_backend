@@ -44,6 +44,7 @@ class StrFacilityRegistrationNumberQueryTest {
     @BeforeEach
     void setUp() {
         jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS registration_number VARCHAR(64)");
+        jdbc.execute("ALTER TABLE str.facility ADD COLUMN IF NOT EXISTS system_uuid VARCHAR(36)");
         cleanUp();
         AccommodationEntity accommodation = AccommodationEntity.create(
                 null, "Grad Zagreb", "Zagreb", "Ilica", "1", 2, 2, OfferType.OTHER, Offering.WHOLE,
@@ -130,6 +131,38 @@ class StrFacilityRegistrationNumberQueryTest {
         assertThat(facilityRepository.clearRegistrationNumber(8006, WITHDRAWN)).isZero();
         assertThat(stored(8005)).isNull();
         assertThat(stored(8006)).isEqualTo(FOREIGN);
+    }
+
+    /**
+     * T19: potvrda upisa traži aktivne jedinice s točno tim RB-om; neaktivna jedinica i sličan broj
+     * se ne broje, a {@code system_uuid} razlikuje jedinice istog objekta od drugog objekta.
+     */
+    @Test
+    void findActiveByRegistrationNumber_returnsActiveUnitsWithThatRnAndTheirObject() {
+        jdbc.update("INSERT INTO str.facility (id, active, registration_number, system_uuid) VALUES (?, true, ?, ?)",
+                8011, NEW, "obj-a");
+        jdbc.update("INSERT INTO str.facility (id, active, registration_number, system_uuid) VALUES (?, true, ?, ?)",
+                8012, NEW, "obj-a");
+        jdbc.update("INSERT INTO str.facility (id, active, registration_number, system_uuid) VALUES (?, false, ?, ?)",
+                8013, NEW, "obj-b");
+        facility(8014, NEW + "9");
+
+        assertThat(facilityRepository.findActiveByRegistrationNumber(NEW))
+                .extracting(StrFacilityRepository.RegisteredFacilityRow::getFacilityId,
+                        StrFacilityRepository.RegisteredFacilityRow::getObjectId)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(8011L, "obj-a"),
+                        org.assertj.core.groups.Tuple.tuple(8012L, "obj-a"));
+        assertThat(facilityRepository.findActiveByRegistrationNumber(FOREIGN)).isEmpty();
+    }
+
+    /** Broj u eTurizam službenik upisuje ručno — razmaci i mala slova ne smiju sakriti objekt. */
+    @Test
+    void findActiveByRegistrationNumber_ignoresCaseAndSurroundingSpaces() {
+        facility(8015, "  " + NEW.toLowerCase() + " ");
+
+        assertThat(facilityRepository.findActiveByRegistrationNumber(NEW))
+                .extracting(StrFacilityRepository.RegisteredFacilityRow::getFacilityId)
+                .containsExactly(8015L);
     }
 
     /** Brisanje pri povlačenju pogađa objekt preko RB → smještaj → facility_id. */

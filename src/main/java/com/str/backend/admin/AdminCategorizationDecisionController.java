@@ -89,6 +89,14 @@ public class AdminCategorizationDecisionController {
         return ResponseEntity.noContent().build();
     }
 
+    /** T19: „Potvrda upisa objekta" — veže prihvaćeno rješenje uz jedinicu TuRegistra s tim RB-om. */
+    @PostMapping("/{id}/confirm-registration")
+    public ResponseEntity<Void> confirmRegistration(@PathVariable UUID id, Authentication authentication) {
+        service.confirmRegistration(id, countyScope.scopeFor(authentication),
+                internalAccess.actorFor(authentication).orElse(null));
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/reject")
     public ResponseEntity<Void> reject(@PathVariable UUID id,
                                        @RequestBody(required = false) @Valid ReviewDecisionRequest body,

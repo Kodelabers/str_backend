@@ -100,4 +100,16 @@ class AdminCategorizationDecisionControllerTest {
 
         verify(service).reject(id, ALL, "INTERNAL:12345678903", "sken nečitak");
     }
+
+    /** T19: potvrda upisa nema tijela, akter je službenik iz sesije. */
+    @Test
+    void confirmRegistration_passesSessionActor() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:12345678903"));
+
+        mvc.perform(post(BASE + "/{id}/confirm-registration", id))
+                .andExpect(status().isNoContent());
+
+        verify(service).confirmRegistration(id, ALL, "INTERNAL:12345678903");
+    }
 }

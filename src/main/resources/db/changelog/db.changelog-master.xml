@@ -308,4 +308,7 @@
     <!-- Pismeno „Zahtjev za promjenu podataka" ukinuto: dosad zapisana pismena brišu se. -->
     <include file="db/changelog/changes/159-brisanje-zahtjeva-promjene-podataka.xml"/>
 
+    <!-- T19: tko je i kad potvrdio upis objekta rješenja u TuRegistar. -->
+    <include file="db/changelog/changes/160-categorization-decision-upis.xml"/>
+
 </databaseChangeLog>

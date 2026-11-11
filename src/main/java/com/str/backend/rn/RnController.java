@@ -126,8 +126,8 @@ public class RnController {
      */
     @GetMapping("/{rn}/detail")
     public RnDetailResponse detail(@PathVariable String rn, Authentication authentication) {
-        requireAccess(rn, authentication);
-        return service.detailView(rn);
+        boolean sluzbenik = requireAccess(rn, authentication) == RnAccessGuard.Pristup.SLUZBENIK;
+        return service.detailView(rn, sluzbenik);
     }
 
     @GetMapping("/{rn}")

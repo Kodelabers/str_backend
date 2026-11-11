@@ -500,6 +500,30 @@ class RnRegistrySearchIntegrationTest {
                 .andExpect(jsonPath("$.content[1].rn").value("HR00000006"));
     }
 
+    /** T19: potvrđen upis objekta u TuRegistar dijeli prihvaćena rješenja na „Upisano" i „Nije upisano". */
+    @Test
+    void decisionColumnAndFilter_registeredObjectIsShownAsRegistered() throws Exception {
+        seedDecisions();
+        seedRn("HR00000007", null, "Grad Zagreb", "Zagreb", "Vlaška", "4", "Stan G");
+        CategorizationDecisionEntity registered = decision("HR00000007");
+        registered.verify("sluzbenik");
+        registered.confirmRegistration("8101", "sluzbenik");
+        decisionRepository.save(registered);
+
+        mvc.perform(get("/api/rn").param("view", "ALL").param("rb", "HR0000000")
+                        .param("sort", "rn,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[3].rn").value("HR00000004"))
+                .andExpect(jsonPath("$.content[3].categorizationStatus").value("VERIFIED"))
+                .andExpect(jsonPath("$.content[3].categorizationRegistered").value(false))
+                .andExpect(jsonPath("$.content[6].rn").value("HR00000007"))
+                .andExpect(jsonPath("$.content[6].categorizationStatus").value("VERIFIED"))
+                .andExpect(jsonPath("$.content[6].categorizationRegistered").value(true));
+
+        assertOnly(get("/api/rn").param("view", "ALL").param("decision", "REGISTERED"), "HR00000007");
+        assertOnly(get("/api/rn").param("view", "ALL").param("decision", "VERIFIED"), "HR00000004");
+    }
+
     @Test
     void decisionFilter_unknownValueIs400() throws Exception {
         mvc.perform(get("/api/rn").param("decision", "NEPOSTOJECI"))

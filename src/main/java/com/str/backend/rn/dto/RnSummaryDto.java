@@ -12,8 +12,9 @@ import java.util.UUID;
  *
  * <p>{@code categorizationRequired} i {@code categorizationStatus} su stupac „Rješenje o
  * kategorizaciji", po istom pravilu kao „Moji registracijski brojevi"
- * ({@code lessor.LessorRnSummaryDto}). {@code facilityVerified} je stupac „Verificiran": je li
- * objekt uz RB danas verificiran u eTurizmu; RB novog objekta je {@code false}, a {@code null}
+ * ({@code lessor.LessorRnSummaryDto}); {@code categorizationRegistered} dodaje je li objekt
+ * prihvaćenog rješenja upisan u TuRegistar (T19) — samo na registru, iznajmljivač to ne vidi.
+ * {@code facilityVerified} je stupac „Verificiran": je li objekt uz RB danas verificiran u eTurizmu; RB novog objekta je {@code false}, a {@code null}
  * kad eTurizam nije dostupan. Dopunjuje se nakon upita ({@code rn.RnRegistrySearch}), a
  * {@code facilityId} služi samo tom izračunu i ne ide u odgovor.
  */
@@ -39,6 +40,7 @@ public record RnSummaryDto(
         @JsonIgnore String facilityId,
         boolean categorizationRequired,
         CategorizationDecisionStatus categorizationStatus,
+        boolean categorizationRegistered,
         Boolean facilityVerified,
         /** Rok za očitovanje na prijedlog povlačenja; popunjen samo u statusu WITHDRAWAL_PROPOSED (T12). */
         LocalDate withdrawalDeadline,
@@ -56,12 +58,13 @@ public record RnSummaryDto(
                         String accommodationName, String accommodationTypeName, UUID lessorId,
                         String lessorFirstName, String lessorLastName, String lessorLegalEntityName,
                         String facilityId, boolean categorizationRequired,
-                        CategorizationDecisionStatus categorizationStatus,
+                        CategorizationDecisionStatus categorizationStatus, boolean categorizationRegistered,
                         LocalDate withdrawalDeadline, boolean prijedlogIzSuspenzije) {
         this(rn, status, issueDate, validFrom, validTo, suspensionDeadline, accommodationId, county,
                 city, street, streetNumber, accommodationName, accommodationTypeName, lessorId,
                 lessorFirstName, lessorLastName, lessorLegalEntityName, facilityId,
-                categorizationRequired, categorizationStatus, null, withdrawalDeadline, prijedlogIzSuspenzije);
+                categorizationRequired, categorizationStatus, categorizationRegistered, null, withdrawalDeadline,
+                prijedlogIzSuspenzije);
     }
 
     /**
@@ -77,6 +80,6 @@ public record RnSummaryDto(
                 accommodationId, county, city, street, streetNumber, accommodationName,
                 accommodationTypeName, lessorId, lessorFirstName, lessorLastName,
                 lessorLegalEntityName, facilityId, categorizationRequired, categorizationStatus,
-                verified, withdrawalDeadline, prijedlogIzSuspenzije);
+                categorizationRegistered, verified, withdrawalDeadline, prijedlogIzSuspenzije);
     }
 }

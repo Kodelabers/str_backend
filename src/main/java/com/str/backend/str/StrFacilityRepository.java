@@ -661,6 +661,28 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
             """, nativeQuery = true)
     List<FacilityVerificationRow> findObjectVerification(@Param("ids") Collection<Long> ids);
 
+    /**
+     * Aktivne jedinice TuRegistra na koje je upisan RB (T19, „Potvrda upisa objekta"): službenik pri
+     * upisu novog objekta u interni eTurizam upisuje dodijeljeni RB, pa je to veza STR ↔ TuRegistar.
+     * Jednakost, ne pretraga — ali bez razlike u velikim slovima i rubnim razmacima, jer broj u eTurizam
+     * službenik upisuje ručno. {@code objectId} je {@code system_uuid} — jedinice istog objekta
+     * dijele ga, pa pozivatelj po njemu razlikuje jedan objekt od broja upisanog na dva različita.
+     */
+    @Query(value = """
+            SELECT f.id AS facilityId,
+                   cast(f.system_uuid AS varchar(64)) AS objectId
+              FROM str.facility f
+             WHERE upper(trim(f.registration_number)) = upper(trim(:rn))
+               AND f.active = true
+             ORDER BY f.id
+            """, nativeQuery = true)
+    List<RegisteredFacilityRow> findActiveByRegistrationNumber(@Param("rn") String rn);
+
+    interface RegisteredFacilityRow {
+        long getFacilityId();
+        String getObjectId();
+    }
+
 
     /**
      * Id elementa eTurizmova šifrarnika po šifri. Id se među okolinama može razlikovati, šifra ne —

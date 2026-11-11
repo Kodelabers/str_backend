@@ -68,7 +68,8 @@ class RnServiceTest {
         logRepository = mock(RegistrationNumberLogRepository.class);
         service = new RnService(repository, transitionService, accommodationRepository,
                 accommodationTypeRepository, clock, new DocumentLabels(), prilogService, reissueGuard,
-                objectionRepository, objectGroupPolicy, logRepository);
+                objectionRepository, objectGroupPolicy, logRepository,
+                mock(com.str.backend.categorization.CategorizationDecisionRepository.class));
     }
 
     @Test
