@@ -305,4 +305,7 @@
     <!-- T16: ručna KLASA i URBROJ te izdavatelj uz prijelaz; ručni akt na pismenu. -->
     <include file="db/changelog/changes/158-rucni-akt.xml"/>
 
+    <!-- Pismeno „Zahtjev za promjenu podataka" ukinuto: dosad zapisana pismena brišu se. -->
+    <include file="db/changelog/changes/159-brisanje-zahtjeva-promjene-podataka.xml"/>
+
 </databaseChangeLog>

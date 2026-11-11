@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        Pismeno „Zahtjev za promjenu podataka" više ne postoji: kad iznajmljivač pri izdavanju RB-a
+        označi da podaci iz registra eTurizma nisu točni, samo ga se preusmjerava na eTurizmov
+        obrazac — u našem spisu ne nastaje ništa. Dosad zapisana pismena brišu se, da ih popis
+        dokumenata RB-a više ne prikazuje.
+
+        Ta pismena nikad nisu urudžbirana ni otpremljena (vrsta je bila trajno izvan eGOP-a), pa ih
+        nema ni u eGOP-u ni u korisničkom pretincu. Eventualni redak egop_kp_otprema briše se
+        kaskadno (139). Ključ (vrsta + act_ref) je onaj kojim ih je ChangeRequestFilingService pisao.
+    -->
+    <changeSet id="159-brisanje-zahtjeva-promjene-podataka" author="str-backend">
+        <delete schemaName="str_rn" tableName="egop_pismeno">
+            <where>vrsta_pismena_naziv = 'Zahtjev za promjenu podataka' AND act_ref = 'ZAHTJEV_PROMJENE_PODATAKA'</where>
+        </delete>
+        <rollback/>
+    </changeSet>
+
+</databaseChangeLog>

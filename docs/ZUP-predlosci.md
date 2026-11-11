@@ -65,7 +65,6 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | `reaktivacija-povlacenja` | Obavijest o reaktivaciji povučenog registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.reinstate` (uvaženi prigovor na povlačenje) |
 | `prigovor` | Prigovor na prijedlog suspenzije | **ulazno** | čl. 71. — podnesak stranke | ❌ nema |
 | `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `opoziv` | `RnService.reactivate` |
-| `zahtjev-promjene-podataka` | Zahtjev za promjenu podataka | **ulazno** | kao `prigovor` | `ChangeRequestFilingService.file` (`POST /api/nias/registrations/{rn}/zahtjev-promjene-podataka`) |
 
 Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i šalje poziv na
 izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku roka prelazi u
@@ -108,13 +107,6 @@ su nastale uz dvofaznu suspenziju). MINT ih je unio 22.10.2026., pa se urudžbir
 KP kao ostale obavijesti. Reaktivacija je u eGOP šifrarniku „Obavijest o reaktiviranju…", a
 zahtjev „Zahtjev za dodjelu…" (`StrDocumentType.egopVrstaNaziv()`); naš naziv na pismenu ostaje.
 `ZupTemplateLoaderTest` drži popis naziva iz šifrarnika u šahu.
-
-`zahtjev-promjene-podataka` nastaje kad iznajmljivač pri izdavanju RB-a za **verificirani** objekt iz
-eTurizma označi da podaci iz registra nisu točni ili nisu potpuni (neverificirani objekt claim vraća
-bez adrese obrasca, a zapis pismena odbija se s `error.changeRequest.notVerified`): frontend nakon izdavanja zove endpoint pa ga preusmjerava na
-eTurizmov „Zahtjev za promjenu podataka" (adresu vraća claim objekta). Pismeno je jedno po RB-u i
-**nikad se ne urudžbira** — `EgopAktiBezSifre.UVIJEK_BEZ_SIFRE` ga drži izvan eGOP-a neovisno o
-`str.egop.akti-bez-sifre`, jer nije među dogovorenim vrstama pismena.
 
 `prigovor` **nema okidač** — ne postoji nigdje u `src/main`. Predložak je isporučen i dostupan
 preko endpointa, ali automatike nema dok se ne uvede domenski model prigovora.

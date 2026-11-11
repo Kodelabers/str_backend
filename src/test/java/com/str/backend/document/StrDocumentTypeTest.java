@@ -45,7 +45,7 @@ class StrDocumentTypeTest {
         assertThat(StrDocumentType.values())
                 .filteredOn(t -> !t.aktTijela())
                 .containsExactlyInAnyOrder(StrDocumentType.ZAHTJEV, StrDocumentType.PRIGOVOR,
-                        StrDocumentType.ZAHTJEV_PROMJENE_PODATAKA, StrDocumentType.ZAHTJEV_OPOZIVA)
+                        StrDocumentType.ZAHTJEV_OPOZIVA)
                 .allMatch(t -> t.smjer() == ULAZNO);
     }
 
