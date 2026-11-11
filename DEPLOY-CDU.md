@@ -316,7 +316,7 @@ da se uz svaki odgovor vidi i njegov oblik; poslije prvih provjera staviti `INFO
 znači da backend **ne krene**.
 
 ```bash
-docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja(_mtls|_trust| url=)"
+docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja(_mtls|_trust|_tls| url=)"
 ```
 
 | Redak | Očekivano |
@@ -324,6 +324,7 @@ docker logs str-backend-cdu 2>&1 | grep -E "eovlastenja(_mtls|_trust| url=)"
 | `eovlastenja_mtls alias=… client_cert=… issuer=… valid_until=…` | `client_cert` = CN=InterniTurizam…, `issuer` = Fina Demo CA 2020 — **ovaj** certifikat e-Ovlaštenja moraju poznavati |
 | `eovlastenja_trust anchors=N (jdk=…, extra=3 iz classpath:eovlastenja/ca-bundle.crt)` | `extra=3` (Sectigo R46 + dva Fina Demo CA) |
 | `eovlastenja url=https://roapiservistst.fina.hr/… signer=CN=Upravljanje-eOvlastenjimaTst,… signer_valid_until=…` | potpisni certifikat FINA testa |
+| `eovlastenja_tls host=roapiservistst.fina.hr accepted_server_name=gov.hr` | testni servis pokazuje certifikat `gov.hr`; bez ovog retka odabir tvrtke pada na `No subject alternative DNS name matching roapiservistst.fina.hr` |
 
 Gašenje bez rebuilda: `APP_EOVLASTENJA_ENABLED=false` u `.env.cdu`, pa korak 7 — odabir tvrtke
 tada vraća 503, sve ostalo radi.

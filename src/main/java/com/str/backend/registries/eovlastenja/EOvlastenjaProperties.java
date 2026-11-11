@@ -25,6 +25,10 @@ import java.util.Locale;
  * uz {@code enabled=true} bez njih aplikacija pada na startu ({@link #requireComplete()}), umjesto
  * da prvi korisnik dobije 503.
  *
+ * @param tlsServerName ime koje certifikat poslužitelja e-Ovlaštenja nosi kad se ne poklapa s
+ *                      hostom iz {@code url} (test: {@code roapiservistst.fina.hr} pokazuje
+ *                      certifikat {@code gov.hr}); prazno = standardna provjera imena, v.
+ *                      {@link TlsServerNameVerifier}
  * @param mock parovi (OIB osobe → tvrtka) koje mock proglašava zastupanjem, dok je
  *             {@code enabled=false} — samo bez NIAS-a (local/mock), v. {@link EOvlastenjaConfig}
  */
@@ -40,6 +44,7 @@ public record EOvlastenjaProperties(
         String signerCertPath,
         Integer connectTimeoutMs,
         Integer readTimeoutMs,
+        String tlsServerName,
         List<MockRepresentation> mock
 ) {
 
@@ -55,9 +60,8 @@ public record EOvlastenjaProperties(
     public record MockRepresentation(String personOib, String legalOib, String legalName, String function,
                                      String izvorReg) {
 
-        public MockRepresentation(String personOib, String legalOib, String legalName, String function) {
-            this(personOib, legalOib, legalName, function, null);
-        }
+        // Namjerno samo kanonski konstruktor: Spring Boot record veže kroz njegov jedini konstruktor —
+        // uz drugi javni konstruktor ne zna koji koristiti i app.eovlastenja.mock[*] ostaje nevezan.
 
         public LegalForm legalForm() {
             return LegalForm.fromIzvorReg(izvorReg).orElse(LegalForm.TVRTKA);

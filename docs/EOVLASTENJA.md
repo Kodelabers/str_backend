@@ -171,6 +171,14 @@ Izmjereno 29.09.2026. s javnog interneta:
   idu do javnog **Sectigo Public Server Authentication Root R46** — ne do Fina Demo CA, kako
   pretpostavlja JTI-jev truststore. Zato je truststore JDK `cacerts` + dodatak iz jara.
 
+Izmjereno 10.11.2026. (CDU i javni internet): `roapiservistst.fina.hr` (89.249.106.114) pokazuje
+certifikat **`CN=gov.hr`** (SAN `gov.hr`, `*.gov.hr`; Entrust OV → Sectigo R46), izdan 10.02.2026., i
+klijentski certifikat traži odmah u prvom handshakeu. FINA: certifikat se ne poklapa s domenom i to nije
+novo — lanac treba provjeravati „neovisno o domeni". Standardna provjera imena zato pada
+(`No subject alternative DNS name matching roapiservistst.fina.hr`), pa CDU postavlja
+`app.eovlastenja.tls-server-name=gov.hr` (`TlsServerNameVerifier`): lanac se i dalje provjerava, a za
+host iz adrese prihvaća se samo certifikat koji nosi točno to ime.
+
 ## Konfiguracija
 
 | Property | Env | Napomena |
@@ -178,6 +186,7 @@ Izmjereno 29.09.2026. s javnog interneta:
 | `app.eovlastenja.enabled` | `APP_EOVLASTENJA_ENABLED` | default `false`; **CDU `true`** |
 | `app.eovlastenja.url` | `APP_EOVLASTENJA_URL` | test `https://roapiservistst.fina.hr/api/AuthUnionApi/GetAuthorizationUnionPermission` (CDU default), prod `https://roapiservis.gov.hr/api/AuthUnionApi/GetAuthorizationUnionPermission` |
 | `app.eovlastenja.keystore-path/-password`, `key-alias` | — | default = `nias.saml.*` (isti aplikacijski certifikat) |
+| `app.eovlastenja.tls-server-name` | `APP_EOVLASTENJA_TLS_SERVER_NAME` | ime iz certifikata poslužitelja kad se ne poklapa s hostom iz `url`; **CDU default `gov.hr`**, inače prazno (standardna provjera imena, npr. prod `roapiservis.gov.hr`) |
 | `app.eovlastenja.truststore-path` | `APP_EOVLASTENJA_TRUSTSTORE_PATH` | **dodatak** JDK `cacerts`-u; default `classpath:eovlastenja/ca-bundle.crt` (PEM: Sectigo R46, Fina Demo CA 2020, Fina Demo Root CA). Prima i `.p12`/`.pfx`, tada uz `-password` |
 | `app.eovlastenja.signer-cert-path` | `APP_EOVLASTENJA_SIGNER_CERT_PATH` | test `classpath:eovlastenja/eovlastenja-tst.cer` (CDU default; `CN=Upravljanje-eOvlastenjimaTst`, do 27.02.2029.), prod `classpath:eovlastenja/eovlastenja-prod.cer` (`CN=eovlastenjaprod`, do 29.11.2027.). Izvor: `niastst.fina.hr/integracija/#ro-certs` |
 | `app.eovlastenja.mock[i].person-oib/legal-oib/legal-name/function` | — | samo **bez NIAS-a** (local/mock): `99999999990` zastupa `33333333360` „TESTNA TVRTKA d.o.o." |
