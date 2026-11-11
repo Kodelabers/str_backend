@@ -41,6 +41,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -199,7 +200,7 @@ class RnDocumentAccessTest {
     void detail_unauthenticated_returns401() throws Exception {
         mvc.perform(get("/api/rn/{rn}/detail", RN)).andExpect(status().isUnauthorized());
 
-        verify(service, never()).detailView(any());
+        verify(service, never()).detailView(any(), anyBoolean());
     }
 
     @Test
@@ -210,7 +211,8 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isOk());
 
-        verify(service).detailView(RN);
+        // T19: vlasnik ne dobiva rješenje o kategorizaciji na detalju.
+        verify(service).detailView(RN, false);
     }
 
     /** FE čita sva polja s vrha objekta — i postojeća i nova iz koraka 3, 4 i 5 obrasca. */
@@ -226,7 +228,7 @@ class RnDocumentAccessTest {
         RnDetailExtras extras = new RnDetailExtras(Offering.PART, OfferType.SECONDARY_RESIDENCE,
                 "Ana Anić", "01234567", "0911234567",
                 "Ilica", "1", "Zagreb", "Grad Zagreb", "Hrvatska");
-        when(service.detailView(RN)).thenReturn(RnDetailResponse.of(detail, extras));
+        when(service.detailView(RN, false)).thenReturn(RnDetailResponse.of(detail, extras));
 
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isOk())
@@ -253,7 +255,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(principalAuth(lessorId))))
                 .andExpect(status().isNotFound());
 
-        verify(service, never()).detailView(any());
+        verify(service, never()).detailView(any(), anyBoolean());
     }
 
     /** Lokalni mock NIAS-a nema prijave — rolu daje mock OIB, pa službenik prolazi i bez nje. */
@@ -263,7 +265,7 @@ class RnDocumentAccessTest {
 
         mvc.perform(get("/api/rn/{rn}/detail", RN)).andExpect(status().isOk());
 
-        verify(service).detailView(RN);
+        verify(service).detailView(RN, true);
     }
 
     /** T12: ručne rute za povlačenje više nema — broj se povlači samo istekom roka. */
@@ -361,7 +363,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(lessor)))
                 .andExpect(status().isNotFound());
 
-        verify(service, never()).detailView(any());
+        verify(service, never()).detailView(any(), anyBoolean());
     }
 
     @Test
@@ -411,7 +413,7 @@ class RnDocumentAccessTest {
                         .with(authentication(official)).with(ajax()))
                 .andExpect(status().isNotFound());
 
-        verify(service, never()).detailView(any());
+        verify(service, never()).detailView(any(), anyBoolean());
         verify(service, never()).suspend(any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -430,7 +432,7 @@ class RnDocumentAccessTest {
                         .with(authentication(official)).with(ajax()))
                 .andExpect(status().isOk());
 
-        verify(service).detailView(RN);
+        verify(service).detailView(RN, true);
         verify(service).suspend(eq(RN), eq(com.str.backend.domain.RnTrigger.INSPECTION), isNull(), isNull(),
                 eq("INTERNAL:" + OFFICIAL_OIB), eq(java.util.List.of()), any());
     }
@@ -516,7 +518,7 @@ class RnDocumentAccessTest {
         mvc.perform(get("/api/rn/{rn}/detail", RN).with(authentication(official())))
                 .andExpect(status().isNotFound());
 
-        verify(service, never()).detailView(any());
+        verify(service, never()).detailView(any(), anyBoolean());
     }
 
     private static final String OFFICIAL_OIB = "12345678903";

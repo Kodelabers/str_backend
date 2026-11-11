@@ -34,12 +34,20 @@ public record CategorizationDecisionAdminDto(
         Instant uploadedAt,
         String verifiedBy,
         Instant verifiedAt,
-        UUID sourceDecisionId
+        UUID sourceDecisionId,
+        String registeredBy,
+        Instant registeredAt,
+        boolean registrationConfirmable
 ) {
 
-    /** {@code verifiedBy} je prikaz aktera (ime službenika), ne sirovi zapis iz baze. */
+    /**
+     * {@code verifiedBy} i {@code registeredBy} su prikaz aktera (ime službenika), ne sirovi zapis iz baze.
+     * „Upisano" (T19) je {@code facilityId != null}; {@code registeredBy/At} kažu tko je i kad potvrdio upis, a
+     * {@code registrationConfirmable} nudi li se „Potvrda upisa objekta" (pravilo je u servisu).
+     */
     public static CategorizationDecisionAdminDto of(CategorizationDecisionEntity e, String verifiedBy,
-                                                    String lessorTaxNumber) {
+                                                    String registeredBy, String lessorTaxNumber,
+                                                    boolean registrationConfirmable) {
         return new CategorizationDecisionAdminDto(
                 e.getDecisionId(),
                 e.getLessorOib(),
@@ -60,6 +68,9 @@ public record CategorizationDecisionAdminDto(
                 e.getUploadedAt(),
                 verifiedBy,
                 e.getVerifiedAt(),
-                e.getSourceDecisionId());
+                e.getSourceDecisionId(),
+                registeredBy,
+                e.getRegisteredAt(),
+                registrationConfirmable);
     }
 }

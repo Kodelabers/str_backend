@@ -9,11 +9,13 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
  *
  * @param lessorAddressKind što je adresa iz {@link RnDetailExtras} ({@code lessorStreet} …);
  *                          {@code null} kad iznajmljivač nije poznat
+ * @param categorization    mjerodavno rješenje o kategorizaciji (T19); {@code null} kad ga nema
  */
 public record RnDetailResponse(
         @JsonUnwrapped RnDetailDto detail,
         @JsonUnwrapped RnDetailExtras extras,
-        LessorAddressKind lessorAddressKind
+        LessorAddressKind lessorAddressKind,
+        RnCategorizationInfo categorization
 ) {
 
     public enum LessorAddressKind {
@@ -28,11 +30,15 @@ public record RnDetailResponse(
      * a u stupcima adrese stalnu adresu osobe sa samoregistracije. Samo NIAS pravna osoba tamo ima sjedište.
      */
     public static RnDetailResponse of(RnDetailDto detail, RnDetailExtras extras) {
+        return of(detail, extras, null);
+    }
+
+    public static RnDetailResponse of(RnDetailDto detail, RnDetailExtras extras, RnCategorizationInfo categorization) {
         LessorAddressKind kind = null;
         if (detail.lessorId() != null) {
             boolean niasLegalEntity = Boolean.TRUE.equals(detail.legalEntityOwner()) && detail.lessorOib() != null;
             kind = niasLegalEntity ? LessorAddressKind.SEAT : LessorAddressKind.RESIDENCE;
         }
-        return new RnDetailResponse(detail, extras, kind);
+        return new RnDetailResponse(detail, extras, kind, categorization);
     }
 }

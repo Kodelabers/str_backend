@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        T19: potvrda upisa objekta u TuRegistar. Nakon što prihvati rješenje, službenik objekt upisuje
+        u interni eTurizam s dodijeljenim RB-om (str.facility.registration_number), a STR tu vezu
+        provjerava gumbom „Potvrda upisa objekta". Pronađena jedinica upisuje se u facility_id
+        (stupac postoji od 122), a ovdje se bilježi tko je i kad potvrdio upis.
+    -->
+    <changeSet id="160-categorization-decision-upis" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="categorization_decision">
+            <column name="registered_by" type="VARCHAR(255)" remarks="Službenik koji je potvrdio upis objekta"/>
+            <column name="registered_at" type="TIMESTAMPTZ" remarks="Trenutak potvrde upisa objekta"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

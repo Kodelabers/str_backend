@@ -5,6 +5,8 @@ import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.attachment.PrilogException;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.categorization.CategorizationDecisionRepository;
+import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.address.CountyNames;
 import com.str.backend.common.SearchTokens;
 import com.str.backend.common.Strings;
@@ -22,6 +24,7 @@ import com.str.backend.lookup.ObjectGroupPolicy;
 import com.str.backend.objection.SuspensionObjectionEntity;
 import com.str.backend.objection.SuspensionObjectionRepository;
 import com.str.backend.objection.SuspensionObjectionStatus;
+import com.str.backend.rn.dto.RnCategorizationInfo;
 import com.str.backend.rn.dto.RnDetailDto;
 import com.str.backend.rn.dto.RnDetailExtras;
 import com.str.backend.rn.dto.RnDetailResponse;
@@ -103,14 +106,17 @@ public class RnService {
     private final SuspensionObjectionRepository objectionRepository;
     private final ObjectGroupPolicy objectGroupPolicy;
     private final RegistrationNumberLogRepository logRepository;
+    private final CategorizationDecisionRepository decisionRepository;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
                      AccommodationTypeRepository accommodationTypeRepository, Clock clock,
                      DocumentLabels labels, PrilogService prilogService, RnReissueGuard reissueGuard,
                      SuspensionObjectionRepository objectionRepository, ObjectGroupPolicy objectGroupPolicy,
-                     RegistrationNumberLogRepository logRepository) {
+                     RegistrationNumberLogRepository logRepository,
+                     CategorizationDecisionRepository decisionRepository) {
         this.logRepository = logRepository;
+        this.decisionRepository = decisionRepository;
         this.reissueGuard = reissueGuard;
         this.objectionRepository = objectionRepository;
         this.repository = repository;
@@ -579,14 +585,29 @@ public class RnService {
 
     /**
      * Detalj RB-a za prikaz (/registar/{RB}): {@link #detail} plus ponuda, namjena, kontakt i
-     * adresa iznajmljivača. Akti i mailovi i dalje idu kroz {@link #detail}.
+     * adresa iznajmljivača. Akti i mailovi i dalje idu kroz {@link #detail}. Rješenje o kategorizaciji
+     * (T19) dobiva samo službenik — iznajmljivač ga vidi na svojim popisima, a interni id i stanje upisa
+     * u TuRegistar nisu za njega.
      */
     @Transactional(readOnly = true)
-    public RnDetailResponse detailView(String rn) {
+    public RnDetailResponse detailView(String rn, boolean sluzbenik) {
         RnDetailDto detail = detail(rn);
         RnDetailExtras extras = repository.findDetailExtras(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
-        return RnDetailResponse.of(detail, extras);
+        return RnDetailResponse.of(detail, extras, sluzbenik ? categorization(rn) : null);
+    }
+
+    /**
+     * Mjerodavno rješenje o kategorizaciji (T19), istim redom kao registar: aktivno (prihvaćeno ili
+     * predano — najviše jedno po RB-u, changeset 126), a inače zadnje odbijeno.
+     */
+    private RnCategorizationInfo categorization(String rn) {
+        return decisionRepository.findFirstByRnAndStatusInOrderByUploadedAtDesc(rn,
+                        List.of(CategorizationDecisionStatus.VERIFIED, CategorizationDecisionStatus.SUBMITTED))
+                .or(() -> decisionRepository.findFirstByRnAndStatusInOrderByUploadedAtDesc(rn,
+                        List.of(CategorizationDecisionStatus.REJECTED)))
+                .map(RnCategorizationInfo::of)
+                .orElse(null);
     }
 
     /**

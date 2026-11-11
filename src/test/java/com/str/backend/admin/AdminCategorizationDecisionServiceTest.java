@@ -8,11 +8,16 @@ import com.str.backend.categorization.CategorizationDecisionEntity.Categorizatio
 import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
+import com.str.backend.domain.RnStatus;
+import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.IllegalStatusTransitionException;
 import com.str.backend.exception.ResourceNotFoundException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
+import com.str.backend.str.StrFacilityRepository;
+import com.str.backend.str.StrFacilityRepository.RegisteredFacilityRow;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -48,8 +53,9 @@ class AdminCategorizationDecisionServiceTest {
     private final InternalAccessService internalAccess = mock(InternalAccessService.class);
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
     private final RnRepository rnRepository = mock(RnRepository.class);
+    private final StrFacilityRepository facilityRepository = mock(StrFacilityRepository.class);
     private final AdminCategorizationDecisionService service = new AdminCategorizationDecisionService(
-            repository, auditService, internalAccess, lessorRepository, rnRepository);
+            repository, auditService, internalAccess, lessorRepository, rnRepository, facilityRepository);
 
     @Test
     void list_byStatus_mapsToDto() {
@@ -130,7 +136,7 @@ class AdminCategorizationDecisionServiceTest {
         assertThat(e.getStatus()).isEqualTo(CategorizationDecisionStatus.VERIFIED);
         assertThat(e.getVerifiedBy()).isEqualTo("actor-1");
         assertThat(e.getVerifiedAt()).isNotNull();
-        assertThat(e.getFacilityId()).isNull(); // eTurizam upis je odvojen korak (TODO-šav)
+        assertThat(e.getFacilityId()).isNull(); // upis u TuRegistar potvrđuje se zasebno (T19)
         verify(auditService).record("actor-1", "CATEGORIZATION_VERIFY",
                 "CATEGORIZATION_DECISION", e.getDecisionId().toString(), null);
     }
@@ -218,6 +224,194 @@ class AdminCategorizationDecisionServiceTest {
         when(rnRepository.findCountyByRn("HR120001000000000002")).thenReturn(Optional.of("SPLITSKO-DALMATINSKA"));
 
         assertThat(service.detail(e.getDecisionId(), SPLIT).decisionId()).isEqualTo(e.getDecisionId());
+    }
+
+    // --- T19: potvrda upisa objekta u TuRegistar ---------------------------------------------------
+
+    private static final String RN = "HR120001000000000003";
+
+    private static RegisteredFacilityRow unit(long facilityId, String objectId) {
+        return new RegisteredFacilityRow() {
+            @Override public long getFacilityId() { return facilityId; }
+            @Override public String getObjectId() { return objectId; }
+        };
+    }
+
+    private CategorizationDecisionEntity verifiedWithRn() {
+        return verifiedWithRn(RnStatus.ACTIVE);
+    }
+
+    private CategorizationDecisionEntity verifiedWithRn(RnStatus rnStatus) {
+        CategorizationDecisionEntity e = withRn(RN);
+        e.verify("INTERNAL:1");
+        when(repository.findById(e.getDecisionId())).thenReturn(Optional.of(e));
+        RnEntity rn = mock(RnEntity.class);
+        when(rn.getRn()).thenReturn(RN);
+        when(rn.getStatus()).thenReturn(rnStatus);
+        when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
+        when(rnRepository.findAllById(any())).thenReturn(List.of(rn));
+        return e;
+    }
+
+    @Test
+    void confirmRegistration_unitWithRn_marksRegisteredAndAudits() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN)).thenReturn(List.of(unit(501, "obj-1")));
+
+        service.confirmRegistration(e.getDecisionId(), ALL, "actor-3");
+
+        assertThat(e.isRegistered()).isTrue();
+        assertThat(e.getFacilityId()).isEqualTo("501");
+        assertThat(e.getRegisteredBy()).isEqualTo("actor-3");
+        assertThat(e.getRegisteredAt()).isNotNull();
+        assertThat(e.getStatus()).isEqualTo(CategorizationDecisionStatus.VERIFIED);
+        verify(auditService).record("actor-3", "CATEGORIZATION_REGISTRATION_CONFIRM",
+                "CATEGORIZATION_DECISION", e.getDecisionId().toString(), "facilityId=501");
+    }
+
+    /** Više jedinica istog objekta (soba, apartman…) nisu dvojba — veže se najnovija. */
+    @Test
+    void confirmRegistration_severalUnitsOfOneObject_takesNewest() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN))
+                .thenReturn(List.of(unit(501, "obj-1"), unit(507, "obj-1")));
+
+        service.confirmRegistration(e.getDecisionId(), ALL, "actor-3");
+
+        assertThat(e.getFacilityId()).isEqualTo("507");
+    }
+
+    @Test
+    void confirmRegistration_noUnitWithRn_isConflictAndStaysUnregistered() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), ALL, "actor-3"))
+                .isInstanceOf(ConflictException.class)
+                .extracting(ex -> ((ConflictException) ex).getCode())
+                .isEqualTo("CATEGORIZATION_FACILITY_NOT_FOUND");
+        assertThat(e.isRegistered()).isFalse();
+        verify(auditService, never()).record(any(), eq("CATEGORIZATION_REGISTRATION_CONFIRM"), any(), any(), any());
+    }
+
+    /** RB upisan na dva različita objekta — službenik to ispravlja u eTurizmu, STR ne bira. */
+    @Test
+    void confirmRegistration_rnOnTwoObjects_isAmbiguous() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN))
+                .thenReturn(List.of(unit(501, "obj-1"), unit(601, "obj-2")));
+
+        assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), ALL, "actor-3"))
+                .isInstanceOf(ConflictException.class)
+                .extracting(ex -> ((ConflictException) ex).getCode())
+                .isEqualTo("CATEGORIZATION_FACILITY_AMBIGUOUS");
+        assertThat(e.isRegistered()).isFalse();
+    }
+
+    /** Jedinice bez system_uuid nisu „isti objekt" samo zato što im nedostaje oznaka. */
+    @Test
+    void confirmRegistration_unitsWithoutObjectId_areDistinctObjects() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN))
+                .thenReturn(List.of(unit(501, null), unit(502, null)));
+
+        assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), ALL, "actor-3"))
+                .isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    void confirmRegistration_notVerified_isIllegalTransitionWithoutLookup() {
+        CategorizationDecisionEntity e = withRn(RN); // SUBMITTED
+        when(repository.findById(e.getDecisionId())).thenReturn(Optional.of(e));
+
+        assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), ALL, "actor-3"))
+                .isInstanceOf(IllegalStatusTransitionException.class);
+        verify(facilityRepository, never()).findActiveByRegistrationNumber(any());
+    }
+
+    @Test
+    void confirmRegistration_alreadyRegistered_isIllegalTransition() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN)).thenReturn(List.of(unit(501, "obj-1")));
+        service.confirmRegistration(e.getDecisionId(), ALL, "actor-3");
+
+        assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), ALL, "actor-4"))
+                .isInstanceOf(IllegalStatusTransitionException.class);
+        assertThat(e.getRegisteredBy()).isEqualTo("actor-3");
+    }
+
+    /** Opozvan ili povučen broj više ne vrijedi — upis se ne potvrđuje i eTurizam se ne pita. */
+    @Test
+    void confirmRegistration_finalRn_isConflictWithoutLookup() {
+        for (RnStatus status : List.of(RnStatus.REVOKED, RnStatus.WITHDRAWN)) {
+            CategorizationDecisionEntity e = verifiedWithRn(status);
+
+            assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), ALL, "actor-3"))
+                    .isInstanceOf(ConflictException.class)
+                    .extracting(ex -> ((ConflictException) ex).getCode())
+                    .isEqualTo("CATEGORIZATION_RN_FINAL");
+            assertThat(e.isRegistered()).isFalse();
+        }
+        verify(facilityRepository, never()).findActiveByRegistrationNumber(any());
+    }
+
+    /** Stari samostalni upload nema RB — po čemu bi se objekt tražio. */
+    @Test
+    void confirmRegistration_withoutRn_isConflict() {
+        CategorizationDecisionEntity e = submitted();
+        e.verify("INTERNAL:1");
+        when(repository.findById(e.getDecisionId())).thenReturn(Optional.of(e));
+
+        assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), ALL, "actor-3"))
+                .isInstanceOf(ConflictException.class)
+                .extracting(ex -> ((ConflictException) ex).getCode())
+                .isEqualTo("CATEGORIZATION_NO_RN");
+        verify(facilityRepository, never()).findActiveByRegistrationNumber(any());
+    }
+
+    /** Sučelje nudi potvrdu po istom pravilu po kojem je backend prihvaća. */
+    @Test
+    void detail_registrationConfirmable_followsTheConfirmRule() {
+        CategorizationDecisionEntity active = verifiedWithRn(RnStatus.SUSPENDED);
+        assertThat(service.detail(active.getDecisionId(), ALL).registrationConfirmable()).isTrue();
+
+        CategorizationDecisionEntity revoked = verifiedWithRn(RnStatus.REVOKED);
+        assertThat(service.detail(revoked.getDecisionId(), ALL).registrationConfirmable()).isFalse();
+
+        CategorizationDecisionEntity submitted = withRn(RN);
+        when(repository.findById(submitted.getDecisionId())).thenReturn(Optional.of(submitted));
+        assertThat(service.detail(submitted.getDecisionId(), ALL).registrationConfirmable()).isFalse();
+
+        CategorizationDecisionEntity registered = verifiedWithRn(RnStatus.ACTIVE);
+        when(facilityRepository.findActiveByRegistrationNumber(RN)).thenReturn(List.of(unit(501, "obj-1")));
+        service.confirmRegistration(registered.getDecisionId(), ALL, "actor-3");
+        assertThat(service.detail(registered.getDecisionId(), ALL).registrationConfirmable()).isFalse();
+    }
+
+    @Test
+    void confirmRegistration_restricted_rnInOtherCounty_isNotFound() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(rnRepository.findCountyByRn(RN)).thenReturn(Optional.of("Grad Zagreb"));
+
+        assertThatThrownBy(() -> service.confirmRegistration(e.getDecisionId(), SPLIT, "actor-3"))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(facilityRepository, never()).findActiveByRegistrationNumber(any());
+    }
+
+    @Test
+    void detail_showsRegisteringOfficialName() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN)).thenReturn(List.of(unit(501, "obj-1")));
+        service.confirmRegistration(e.getDecisionId(), ALL, "INTERNAL:2");
+        when(internalAccess.displayNames(List.of("INTERNAL:1", "INTERNAL:2")))
+                .thenReturn(Map.of("INTERNAL:1", "Ana", "INTERNAL:2", "Ivo"));
+
+        CategorizationDecisionAdminDto dto = service.detail(e.getDecisionId(), ALL);
+
+        assertThat(dto.verifiedBy()).isEqualTo("Ana");
+        assertThat(dto.registeredBy()).isEqualTo("Ivo");
+        assertThat(dto.registeredAt()).isNotNull();
+        assertThat(dto.facilityId()).isEqualTo("501");
     }
 
     private static CategorizationDecisionEntity withRn(String rn) {

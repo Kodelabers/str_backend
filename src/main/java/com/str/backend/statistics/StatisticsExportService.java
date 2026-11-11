@@ -410,14 +410,15 @@ public class StatisticsExportService {
 
     /**
      * Stupac „Rješenje o kategorizaciji" kao na ekranu (FE {@code shownDecisionStatus}): status
-     * rješenja kad postoji, „Nije predano" uz RB koji ga traži, inače „-".
+     * rješenja kad postoji, „Nije predano" uz RB koji ga traži, inače „-". Prihvaćeno se dijeli po
+     * upisu objekta u TuRegistar (T19).
      */
     private static String rnDecisionLabel(RnSummaryDto r) {
         CategorizationDecisionStatus status = r.categorizationStatus();
         if (status == null) return r.categorizationRequired() ? "Nije predano" : "-";
         return switch (status) {
             case SUBMITTED -> "Predano, u obradi";
-            case VERIFIED -> "Prihvaćeno";
+            case VERIFIED -> r.categorizationRegistered() ? "Prihvaćeno, upisano" : "Prihvaćeno, nije upisano";
             case REJECTED -> "Odbijeno";
         };
     }
