@@ -26,7 +26,7 @@ class EOvlastenjaConfigTest {
     private static final String PASSWORD = "changeit";
 
     private static final EOvlastenjaProperties.MockRepresentation PAIR = new EOvlastenjaProperties.MockRepresentation(
-            "99999999990", "33333333360", "TESTNA TVRTKA d.o.o.", "Direktor");
+            "99999999990", "33333333360", "TESTNA TVRTKA d.o.o.", "Direktor", null);
 
     private final EOvlastenjaConfig config = new EOvlastenjaConfig();
 
@@ -63,7 +63,7 @@ class EOvlastenjaConfigTest {
     @Test
     void enabled_unexpectedUrl_abortsStartup() {
         EOvlastenjaProperties p = new EOvlastenjaProperties(true, "https://roapiservistst.fina.hr/api/nesto",
-                "/x.p12", PASSWORD, null, null, null, SIGNER_TST, null, null, null);
+                "/x.p12", PASSWORD, null, null, null, SIGNER_TST, null, null, null, null);
 
         assertThatThrownBy(() -> config.eOvlastenjaHttpClient(p))
                 .isInstanceOf(IllegalStateException.class)
@@ -92,7 +92,7 @@ class EOvlastenjaConfigTest {
     @Test
     void disabled_incompleteMockPair_abortsStartup() {
         EOvlastenjaProperties.MockRepresentation noName =
-                new EOvlastenjaProperties.MockRepresentation("99999999990", "33333333360", " ", null);
+                new EOvlastenjaProperties.MockRepresentation("99999999990", "33333333360", " ", null, null);
 
         assertThatThrownBy(() -> config.eOvlastenjaClientWhenDisabled(disabled(List.of(noName)), false))
                 .isInstanceOf(IllegalStateException.class)
@@ -161,12 +161,12 @@ class EOvlastenjaConfigTest {
     // ── pomoćne ─────────────────────────────────────────────────────────────
 
     private static EOvlastenjaProperties disabled(List<EOvlastenjaProperties.MockRepresentation> mock) {
-        return new EOvlastenjaProperties(false, null, null, null, null, null, null, null, null, null, mock);
+        return new EOvlastenjaProperties(false, null, null, null, null, null, null, null, null, null, null, mock);
     }
 
     private static EOvlastenjaProperties enabled(String keystore, String alias, String truststore, String signer) {
         return new EOvlastenjaProperties(true, TST_URL, keystore, PASSWORD, alias, truststore, null, signer,
-                null, null, null);
+                null, null, null, null);
     }
 
     private static void keytool(String... args) throws Exception {

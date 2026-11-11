@@ -194,6 +194,10 @@ public class NavigationBarService {
                 case SUBJECT_NOT_FOUND -> Outcome.NOT_FOUND;
             };
         } catch (ExternalRegistryException e) {
+            // Poruka registra ne nosi OIB-ove; bez nje se „unavailable" iz neispravnog odgovora ne bi
+            // razlikovao od nedostupne FINA-e.
+            log.warn("navigation_bar change unavailable izvor_reg={} reason={}", legalForm.get().izvorReg(),
+                    e.getMessage());
             return Outcome.UNAVAILABLE;
         } catch (RuntimeException e) {
             // Širok namjerno: preglednik mora dobiti preusmjerenje, ne stranicu greške 500.

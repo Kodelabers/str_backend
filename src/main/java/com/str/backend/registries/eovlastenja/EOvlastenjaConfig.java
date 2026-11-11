@@ -11,6 +11,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.util.ResourceUtils;
 import org.springframework.web.client.RestClient;
 
+import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -21,6 +22,7 @@ import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.security.Key;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
@@ -57,7 +59,8 @@ public class EOvlastenjaConfig {
                 signer.getNotAfter());
 
         RestClient restClient = RestClient.builder()
-                .requestFactory(requestFactory(sslContext(properties).getSocketFactory(), properties))
+                .requestFactory(requestFactory(sslContext(properties).getSocketFactory(),
+                        hostnameVerifier(properties), properties))
                 .build();
         return new EOvlastenjaHttpClient(restClient, new EOvlastenjaResponseParser(signer),
                 properties.url(), properties.navigationUrl());
@@ -88,7 +91,24 @@ public class EOvlastenjaConfig {
         return new EOvlastenjaClientMock(pairs);
     }
 
-    private static SimpleClientHttpRequestFactory requestFactory(SSLSocketFactory sockets, EOvlastenjaProperties p) {
+    /**
+     * Provjera imena poslužitelja: standardna, osim kad je zadano {@code tls-server-name} — tada
+     * {@link TlsServerNameVerifier} za host iz adrese e-Ovlaštenja prihvaća i certifikat izdan za to ime.
+     */
+    private static HostnameVerifier hostnameVerifier(EOvlastenjaProperties p) {
+        if (p.tlsServerName() == null || p.tlsServerName().isBlank()) {
+            return null;
+        }
+        String host = URI.create(p.url()).getHost();
+        if (host == null) {
+            throw new IllegalStateException("app.eovlastenja.url nema host, a zadan je tls-server-name");
+        }
+        log.info("eovlastenja_tls host={} accepted_server_name={}", host, p.tlsServerName().trim());
+        return new TlsServerNameVerifier(host, p.tlsServerName());
+    }
+
+    private static SimpleClientHttpRequestFactory requestFactory(SSLSocketFactory sockets, HostnameVerifier verifier,
+                                                                 EOvlastenjaProperties p) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
             @Override
             protected void prepareConnection(HttpURLConnection connection, String httpMethod) throws IOException {
@@ -97,6 +117,9 @@ public class EOvlastenjaConfig {
                     throw new IOException("e-Ovlaštenja se pozivaju isključivo preko HTTPS-a");
                 }
                 https.setSSLSocketFactory(sockets);
+                if (verifier != null) {
+                    https.setHostnameVerifier(verifier);
+                }
                 https.setInstanceFollowRedirects(false);
             }
         };
