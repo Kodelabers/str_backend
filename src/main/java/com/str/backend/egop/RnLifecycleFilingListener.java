@@ -3,6 +3,7 @@ package com.str.backend.egop;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.rn.RnLifecycleLookup;
+import com.str.backend.rn.RucniAkt;
 import com.str.backend.rn.event.RnLifecycleEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,13 +55,16 @@ public class RnLifecycleFilingListener {
     private final EgopAktDispatcher dispatcher;
     private final EgopAktiBezSifre bezSifre;
     private final EgopKpOtpremaService kpOtprema;
+    private final RucniAktFilingService rucniAkti;
 
     public RnLifecycleFilingListener(RnLifecycleLookup lookup,
                                      StrDocumentService documentService,
                                      EgopFilingStore store,
                                      EgopAktDispatcher dispatcher,
                                      EgopAktiBezSifre bezSifre,
-                                     EgopKpOtpremaService kpOtprema) {
+                                     EgopKpOtpremaService kpOtprema,
+                                     RucniAktFilingService rucniAkti) {
+        this.rucniAkti = rucniAkti;
         this.lookup = lookup;
         this.documentService = documentService;
         this.store = store;
@@ -95,6 +99,16 @@ public class RnLifecycleFilingListener {
         // act_ref jednom po prijelazu: pismena istog prijelaza (zahtjev i obavijest o opozivu) dijele
         // ga i po njemu se drže zajedno — i kad nema log_id-a pa je oznaka izvedena iz vremena.
         String actRef = actRef(event);
+
+        // T16: akt županijskog službenika s ručnom KLASOM i URBROJEM ne ide kroz eGOP.
+        Optional<RucniAkt> rucni = lookup.findRucniAkt(event.logId());
+        if (rucni.isPresent()) {
+            for (StrDocumentType vrsta : vrste) {
+                zapisiRucni(event, submissionId, vrsta, actRef, rucni.get());
+            }
+            return;
+        }
+
         List<UrudzbaAkta> zapisani = new ArrayList<>();
         for (StrDocumentType vrsta : vrste) {
             zapisi(event, submissionId, vrsta, actRef).ifPresent(akt -> zapisani.add(new UrudzbaAkta(vrsta, akt)));
@@ -120,6 +134,33 @@ public class RnLifecycleFilingListener {
                     + " ni retry neće pokupiti; urudžbirati ručno",
                     event.rn(), type.vrstaPismenaNaziv(), e.getMessage(), e);
             return Optional.empty();
+        }
+    }
+
+    private void zapisiRucni(RnLifecycleEvent event, UUID submissionId, StrDocumentType type, String actRef,
+                             RucniAkt rucni) {
+        if (type.smjer() == StrDocumentType.Smjer.ULAZNO) {
+            log.error("rucni_akt_preskocen rn={} vrsta='{}' — ulazno pismeno ne može biti ručni akt službenika",
+                    event.rn(), type.vrstaPismenaNaziv());
+            return;
+        }
+        EgopPismenoEntity akt;
+        try {
+            akt = rucniAkti.zapisi(event, submissionId, type, actRef, rucni);
+        } catch (RuntimeException e) {
+            // Status je već promijenjen, a akta nema — mora se vidjeti, kao i kod eGOP akta.
+            log.error("rucni_akt_not_recorded rn={} log_id={} vrsta='{}' klasa={} urbroj={}: {} — akt nije zapisan "
+                            + "ni poslan u KP; izdati ručno", event.rn(), event.logId(), type.vrstaPismenaNaziv(),
+                    rucni.klasa(), rucni.urBroj(), e.getMessage(), e);
+            return;
+        }
+        try {
+            rucniAkti.zabiljeziZaKp(event, type, akt, rucni);
+        } catch (RuntimeException e) {
+            // Akt je zapisan (vidljiv u dokumentima RB-a, ide e-poštom), ali ne i u korisnički pretinac.
+            log.error("rucni_akt_kp_not_recorded rn={} akt={} vrsta='{}' klasa={} urbroj={}: {} — akt je zapisan, ali "
+                            + "poruka u korisnički pretinac nije zabilježena; poslati ručno", event.rn(), akt.getId(),
+                    type.vrstaPismenaNaziv(), rucni.klasa(), rucni.urBroj(), e.getMessage(), e);
         }
     }
 

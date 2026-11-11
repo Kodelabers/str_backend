@@ -46,6 +46,24 @@ class SuspensionDeadlineJobTest {
         job = new SuspensionDeadlineJob(rnRepository, transitionService, objectionRepository, logRepository);
     }
 
+    /** T16: ručni prijedlog županijskog službenika daje ručnu suspenziju — ista KLASA, URBROJ + 1. */
+    @Test
+    void rucniPrijedlog_suspenzijaSIzvedenimBrojem() {
+        RnEntity rn = proposed(LocalDate.now().minusDays(1));
+        when(rnRepository.findRnsWithSuspensionDeadlineBefore(any())).thenReturn(List.of(RN));
+        when(rnRepository.findForUpdate(RN)).thenReturn(Optional.of(rn));
+        RucniAkt prijedlog = new RucniAkt("334-06/26-01/7", "2181-26-2", "Splitsko-dalmatinska županija",
+                "40781519492", "Upravni odjel", 17);
+        when(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc(RN, "SUSPENSION_PROPOSED"))
+                .thenReturn(Optional.of(RegistrationNumberLogEntity.transition(RN, "ACTIVE", "SUSPENSION_PROPOSED",
+                        "INSPECTION", "INTERNAL:12345678903", null, prijedlog)));
+
+        job.run();
+
+        verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
+                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.", prijedlog.sljedeci());
+    }
+
     @Test
     void suspendsProposalWithExpiredDeadline() {
         RnEntity rn = proposed(LocalDate.now().minusDays(1));
@@ -55,7 +73,7 @@ class SuspensionDeadlineJobTest {
         job.run();
 
         verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
-                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
+                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.", null);
     }
 
     @Test
@@ -67,7 +85,7 @@ class SuspensionDeadlineJobTest {
 
         job.run();
 
-        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     /**
@@ -86,7 +104,7 @@ class SuspensionDeadlineJobTest {
 
         job.run();
 
-        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     /**
@@ -105,7 +123,7 @@ class SuspensionDeadlineJobTest {
         job.run();
 
         verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
-                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
+                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.", null);
     }
 
     /**
@@ -133,7 +151,7 @@ class SuspensionDeadlineJobTest {
         job.run();
 
         verify(transitionService).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
-                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.");
+                "SYSTEM", "Rok za rješavanje nepravilnosti istekao.", null);
     }
 
     @Test
@@ -151,7 +169,7 @@ class SuspensionDeadlineJobTest {
 
         job.run();
 
-        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     /** „Danas" joba je po hrvatskom vremenu (kontejner je UTC): upit roka dobiva datum u Europe/Zagreb. */

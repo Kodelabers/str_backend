@@ -716,6 +716,36 @@ STR_KP_API_ENABLED=true
 SELECT 'K1' AS blok, p.rn, p.dio, p.status, p.attempts, p.tip_poruke, p.izdavatelj_zu_rb, p.next_attempt_at, p.poslano_at, p.greska, p.created_at FROM str_rn.kp_poruka p ORDER BY p.created_at DESC LIMIT 30;
 ```
 
+#### Ručna KLASA i URBROJ županijskog službenika (T16)
+
+Kad radnju (prijedlog i obustava suspenzije, reaktivacija, prijedlog i obustava povlačenja, uvažavanje
+očitovanja) radi **županijski** službenik, eGOP se ne koristi: službenik upisuje `klasa` i `urbroj`,
+izdavatelj na aktu je njegova županija (naziv, OIB i jedinica iz `str.internal_organization` /
+`organizational_unit`), bez MINTS-ova e-pečata. Suspenzija ili povlačenje istekom roka (noćni posao,
+neuvažavanje očitovanja) uzima KLASU i izdavatelja s prijedloga, a URBROJ + 1. Službenik ministarstva radi
+kao dosad (eGOP). Privremeno: adresa i mjesto izdavatelja su prazni, propis nadležnosti je MINTS-ov.
+
+| Redak | Značenje |
+| :--- | :--- |
+| `rucni_akt_zupanija zu_rb=… izdavatelj='…' klasa=… urbroj=…` | radnju radi županijski službenik — ručni akt |
+| `rucni_akt_odbijen zu_rb=… razlog=error.rn.akt.…` | KLASA/URBROJ nisu prošli provjeru (400 službeniku); razlog je ključ poruke |
+| `rucni_akt_zanemaren outcome=… klasa=… urbroj=…` (WARN) | sučelje je poslalo brojeve, a backend službenika ne vidi kao županijskog — akt ide kroz eGOP |
+| `rucni_akt_bez_izdavatelja` / `_izdavatelj_bez_oib` / `_izdavatelj_bez_naziva` (WARN) | podaci izdavatelja u `str.internal_organization` nepotpuni — akt bez tog podatka |
+| `rn_transition … rucni_akt=true` | prijelaz nosi ručne brojeve |
+| `rucni_akt_izveden rn=… urbroj_prijedloga=… urbroj=…` | noćni posao / neuvažavanje: brojevi izvedeni iz prijedloga (URBROJ + 1) |
+| `rucni_akt_izvod_pao …` (**ERROR**) | prijedlog je ručni, a broj se ne može izvesti — akt je otišao kroz eGOP |
+| `document_rucni_akt type=… izdavatelj='…' klasa=… urbroj=…` | render ručnog akta (zaglavlje županije, bez e-pečata) |
+| `rucni_akt_zapisan rn=… akt=… klasa=… urbroj=… zu_rb=…` | akt je zapisan (`egop_pismeno.rucno`, `SYNCED`), bez eGOP-a |
+| `rucni_akt_bez_kp …` | primatelj nije fizička osoba s OIB-om (ili RB nije pronađen) — akt ide samo e-poštom |
+| `rucni_akt_not_recorded rn=… log_id=…` (**ERROR**) | status je promijenjen, a akt nije zapisan — izdati ručno |
+| `rucni_akt_kp_not_recorded rn=… akt=…` (**ERROR**) | akt je zapisan i ide e-poštom, ali poruka u pretinac nije zabilježena — poslati ručno |
+| `rn_lifecycle_mail_unsealed_act … reason=rucni_akt_zupanije` (WARN) | non-EU dobiva ručni akt nepečaćen (ručni akt nema MINTS-ov pečat) |
+| `kp_api_priprema_pala id_poruke=… pismeno=…` (WARN, sa stack traceom) | PDF akta ili prilog nisu pročitani pri slanju u KP |
+
+```sql
+SELECT 'R1' AS blok, l.rn, l.to_status, l.trigger_name, l.akt_klasa, l.akt_ur_broj, l.akt_izdavatelj_naziv, l.akt_izdavatelj_zu_rb, l.occurred_at FROM str_rn.registration_number_log l WHERE l.akt_ur_broj IS NOT NULL ORDER BY l.occurred_at DESC LIMIT 30;
+```
+
 ## 9. Iz browsera
 
 ```

@@ -413,7 +413,25 @@ class RnLifecycleEmailListenerTest {
                 RnTrigger.INCOMPLETE_DOCUMENTATION, null, null));
 
         assertThat(captured().pdf()).isEqualTo("pdf".getBytes());
-        verify(pismenoRepository, never()).findFirstByRnAndActRefAndVrstaPismenaNaziv(any(), any(), any());
+    }
+
+    /**
+     * T16: ručni akt županije ima spremljen PDF upravo tog prijelaza — mail (i ponovljeni) nosi njega, a ne
+     * novi render, koji bi nakon kasnijeg prijelaza iste vrste dao drugi akt.
+     */
+    @Test
+    void rucniAkt_saljeSpremljeniPdfPrijelaza() {
+        RnLifecycleEvent event = event(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION,
+                "INTERNAL:12345678903", null);
+        EgopPismenoEntity rucni = EgopPismenoEntity.rucniAkt(UUID.randomUUID(), RN, event.logId().toString(),
+                StrDocumentType.PRIJEDLOG_SUSPENZIJE.vrstaPismenaNaziv(), "%PDF-rucni".getBytes(), "334", "2181-26-2");
+        when(pismenoRepository.findFirstByRnAndActRefAndVrstaPismenaNaziv(RN, event.logId().toString(),
+                StrDocumentType.PRIJEDLOG_SUSPENZIJE.vrstaPismenaNaziv())).thenReturn(Optional.of(rucni));
+
+        listener.onLifecycleChange(event);
+
+        assertThat(captured().pdf()).isEqualTo("%PDF-rucni".getBytes());
+        verify(documentService, never()).render(any(), any(), any());
     }
 
     /** T17: prilozi službenika uz akt idu u privitak dok procjena kodirane poruke stane u limit (20 MB). */

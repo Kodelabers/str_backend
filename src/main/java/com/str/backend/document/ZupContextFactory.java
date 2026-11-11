@@ -268,6 +268,29 @@ public class ZupContextFactory {
      * Službenik koji potpisuje akt ({@link StrDocumentType#potpisujeSluzbenik()}): njegovo ime
      * zamjenjuje naziv tijela u potpisu. Prazno ime ne mijenja ništa — potpis ostaje tijelo.
      */
+    /** Ključ konteksta: akt bez e-pečata (ručni akt županijskog službenika, T16). */
+    public static final String BEZ_EPECATA = "akt.bezEpecata";
+
+    /**
+     * T16: izdavatelj ručnog akta je županija službenika, ne tijelo iz konfiguracije (MINTS). Naziv, OIB i
+     * ustrojstvena jedinica su snimak iz eTurizma; adresu i mjesto eTurizam nema, pa ostaju prazni
+     * (privremeno, dok MINTS ne dostavi podatke po županiji). Propis nadležnosti ostaje konfigurirani.
+     * Akt nema MINTS-ov e-pečat ({@link #BEZ_EPECATA}). Zove se prije {@link #putSluzbenik}, koji potpis
+     * tijela zamjenjuje imenom službenika.
+     */
+    public static void putIzdavatelj(Map<String, String> ctx, String naziv, String oib, String jedinica) {
+        String n = optional(naziv);
+        ctx.put("tijelo.naziv", n);
+        ctx.put("tijelo.nazivVelikim", n.toUpperCase(HR));
+        ctx.put("tijelo.oib", optional(oib));
+        ctx.put("tijelo.adresa", "");
+        ctx.put("tijelo.mjesto", "");
+        ctx.put("tijelo.ustrojstvenaJedinica", optional(jedinica));
+        ctx.put("sluzbenik.potpisTijela", n.toUpperCase(HR));
+        ctx.put("akt.mjestoDatum", optional(ctx.get("akt.datum")));
+        ctx.put(BEZ_EPECATA, "true");
+    }
+
     public static void putSluzbenik(Map<String, String> ctx, String ime) {
         if (ime == null || ime.isBlank()) {
             return;

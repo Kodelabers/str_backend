@@ -48,6 +48,7 @@ class RnServiceTest {
     private RnReissueGuard reissueGuard;
     private com.str.backend.objection.SuspensionObjectionRepository objectionRepository;
     private ObjectGroupPolicy objectGroupPolicy;
+    private RegistrationNumberLogRepository logRepository;
     private final Clock clock = Clock.fixed(Instant.parse("2026-04-30T10:00:00Z"), ZoneId.of("UTC"));
     /** Valjan rok za očitovanje (u budućnosti u odnosu na {@link #clock}). */
     private static final LocalDate DEADLINE = LocalDate.of(2026, 5, 15);
@@ -64,9 +65,10 @@ class RnServiceTest {
         reissueGuard = mock(RnReissueGuard.class);
         objectionRepository = mock(com.str.backend.objection.SuspensionObjectionRepository.class);
         objectGroupPolicy = mock(ObjectGroupPolicy.class);
+        logRepository = mock(RegistrationNumberLogRepository.class);
         service = new RnService(repository, transitionService, accommodationRepository,
                 accommodationTypeRepository, clock, new DocumentLabels(), prilogService, reissueGuard,
-                objectionRepository, objectGroupPolicy);
+                objectionRepository, objectGroupPolicy, logRepository);
     }
 
     @Test
@@ -214,7 +216,7 @@ class RnServiceTest {
         service.suspend(rn.getRn(), RnTrigger.INCOMPLETE_DOCUMENTATION, DEADLINE, null, null, List.of());
 
         verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INCOMPLETE_DOCUMENTATION,
-                null, "nepotpuni i/ili netočni podaci");
+                null, "nepotpuni i/ili netočni podaci", null);
     }
 
     /**
@@ -230,7 +232,7 @@ class RnServiceTest {
                 List.of());
 
         verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION,
-                "INTERNAL:12345678903", "nalaz inspekcijskog nadzora");
+                "INTERNAL:12345678903", "nalaz inspekcijskog nadzora", null);
     }
 
     @Test
@@ -242,7 +244,7 @@ class RnServiceTest {
                 List.of());
 
         verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.OTHER,
-                "INTERNAL:12345678903", "opis službenika");
+                "INTERNAL:12345678903", "opis službenika", null);
     }
 
     /** L-null-actor: prilozi bez identificiranog službenika su 403 ATTACHMENT_FORBIDDEN, ne 500. */
@@ -269,7 +271,7 @@ class RnServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.deadline.required");
         verify(repository, never()).findForUpdate(anyString());
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     /** Povijesni razlog ostaje u enumu, ali novi prijedlog njime više ne nastaje. */
@@ -300,7 +302,7 @@ class RnServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.deadline.past");
         verify(transitionService, never())
-                .transition(any(), any(), any(), anyString(), anyString());
+                .transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     /** Rok koji ističe danas je valjan — job hvata samo strogo starije od danas. */
@@ -321,7 +323,7 @@ class RnServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.note.required");
         verify(transitionService, never())
-                .transition(any(), any(), any(), anyString(), anyString());
+                .transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     @Test
@@ -330,7 +332,7 @@ class RnServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.suspend.trigger.invalid");
         verify(transitionService, never())
-                .transition(any(), any(), any(), anyString(), anyString());
+                .transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     // ---- T12: prijedlog povlačenja, obustava, istek roka i uvaženi prigovor
@@ -347,7 +349,7 @@ class RnServiceTest {
                 "INTERNAL:12345678903", List.of());
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
-                "INTERNAL:12345678903", "dostavljene su nevjerodostojne ili nevaljane informacije");
+                "INTERNAL:12345678903", "dostavljene su nevjerodostojne ili nevaljane informacije", null);
         assertThat(rn.getWithdrawalDeadline()).isEqualTo(DEADLINE);
     }
 
@@ -380,7 +382,7 @@ class RnServiceTest {
                 null, List.of());
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
-                null, "nedostaje suglasnost");
+                null, "nedostaje suglasnost", null);
     }
 
     @Test
@@ -389,7 +391,7 @@ class RnServiceTest {
                 List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.withdraw.reason.required");
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -398,7 +400,7 @@ class RnServiceTest {
                 "  ", null, List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.withdraw.note.required");
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     /** Bilješka ide u registration_number_log.reason (1024 znaka): preduga je 400, ne 500 iz baze. */
@@ -413,14 +415,14 @@ class RnServiceTest {
                 List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.note.tooLong");
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
 
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         String exact = "y".repeat(RnService.MAX_NOTE_LENGTH);
         service.proposeWithdrawal(rn.getRn(), WithdrawalReason.OTHER, DEADLINE, exact, null, List.of());
         verify(transitionService).transition(rn, RnStatus.WITHDRAWAL_PROPOSED, RnTrigger.WITHDRAWAL_PROPOSAL,
-                null, exact);
+                null, exact, null);
     }
 
     @Test
@@ -429,7 +431,7 @@ class RnServiceTest {
                 WithdrawalReason.DATA_NOT_CORRECTED, null, null, null, List.of()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("error.rn.withdraw.deadline.required");
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     /** Rok po hrvatskom vremenu: danas vrijedi, jučer ne. */
@@ -453,7 +455,7 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         UUID logId = UUID.randomUUID();
         when(transitionService.transition(eq(rn), eq(RnStatus.WITHDRAWAL_PROPOSED),
-                eq(RnTrigger.WITHDRAWAL_PROPOSAL), eq("INTERNAL:12345678903"), anyString())).thenReturn(logId);
+                eq(RnTrigger.WITHDRAWAL_PROPOSAL), eq("INTERNAL:12345678903"), anyString(), any())).thenReturn(logId);
 
         service.proposeWithdrawal(rn.getRn(), WithdrawalReason.DATA_NOT_CORRECTED, DEADLINE, null,
                 "INTERNAL:12345678903", List.of(9L));
@@ -470,7 +472,7 @@ class RnServiceTest {
         service.revokeWithdrawalProposal(rn.getRn(), "INTERNAL:12345678903");
 
         verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL,
-                "INTERNAL:12345678903", null);
+                "INTERNAL:12345678903", null, null);
     }
 
     @Test
@@ -481,7 +483,7 @@ class RnServiceTest {
         assertThatThrownBy(() -> service.revokeWithdrawalProposal(rn.getRn(), null))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("RN_NOT_WITHDRAWAL_PROPOSED"));
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     /** Neuvaženo očitovanje nakon isteka roka: odmah povlačenje, istim prijelazom kao posao. */
@@ -493,7 +495,7 @@ class RnServiceTest {
         assertThat(service.withdrawIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isTrue();
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED,
-                "INTERNAL:12345678903", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE);
+                "INTERNAL:12345678903", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE, null);
     }
 
     @Test
@@ -509,7 +511,7 @@ class RnServiceTest {
         when(repository.findForUpdate(suspensionProposed.getRn())).thenReturn(Optional.of(suspensionProposed));
         assertThat(service.withdrawIfDeadlineExpired(suspensionProposed.getRn(), null)).isFalse();
 
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     /** Uvaženi prigovor na povučen broj: WITHDRAWN → ACTIVE kad objekt nema drugi važeći broj. */
@@ -521,7 +523,7 @@ class RnServiceTest {
 
         service.reinstate(rn.getRn(), "INTERNAL:12345678903");
 
-        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REINSTATE, "INTERNAL:12345678903", null);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REINSTATE, "INTERNAL:12345678903", null, null);
     }
 
     /** Za objekt je izdan drugi važeći broj → 409 OBJECTION_RN_REISSUED, bez prijelaza. */
@@ -534,7 +536,7 @@ class RnServiceTest {
         assertThatThrownBy(() -> service.reinstate(rn.getRn(), null))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     /** Neuvaženi prigovor nakon isteka roka: odmah suspenzija, u ime službenika, istim prijelazom kao job. */
@@ -546,7 +548,7 @@ class RnServiceTest {
         assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isTrue();
 
         verify(transitionService, times(1)).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
-                "INTERNAL:12345678903", SuspensionDeadlineJob.DEADLINE_EXCEEDED_NOTE);
+                "INTERNAL:12345678903", SuspensionDeadlineJob.DEADLINE_EXCEEDED_NOTE, null);
     }
 
     /** Rok koji ističe danas još teče — kao i u jobu. */
@@ -557,7 +559,7 @@ class RnServiceTest {
 
         assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isFalse();
 
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -567,7 +569,7 @@ class RnServiceTest {
 
         assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isFalse();
 
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
 
     /** STR-1.5: nevažeći za oglašavanje su i opozvani i povučeni, ne samo suspendirani; prijedlozi nisu, osim iz suspenzije. */
@@ -651,13 +653,13 @@ class RnServiceTest {
 
         service.suspend(rn.getRn(), RnTrigger.INSPECTION, DEADLINE, null, actor, List.of());
         verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION, actor,
-                "nalaz inspekcijskog nadzora");
+                "nalaz inspekcijskog nadzora", null);
 
         service.revokeProposal(rn.getRn(), actor);
-        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null, null);
 
         service.reactivate(rn.getRn(), actor);
-        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null, null);
     }
 
     // ---- T17: prilozi službenika uz prijedlog suspenzije i povlačenje
@@ -669,7 +671,7 @@ class RnServiceTest {
         when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
         UUID logId = UUID.randomUUID();
         when(transitionService.transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION,
-                "INTERNAL:12345678903", "nalaz inspekcijskog nadzora")).thenReturn(logId);
+                "INTERNAL:12345678903", "nalaz inspekcijskog nadzora", null)).thenReturn(logId);
 
         service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null, "INTERNAL:12345678903", List.of(7L, 8L));
 
@@ -692,7 +694,7 @@ class RnServiceTest {
     void suspend_rejectedAttachment_propagates() {
         RnEntity rn = mock(RnEntity.class);
         when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
-        when(transitionService.transition(any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
+        when(transitionService.transition(any(), any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
         when(prilogService.bind(any(), any(), any())).thenThrow(new PrilogException(
                 org.springframework.http.HttpStatus.BAD_REQUEST, "error.attachment.totalTooLarge",
                 PrilogException.TOTAL_TOO_LARGE));

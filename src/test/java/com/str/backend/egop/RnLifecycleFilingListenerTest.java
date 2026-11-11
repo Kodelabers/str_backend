@@ -44,12 +44,48 @@ class RnLifecycleFilingListenerTest {
         when(lookup.findSubmissionId(RN)).thenReturn(Optional.of(submissionId));
         when(documentService.render(any(), any(), any())).thenReturn("pdf".getBytes());
         when(store.saveAkt(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(lookup.findRucniAkt(any())).thenReturn(java.util.Optional.empty());
     }
+
+    private final RucniAktFilingService rucniAkti = org.mockito.Mockito.mock(RucniAktFilingService.class);
 
     /** @param bezSifre slugovi na blokadnoj listi; prazno = sve se urudžbira */
     private RnLifecycleFilingListener listener(String... bezSifre) {
         return new RnLifecycleFilingListener(lookup, documentService, store, dispatcher,
-                new EgopAktiBezSifre(Set.of(bezSifre)), kpOtprema);
+                new EgopAktiBezSifre(Set.of(bezSifre)), kpOtprema, rucniAkti);
+    }
+
+    /** T16: akt županijskog službenika s ručnim brojevima ide mimo eGOP-a (urudžba, KP otprema). */
+    @Test
+    void rucniAkt_zapisujeSeMimoEgopa() {
+        com.str.backend.rn.RucniAkt rucni = new com.str.backend.rn.RucniAkt("334-06/26-01/7", "2181-26-2",
+                "Splitsko-dalmatinska županija", "40781519492", "Upravni odjel", 17);
+        when(lookup.findRucniAkt(any())).thenReturn(java.util.Optional.of(rucni));
+
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED,
+                RnTrigger.INSPECTION, "INTERNAL:12345678903", "nalaz"));
+
+        org.mockito.Mockito.verify(rucniAkti).zapisi(any(), any(),
+                org.mockito.ArgumentMatchers.eq(com.str.backend.document.StrDocumentType.PRIJEDLOG_SUSPENZIJE), any(),
+                org.mockito.ArgumentMatchers.eq(rucni));
+        org.mockito.Mockito.verify(rucniAkti).zabiljeziZaKp(any(), any(), any(), org.mockito.ArgumentMatchers.eq(rucni));
+        org.mockito.Mockito.verify(store, org.mockito.Mockito.never()).saveAkt(any());
+        org.mockito.Mockito.verifyNoInteractions(dispatcher, kpOtprema);
+    }
+
+    /** Pad bilježenja za KP ne smije se progutati, ali ni poništiti zapisani akt. */
+    @Test
+    void rucniAkt_padKp_neBaca() {
+        com.str.backend.rn.RucniAkt rucni = new com.str.backend.rn.RucniAkt("334", "2181-26-2", "SDŽ", null, null, 17);
+        when(lookup.findRucniAkt(any())).thenReturn(java.util.Optional.of(rucni));
+        when(rucniAkti.zapisi(any(), any(), any(), any(), any())).thenReturn(org.mockito.Mockito.mock(EgopPismenoEntity.class));
+        org.mockito.Mockito.doThrow(new IllegalStateException("baza")).when(rucniAkti)
+                .zabiljeziZaKp(any(), any(), any(), any());
+
+        listener().onLifecycleChange(event(RnStatus.ACTIVE, RnStatus.SUSPENSION_PROPOSED,
+                RnTrigger.INSPECTION, "INTERNAL:12345678903", "nalaz"));
+
+        org.mockito.Mockito.verify(rucniAkti).zabiljeziZaKp(any(), any(), any(), any());
     }
 
     @Test

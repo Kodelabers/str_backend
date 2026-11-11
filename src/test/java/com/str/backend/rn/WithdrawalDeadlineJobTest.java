@@ -53,7 +53,7 @@ class WithdrawalDeadlineJobTest {
         job.run();
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED,
-                "SYSTEM", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE);
+                "SYSTEM", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE, null);
     }
 
     /** Broj je u međuvremenu opozvan, obustavljen ili mu rok još teče — ostaje kakav jest. */
@@ -68,7 +68,7 @@ class WithdrawalDeadlineJobTest {
 
         job.run();
 
-        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     /** Očitovanje na trenutni prijedlog predano do kraja dana roka: odlučuje službenik. */
@@ -90,7 +90,7 @@ class WithdrawalDeadlineJobTest {
 
         job.run();
 
-        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString());
+        verify(transitionService, never()).transition(any(), any(), any(), anyString(), anyString(), any());
     }
 
     /** Očitovanje predano nakon roka povlačenje ne zadržava: upit ga ne nalazi, pa posao povlači. */
@@ -114,7 +114,7 @@ class WithdrawalDeadlineJobTest {
         job.run();
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED,
-                "SYSTEM", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE);
+                "SYSTEM", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE, null);
     }
 
     private static RnEntity proposed(LocalDate deadline) {

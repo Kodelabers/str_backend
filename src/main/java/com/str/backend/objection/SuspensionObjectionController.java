@@ -2,6 +2,8 @@ package com.str.backend.objection;
 
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.rn.RnScopeGuard;
+import com.str.backend.rn.RucniAkt;
+import com.str.backend.rn.RucniAktService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ContentDisposition;
@@ -33,16 +35,22 @@ public class SuspensionObjectionController {
     private final SuspensionObjectionAdminService service;
     private final InternalAccessService internalAccess;
     private final RnScopeGuard scopeGuard;
+    private final RucniAktService rucniAkt;
 
     public SuspensionObjectionController(SuspensionObjectionAdminService service,
                                          InternalAccessService internalAccess,
-                                         RnScopeGuard scopeGuard) {
+                                         RnScopeGuard scopeGuard,
+                                         RucniAktService rucniAkt) {
+        this.rucniAkt = rucniAkt;
         this.service = service;
         this.internalAccess = internalAccess;
         this.scopeGuard = scopeGuard;
     }
 
-    record ResolveObjectionRequest(@Nullable @Size(max = 1000) String note) {
+    /** {@code klasa} i {@code urbroj}: ručni akt županijskog službenika uz uvažavanje (T16). */
+    record ResolveObjectionRequest(@Nullable @Size(max = 1000) String note,
+                                   @Nullable String klasa,
+                                   @Nullable String urbroj) {
     }
 
     @GetMapping
@@ -77,7 +85,9 @@ public class SuspensionObjectionController {
                                        @RequestBody(required = false) @Valid ResolveObjectionRequest body,
                                        Authentication authentication) {
         scopeGuard.requireInScope(rn, authentication);
-        service.accept(rn, id, actor(authentication), body != null ? body.note() : null);
+        RucniAkt rucni = rucniAkt.zaRadnju(authentication, body != null ? body.klasa() : null,
+                body != null ? body.urbroj() : null);
+        service.accept(rn, id, actor(authentication), body != null ? body.note() : null, rucni);
         return ResponseEntity.noContent().build();
     }
 

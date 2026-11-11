@@ -51,6 +51,13 @@ public class RnLifecycleLookup {
      * (npr. prijedlog suspenzije pa obustava) ne smije stići nakon novije — stranka bi dobila
      * stanje koje više ne vrijedi.
      */
+    /** T16: ručni akt prijelaza (KLASA, URBROJ, izdavatelj); prazno kad akt ide kroz eGOP. */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public Optional<RucniAkt> findRucniAkt(UUID logId) {
+        return logId == null ? Optional.empty()
+                : logRepository.findById(logId).flatMap(RegistrationNumberLogEntity::rucniAkt);
+    }
+
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public boolean isLatestTransition(String rn, UUID logId) {
         return logRepository.findFirstByRnOrderByOccurredAtDesc(rn)
