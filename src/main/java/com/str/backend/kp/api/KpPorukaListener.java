@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-/** Nakon commita radnje šalje njene poruke sesijom službenika, izvan niti zahtjeva. */
+/** Nakon commita radnje šalje njene poruke izvan niti zahtjeva. */
 @Component
 class KpPorukaListener {
 
@@ -21,10 +21,10 @@ class KpPorukaListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     void onZabiljezene(KpPorukeZabiljezene event) {
         try {
-            service.posaljiAsync(event.ids(), event.sessionId());
+            service.posaljiAsync(event.ids());
         } catch (RuntimeException e) {
-            // Poruke su zabilježene; pošalje ih sljedeći zahtjev službenika iste županije.
-            log.error("kp_api_listener_failed poruka={} — šalju se pri sljedećem zahtjevu", event.ids().size(), e);
+            // Poruke su zabilježene; šalje ih KpApiRetryJob.
+            log.error("kp_api_listener_failed poruka={} — šalje ih retry posao", event.ids().size(), e);
         }
     }
 }

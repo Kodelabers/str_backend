@@ -18,12 +18,12 @@ import java.util.UUID;
 /**
  * {@code POST /poruke} eTurizmova KP API-ja ({@code Downloads/kp-api-openapi.yaml}).
  *
- * <p>Prijava je NIAS sesija službenika: šalje se cookie {@code SESSION=<base64(id)>}, kao
- * {@code SharedSessionCookieInterceptor}, ali s izričito predanim ID-om sesije — slanje ide izvan niti
- * zahtjeva, gdje {@code RequestContextHolder} ne postoji. Vrijednost cookieja se nikad ne logira.
+ * <p>Prijava je HTTP Basic tehničkim korisnikom STR-a; zaglavlje {@code Authorization} postavlja
+ * {@link KpApiConfig} na {@link RestClient}, pa ga ovaj razred ni ne vidi. Ništa iz prijave se ne logira.
  *
- * <p>Preusmjerenja se ne slijede: sesija koju servis ne prepozna dobije 302 na NIAS prijavu, što je
- * {@link Ishod#NEAUTORIZIRAN}, a ne HTML stranica koja bi izgledala kao nečitljiv odgovor.
+ * <p>Preusmjerenja se ne slijede: odbijena prijava (401, 403, ili 302 na stranicu prijave) je
+ * {@link Ishod#NEAUTORIZIRAN}, s opisom iz tijela odgovora odnosno odredištem preusmjerenja — da se iz
+ * {@code kp_poruka.greska} i loga vidi zašto.
  *
  * <p>Nikad ne baca: svaki odgovor i svaka greška veze postaju {@link Odgovor}.
  */
@@ -43,7 +43,7 @@ public class KpApiClient {
         ODBIJENO,
         /** Naš zahtjev je neispravan (400) ili drugi konačni 4xx — ponavljanje ne pomaže. */
         NEISPRAVNO,
-        /** Sesija ne vrijedi (401, 403, 3xx) — pokušat će druga sesija, pokušaj se ne broji. */
+        /** Prijava odbijena (401, 403, 3xx) — konfiguracija, ne poruka: pokušaj se ne broji, poruka čeka. */
         NEAUTORIZIRAN,
         /** KP nedostupan, veza, timeout, 5xx, 409 — ishod nepoznat, ponoviti s istim {@code idPoruke}. */
         GRESKA
@@ -72,23 +72,26 @@ public class KpApiClient {
         this.restClient = restClient;
     }
 
-    public Odgovor posalji(String sessionId, PorukaZahtjev poruka) {
-        String cookie = "SESSION=" + Base64.getEncoder().encodeToString(sessionId.getBytes(StandardCharsets.UTF_8));
+    public Odgovor posalji(PorukaZahtjev poruka) {
         try {
             return restClient.post()
                     .uri("/poruke")
-                    .header(HttpHeaders.COOKIE, cookie)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(poruka)
                     .exchange((request, response) -> odgovor(response.getStatusCode().value(),
-                            new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8)));
+                            new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8),
+                            response.getHeaders().getFirst(HttpHeaders.LOCATION)));
         } catch (RestClientException e) {
             return new Odgovor(Ishod.GRESKA, 0, skrati("veza: " + najdubljiUzrok(e)));
         }
     }
 
     static Odgovor odgovor(int status, String tijelo) {
+        return odgovor(status, tijelo, null);
+    }
+
+    static Odgovor odgovor(int status, String tijelo, String location) {
         JsonNode json = citaj(tijelo);
         String statusPoruke = tekst(json, "status");
         if (status == 200 || status == 201) {
@@ -98,8 +101,15 @@ public class KpApiClient {
             Ishod ishod = "NEMA_PRETINCA".equals(statusPoruke) ? Ishod.NEMA_PRETINCA : Ishod.ODBIJENO;
             return new Odgovor(ishod, status, skrati(tekst(json, "greska")));
         }
-        if (status == 401 || status == 403 || (status >= 300 && status < 400)) {
-            return new Odgovor(Ishod.NEAUTORIZIRAN, status, "sesija nije prihvaćena (HTTP " + status + ")");
+        if (status >= 300 && status < 400) {
+            return new Odgovor(Ishod.NEAUTORIZIRAN, status,
+                    skrati("prijava odbijena: HTTP " + status + " preusmjerenje na " + location));
+        }
+        if (status == 401 || status == 403) {
+            // Spring Security (eTurizam) šalje JSON ili HTML; opis iz tijela kaže zašto (npr. CSRF, uloga).
+            String razlog = json != null ? opis(json, status) : pocetak(tijelo);
+            return new Odgovor(Ishod.NEAUTORIZIRAN, status,
+                    skrati("prijava odbijena: HTTP " + status + (razlog == null ? "" : " — " + razlog)));
         }
         String greska = opis(json, status);
         if (status == 409 || status >= 500) {
@@ -118,6 +128,15 @@ public class KpApiClient {
         String greska = tekst(json, "greska");
         String opis = poruka != null ? (greska != null ? greska + ": " + poruka : poruka) : greska;
         return skrati(opis != null ? opis : "HTTP " + status);
+    }
+
+    /** Početak ne-JSON tijela (HTML greške), bez oznaka, za opis. */
+    private static String pocetak(String tijelo) {
+        if (tijelo == null || tijelo.isBlank()) {
+            return null;
+        }
+        String tekst = tijelo.replaceAll("<[^>]*>", " ").replaceAll("\\s+", " ").strip();
+        return tekst.isEmpty() ? null : (tekst.length() <= 200 ? tekst : tekst.substring(0, 200));
     }
 
     private static JsonNode citaj(String tijelo) {

@@ -72,7 +72,7 @@ public class KpPorukaEntity {
     @Column(name = "tip_poruke", nullable = false, updatable = false)
     private int tipPoruke;
 
-    /** {@code zu_rb} županije koja je izdala akt — njeni službenici šalju zaostale poruke. */
+    /** {@code zu_rb} županije koja je izdala akt (za pregled i dijagnostiku). */
     @Column(name = "izdavatelj_zu_rb", nullable = false, updatable = false)
     private int izdavateljZuRb;
 
@@ -190,10 +190,10 @@ public class KpPorukaEntity {
         return attempts;
     }
 
-    /** Sesija nije prihvaćena: pokušaj se ne broji, poruka odmah čeka drugu sesiju. */
-    void oslobodi(String greska, Instant now) {
+    /** Prijava odbijena: pokušaj se ne broji, poruka čeka do {@code sljedeci}. */
+    void odgodi(String greska, Instant sljedeci, Instant now) {
         this.greska = skrati(greska, MAX_GRESKA);
-        this.nextAttemptAt = mikro(now);
+        this.nextAttemptAt = mikro(sljedeci);
         this.updatedAt = now;
     }
 
