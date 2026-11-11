@@ -687,6 +687,35 @@ WHERE o.objekt_tip IS NULL AND o.vrsta = 'VERIFIKACIJA_ZATRAZENA'
 ORDER BY o.id DESC LIMIT 50;
 ```
 
+### 8f. Korisnički pretinac preko KP API-ja (T16)
+
+Akti **županijskih službenika** (bez eGOP-a) idu u korisnički pretinac preko eTurizmova KP API-ja
+(`str-internal-api/kp-api`), samo fizičkim osobama; pravne osobe i non-EU samo e-poštom. Prijava je
+**isključivo NIAS sesijom** službenika: poruka se šalje odmah nakon radnje, a ono što tada ne prođe ili
+nastane bez sesije (noćni posao) šalje sljedeći zahtjev službenika iste županije. Adresa
+(`https://et2-test-internal-eturizam.gov.hr/str-internal-api/kp-api`) i šifra poruke (1741) su zadane u
+`application-cdu.properties`.
+
+```bash
+STR_KP_API_ENABLED=true
+#STR_KP_API_TIP_PORUKE=1741
+#STR_KP_API_BASE_URL=https://et2-test-internal-eturizam.gov.hr/str-internal-api/kp-api
+```
+
+| Redak | Značenje |
+| :--- | :--- |
+| `startup_kp_api enabled=… base_url=… tip_poruke=…` | konfiguracija pri startu; WARN kad je uključeno, a nedostaje adresa ili šifra |
+| `kp_api_zabiljezeno rn=… poruka=N raspored=… sesija=true/false` | akt je dobio N poruka (više kad prilozi prelaze 3 MB); `sesija=false` = čeka službenika županije |
+| `kp_api_poslano id_poruke=…` | KP je zaprimio poruku |
+| `kp_api_konacno … ishod=NEMA_PRETINCA/ODBIJENO/NEISPRAVNO` | konačno, bez ponavljanja; akt je dostavljen e-poštom |
+| `kp_api_sesija … http=302/401` (WARN) | sesija nije prihvaćena; poruka čeka drugu sesiju, pokušaj se ne broji |
+| `kp_api_neuspjeh … sljedeci=…` (WARN) | 502, timeout ili veza; ponavlja se s istim `idPoruke` nakon odgode |
+| `kp_api_exhausted …` (**ERROR**) | iscrpljeni pokušaji, poruka nije u pretincu |
+
+```sql
+SELECT 'K1' AS blok, p.rn, p.dio, p.status, p.attempts, p.tip_poruke, p.izdavatelj_zu_rb, p.next_attempt_at, p.poslano_at, p.greska, p.created_at FROM str_rn.kp_poruka p ORDER BY p.created_at DESC LIMIT 30;
+```
+
 ## 9. Iz browsera
 
 ```

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        T16: poruke u korisnički pretinac preko eTurizmova KP API-ja (str-internal-api/kp-api), za akte
+        županijskih službenika koji ne idu kroz eGOP. Jedan redak po poruci; pismeno ide u jednu ili više
+        poruka (dio 1, 2, …) kad akt i prilozi prelaze 3 MB.
+
+        id_poruke je naš UUID i šalje se KP-u; isti je u svakom ponovljenom pokušaju, pa KP istu poruku ne
+        zaprima dvaput. Prijava je NIAS sesijom službenika: poruke bez sesije (noćni posao) ili one koje nisu
+        prošle šalje sljedeći zahtjev službenika iste županije (izdavatelj_zu_rb).
+
+        next_attempt_at je i zauzeće dok slanje traje i odgoda nakon neuspjeha.
+        Statusi: PENDING → POSLANO / NEMA_PRETINCA / ODBIJENO / NEISPRAVNO / ABANDONED.
+    -->
+    <changeSet id="157-kp-poruka" author="str-backend">
+        <createTable schemaName="str_rn" tableName="kp_poruka"
+                     remarks="Poruke u korisnički pretinac preko KP API-ja (akti županijskih službenika, T16)">
+            <column name="id_poruke" type="UUID" remarks="PK; idPoruke poslan KP API-ju">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="egop_pismeno_id" type="UUID" remarks="Pismeno akta (egop_pismeno.id)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dio" type="INTEGER" remarks="Redni broj poruke za pismeno (1, 2, …)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rn" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="oib" type="VARCHAR(11)" remarks="OIB primatelja (fizička osoba)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="tip_poruke" type="INTEGER" remarks="ID tipa poruke iz Registra e-poruka">
+                <constraints nullable="false"/>
+            </column>
+            <column name="izdavatelj_zu_rb" type="INTEGER" remarks="Županija koja je izdala akt (rpj_dgu.zupanije.zu_rb)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="naslov" type="VARCHAR(1000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sadrzaj" type="VARCHAR(4000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="klasa" type="VARCHAR(64)"/>
+            <column name="ur_broj" type="VARCHAR(64)"/>
+            <column name="akt" type="BOOLEAN" remarks="Poruka nosi PDF akta">
+                <constraints nullable="false"/>
+            </column>
+            <column name="naziv_akta" type="VARCHAR(255)"/>
+            <column name="prilozi" type="VARCHAR(2000)" remarks="ID-evi priloga (pismeno_prilog.id) u poruci, zarezom"/>
+            <column name="status" type="VARCHAR(20)"
+                    remarks="PENDING → POSLANO / NEMA_PRETINCA / ODBIJENO / NEISPRAVNO / ABANDONED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="greska" type="VARCHAR(500)" remarks="Šifra i opis iz KP-a ili razlog neuspjeha"/>
+            <column name="attempts" type="INTEGER" defaultValueNumeric="0" remarks="Neuspjeli pokušaji (502, timeout, veza)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="next_attempt_at" type="TIMESTAMPTZ" remarks="Zauzeće ili odgoda; NULL kad je obrađena"/>
+            <column name="poslano_at" type="TIMESTAMPTZ"/>
+            <column name="created_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMPTZ">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint schemaName="str_rn" tableName="kp_poruka"
+                             columnNames="egop_pismeno_id, dio" constraintName="uq_kp_poruka_pismeno_dio"/>
+
+        <createIndex schemaName="str_rn" tableName="kp_poruka" indexName="idx_kp_poruka_slobodne">
+            <column name="status"/>
+            <column name="izdavatelj_zu_rb"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable schemaName="str_rn" tableName="kp_poruka"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

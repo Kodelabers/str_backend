@@ -299,4 +299,7 @@
     <!-- T13: skupine objekata, vrste subjekta i koja vrsta subjekta smije koju skupinu (TuStart). -->
     <include file="db/changelog/changes/156-t13-skupine-subjekti.xml"/>
 
+    <!-- T16: poruke u korisnički pretinac preko KP API-ja (akti županijskih službenika). -->
+    <include file="db/changelog/changes/157-kp-poruka.xml"/>
+
 </databaseChangeLog>
