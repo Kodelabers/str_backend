@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -774,20 +775,41 @@ class EgopFilingServiceTest {
                 StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
     }
 
+    /** PDF podneska koji „renderira" test i bilježi s kojim je oznakama pozvan. */
+    private static class Dokumenti implements EgopFilingService.PodnesakDokumenti {
+        private final EgopFilingService.PodnesakDokument izvornik;
+        private final List<com.str.backend.document.FilingReference> renderi = new java.util.ArrayList<>();
+
+        private Dokumenti(String naziv, byte[] sadrzaj, String ekstenzija) {
+            this.izvornik = new EgopFilingService.PodnesakDokument(naziv, sadrzaj, ekstenzija);
+        }
+
+        @Override
+        public byte[] pdf(com.str.backend.document.FilingReference filing) {
+            renderi.add(filing);
+            return ("%PDF-podnesak " + filing.urBroj()).getBytes();
+        }
+
+        @Override
+        public EgopFilingService.PodnesakDokument izvornik() {
+            return izvornik;
+        }
+    }
+
     /**
-     * Podnesak stranke: KreirajPismeno2 sa subjektom u predmet postupka, glavni dokument je učitana
-     * datoteka pod svojom ekstenzijom (DOCX), bez pečata (i uz uključen eSeal) i bez KP-a; prilozi iza
-     * glavnog dokumenta.
+     * Podnesak stranke: KreirajPismeno2 sa subjektom u predmet postupka; glavni dokument je PDF podneska
+     * renderiran s KLASOM predmeta i URBROJ-em pismena (i spremljen), bez pečata (i uz uključen eSeal) i bez
+     * KP-a; iza glavnog dokumenta izvornik stranke (DOCX) kao prilog 1, tek onda SYNCED i ostali prilozi.
      */
     @Test
-    void filePodnesak_isIncomingInPredmetAkata_withUploadedDocument() throws Exception {
+    void filePodnesak_isIncomingInPredmetAkata_withPodnesakPdf_andUploadedDocumentAsAttachment() throws Exception {
         givenSealing();
         EgopPrilozi prilozi = priloziService();
         EgopPismenoEntity podnesak = givenPodnesak(true);
         byte[] docx = {0x50, 0x4B, 0x03, 0x04};
+        Dokumenti dokumenti = new Dokumenti("prigovor.docx", docx, "docx");
 
-        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc",
-                new EgopFilingService.PodnesakDokument(docx, "docx"));
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti);
 
         verify(egopClient, never()).kreirajPredmet2(any());
         ArgumentCaptor<KreirajPismeno2> request = ArgumentCaptor.forClass(KreirajPismeno2.class);
@@ -800,19 +822,31 @@ class EgopFilingServiceTest {
         verify(egopClient, never()).kreirajIzlaznoPismeno(any());
         verify(store).applyPismeno(podnesak.getId(), 1009, "529-06-03/TUREGBROJ-26-3", "108", false);
 
+        assertEquals(List.of(new com.str.backend.document.FilingReference(submission.getEgopAktiKlasa(),
+                "529-06-03/TUREGBROJ-26-3", 1009)), dokumenti.renderi);
+        byte[] pdf = "%PDF-podnesak 529-06-03/TUREGBROJ-26-3".getBytes();
+        verify(store).replacePdf(podnesak.getId(), pdf);
+        assertArrayEquals(pdf, podnesak.getPdfContent());
+
         ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
         verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
         assertEquals(1009, dokument.getValue().getJop());
-        assertEquals("docx", dokument.getValue().getExtension());
-        assertArrayEquals(docx, dokument.getValue().getAttachment());
+        assertEquals("pdf", dokument.getValue().getExtension());
+        assertArrayEquals(pdf, dokument.getValue().getAttachment());
         assertTrue(podnesak.isSynced());
 
         verify(sealer, never()).seal(any(), anyString(), any());
         verify(store, never()).freezeForSealing(any(), any(), anyString());
         verify(kpOtprema, never()).otpremi(any());
         verify(kpOtprema, never()).register(any(), any(), any());
-        org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, prilozi);
+        // Redoslijed kao kod ostalih pismena: pismeno, glavni dokument, izvornik (prilog 1), SYNCED, ostali prilozi.
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, store, prilozi);
+        order.verify(egopClient).kreirajPismeno2(any());
+        order.verify(store).replacePdf(podnesak.getId(), pdf);
         order.verify(egopClient).kreirajDokumentZaPismeno(any());
+        order.verify(store).markGlavniDokumentPrilozen(podnesak.getId());
+        order.verify(prilozi).prilogIzvornika(podnesak, "MINT\\str-svc", "prigovor.docx", "docx", docx);
+        order.verify(store).markPismenoSynced(podnesak.getId());
         order.verify(prilozi).prilozi(podnesak, "MINT\\str-svc");
     }
 
@@ -826,35 +860,136 @@ class EgopFilingServiceTest {
         predmet.setRbrPredmeta(79);
         predmet.setKlasifikacijskaOznaka("334-06/11-26/79");
         when(egopClient.kreirajPredmet2(any())).thenReturn(predmet);
+        Dokumenti dokumenti = new Dokumenti("prigovor.pdf", "%PDF".getBytes(), "pdf");
 
-        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc",
-                new EgopFilingService.PodnesakDokument("%PDF".getBytes(), "pdf"));
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti);
 
         verify(store).saveAktiPredmet(submission.getSubmissionId(), 2026, 79, "334-06/11-26/79");
         ArgumentCaptor<KreirajPismeno2> request = ArgumentCaptor.forClass(KreirajPismeno2.class);
         verify(egopClient).kreirajPismeno2(request.capture());
         assertEquals(79, request.getValue().getRbrSpisa());
+        assertEquals("334-06/11-26/79", dokumenti.renderi.get(0).klasa());
     }
 
-    /** Ponovni pokušaj nakon pada dokumenta: pismeno se ne kreira drugi put, samo se priloži dokument (DOC). */
+    /**
+     * Ponovni pokušaj nakon pada glavnog dokumenta: pismeno se ne kreira drugi put, PDF se ne renderira drugi
+     * put (spremljen je), izvornik ide kroz idempotentni prilogIzvornika, a glavni dokument se priloži.
+     */
     @Test
-    void filePodnesak_retryAfterDocumentFailure_doesNotCreateSecondPismeno() throws Exception {
+    void filePodnesak_retryAfterDocumentFailure_reusesPismenoAndPdf() throws Exception {
+        EgopPrilozi prilozi = priloziService();
         EgopPismenoEntity podnesak = givenPodnesak(true);
         when(egopClient.kreirajDokumentZaPismeno(any())).thenThrow(new EgopBadRequestException("dokument"))
                 .thenReturn(new DokumentInfo());
-        EgopFilingService.PodnesakDokument doc = new EgopFilingService.PodnesakDokument(
+        Dokumenti dokumenti = new Dokumenti("prigovor.doc",
                 new byte[]{(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0}, "doc");
 
         assertThrows(EgopBadRequestException.class,
-                () -> service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", doc));
+                () -> service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti));
         assertFalse(podnesak.isSynced());
-        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", doc);
+        assertFalse(podnesak.isDocumentAttached());
+        verify(prilozi, never()).prilogIzvornika(any(), any(), any(), any(), any());
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti);
 
         verify(egopClient, times(1)).kreirajPismeno2(any());
+        assertEquals(1, dokumenti.renderi.size());
         ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
         verify(egopClient, times(2)).kreirajDokumentZaPismeno(dokument.capture());
-        assertEquals("doc", dokument.getValue().getExtension());
+        assertEquals("pdf", dokument.getValue().getExtension());
+        verify(prilozi, times(1)).prilogIzvornika(eq(podnesak), any(), eq("prigovor.doc"), eq("doc"), any());
         assertTrue(podnesak.isSynced());
+    }
+
+    /**
+     * Pad rendera PDF-a nakon kreiranog pismena: ništa se ne prilaže; retry ne kreira drugo pismeno ni ne traži
+     * predmet (KLASA je na submissionu), renderira jednom i dovrši.
+     */
+    @Test
+    void filePodnesak_retryAfterRenderFailure_noSecondPismeno_noPredmetCall() throws Exception {
+        EgopPrilozi prilozi = priloziService();
+        EgopPismenoEntity podnesak = givenPodnesak(true);
+        Dokumenti dokumenti = new Dokumenti("prigovor.pdf", "%PDF".getBytes(), "pdf") {
+            private boolean prvi = true;
+
+            @Override
+            public byte[] pdf(com.str.backend.document.FilingReference filing) {
+                if (prvi) {
+                    prvi = false;
+                    throw new IllegalStateException("render");
+                }
+                return super.pdf(filing);
+            }
+        };
+
+        assertThrows(IllegalStateException.class,
+                () -> service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti));
+        verify(egopClient, never()).kreirajDokumentZaPismeno(any());
+        verify(prilozi, never()).prilogIzvornika(any(), any(), any(), any(), any());
+        org.mockito.Mockito.clearInvocations(egopClient);
+
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti);
+
+        verify(egopClient, never()).kreirajPismeno2(any());
+        verify(egopClient, never()).dohvatiPodatkePredmeta(any());
+        verify(egopClient, times(1)).kreirajDokumentZaPismeno(any());
+        assertEquals(1, dokumenti.renderi.size());
+        assertTrue(podnesak.isSynced());
+    }
+
+    /**
+     * Pad izvornika (prilog 1) nakon priloženog glavnog dokumenta: pismeno ostaje nedovršeno (ne SYNCED), pa ga
+     * EgopRetryJob vidi; retry ne kreira pismeno, ne renderira i ne prilaže glavni dokument ponovo — doprilaže
+     * samo izvornik, pa SYNCED i ostali prilozi.
+     */
+    @Test
+    void filePodnesak_retryAfterMainDocument_attachesOnlyIzvornik_thenSynced() throws Exception {
+        EgopPrilozi prilozi = priloziService();
+        EgopPismenoEntity podnesak = givenPodnesak(true);
+        org.mockito.Mockito.doThrow(new EgopBadRequestException("prilog")).doNothing().when(prilozi)
+                .prilogIzvornika(any(), any(), any(), any(), any());
+        Dokumenti dokumenti = new Dokumenti("prigovor.pdf", "%PDF".getBytes(), "pdf");
+
+        assertThrows(EgopBadRequestException.class, () -> service.filePodnesak(podnesak, submission, lessor,
+                "MINT\\str-svc", dokumenti));
+
+        assertTrue(podnesak.isDocumentAttached());
+        assertFalse(podnesak.isSynced());
+        verify(store, never()).markPismenoSynced(any());
+        verify(prilozi, never()).prilozi(any(), any());
+        org.mockito.Mockito.clearInvocations(egopClient, store);
+
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti);
+
+        verify(egopClient, never()).kreirajPismeno2(any());
+        verify(egopClient, never()).kreirajDokumentZaPismeno(any());
+        verify(egopClient, never()).dohvatiPodatkePredmeta(any());
+        assertEquals(1, dokumenti.renderi.size());
+        verify(prilozi, times(2)).prilogIzvornika(eq(podnesak), any(), eq("prigovor.pdf"), eq("pdf"), any());
+        verify(store).markPismenoSynced(podnesak.getId());
+        verify(prilozi).prilozi(podnesak, "MINT\\str-svc");
+        assertTrue(podnesak.isSynced());
+    }
+
+    /**
+     * Pad nakon izvornika (npr. upis SYNCED ili ostali prilozi): ponovni poziv dovršenog pismena ne šalje ništa
+     * drugi put — ni pismeno, ni glavni dokument, ni izvornik; samo ostali prilozi (koji su sami idempotentni).
+     */
+    @Test
+    void filePodnesak_afterIzvornik_secondCallSendsNoDuplicates() throws Exception {
+        EgopPrilozi prilozi = priloziService();
+        EgopPismenoEntity podnesak = givenPodnesak(true);
+        Dokumenti dokumenti = new Dokumenti("prigovor.pdf", "%PDF".getBytes(), "pdf");
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti);
+        org.mockito.Mockito.clearInvocations(egopClient, store, prilozi);
+
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", dokumenti);
+
+        verify(egopClient, never()).kreirajPismeno2(any());
+        verify(egopClient, never()).kreirajDokumentZaPismeno(any());
+        verify(prilozi, never()).prilogIzvornika(any(), any(), any(), any(), any());
+        verify(store, never()).replacePdf(any(), any());
+        verify(prilozi).prilozi(podnesak, "MINT\\str-svc");
+        assertEquals(1, dokumenti.renderi.size());
     }
 
     /** Bez dokumenta nema pismena — uredsko poslovanje traži dokument uz svako pismeno. */
@@ -863,7 +998,7 @@ class EgopFilingServiceTest {
         EgopPismenoEntity podnesak = givenPodnesak(true);
 
         assertThrows(EgopBadRequestException.class, () -> service.filePodnesak(podnesak, submission, lessor,
-                "MINT\\str-svc", new EgopFilingService.PodnesakDokument(new byte[0], "pdf")));
+                "MINT\\str-svc", new Dokumenti("prazno.pdf", new byte[0], "pdf")));
 
         verify(egopClient, never()).kreirajPismeno2(any());
     }

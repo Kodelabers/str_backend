@@ -8,6 +8,7 @@ import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.common.Strings;
 import com.str.backend.common.Zagreb;
+import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.egop.EgopPismenoEntity;
@@ -80,6 +81,7 @@ public class SuspensionObjectionAdminService {
     private final RegistrationNumberLogRepository logRepository;
     private final EgopPismenoRepository pismenoRepository;
     private final SubmissionRepository submissionRepository;
+    private final PodnesakPdfService podnesakPdf;
 
     public SuspensionObjectionAdminService(SuspensionObjectionRepository repository,
                                            RnRepository rnRepository,
@@ -91,7 +93,9 @@ public class SuspensionObjectionAdminService {
                                            RnReissueGuard reissueGuard,
                                            RegistrationNumberLogRepository logRepository,
                                            EgopPismenoRepository pismenoRepository,
-                                           SubmissionRepository submissionRepository) {
+                                           SubmissionRepository submissionRepository,
+                                           PodnesakPdfService podnesakPdf) {
+        this.podnesakPdf = podnesakPdf;
         this.reissueGuard = reissueGuard;
         this.logRepository = logRepository;
         this.pismenoRepository = pismenoRepository;
@@ -154,9 +158,10 @@ public class SuspensionObjectionAdminService {
 
     /**
      * Urudžbiranje podneska u županijskom postupku (T16): službenik upisuje KLASU i URBROJ, a podnesak postaje
-     * ulazno pismeno u STR-u ({@link EgopPismenoEntity#rucniPodnesak}), bez eGOP-a, KP-a i e-pošte. Vrsta
-     * pismena ovisi o statusu broja pri predaji ({@link StrDocumentType#podnesakNaAkt}); dokument je datoteka
-     * koju je stranka učitala, a ostale njezine datoteke su prilozi. Pismeno se vidi u „Dokumentima" RB-a.
+     * ulazno pismeno u STR-u ({@link EgopPismenoEntity#rucniPodnesak}), bez eGOP-a, KP-a i e-pošte. Glavni
+     * dokument je PDF podneska ({@link PodnesakPdfService}: zaglavlje županije službenika, KLASA i URBROJ iz
+     * forme), a datoteke koje je stranka učitala su prilozi. Vrsta pismena ovisi o statusu broja pri predaji
+     * ({@link StrDocumentType#podnesakNaAkt}). Pismeno se vidi u „Dokumentima" RB-a.
      *
      * <p>Urudžbiti se mora svako ulazno pismeno, pa i podnesak prigovora koji je u međuvremenu zatvoren
      * ({@code CLOSED}, RB je otišao dalje drugim putem). Odlučen prigovor ({@code ACCEPTED}, {@code REJECTED})
@@ -199,8 +204,11 @@ public class SuspensionObjectionAdminService {
         StrDocumentType vrsta = StrDocumentType.podnesakNaAkt(e.getRnStatus())
                 .orElseThrow(() -> new IllegalStateException("Prigovor " + id + " predan uz status "
                         + e.getRnStatus() + " nema vrstu pismena"));
+        // Glavni dokument pismena: PDF podneska sa zaglavljem županije službenika i upisanim brojevima.
+        byte[] pdf = podnesakPdf.render(e, PodnesakPdfService.zaglavlje(rucni),
+                new FilingReference(rucni.klasa(), rucni.urBroj()));
         EgopPismenoEntity pismeno = pismenoRepository.save(EgopPismenoEntity.rucniPodnesak(
-                rnEntity.getSubmissionId(), rn, id, vrsta.vrstaPismenaNaziv(), rucni.klasa(), rucni.urBroj()));
+                rnEntity.getSubmissionId(), rn, id, vrsta.vrstaPismenaNaziv(), rucni.klasa(), rucni.urBroj(), pdf));
         auditService.record(actor, "OBJECTION_REGISTER", "SUSPENSION_OBJECTION", id.toString(),
                 "KLASA: " + rucni.klasa() + ", URBROJ: " + rucni.urBroj() + ", pismeno: " + pismeno.getId());
         log.info("objection_registered objection={} rn={} pismeno={} vrsta='{}' klasa={} urbroj={} zu_rb={}",

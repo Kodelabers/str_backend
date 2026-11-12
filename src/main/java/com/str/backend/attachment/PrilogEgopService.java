@@ -44,8 +44,9 @@ import java.util.UUID;
  *   <li>pismeno prijelaza RB-a ({@code act_ref=log_id}) ← prilozi {@link VrstaVlasnika#RN_LOG}, i to
  *       ulazno (podnesak stranke, npr. opoziv) samo prilozi stranke, a izlazno (akt) samo prilozi
  *       službenika ({@link PrilogService#pripadaPismenu});</li>
- *   <li>ulazno pismeno očitovanja ili prigovora ({@code act_ref=PRIGOVOR:<objection_id>}) ← prilozi
- *       {@link VrstaVlasnika#OBJECTION}.</li>
+ *   <li>ulazno pismeno očitovanja ili prigovora ({@code act_ref=PRIGOVOR:<objection_id>}) ← dokument koji je
+ *       stranka učitala kao prilog 1 ({@link #prilogIzvornika}, iz toka urudžbe), pa prilozi
+ *       {@link VrstaVlasnika#OBJECTION} od rbr 2.</li>
  * </ul>
  *
  * <p><b>Akt ne čeka na priloge</b> ({@link EgopPrilozi}): prvi pokušaj ide nakon glavnog dokumenta,
@@ -69,6 +70,8 @@ public class PrilogEgopService implements EgopPrilozi {
     private static final Logger log = LoggerFactory.getLogger(PrilogEgopService.class);
 
     private static final String ZAHTJEV_NAZIV = StrDocumentType.ZAHTJEV.vrstaPismenaNaziv();
+    /** {@code rbrPriloga} izvornog dokumenta podnositelja očitovanja ili prigovora. */
+    static final int RBR_IZVORNIKA = 1;
     /** Stupac {@code pismeno_prilog.egop_greska}. */
     private static final int GRESKA_MAX = 1000;
 
@@ -179,7 +182,7 @@ public class PrilogEgopService implements EgopPrilozi {
         }
         int jop = pismeno.getJop();
         List<Redni> zaSlanje = new ArrayList<>();
-        int rbr = 0;
+        int rbr = prviRbr(pismeno) - 1;
         for (PrilogSazetak prilog : prilozi) {
             rbr++;
             if (!Objects.equals(prilog.getEgopJop(), jop) && dospio(prilog, sada)) {
@@ -235,6 +238,45 @@ public class PrilogEgopService implements EgopPrilozi {
 
     /** Prilog s rednim brojem na pismenu — {@code rbrPriloga} je položaj među svim prilozima pismena. */
     private record Redni(int rbr, PrilogSazetak prilog) {}
+
+    /**
+     * {@code rbrPriloga} prvog priloga iz {@code pismeno_prilog}. Podnesak s PDF-om podneska kao glavnim
+     * dokumentom ima na rbr 1 izvornik podnositelja ({@link #prilogIzvornika}), pa ostale datoteke počinju od
+     * 2. Podnesci zapisani prije PDF-a podneska (glavni dokument bio je izvornik) i sva ostala pismena: od 1.
+     */
+    private static int prviRbr(EgopPismenoEntity pismeno) {
+        return pismeno.objectionId().isPresent() && pismeno.getPdfContent() != null ? RBR_IZVORNIKA + 1 : 1;
+    }
+
+    @Override
+    public void prilogIzvornika(EgopPismenoEntity pismeno, String korisnik, String naziv, String ekstenzija,
+                                byte[] sadrzaj) throws EgopException {
+        if (!pismeno.isFiled()) {
+            throw new IllegalStateException("Pismeno " + pismeno.getId() + " nije kreirano u eGOP-u");
+        }
+        int jop = pismeno.getJop();
+        PriloziPismenaInfo postojeci = priloziUEgopu(jop, korisnik).get(RBR_IZVORNIKA);
+        if (postojeci != null) {
+            if (!postojeci.isPostojiEDokument()) {
+                throw new EgopBadRequestException("eGOP već ima prilog rbr " + RBR_IZVORNIKA
+                        + " bez elektroničkog dokumenta — provjeriti pismeno " + jop + " u eGOP-u");
+            }
+            log.info("egop_prilog_izvornik_adopted pismeno={} jop={} naziv='{}' egop_naziv='{}' — već je u eGOP-u,"
+                    + " ne šalje se ponovo", pismeno.getId(), jop, naziv, postojeci.getNazivPriloga());
+            return;
+        }
+        KreirajPrilogIPridruziDokument request = new KreirajPrilogIPridruziDokument();
+        request.setUserName(korisnik);
+        request.setJop(jop);
+        request.setRbrPriloga(RBR_IZVORNIKA);
+        request.setIdVrstaPriloga(vrstaPriloga());
+        request.setNazivPriloga(naziv);
+        request.setExtension(ekstenzija);
+        request.setAttachment(sadrzaj);
+        egopClient.kreirajPrilogIPridruziDokument(request);
+        log.info("egop_prilog_izvornik_ok pismeno={} jop={} vrsta='{}' naziv='{}' ekstenzija={}", pismeno.getId(), jop,
+                pismeno.getVrstaPismenaNaziv(), naziv, ekstenzija);
+    }
 
     /** Nije iscrpljen i došao mu je red (ili još nije ni pokušan). */
     private boolean dospio(PrilogSazetak prilog, Instant sada) {
@@ -340,8 +382,8 @@ public class PrilogEgopService implements EgopPrilozi {
                     ? repository.findSazeciVlasnika(VrstaVlasnika.SUBMISSION, pismeno.getSubmissionId())
                     : List.of();
         }
-        // Očitovanje i prigovor: sve ostale datoteke koje je stranka predala uz podnesak (glavni dokument je
-        // na samom pismenu). Učitava ih samo stranka, pa filtra po autoru nema.
+        // Očitovanje i prigovor: sve ostale datoteke koje je stranka predala uz podnesak (njezin glavni
+        // dokument ide zasebno, prilogIzvornika). Učitava ih samo stranka, pa filtra po autoru nema.
         Optional<UUID> objectionId = pismeno.objectionId();
         if (objectionId.isPresent()) {
             return repository.findSazeciVlasnika(VrstaVlasnika.OBJECTION, objectionId.get());

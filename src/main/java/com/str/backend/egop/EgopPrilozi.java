@@ -1,5 +1,7 @@
 package com.str.backend.egop;
 
+import com.str.backend.egop.exception.EgopException;
+
 import java.time.Instant;
 
 /**
@@ -23,6 +25,15 @@ public interface EgopPrilozi {
      * @param korisnik eGOP korisnik pod kojim ide i glavni dokument
      */
     void prilozi(EgopPismenoEntity pismeno, String korisnik);
+
+    /**
+     * Dokument koji je podnositelj očitovanja ili prigovora učitao, kao <b>prvi</b> prilog pismena
+     * ({@code rbrPriloga} 1; ostale njegove datoteke idu iza). Za razliku od {@link #prilozi} <b>baca</b>
+     * iznimku: tok urudžbe ga zove prije glavnog dokumenta, pa pad ponavlja cijeli podnesak. Idempotentno
+     * preko eGOP-ova popisa priloga — prilog 1 koji eGOP već ima se ne šalje ponovo.
+     */
+    void prilogIzvornika(EgopPismenoEntity pismeno, String korisnik, String naziv, String ekstenzija,
+                         byte[] sadrzaj) throws EgopException;
 
     /** Ponovni pokušaj za priloge urudžbiranih pismena kojima je došao red. Ne baca iznimke. */
     void ponovi(Instant sada);

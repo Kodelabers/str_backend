@@ -50,6 +50,7 @@ class RnDocumentsServiceTest {
     private EgopPismenoRepository egopPismenoRepository;
     private PrilogService prilogService;
     private SuspensionObjectionRepository objectionRepository;
+    private com.str.backend.objection.PodnesakPdfService podnesakPdf;
     private RnDocumentsService service;
 
     private UUID submissionId;
@@ -61,15 +62,16 @@ class RnDocumentsServiceTest {
         egopPismenoRepository = mock(EgopPismenoRepository.class);
         prilogService = mock(PrilogService.class);
         objectionRepository = mock(SuspensionObjectionRepository.class);
+        podnesakPdf = mock(com.str.backend.objection.PodnesakPdfService.class);
         service = new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, prilogService,
-                objectionRepository, true);
+                objectionRepository, podnesakPdf, true);
         submissionId = UUID.randomUUID();
     }
 
     /** Varijanta s ugašenim prikazom podneska ({@code str.rn.documents.zahtjev-visible=false}). */
     private RnDocumentsService serviceWithoutZahtjev() {
         return new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, prilogService,
-                objectionRepository, false);
+                objectionRepository, podnesakPdf, false);
     }
 
     @Test
@@ -157,11 +159,12 @@ class RnDocumentsServiceTest {
 
     /**
      * Očitovanje ili prigovor ulazi u „Dokumente" tek kad je urudžbiran (ima URBROJ): eGOP-ov u postupku
-     * MINTS-a i ručni u županijskom. Dokument je datoteka s prigovora ({@code /documents/podnesak/{id}}), a
-     * prilozi ostale datoteke stranke. Neurudžbiran podnesak se ne vidi. Zapisan zadnji, stoji zadnji.
+     * MINTS-a i ručni u županijskom. Dokument je pohranjeni PDF podneska ({@code /documents/pohranjeno/{id}}),
+     * a prilozi dokument koji je stranka učitala ({@code /documents/podnesak/{id}}) pa njezine ostale
+     * datoteke. Neurudžbiran podnesak se ne vidi. Zapisan zadnji, stoji zadnji.
      */
     @Test
-    void listForRn_registeredPodnesak_listedLastWithObjectionAttachments_unregisteredHidden() {
+    void listForRn_registeredPodnesak_listedLast_withStoredPdf_andUploadedDocumentFirstAmongAttachments() {
         stubRn(submissionId, LocalDate.now().minusDays(2));
         stubSubmission("pdf".getBytes(), Instant.now().minus(3, ChronoUnit.DAYS));
         EgopPismenoEntity suspenzija = EgopPismenoEntity.forAct(submissionId, RN, "log1",
@@ -173,32 +176,134 @@ class RnDocumentsServiceTest {
         EgopPismenoEntity mints = EgopPismenoEntity.forPodnesak(submissionId, RN, mintsId,
                 StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
         mints.applyPismeno(1009, "529-06/26-4", "108", false);
+        mints.replacePdf("%PDF-podnesak".getBytes());
         mints.markDocumentAttached();
         UUID zupanijaId = UUID.randomUUID();
         EgopPismenoEntity zupanija = EgopPismenoEntity.rucniPodnesak(submissionId, RN, zupanijaId,
-                StrDocumentType.PRIGOVOR_POVLACENJA.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3");
+                StrDocumentType.PRIGOVOR_POVLACENJA.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3",
+                new byte[]{9});
         when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN))
                 .thenReturn(List.of(suspenzija, neurudzbiran, mints, zupanija));
         when(prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, List.of(mintsId, zupanijaId))).thenReturn(Map.of(
                 zupanijaId, List.of(TestPrilog.vezan(31, VrstaVlasnika.OBJECTION, zupanijaId, "dokaz.png",
                         "NIAS:12345678903"))));
+        SuspensionObjectionRepository.ObjectionSummary zupanijaPrigovor = summary(zupanijaId, "prigovor.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 2048);
+        SuspensionObjectionRepository.ObjectionSummary mintsPrigovor = summary(mintsId, "ocitovanje.pdf",
+                "application/pdf", 1024);
+        when(objectionRepository.findSummariesByRn(RN)).thenReturn(List.of(zupanijaPrigovor, mintsPrigovor));
 
         List<RnDocumentDto> docs = service.listForRn(RN);
 
         assertThat(docs).extracting(RnDocumentDto::slug).containsExactly(
                 "zahtjev", "dodjela", "suspenzija", "prigovor-suspenzije", "prigovor-povlacenja");
-        assertThat(docs).extracting(RnDocumentDto::href).doesNotContain(
-                "/api/rn/" + RN + "/documents/podnesak/" + neurudzbiranId);
+        assertThat(docs).extracting(RnDocumentDto::id).doesNotContain(neurudzbiran.getId());
         RnDocumentDto zadnji = docs.get(docs.size() - 1);
         assertThat(zadnji.id()).isEqualTo(zupanija.getId());
         assertThat(zadnji.naziv()).isEqualTo(StrDocumentType.PRIGOVOR_POVLACENJA.vrstaPismenaNaziv());
         assertThat(zadnji.smjer()).isEqualTo("ULAZNO");
         assertThat(zadnji.izdano()).isEqualTo(LocalDate.now(com.str.backend.common.Zagreb.ZONE));
-        assertThat(zadnji.href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + zupanijaId);
-        assertThat(zadnji.prilozi()).extracting(PrilogDto::naziv).containsExactly("dokaz.png");
-        assertThat(zadnji.prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/attachments/31");
-        assertThat(docs.get(3).href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + mintsId);
-        assertThat(docs.get(3).prilozi()).isEmpty();
+        assertThat(zadnji.href()).isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + zupanija.getId());
+        assertThat(zadnji.prilozi()).extracting(PrilogDto::naziv).containsExactly("prigovor.docx", "dokaz.png");
+        assertThat(zadnji.prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + zupanijaId);
+        assertThat(zadnji.prilozi().get(0).id()).isNull();
+        assertThat(zadnji.prilozi().get(0).velicina()).isEqualTo(2048);
+        assertThat(zadnji.prilozi().get(0).contentType()).startsWith("application/vnd.openxmlformats");
+        assertThat(zadnji.prilozi().get(1).href()).isEqualTo("/api/rn/" + RN + "/attachments/31");
+        assertThat(docs.get(3).href()).isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + mints.getId());
+        assertThat(docs.get(3).prilozi()).extracting(PrilogDto::naziv).containsExactly("ocitovanje.pdf");
+    }
+
+    /**
+     * Staro pismeno MINTS-a (urudžbirano prije PDF-a podneska): u eGOP-u mu je glavni dokument izvornik stranke,
+     * pa ga i STR nudi kao dokument ({@code /documents/podnesak/{id}}), bez generiranja PDF-a — ni u popisu ni
+     * pri dohvatu po id-u.
+     */
+    @Test
+    void oldMintsPodnesakWithoutPdf_keepsUploadedDocumentAsMain_andIsNeverRendered() {
+        stubRn(submissionId, LocalDate.now().minusDays(2));
+        stubSubmission(null, Instant.now().minus(3, ChronoUnit.DAYS));
+        UUID objectionId = UUID.randomUUID();
+        EgopPismenoEntity stari = EgopPismenoEntity.forPodnesak(submissionId, RN, objectionId,
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        stari.applyPismeno(1009, "529-06/26-4", "108", false);
+        stari.markDocumentAttached();
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN)).thenReturn(List.of(stari));
+        when(prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, List.of(objectionId))).thenReturn(Map.of(objectionId,
+                List.of(TestPrilog.vezan(51, VrstaVlasnika.OBJECTION, objectionId, "dokaz.png", "NIAS:12345678903"))));
+        SuspensionObjectionRepository.ObjectionSummary prigovor = summary(objectionId, "prigovor.pdf",
+                "application/pdf", 100);
+        when(objectionRepository.findSummariesByRn(RN)).thenReturn(List.of(prigovor));
+        when(egopPismenoRepository.findById(stari.getId())).thenReturn(Optional.of(stari));
+
+        RnDocumentDto doc = service.listForRn(RN).get(1);
+
+        assertThat(doc.id()).isEqualTo(stari.getId());
+        assertThat(doc.href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + objectionId);
+        assertThat(doc.prilozi()).extracting(PrilogDto::naziv).containsExactly("dokaz.png");
+        assertThrows(ResourceNotFoundException.class, () -> service.storedAktPdf(RN, stari.getId()));
+        org.mockito.Mockito.verifyNoInteractions(podnesakPdf);
+        org.mockito.Mockito.verify(egopPismenoRepository, org.mockito.Mockito.never())
+                .upisiPdfAkoNema(any(), any(), any());
+    }
+
+    /**
+     * Istodobna dva dohvata ručnog pismena bez PDF-a: drugi izgubi uvjetni upis (0 redaka) i vraća PDF koji je
+     * spremio prvi, ne svoj render — svaki dohvat je isti dokument.
+     */
+    @Test
+    void storedAktPdf_lazyRenderRace_returnsStoredBytes() {
+        EgopPismenoEntity stari = EgopPismenoEntity.rucniPodnesak(submissionId, RN, UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3", null);
+        when(egopPismenoRepository.findById(stari.getId())).thenReturn(Optional.of(stari));
+        when(podnesakPdf.zaRucnoPismeno(stari)).thenReturn("%PDF-moj".getBytes());
+        when(egopPismenoRepository.upisiPdfAkoNema(eq(stari.getId()), any(), any())).thenReturn(0);
+        when(egopPismenoRepository.findPdfContent(stari.getId())).thenReturn("%PDF-prvi".getBytes());
+
+        assertArrayEquals("%PDF-prvi".getBytes(), service.storedAktPdf(RN, stari.getId()).pdf());
+    }
+
+    /**
+     * Ručno urudžbirani podnesak zapisan prije PDF-a podneska: prvi dohvat izvodi PDF iz retka i sprema ga
+     * (uvjetno), pa se vraća on; pismeno koje PDF ima vraća se kakvo jest, bez rendera.
+     */
+    @Test
+    void storedAktPdf_registeredPodnesakWithoutPdf_isRenderedLazilyAndStored() {
+        EgopPismenoEntity stari = EgopPismenoEntity.rucniPodnesak(submissionId, RN, UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3", null);
+        when(egopPismenoRepository.findById(stari.getId())).thenReturn(Optional.of(stari));
+        when(podnesakPdf.zaRucnoPismeno(stari)).thenReturn("%PDF-naknadno".getBytes());
+        when(egopPismenoRepository.upisiPdfAkoNema(eq(stari.getId()), any(), any())).thenReturn(1);
+
+        RnDocumentsService.StoredDocument doc = service.storedAktPdf(RN, stari.getId());
+
+        assertArrayEquals("%PDF-naknadno".getBytes(), doc.pdf());
+        assertEquals("prigovor-suspenzije-" + RN + ".pdf", doc.filename());
+        org.mockito.Mockito.verify(egopPismenoRepository).upisiPdfAkoNema(eq(stari.getId()),
+                eq("%PDF-naknadno".getBytes()), any());
+
+        EgopPismenoEntity novi = EgopPismenoEntity.rucniPodnesak(submissionId, RN, UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "K", "U-1", "%PDF-pohranjeni".getBytes());
+        when(egopPismenoRepository.findById(novi.getId())).thenReturn(Optional.of(novi));
+        assertArrayEquals("%PDF-pohranjeni".getBytes(), service.storedAktPdf(RN, novi.getId()).pdf());
+        org.mockito.Mockito.verify(podnesakPdf, org.mockito.Mockito.never()).zaRucnoPismeno(novi);
+
+        // Neurudžbiran podnesak (MINTS, eGOP još nije vratio URBROJ) nema dokument: 404, bez rendera.
+        EgopPismenoEntity neurudzbiran = EgopPismenoEntity.forPodnesak(submissionId, RN, UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        when(egopPismenoRepository.findById(neurudzbiran.getId())).thenReturn(Optional.of(neurudzbiran));
+        assertThrows(ResourceNotFoundException.class, () -> service.storedAktPdf(RN, neurudzbiran.getId()));
+        org.mockito.Mockito.verify(podnesakPdf, org.mockito.Mockito.never()).zaRucnoPismeno(neurudzbiran);
+    }
+
+    private static SuspensionObjectionRepository.ObjectionSummary summary(UUID id, String fileName, String contentType,
+                                                                         long size) {
+        SuspensionObjectionRepository.ObjectionSummary s = mock(SuspensionObjectionRepository.ObjectionSummary.class);
+        when(s.getObjectionId()).thenReturn(id);
+        when(s.getFileName()).thenReturn(fileName);
+        when(s.getContentType()).thenReturn(contentType);
+        when(s.getFileSize()).thenReturn(size);
+        return s;
     }
 
     /**
@@ -210,7 +315,7 @@ class RnDocumentsServiceTest {
         stubRn(submissionId, LocalDate.of(2026, 7, 1));
         stubSubmission(null, Instant.parse("2026-07-01T10:00:00Z"));
         EgopPismenoEntity podnesak = EgopPismenoEntity.rucniPodnesak(submissionId, RN, UUID.randomUUID(),
-                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3");
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3", new byte[]{9});
         org.springframework.test.util.ReflectionTestUtils.setField(podnesak, "createdAt",
                 Instant.parse("2026-07-14T23:30:00Z"));
         when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN)).thenReturn(List.of(podnesak));
@@ -227,7 +332,7 @@ class RnDocumentsServiceTest {
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document", new byte[]{0x50, 0x4B});
         UUID id = objection.getObjectionId();
         EgopPismenoEntity pismeno = EgopPismenoEntity.rucniPodnesak(submissionId, RN, id,
-                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3");
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3", new byte[]{9});
         when(egopPismenoRepository.findFirstByRnAndActRefAndUrBrojIsNotNull(RN, "PRIGOVOR:" + id))
                 .thenReturn(Optional.of(pismeno));
         when(objectionRepository.findByObjectionIdAndRn(id, RN)).thenReturn(Optional.of(objection));

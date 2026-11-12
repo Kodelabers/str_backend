@@ -12,11 +12,14 @@ import com.str.backend.document.StrDocumentType;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.objection.PodnesakPdfService;
 import com.str.backend.objection.SuspensionObjectionFileDto;
 import com.str.backend.objection.SuspensionObjectionRepository;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.dto.RnDocumentDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Sastavlja popis svih dokumenata vezanih uz registracijski broj, za sekciju „Dokumenti" na
@@ -49,13 +53,15 @@ import java.util.UUID;
  * <p>Očitovanja i prigovori iznajmljivača imaju svoje ulazno pismeno u {@code egop_pismeno}
  * ({@code act_ref} = {@code PRIGOVOR:<objection_id>}) i ovdje se prikazuju tek kad su <b>urudžbirani</b>
  * (imaju URBROJ): u postupku MINTS-a kad eGOP vrati URBROJ, u županijskom kad ga službenik upiše
- * ({@code SuspensionObjectionAdminService#register}). Dokument je datoteka koju je stranka učitala
- * ({@code /documents/podnesak/{objectionId}}), a prilozi njezine ostale datoteke.
+ * ({@code SuspensionObjectionAdminService#register}). Dokument je pohranjeni PDF podneska
+ * ({@code /documents/pohranjeno/{id}}), a prilozi su datoteka koju je stranka učitala
+ * ({@code /documents/podnesak/{objectionId}}) i njezine ostale datoteke.
  *
  * <p>Uz svako pismeno idu i njegovi prilozi (T17): uz zahtjev prilozi zahtjeva, uz akt prijelaza
  * prilozi tog prijelaza — uz ulazno pismeno stranke, uz izlazni akt službenika.
  *
- * <p>Servis samo čita i sastavlja podatke; sam render i download rade endpointi na
+ * <p>Servis čita i sastavlja podatke (jedini upis je naknadni PDF podneska u {@link #storedAktPdf});
+ * sam render i download rade endpointi na
  * {@code RnController}.
  *
  * <p><b>{@code str.rn.documents.zahtjev-visible}</b> (default {@code true}, na svim okolinama)
@@ -70,6 +76,8 @@ import java.util.UUID;
 @Service
 public class RnDocumentsService {
 
+    private static final Logger log = LoggerFactory.getLogger(RnDocumentsService.class);
+
     /** Pohranjeni dokument spreman za download — s čitljivim nazivom datoteke. */
     public record StoredDocument(String filename, byte[] pdf) {}
 
@@ -78,6 +86,7 @@ public class RnDocumentsService {
     private final EgopPismenoRepository egopPismenoRepository;
     private final PrilogService prilogService;
     private final SuspensionObjectionRepository objectionRepository;
+    private final PodnesakPdfService podnesakPdf;
     private final boolean zahtjevVisible;
 
     public RnDocumentsService(RnRepository rnRepository,
@@ -85,7 +94,9 @@ public class RnDocumentsService {
                               EgopPismenoRepository egopPismenoRepository,
                               PrilogService prilogService,
                               SuspensionObjectionRepository objectionRepository,
+                              PodnesakPdfService podnesakPdf,
                               @Value("${str.rn.documents.zahtjev-visible:true}") boolean zahtjevVisible) {
+        this.podnesakPdf = podnesakPdf;
         this.rnRepository = rnRepository;
         this.submissionRepository = submissionRepository;
         this.egopPismenoRepository = egopPismenoRepository;
@@ -123,21 +134,40 @@ public class RnDocumentsService {
         // Prilozi prijelaza, jednim upitom: akt nosi act_ref = log_id prijelaza.
         Map<UUID, List<PrilogSazetak>> priloziPrijelaza = prilogService.zaVlasnike(VrstaVlasnika.RN_LOG,
                 akti.stream().map(a -> Uuids.parse(a.getActRef())).flatMap(Optional::stream).toList());
-        // Dodatne datoteke urudžbiranih očitovanja i prigovora, isto jednim upitom.
-        Map<UUID, List<PrilogSazetak>> priloziPodnesaka = prilogService.zaVlasnike(VrstaVlasnika.OBJECTION,
-                akti.stream().filter(RnDocumentsService::urudzbiranPodnesak)
-                        .map(EgopPismenoEntity::objectionId).flatMap(Optional::stream).toList());
+        // Urudžbirana očitovanja i prigovori: dokumenti stranke (izvornik s prigovora i dodatne datoteke),
+        // po jedan upit za sve.
+        List<UUID> podnesci = akti.stream().filter(RnDocumentsService::urudzbiranPodnesak)
+                .map(EgopPismenoEntity::objectionId).flatMap(Optional::stream).toList();
+        Map<UUID, List<PrilogSazetak>> priloziPodnesaka = prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, podnesci);
+        // Sažeci bez BLOB-a; jedan upit po RB-u, samo kad ima urudžbiranih podnesaka.
+        Map<UUID, SuspensionObjectionRepository.ObjectionSummary> izvornici = podnesci.isEmpty() ? Map.of()
+                : objectionRepository.findSummariesByRn(rn).stream()
+                        .filter(o -> podnesci.contains(o.getObjectionId()))
+                        .collect(Collectors.toMap(SuspensionObjectionRepository.ObjectionSummary::getObjectionId,
+                                o -> o));
         for (EgopPismenoEntity akt : akti) {
             Optional<UUID> objectionId = akt.objectionId();
             if (objectionId.isPresent()) {
-                // Podnesak stranke (očitovanje, prigovor): dokument je na prigovoru, ne na pismenu. Dok nije
-                // urudžbiran, nije dio spisa — vidi se samo u panelu prigovora.
+                // Podnesak stranke (očitovanje, prigovor). Dok nije urudžbiran, nije dio spisa — vidi se samo u
+                // panelu prigovora. Glavni dokument je PDF podneska na pismenu, a dokumenti stranke su prilozi —
+                // osim kod starog pismena MINTS-a (bez PDF-a), kojem je u eGOP-u glavni dokument izvornik
+                // stranke: STR prikazuje isto što je u eGOP-u.
                 if (urudzbiranPodnesak(akt)) {
                     String slug = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv())
                             .map(StrDocumentType::slug).orElse(null);
+                    List<PrilogDto> prilozi = new ArrayList<>();
+                    String dokument;
+                    if (imaPdfPodneska(akt)) {
+                        dokument = href(rn, "pohranjeno/" + akt.getId());
+                        Optional.ofNullable(izvornici.get(objectionId.get()))
+                                .map(o -> izvornik(rn, o))
+                                .ifPresent(prilozi::add);
+                    } else {
+                        dokument = href(rn, "podnesak/" + objectionId.get());
+                    }
+                    prilozi.addAll(prilozi(rn, priloziPodnesaka.getOrDefault(objectionId.get(), List.of())));
                     out.add(new RnDocumentDto(akt.getId(), slug, akt.getVrstaPismenaNaziv(), akt.getSmjer().name(),
-                            toLocalDate(akt.getCreatedAt()), href(rn, "podnesak/" + objectionId.get()),
-                            prilozi(rn, priloziPodnesaka.getOrDefault(objectionId.get(), List.of()))));
+                            toLocalDate(akt.getCreatedAt()), dokument, prilozi));
                 }
                 continue;
             }
@@ -175,16 +205,39 @@ public class RnDocumentsService {
         return pdf;
     }
 
-    /** Pohranjeni PDF akta životnog ciklusa; 404 ako akt ne pripada RB-u ili nema dokumenta. */
-    @Transactional(readOnly = true)
+    /**
+     * Pohranjeni PDF akta životnog ciklusa ili podneska; 404 ako pismeno ne pripada RB-u ili nema dokumenta.
+     * Ručno (županijsko) urudžbirani podnesak zapisan prije PDF-a podneska (T12) ga dobiva ovdje: PDF se izvodi
+     * iz retka ({@link PodnesakPdfService#zaRucnoPismeno}) i sprema uvjetno; ako ga je istodobni dohvat spremio
+     * prvi, vraća se spremljeni, pa je svaki dohvat isti dokument. Staro pismeno MINTS-a se ne dira.
+     */
+    @Transactional
     public StoredDocument storedAktPdf(String rn, UUID aktId) {
         EgopPismenoEntity akt = egopPismenoRepository.findById(aktId)
                 .filter(a -> rn.equals(a.getRn()))
                 .orElseThrow(() -> new ResourceNotFoundException("document not found: " + aktId));
-        if (akt.getPdfContent() == null) {
+        String filename = filename(akt, rn);
+        byte[] pdf = akt.getPdfContent();
+        if (pdf == null && akt.isRucno() && urudzbiranPodnesak(akt)) {
+            byte[] izveden = podnesakPdf.zaRucnoPismeno(akt);
+            if (egopPismenoRepository.upisiPdfAkoNema(aktId, izveden, Instant.now()) == 1) {
+                pdf = izveden;
+                log.info("podnesak_pdf_naknadno pismeno={} rn={} vrsta='{}' urbroj={} — PDF podneska izveden iz"
+                        + " retka i spremljen", aktId, rn, akt.getVrstaPismenaNaziv(), akt.getUrBroj());
+            } else {
+                pdf = egopPismenoRepository.findPdfContent(aktId);
+            }
+        }
+        if (pdf == null) {
             throw new ResourceNotFoundException("document has no pdf: " + aktId);
         }
-        return new StoredDocument(filename(akt, rn), akt.getPdfContent());
+        return new StoredDocument(filename, pdf);
+    }
+
+    /** Dokument koji je stranka učitala uz podnesak — prvi prilog, preuzima se s prigovora. */
+    private static PrilogDto izvornik(String rn, SuspensionObjectionRepository.ObjectionSummary o) {
+        return new PrilogDto(null, o.getFileName(), o.getFileSize(), o.getContentType(),
+                href(rn, "podnesak/" + o.getObjectionId()));
     }
 
     /**
@@ -198,6 +251,14 @@ public class RnDocumentsService {
         return objectionRepository.findByObjectionIdAndRn(objectionId, rn)
                 .map(o -> new SuspensionObjectionFileDto(o.getFileName(), o.getContentType(), o.getFileContent()))
                 .orElseThrow(() -> new ResourceNotFoundException("document not found: " + objectionId));
+    }
+
+    /**
+     * Podnesak čiji je glavni dokument PDF podneska: ima ga spremljenog, ili je ručni (dobiva ga pri dohvatu).
+     * Staro pismeno MINTS-a bez PDF-a nema — u eGOP-u mu je glavni dokument izvornik stranke.
+     */
+    private static boolean imaPdfPodneska(EgopPismenoEntity akt) {
+        return akt.getPdfContent() != null || akt.isRucno();
     }
 
     /** Ulazno pismeno očitovanja ili prigovora kojem je dodijeljen URBROJ (eGOP ili županijski službenik). */

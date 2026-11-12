@@ -223,6 +223,24 @@ public class EgopFilingStore {
         });
     }
 
+    /** Glavni dokument podneska priložen, pismeno još nije dovršeno ({@link EgopPismenoEntity#markGlavniDokumentPrilozen}). */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markGlavniDokumentPrilozen(UUID pismenoId) {
+        egopPismenoRepository.findById(pismenoId).ifPresent(pismeno -> {
+            pismeno.markGlavniDokumentPrilozen();
+            egopPismenoRepository.save(pismeno);
+        });
+    }
+
+    /** Pismeno je dovršeno ({@code SYNCED}) — za podnesak tek kad je priložen i izvornik stranke. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markPismenoSynced(UUID pismenoId) {
+        egopPismenoRepository.findById(pismenoId).ifPresent(pismeno -> {
+            pismeno.markSynced();
+            egopPismenoRepository.save(pismeno);
+        });
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void saveSuccess(UUID submissionId, String filingNumber, byte[] pdf) {
         submissionRepository.findById(submissionId).ifPresent(submission -> {

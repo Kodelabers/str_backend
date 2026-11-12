@@ -131,6 +131,23 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
             """)
     List<EgopPismenoEntity> findUrudzbiranaPismena(@Param("rn") String rn, @Param("actRefLike") String actRefLike);
 
+    /**
+     * Upisuje PDF podneska koji ga još nema (pismeno zapisano prije PDF-a podneska, T12) — uvjetno, pa
+     * istodobni dohvat ne prepisuje već upisani PDF.
+     *
+     * @return 1 kad je upisan, 0 kad ga je pismeno već imalo
+     */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("UPDATE EgopPismenoEntity p SET p.pdfContent = :pdf, p.updatedAt = :now"
+            + " WHERE p.id = :id AND p.pdfContent IS NULL")
+    int upisiPdfAkoNema(@Param("id") UUID id, @Param("pdf") byte[] pdf, @Param("now") Instant now);
+
+    /** Spremljeni PDF pismena, mimo entiteta u kontekstu — za utrku dvaju naknadnih rendera. */
+    @Transactional(readOnly = true)
+    @Query("SELECT p.pdfContent FROM EgopPismenoEntity p WHERE p.id = :id")
+    byte[] findPdfContent(@Param("id") UUID id);
+
     /** Postoji li za RB pismeno s tim {@code act_ref} (i bez URBROJ-a) — obrana od drugog upisa podneska. */
     @Transactional(readOnly = true)
     boolean existsByRnAndActRef(String rn, String actRef);

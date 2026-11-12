@@ -63,9 +63,10 @@ class SuspensionObjectionAdminServiceTest {
     private final RegistrationNumberLogRepository logRepository = mock(RegistrationNumberLogRepository.class);
     private final EgopPismenoRepository pismenoRepository = mock(EgopPismenoRepository.class);
     private final SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
+    private final PodnesakPdfService podnesakPdf = mock(PodnesakPdfService.class);
     private final SuspensionObjectionAdminService service = new SuspensionObjectionAdminService(
             repository, rnRepository, rnService, auditService, internalAccess, lessorRepository, prilogService,
-            reissueGuard, logRepository, pismenoRepository, submissionRepository);
+            reissueGuard, logRepository, pismenoRepository, submissionRepository, podnesakPdf);
 
     private final RnEntity rn = mock(RnEntity.class);
     private SuspensionObjectionEntity objection;
@@ -312,10 +313,13 @@ class SuspensionObjectionAdminServiceTest {
         when(pismenoRepository.existsByRnAndActRef(RN, "PRIGOVOR:" + objectionId)).thenReturn(true);
         when(pismenoRepository.findFirstByRnAndActRefAndUrBrojIsNotNull(RN, "PRIGOVOR:" + objectionId))
                 .thenReturn(Optional.of(EgopPismenoEntity.rucniPodnesak(SUBMISSION_ID, RN, objectionId,
-                        StrDocumentType.OCITOVANJE_SUSPENZIJE.vrstaPismenaNaziv(), URUDZBA.klasa(), URUDZBA.urBroj())));
+                        StrDocumentType.OCITOVANJE_SUSPENZIJE.vrstaPismenaNaziv(), URUDZBA.klasa(), URUDZBA.urBroj(), null)));
     }
 
-    /** Županijski postupak: ulazno pismeno s upisanim brojevima, vrsta po statusu pri predaji, bez eGOP-a. */
+    /**
+     * Županijski postupak: ulazno pismeno s upisanim brojevima i PDF-om podneska, vrsta po statusu pri predaji,
+     * bez eGOP-a.
+     */
     @Test
     void register_county_savesManualIncomingPismeno_andAudits() {
         SuspensionObjectionEntity o = countyObjection(RnStatus.SUSPENSION_PROPOSED);
@@ -325,6 +329,9 @@ class SuspensionObjectionAdminServiceTest {
             return inv.getArgument(0);
         });
         when(pismenoRepository.findUrudzbiraniPodnesci(RN)).thenAnswer(inv -> List.copyOf(spremljeni));
+        byte[] pdf = "%PDF-podnesak".getBytes();
+        when(podnesakPdf.render(o, java.util.Arrays.asList("Splitsko-dalmatinska županija", null),
+                new com.str.backend.document.FilingReference("UP/I-334-06/26-01/7", "2181-26-2"))).thenReturn(pdf);
 
         SuspensionObjectionDto dto = service.register(RN, o.getObjectionId(), ACTOR, URUDZBA);
 
@@ -338,7 +345,8 @@ class SuspensionObjectionAdminServiceTest {
         assertThat(p.isRucno()).isTrue();
         assertThat(p.getStatus()).isEqualTo(EgopSyncStatus.SYNCED);
         assertThat(p.isDocumentAttached()).isTrue();
-        assertThat(p.getPdfContent()).isNull();
+        // Glavni dokument: PDF podneska sa zaglavljem županije službenika i brojevima iz forme.
+        assertThat(p.getPdfContent()).isEqualTo(pdf);
         assertThat(p.getJop()).isNull();
         assertThat(p.getActRef()).isEqualTo("PRIGOVOR:" + o.getObjectionId());
         assertThat(p.objectionId()).contains(o.getObjectionId());
@@ -560,7 +568,7 @@ class SuspensionObjectionAdminServiceTest {
         when(egopLog.rucniAkt()).thenReturn(Optional.empty());
         when(logRepository.findAllById(java.util.Set.of(zupanijaLog, mintsLog))).thenReturn(List.of(rucniLog, egopLog));
         EgopPismenoEntity rucni = EgopPismenoEntity.rucniPodnesak(SUBMISSION_ID, RN, zupanijaId,
-                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), URUDZBA.klasa(), URUDZBA.urBroj());
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), URUDZBA.klasa(), URUDZBA.urBroj(), null);
         EgopPismenoEntity egop = EgopPismenoEntity.forPodnesak(SUBMISSION_ID, RN, mintsId,
                 StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
         egop.applyPismeno(1009, "529-06/26-4", "108", false);
