@@ -295,7 +295,7 @@ public class RnLifecycleEmailListener {
             case PRIJEDLOG_POVLACENJA -> MailTemplate.PRIJEDLOG_POVLACENJA;
             case OBUSTAVA_POVLACENJA -> MailTemplate.OBUSTAVA_POVLACENJA;
             case REAKTIVACIJA_POVLACENJA -> MailTemplate.REAKTIVACIJA_POVLACENJA;
-            // ZAHTJEV/DODJELA/PRIGOVOR ne nastaju iz prijelaza statusa.
+            // ZAHTJEV/DODJELA i podnesci stranke na akt (očitovanje, prigovor) ne nastaju iz prijelaza statusa.
             default -> throw new IllegalStateException("Nema poruke za vrstu akta " + type);
         };
     }

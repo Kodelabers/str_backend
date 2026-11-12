@@ -1,5 +1,6 @@
 package com.str.backend.egop;
 
+import com.str.backend.common.Uuids;
 import com.str.backend.domain.EgopSyncStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,6 +14,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -44,6 +47,13 @@ public class EgopPismenoEntity {
 
     /** {@code act_ref} registracijskih akata — oni nemaju zapis u revizijskom tragu RB-a. */
     public static final String ACT_REF_REGISTRACIJA = "REGISTRACIJA";
+
+    /**
+     * Prefiks {@code act_ref} podneska stranke na akt (očitovanje, prigovor): {@code PRIGOVOR:<objection_id>}
+     * (45 znakova). Na isti prijelaz može biti više podnesaka, pa ih {@code log_id} ne razlikuje; prefiks
+     * ujedno sprječava da se oznaka pročita kao {@code log_id} prijelaza (prilozi, korisnik, render akta).
+     */
+    public static final String ACT_REF_PRIGOVOR_PREFIX = "PRIGOVOR:";
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -183,12 +193,52 @@ public class EgopPismenoEntity {
     }
 
     /**
+     * Podnesak stranke na akt (očitovanje, prigovor): ulazno pismeno bez vlastitog dokumenta. Glavni
+     * dokument je datoteka koju je stranka učitala i ostaje samo na prigovoru
+     * ({@code suspension_objection.file_content}, nepromjenjiva), pa se ne kopira ovamo: {@code pdf_content}
+     * ostaje prazan, a dokument može biti i DOC ili DOCX.
+     */
+    public static EgopPismenoEntity forPodnesak(UUID submissionId, String rn, UUID objectionId,
+                                                String vrstaPismenaNaziv) {
+        return forAct(submissionId, rn, actRefPodneska(objectionId), vrstaPismenaNaziv, Smjer.ULAZNO, null);
+    }
+
+    public static String actRefPodneska(UUID objectionId) {
+        return ACT_REF_PRIGOVOR_PREFIX + Objects.requireNonNull(objectionId, "objectionId");
+    }
+
+    /** Prigovor čiji je ovo podnesak; prazno za sva ostala pismena. */
+    public Optional<UUID> objectionId() {
+        if (actRef == null || !actRef.startsWith(ACT_REF_PRIGOVOR_PREFIX)) {
+            return Optional.empty();
+        }
+        return Uuids.parse(actRef.substring(ACT_REF_PRIGOVOR_PREFIX.length()));
+    }
+
+    /**
      * T16: akt županijskog službenika. Brojeve je upisao službenik, pa je odmah {@code SYNCED}: retry
      * job, prilozi i eGOP KP otprema ga time preskaču.
      */
     public static EgopPismenoEntity rucniAkt(UUID submissionId, String rn, String actRef, String vrstaPismenaNaziv,
                                              byte[] pdf, String klasa, String urBroj) {
         EgopPismenoEntity e = forAct(submissionId, rn, actRef, vrstaPismenaNaziv, Smjer.IZLAZNO, pdf);
+        e.klasa = klasa;
+        e.urBroj = urBroj;
+        e.rucno = true;
+        e.status = EgopSyncStatus.SYNCED;
+        e.documentAttached = true;
+        return e;
+    }
+
+    /**
+     * Podnesak stranke (očitovanje, prigovor) u postupku koji vodi županijski službenik (T16): ne ide u eGOP,
+     * nego ga službenik urudžbira ručno, upisom KLASE i URBROJ-a. Kao {@link #rucniAkt} je odmah
+     * {@code SYNCED} (retry job i prilozi ga preskaču), a kao {@link #forPodnesak} nema vlastiti dokument —
+     * glavni dokument je datoteka s prigovora.
+     */
+    public static EgopPismenoEntity rucniPodnesak(UUID submissionId, String rn, UUID objectionId,
+                                                  String vrstaPismenaNaziv, String klasa, String urBroj) {
+        EgopPismenoEntity e = forPodnesak(submissionId, rn, objectionId, vrstaPismenaNaziv);
         e.klasa = klasa;
         e.urBroj = urBroj;
         e.rucno = true;

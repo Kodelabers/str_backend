@@ -163,7 +163,7 @@ class ZupContextFactoryTest {
     /** Redak adrese nosi natpis, pa nepoznata adresa ne ostavlja goli „Adresa: ,". */
     @Test
     void addressLine_isEmptyWithoutAddress() {
-        Map<String, String> ctx = factory(false).forRn(StrDocumentType.PRIGOVOR,
+        Map<String, String> ctx = factory(false).forRn(StrDocumentType.ZAHTJEV_OPOZIVA,
                 detail(LocalDate.of(2026, 9, 9)), null, FilingReference.NONE);
 
         assertThat(ctx.get("stranka.adresaRedak")).isEmpty();
@@ -176,7 +176,7 @@ class ZupContextFactoryTest {
     /** Pečat je pečat tijela — podnesak stranke mu ni ne gradi podatke. */
     @Test
     void sealKeys_absentForPartySubmission_evenWhenEnabled() {
-        Map<String, String> ctx = factory(true).forRn(StrDocumentType.PRIGOVOR,
+        Map<String, String> ctx = factory(true).forRn(StrDocumentType.ZAHTJEV_OPOZIVA,
                 detail(LocalDate.of(2026, 9, 9)), null, FilingReference.NONE);
 
         assertThat(ctx.keySet()).noneMatch(k -> k.startsWith("epecat."));

@@ -97,6 +97,23 @@ class RnDocumentControllerTest {
                 .andExpect(status().isOk());
     }
 
+    /** Očitovanje i prigovor nemaju predložak (dokument je ono što je stranka učitala): 404, ništa se ne renderira. */
+    @Test
+    void document_objectionTypes_areNotRendered() throws Exception {
+        for (String tip : new String[]{"ocitovanje-suspenzije", "prigovor-suspenzije", "ocitovanje-povlacenja",
+                "prigovor-povlacenja"}) {
+            mvc.perform(get("/api/rn/{rn}/documents/{tip}", RN, tip)
+                            .principal(internalUser()))
+                    .andExpect(status().isNotFound());
+        }
+        // Uklonjeni predložak „Prigovor na prijedlog suspenzije" više nije poznata vrsta.
+        mvc.perform(get("/api/rn/{rn}/documents/{tip}", RN, "prigovor")
+                        .principal(internalUser()))
+                .andExpect(status().isBadRequest());
+
+        verify(documentService, never()).render(any(), any(), any());
+    }
+
     /** Iznajmljivač ne smije doći do akta o tuđem RB-u; postojanje se ne otkriva. */
     @Test
     void document_foreignRn_returns404_andDoesNotRender() throws Exception {

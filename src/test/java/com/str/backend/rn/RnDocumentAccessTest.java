@@ -151,6 +151,74 @@ class RnDocumentAccessTest {
         verify(documentService).render(eq(StrDocumentType.DODJELA), eq(RN), isNull(), any());
     }
 
+    // --- Urudžbirano očitovanje ili prigovor u „Dokumentima": datoteka koju je stranka učitala
+
+    private static final UUID OBJECTION_ID = UUID.randomUUID();
+
+    @Test
+    void podnesak_owner_getsPdfInline() throws Exception {
+        UUID lessorId = UUID.randomUUID();
+        when(rnRepository.isOwnedByLessor(RN, lessorId)).thenReturn(true);
+        when(documentsService.podnesak(RN, OBJECTION_ID)).thenReturn(new com.str.backend.objection.SuspensionObjectionFileDto(
+                "očitovanje.pdf", "application/pdf", "%PDF".getBytes()));
+
+        mvc.perform(get("/api/rn/{rn}/documents/podnesak/{id}", RN, OBJECTION_ID)
+                        .with(authentication(principalAuth(lessorId))))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Type", "application/pdf"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Disposition", org.hamcrest.Matchers.startsWith("inline;")));
+    }
+
+    /** Službenik s rolom, tuđi RB: Word se preuzima kao privitak, s hrvatskim znakovima u nazivu. */
+    @Test
+    void podnesak_official_getsDocxAsAttachment() throws Exception {
+        Authentication official = nias(OFFICIAL_OIB);
+        when(internalAccess.hasRole(official, InternalAccessService.RN_MANAGEMENT)).thenReturn(true);
+        String docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        when(documentsService.podnesak(RN, OBJECTION_ID)).thenReturn(new com.str.backend.objection.SuspensionObjectionFileDto(
+                "prigovor-žalba.docx", docx, new byte[]{0x50, 0x4B}));
+
+        mvc.perform(get("/api/rn/{rn}/documents/podnesak/{id}", RN, OBJECTION_ID)
+                        .with(authentication(official)))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Type", docx))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment;")))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Disposition", org.hamcrest.Matchers.containsString("prigovor-%C5%BEalba.docx")));
+    }
+
+    /** Neurudžbiran podnesak ili prigovor drugog RB-a: servis kaže 404, a odgovor ne otkriva razliku. */
+    @Test
+    void podnesak_unregisteredOrForeignObjection_returns404() throws Exception {
+        UUID lessorId = UUID.randomUUID();
+        when(rnRepository.isOwnedByLessor(RN, lessorId)).thenReturn(true);
+        when(documentsService.podnesak(RN, OBJECTION_ID))
+                .thenThrow(new com.str.backend.exception.ResourceNotFoundException("document not found"));
+
+        mvc.perform(get("/api/rn/{rn}/documents/podnesak/{id}", RN, OBJECTION_ID)
+                        .with(authentication(principalAuth(lessorId))))
+                .andExpect(status().isNotFound());
+    }
+
+    /** Tuđi RB: 404 prije servisa; bez prijave 401. */
+    @Test
+    void podnesak_foreignRnOrUnauthenticated_neverReachesService() throws Exception {
+        UUID lessorId = UUID.randomUUID();
+        when(rnRepository.isOwnedByLessor(RN, lessorId)).thenReturn(false);
+
+        mvc.perform(get("/api/rn/{rn}/documents/podnesak/{id}", RN, OBJECTION_ID)
+                        .with(authentication(principalAuth(lessorId))))
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/rn/{rn}/documents/podnesak/{id}", RN, OBJECTION_ID))
+                .andExpect(status().isUnauthorized());
+
+        verify(documentsService, never()).podnesak(any(), any());
+    }
+
     /** Isti sigurnosni lanac štiti i popis dokumenata — bez prijave 401, bez listanja. */
     @Test
     void documentsList_unauthenticated_returns401() throws Exception {

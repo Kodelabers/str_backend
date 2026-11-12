@@ -45,12 +45,20 @@ public class RucniAktService {
     }
 
     /**
+     * Je li službenik županijski ({@link CountyScope.Outcome#COUNTY}) — isto pravilo po kojem {@link #zaRadnju}
+     * traži ručne brojeve, za radnje bez KLASE (npr. neuvažavanje prigovora u županijskom postupku).
+     */
+    public boolean zupanijskiSluzbenik(Authentication authentication) {
+        return zupanijski(countyScope.scopeFor(authentication));
+    }
+
+    /**
      * @return ručni akt za županijskog službenika (KLASA i URBROJ provjereni, 400 kad ne valjaju), ili
      *         {@code null} kad akt ide kroz eGOP
      */
     public RucniAkt zaRadnju(Authentication authentication, String klasa, String urBroj) {
         CountyScope scope = countyScope.scopeFor(authentication);
-        if (scope.outcome() != CountyScope.Outcome.COUNTY) {
+        if (!zupanijski(scope)) {
             if (zadano(klasa) || zadano(urBroj)) {
                 // Sučelje je brojeve ponudilo (službenik je bio županijski), a backend ga sada ne vidi tako
                 // (promjena organizacije, privremena greška čitanja) — akt ide kroz eGOP. Mora se vidjeti.
@@ -90,6 +98,10 @@ public class RucniAktService {
         log.info("rucni_akt_zupanija zu_rb={} izdavatelj='{}' klasa={} urbroj={}", akt.izdavateljZuRb(),
                 akt.izdavateljNaziv(), akt.klasa(), akt.urBroj());
         return akt;
+    }
+
+    private static boolean zupanijski(CountyScope scope) {
+        return scope.outcome() == CountyScope.Outcome.COUNTY;
     }
 
     /** Vrijednost iz zahtjeva za log: bez kontrolnih znakova (lažni redak loga) i skraćena. */

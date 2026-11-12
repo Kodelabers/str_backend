@@ -1,12 +1,15 @@
 package com.str.backend.egop;
 
 import com.str.backend.common.Uuids;
+import com.str.backend.common.VrstaDatoteke;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentService;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.egop.exception.EgopException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.objection.SuspensionObjectionEntity;
+import com.str.backend.objection.SuspensionObjectionLookup;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.event.RnLifecycleEvent;
@@ -28,6 +31,10 @@ import java.util.UUID;
  * lancu; akt životnog ciklusa dolazi s već snimljenim dokumentom i sam je sebi jedinica
  * ponovnog pokušaja. Miješanje bi značilo da pad suspenzije mijenja status registracije.
  *
+ * <p>Isti dispatcher šalje i podneske stranke na akt (očitovanje, prigovor; {@code act_ref}
+ * {@code PRIGOVOR:<objection_id>}): ulazno pismeno s dokumentom koji je stranka učitala, iza akta na koji
+ * odgovara ({@link #dispatchPodnesak}).
+ *
  * <p><b>Ne drži transakciju</b> preko SOAP poziva — upisi idu kroz {@link EgopFilingStore},
  * svaki u vlastitoj kratkoj transakciji.
  */
@@ -44,6 +51,7 @@ public class EgopAktDispatcher {
     private final StrDocumentService documentService;
     private final RnLifecycleLookup lookup;
     private final EgopAktiBezSifre bezSifre;
+    private final SuspensionObjectionLookup prigovori;
 
     public EgopAktDispatcher(EgopFilingStore store,
                              LessorRepository lessorRepository,
@@ -52,7 +60,8 @@ public class EgopAktDispatcher {
                              EgopAktKorisnik korisnik,
                              StrDocumentService documentService,
                              RnLifecycleLookup lookup,
-                             EgopAktiBezSifre bezSifre) {
+                             EgopAktiBezSifre bezSifre,
+                             SuspensionObjectionLookup prigovori) {
         this.store = store;
         this.lessorRepository = lessorRepository;
         this.filingService = filingService;
@@ -61,6 +70,7 @@ public class EgopAktDispatcher {
         this.documentService = documentService;
         this.lookup = lookup;
         this.bezSifre = bezSifre;
+        this.prigovori = prigovori;
     }
 
     /** Idempotentan: već urudžbiran akt se preskače, djelomično obavljen nastavlja gdje je stao. */
@@ -84,6 +94,12 @@ public class EgopAktDispatcher {
             return;
         }
 
+        Optional<UUID> objectionId = akt.objectionId();
+        if (objectionId.isPresent()) {
+            dispatchPodnesak(akt, objectionId.get(), submission, lessor);
+            return;
+        }
+
         if (!akt.isFiled() && cekaPodnesak(akt)) {
             return;
         }
@@ -98,17 +114,8 @@ public class EgopAktDispatcher {
     /**
      * Akt kojem prethodi podnesak stranke ({@link StrDocumentType#podnesak()}, npr. obavijest o
      * opozivu iza zahtjeva za opoziv) urudžbira se tek kad je podnesak dobio pismeno u eGOP-u — inače
-     * bi obavijest dobila manji urbroj od zahtjeva kojim je postupak pokrenut. Podnesak koji još nije
-     * urudžbiran i smije se pokušati šalje se ovdje, prvi; ne uspije li, akt se <b>odgađa bez trošenja
-     * pokušaja</b> ({@link EgopFilingStore#deferAkt}) do sljedećeg pokušaja podneska, pa ga retry job
-     * pokuša opet, iza podneska (kandidati idu po vremenu nastanka). Čekanje nije kvar akta: ranije je
-     * svako odgađanje trošilo pokušaj i logiralo ERROR sa stack traceom, pa bi akt bio iscrpljen prije
-     * podneska.
-     *
-     * <p>Ne čeka se podnesak kojeg nema (opozivi zapisani prije T15, pad rendera podneska), podnesak
-     * čija je vrsta na popisu {@code str.egop.akti-bez-sifre} — on se ne urudžbira, pa bi akt čekao
-     * zauvijek — ni podnesak koji je iscrpio pokušaje: akt (i dostava obavijesti o opozivu, koja čeka
-     * njegov pečat) tada ide bez njega, uz glasan ERROR.
+     * bi obavijest dobila manji urbroj od zahtjeva kojim je postupak pokrenut ({@link #cekaPrethodno}).
+     * Iscrpljen podnesak ne zadržava akt (ni dostavu obavijesti o opozivu, koja čeka njegov pečat).
      *
      * @return {@code true} ako akt mora pričekati
      */
@@ -117,10 +124,92 @@ public class EgopAktDispatcher {
                 .flatMap(StrDocumentType::podnesak)
                 .filter(bezSifre::urudzbiv)
                 .flatMap(vrsta -> store.findPismeno(akt.getSubmissionId(), vrsta.vrstaPismenaNaziv(), akt.getActRef()));
-        if (podnesak.isEmpty() || podnesak.get().isFiled()) {
+        return cekaPrethodno(akt, podnesak, "podnesak", "podneska");
+    }
+
+    /**
+     * Podnesak stranke na akt (očitovanje, prigovor) ide u eGOP kao ulazno pismeno, s dokumentom koji je
+     * stranka učitala ({@code suspension_objection.file_content}) i njezinim ostalim datotekama kao prilozima.
+     * U predmet ide tek <b>iza</b> akta na koji odgovara ({@link StrDocumentType#pobijaniAkt()}, prijelaz
+     * {@code rn_log_id}): dok taj akt nije urudžbiran, podnesak čeka bez trošenja pokušaja, kao obavijest o
+     * opozivu iza zahtjeva ({@link #cekaPrethodno}). Pad slanja troši pokušaj i ponavlja ga {@link EgopRetryJob}.
+     */
+    private void dispatchPodnesak(EgopPismenoEntity podnesak, UUID objectionId, SubmissionEntity submission,
+                                  LessorEntity lessor) {
+        try {
+            SuspensionObjectionEntity prigovor = prigovori.find(objectionId)
+                    .orElseThrow(() -> new IllegalStateException("Prigovor " + objectionId
+                            + " ne postoji — podnesak nema dokument"));
+            if (!podnesak.isFiled() && cekaAkt(podnesak, prigovor.getRnLogId())) {
+                return;
+            }
+            filingService.filePodnesak(podnesak, submission, lessor, korisnik.za(podnesak), dokument(prigovor));
+        } catch (EgopException | RuntimeException e) {
+            handleFailure(podnesak, e);
+        }
+    }
+
+    /**
+     * Akt na koji podnesak odgovara: pismeno prijelaza {@code rnLogId} vrste {@link StrDocumentType#pobijaniAkt()}.
+     * Akt koji uopće nije zapisan ({@code egop_akt_not_recorded}, npr. pad rendera) ne zadržava podnesak, ali se
+     * javlja zasebnim ERROR-om — drukčiji kvar od iscrpljenog akta ({@code egop_akt_pobijani_akt_exhausted}).
+     */
+    private boolean cekaAkt(EgopPismenoEntity podnesak, UUID rnLogId) {
+        Optional<StrDocumentType> vrstaAkta = rnLogId == null ? Optional.empty()
+                : StrDocumentType.fromVrstaPismenaNaziv(podnesak.getVrstaPismenaNaziv())
+                        .flatMap(StrDocumentType::pobijaniAkt)
+                        .filter(bezSifre::urudzbiv);
+        if (vrstaAkta.isEmpty()) {
             return false;
         }
-        EgopPismenoEntity p = podnesak.get();
+        Optional<EgopPismenoEntity> akt = store.findPismeno(podnesak.getSubmissionId(),
+                vrstaAkta.get().vrstaPismenaNaziv(), rnLogId.toString());
+        if (akt.isEmpty()) {
+            log.error("egop_podnesak_bez_pobijanog_akta podnesak={} rn={} vrsta='{}' rn_log={} pobijani_akt='{}' — akt"
+                            + " na koji podnesak odgovara nije zapisan u egop_pismeno (egop_akt_not_recorded); podnesak"
+                            + " se urudžbira bez njega, akt urudžbiti ručno (urbroj će mu biti veći)",
+                    podnesak.getId(), podnesak.getRn(), podnesak.getVrstaPismenaNaziv(), rnLogId,
+                    vrstaAkta.get().vrstaPismenaNaziv());
+            return false;
+        }
+        // Ručni akt županije nema eGOP pismeno, a podnesak na njega se ni ne zapisuje
+        // (PodnesakFilingListener) — ovo samo brani od vječnog čekanja.
+        return cekaPrethodno(podnesak, akt.filter(a -> !a.isRucno()), "pobijani_akt", "akta");
+    }
+
+    /** Glavni dokument kakav je učitan; ekstenzija iz vrste koju je sadržaj potvrdio pri predaji. */
+    private static EgopFilingService.PodnesakDokument dokument(SuspensionObjectionEntity prigovor) {
+        String ekstenzija = VrstaDatoteke.poContentType(prigovor.getContentType())
+                .map(VrstaDatoteke::ekstenzija)
+                .orElseThrow(() -> new IllegalStateException("Prigovor " + prigovor.getObjectionId()
+                        + " ima nepoznat content_type '" + prigovor.getContentType() + "'"));
+        return new EgopFilingService.PodnesakDokument(prigovor.getFileContent(), ekstenzija);
+    }
+
+    /**
+     * Pismeno koje mora ići iza drugog pismena istog postupka ({@code prethodno}) urudžbira se tek kad je
+     * {@code prethodno} dobilo pismeno u eGOP-u — inače bi dobilo manji urbroj od njega. Prethodno koje još
+     * nije urudžbirano i smije se pokušati šalje se ovdje, prvo; ne uspije li, pismeno se <b>odgađa bez
+     * trošenja pokušaja</b> ({@link EgopFilingStore#deferAkt}) do sljedećeg pokušaja prethodnog, pa ga retry
+     * job pokuša opet, iza njega (kandidati idu po vremenu nastanka). Čekanje nije kvar pismena: ranije je
+     * svako odgađanje trošilo pokušaj i logiralo ERROR sa stack traceom, pa bi pismeno bilo iscrpljeno prije
+     * prethodnog.
+     *
+     * <p>Ne čeka se prethodno kojeg nema (npr. opozivi zapisani prije T15, pad rendera), prethodno čija je
+     * vrsta na popisu {@code str.egop.akti-bez-sifre} — ono se ne urudžbira, pa bi pismeno čekalo zauvijek
+     * (pozivatelj ga tada ne predaje) — ni prethodno koje je iscrpilo pokušaje: pismeno tada ide bez njega,
+     * uz glasan ERROR.
+     *
+     * @param uloga   oznaka prethodnog pismena u logu ({@code podnesak}, {@code pobijani_akt})
+     * @param genitiv oznaka prethodnog pismena u razlogu odgode ({@code sync_error})
+     * @return {@code true} ako pismeno mora pričekati
+     */
+    private boolean cekaPrethodno(EgopPismenoEntity akt, Optional<EgopPismenoEntity> prethodno, String uloga,
+                                  String genitiv) {
+        if (prethodno.isEmpty() || prethodno.get().isFiled()) {
+            return false;
+        }
+        EgopPismenoEntity p = prethodno.get();
         Instant now = Instant.now();
         if (!retryPolicy.isExhausted(p.getSyncAttempts())
                 && (p.getNextAttemptAt() == null || !p.getNextAttemptAt().isAfter(now))) {
@@ -131,21 +220,22 @@ public class EgopAktDispatcher {
             return false;
         }
         if (retryPolicy.isExhausted(p.getSyncAttempts())) {
-            log.error("egop_akt_podnesak_exhausted akt={} rn={} vrsta='{}' podnesak={} podnesak_attempts={}"
-                            + " last_error={} — podnesak se više ne pokušava; akt se urudžbira bez njega."
-                            + " Podnesak urudžbiti ručno (urbroj će mu biti veći od akta)",
-                    akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), p.getId(), p.getSyncAttempts(),
-                    p.getSyncError());
+            log.error("egop_akt_{}_exhausted akt={} rn={} vrsta='{}' prethodno={} prethodno_vrsta='{}'"
+                            + " prethodno_attempts={} last_error={} — prethodno pismeno se više ne pokušava; ovo se"
+                            + " urudžbira bez njega. Prethodno urudžbiti ručno (urbroj će mu biti veći)",
+                    uloga, akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), p.getId(), p.getVrstaPismenaNaziv(),
+                    p.getSyncAttempts(), p.getSyncError());
             return false;
         }
         Instant nextAttemptAt = p.getNextAttemptAt() != null && p.getNextAttemptAt().isAfter(now)
                 ? p.getNextAttemptAt()
                 : retryPolicy.nextAttemptAt(now, 0);
-        store.deferAkt(akt.getId(), "Čeka urudžbu podneska " + p.getId() + " ('" + p.getVrstaPismenaNaziv()
-                + "') — akt ide u isti predmet iza njega", nextAttemptAt);
-        log.info("egop_akt_deferred reason=podnesak_not_filed akt={} rn={} vrsta='{}' podnesak={}"
-                        + " podnesak_attempts={} next_attempt_at={}",
-                akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), p.getId(), p.getSyncAttempts(), nextAttemptAt);
+        store.deferAkt(akt.getId(), "Čeka urudžbu " + genitiv + " " + p.getId() + " ('" + p.getVrstaPismenaNaziv()
+                + "') — ide u isti predmet iza njega", nextAttemptAt);
+        log.info("egop_akt_deferred reason={}_not_filed akt={} rn={} vrsta='{}' prethodno={}"
+                        + " prethodno_attempts={} next_attempt_at={}",
+                uloga, akt.getId(), akt.getRn(), akt.getVrstaPismenaNaziv(), p.getId(), p.getSyncAttempts(),
+                nextAttemptAt);
         return true;
     }
 

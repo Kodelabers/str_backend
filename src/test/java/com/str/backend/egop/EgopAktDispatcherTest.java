@@ -9,6 +9,8 @@ import com.str.backend.domain.RnTrigger;
 import com.str.backend.egop.exception.EgopBadRequestException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.objection.SuspensionObjectionEntity;
+import com.str.backend.objection.SuspensionObjectionLookup;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.rn.RnLifecycleLookup;
 import com.str.backend.rn.event.RnLifecycleEvent;
@@ -40,6 +42,7 @@ class EgopAktDispatcherTest {
     private EgopAktKorisnik korisnik;
     private StrDocumentService documentService;
     private RnLifecycleLookup lookup;
+    private SuspensionObjectionLookup prigovori;
     private EgopAktDispatcher dispatcher;
     private UUID logId;
 
@@ -55,9 +58,10 @@ class EgopAktDispatcherTest {
         korisnik = mock(EgopAktKorisnik.class);
         documentService = mock(StrDocumentService.class);
         lookup = mock(RnLifecycleLookup.class);
+        prigovori = mock(SuspensionObjectionLookup.class);
         dispatcher = new EgopAktDispatcher(store, lessorRepository, filingService,
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)), korisnik,
-                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of()));
+                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of()), prigovori);
         logId = UUID.randomUUID();
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb",
@@ -264,13 +268,207 @@ class EgopAktDispatcherTest {
     void opoziv_requestWithoutCode_doesNotBlockNotice() throws Exception {
         dispatcher = new EgopAktDispatcher(store, lessorRepository, filingService,
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)), korisnik,
-                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of("zahtjev-opoziva")));
+                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of("zahtjev-opoziva")), prigovori);
         opoziv();
 
         dispatcher.dispatch(obavijestOOpozivu.getId());
 
         verify(filingService, never()).fileAct(eq(zahtjevOpoziva), any(), any(), any(), any());
         verify(filingService).fileAct(eq(obavijestOOpozivu), any(), any(), any(), any());
+    }
+
+    // --- očitovanje i prigovor: ulazno pismeno iza akta na koji odgovaraju ----------------
+
+    private static final byte[] DOCX = {0x50, 0x4B, 0x03, 0x04, 0x14, 0x00};
+    private static final byte[] DOC = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A,
+            (byte) 0xE1, 0x00};
+
+    private EgopPismenoEntity podnesak;
+
+    /**
+     * Prigovor na suspenziju (akt {@code akt} iz setUp-a, prijelaz {@code logId}) i njegovo ulazno pismeno,
+     * zapisano kako ga zapisuje PodnesakFilingListener.
+     */
+    private SuspensionObjectionEntity prigovor(String fileName, String contentType, byte[] sadrzaj) {
+        SuspensionObjectionEntity prigovor = SuspensionObjectionEntity.createForOib("99999999990", RN,
+                RnStatus.SUSPENDED, logId, "NIAS:99999999990", fileName, contentType, sadrzaj);
+        podnesak = EgopPismenoEntity.forPodnesak(submission.getSubmissionId(), RN, prigovor.getObjectionId(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        when(prigovori.find(prigovor.getObjectionId())).thenReturn(Optional.of(prigovor));
+        when(store.findAkt(podnesak.getId())).thenReturn(Optional.of(podnesak));
+        when(store.findPismeno(submission.getSubmissionId(), StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv(),
+                logId.toString())).thenReturn(Optional.of(akt));
+        when(korisnik.za(podnesak)).thenReturn("strservis4");
+        // doAnswer, ne when(): when() bi pozvao postojeći stub iz setUp-a s null argumentima.
+        org.mockito.Mockito.doAnswer(inv -> {
+            EgopPismenoEntity p = inv.getArgument(0).equals(podnesak.getId()) ? podnesak : akt;
+            p.markFailed(inv.getArgument(1), inv.getArgument(2));
+            return p.getSyncAttempts();
+        }).when(store).markAktFailed(any(), any(), any());
+        org.mockito.Mockito.doAnswer(inv -> {
+            podnesak.defer(inv.getArgument(1), inv.getArgument(2));
+            return null;
+        }).when(store).deferAkt(eq(podnesak.getId()), any(), any());
+        return prigovor;
+    }
+
+    private EgopFilingService.PodnesakDokument poslaniDokument() throws Exception {
+        ArgumentCaptor<EgopFilingService.PodnesakDokument> dokument =
+                ArgumentCaptor.forClass(EgopFilingService.PodnesakDokument.class);
+        verify(filingService).filePodnesak(eq(podnesak), eq(submission), eq(lessor), eq("strservis4"),
+                dokument.capture());
+        return dokument.getValue();
+    }
+
+    /** Akt je urudžbiran: podnesak ide odmah, s dokumentom stranke kakav je učitan (PDF). */
+    @Test
+    void podnesak_actFiled_filesUploadedDocument() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF-1.7".getBytes());
+        akt.applyPismeno(3001, "529-06-03/01-26-2", "57", false);
+
+        dispatcher.dispatch(podnesak.getId());
+
+        EgopFilingService.PodnesakDokument dokument = poslaniDokument();
+        assertThat(dokument.sadrzaj()).isEqualTo("%PDF-1.7".getBytes());
+        assertThat(dokument.ekstenzija()).isEqualTo("pdf");
+        verify(filingService, never()).fileAct(any(), any(), any(), any(), any());
+    }
+
+    /** Word dokument ide pod svojom ekstenzijom — eGOP dokument tipizira samo po njoj. */
+    @Test
+    void podnesak_wordDocuments_keepTheirExtension() throws Exception {
+        prigovor("prigovor.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", DOCX);
+        akt.applyPismeno(3001, "529-06-03/01-26-2", "57", false);
+        dispatcher.dispatch(podnesak.getId());
+        assertThat(poslaniDokument().ekstenzija()).isEqualTo("docx");
+
+        org.mockito.Mockito.clearInvocations(filingService);
+        prigovor("prigovor.doc", "application/msword", DOC);
+        dispatcher.dispatch(podnesak.getId());
+        EgopFilingService.PodnesakDokument doc = poslaniDokument();
+        assertThat(doc.ekstenzija()).isEqualTo("doc");
+        assertThat(doc.sadrzaj()).isEqualTo(DOC);
+    }
+
+    /** Akt još nije urudžbiran, a smije se pokušati: šalje se prvi, pa tek onda podnesak. */
+    @Test
+    void podnesak_actNotFiled_filesActFirst() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        org.mockito.Mockito.doAnswer(inv -> {
+            akt.applyPismeno(3001, "529-06-03/01-26-2", "57", false);
+            akt.markSynced();
+            return null;
+        }).when(filingService).fileAct(eq(akt), any(), any(), any(), any());
+
+        dispatcher.dispatch(podnesak.getId());
+
+        org.mockito.InOrder redoslijed = org.mockito.Mockito.inOrder(filingService);
+        redoslijed.verify(filingService).fileAct(eq(akt), any(), any(), any(), any());
+        redoslijed.verify(filingService).filePodnesak(eq(podnesak), any(), any(), any(), any());
+    }
+
+    /**
+     * Akt ne prolazi: podnesak čeka sljedeći pokušaj akta — bez trošenja vlastitog pokušaja i bez FAILED,
+     * da ne bude iscrpljen prije akta.
+     */
+    @Test
+    void podnesak_actFails_defersWithoutConsumingAttempt() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        doThrow(new EgopBadRequestException("eGOP down"))
+                .when(filingService).fileAct(eq(akt), any(), any(), any(), any());
+
+        dispatcher.dispatch(podnesak.getId());
+
+        verify(filingService, never()).filePodnesak(any(), any(), any(), any(), any());
+        assertThat(akt.getSyncAttempts()).isEqualTo(1);
+        assertThat(podnesak.getSyncAttempts()).isZero();
+        assertThat(podnesak.getStatus()).isNotEqualTo(EgopSyncStatus.FAILED);
+        assertThat(podnesak.getNextAttemptAt()).isEqualTo(akt.getNextAttemptAt());
+        assertThat(podnesak.getSyncError()).startsWith("Čeka urudžbu akta " + akt.getId());
+    }
+
+    /** Akt u backoffu se ne pokušava izvan reda; podnesak se odgađa do njegova sljedećeg pokušaja. */
+    @Test
+    void podnesak_actInBackoff_waitsForIt() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        Instant sljedeci = Instant.now().plus(Duration.ofMinutes(30));
+        akt.markFailed("eGOP down", sljedeci);
+
+        dispatcher.dispatch(podnesak.getId());
+
+        verify(filingService, never()).fileAct(any(), any(), any(), any(), any());
+        verify(filingService, never()).filePodnesak(any(), any(), any(), any(), any());
+        assertThat(podnesak.getSyncAttempts()).isZero();
+        assertThat(podnesak.getNextAttemptAt()).isEqualTo(sljedeci);
+    }
+
+    /** Akt je iscrpio pokušaje: podnesak ne čeka zauvijek nego ide bez njega, uz ERROR. */
+    @Test
+    void podnesak_actExhausted_filesAnyway() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        for (int i = 0; i < 10; i++) {
+            akt.markFailed("eGOP down", Instant.now().minusSeconds(1));
+        }
+
+        dispatcher.dispatch(podnesak.getId());
+
+        verify(filingService, never()).fileAct(any(), any(), any(), any(), any());
+        verify(filingService).filePodnesak(eq(podnesak), any(), any(), any(), any());
+    }
+
+    /** Akta nema u egop_pismeno (npr. pad rendera): podnesak ne čeka ništa. */
+    @Test
+    void podnesak_withoutActRecord_filesAnyway() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        when(store.findPismeno(any(), eq(StrDocumentType.SUSPENZIJA.vrstaPismenaNaziv()), any()))
+                .thenReturn(Optional.empty());
+
+        dispatcher.dispatch(podnesak.getId());
+
+        verify(filingService).filePodnesak(eq(podnesak), any(), any(), any(), any());
+    }
+
+    /** Pad slanja podneska troši pokušaj i daje backoff — ponavlja ga EgopRetryJob istim dispatchem. */
+    @Test
+    void podnesak_filingFails_marksFailedForRetry() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        akt.applyPismeno(3001, "529-06-03/01-26-2", "57", false);
+        doThrow(new EgopBadRequestException("eGOP down"))
+                .when(filingService).filePodnesak(any(), any(), any(), any(), any());
+
+        dispatcher.dispatch(podnesak.getId());
+
+        assertThat(podnesak.getStatus()).isEqualTo(EgopSyncStatus.FAILED);
+        assertThat(podnesak.getSyncAttempts()).isEqualTo(1);
+        assertThat(podnesak.getNextAttemptAt()).isAfter(Instant.now().plus(Duration.ofSeconds(90)));
+
+        org.mockito.Mockito.reset(filingService);
+        dispatcher.dispatch(podnesak.getId());
+
+        verify(filingService).filePodnesak(eq(podnesak), any(), any(), any(), any());
+    }
+
+    /** Već urudžbiran podnesak se ne šalje ponovo. */
+    @Test
+    void podnesak_alreadySynced_skips() throws Exception {
+        prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        podnesak.markSynced();
+
+        dispatcher.dispatch(podnesak.getId());
+
+        verify(filingService, never()).filePodnesak(any(), any(), any(), any(), any());
+    }
+
+    /** Prigovora (dokumenta) više nema: pismeno pada i troši pokušaj, a ništa se ne šalje. */
+    @Test
+    void podnesak_missingObjection_failsWithoutSending() throws Exception {
+        SuspensionObjectionEntity p = prigovor("prigovor.pdf", "application/pdf", "%PDF".getBytes());
+        when(prigovori.find(p.getObjectionId())).thenReturn(Optional.empty());
+
+        dispatcher.dispatch(podnesak.getId());
+
+        verify(filingService, never()).filePodnesak(any(), any(), any(), any(), any());
+        assertThat(podnesak.getStatus()).isEqualTo(EgopSyncStatus.FAILED);
     }
 
     // --- konačni dokument ------------------------------------------------------------------

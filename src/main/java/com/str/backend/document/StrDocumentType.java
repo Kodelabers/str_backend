@@ -32,8 +32,9 @@ import java.util.Set;
  * MINT-a od 11.09.2026.: uvod, naslov akta i izreka bez naslova. Obrazloženje i uputu o pravnom
  * lijeku MINTS je u studenom 2026. izbacio i iz akata suspenzije i povlačenja (prigovor je točka
  * izreke). Adresat, prilozi i dostavna lista ne ispisuju se nigdje.
- * Podnesak stranke ({@link #PRIGOVOR}) nije obavijest i zadržava vlastitu strukturu po
- * čl. 71.
+ * Podnesak stranke iz predloška ({@link #ZAHTJEV_OPOZIVA}) nije obavijest i zadržava vlastitu
+ * strukturu po čl. 71.; očitovanja i prigovori ({@link #podnesakNaAkt}) predloška nemaju — njihov
+ * je dokument ono što je stranka učitala.
  */
 public enum StrDocumentType {
 
@@ -74,7 +75,7 @@ public enum StrDocumentType {
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
-     * Podnesak stranke (čl. 71. ZUP-a), kao {@link #PRIGOVOR}: iznajmljivač je sam zatražio opoziv
+     * Podnesak stranke (čl. 71. ZUP-a): iznajmljivač je sam zatražio opoziv
      * svog registracijskog broja ({@code LessorRnActionService}). Ulazno pismeno, potpisuje ga
      * stranka; ne pečati se i ne otprema u korisnički pretinac. Nastaje iz istog prijelaza kao
      * {@link #OPOZIV} i urudžbira se prije njega ({@link #podnesak()}).
@@ -110,12 +111,36 @@ public enum StrDocumentType {
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
 
     /**
-     * Podnesak stranke (čl. 71. + čl. 122.) — nema izreke ni upute; tijelo prigovora ide u
-     * obrazloženje, jer čl. 108. st. 1 traži da stranka navede zbog čega je nezadovoljna.
+     * Očitovanje iznajmljivača na prijedlog suspenzije (bug s testiranja MINTS-a, studeni 2026.): podnesak
+     * stranke predan kroz {@code SuspensionObjectionService} dok je broj u {@code SUSPENSION_PROPOSED}.
+     * Ulazno pismeno u predmetu postupka, iza akta na koji se odnosi ({@link #pobijaniAkt()}).
+     *
+     * <p>Kao i ostale vrste {@link #podnesakNaAkt}, <b>nema predloška</b>: glavni dokument pismena je
+     * datoteka koju je iznajmljivač učitao (PDF, DOC ili DOCX), a njegove ostale datoteke idu kao
+     * prilozi. Ne pečati se i ne otprema u korisnički pretinac.
      */
-    PRIGOVOR("prigovor", "Prigovor na prijedlog suspenzije", Smjer.ULAZNO, false, null,
-            "PRIGOVOR NA PRIJEDLOG SUSPENZIJE", true,
-            EnumSet.of(ZupSection.NASLOV, ZupSection.UVOD, ZupSection.OBRAZLOZENJE)),
+    OCITOVANJE_SUSPENZIJE("ocitovanje-suspenzije",
+            "Očitovanje na prijedlog suspenzije registracijskog broja", Smjer.ULAZNO, false, null,
+            "OČITOVANJE NA PRIJEDLOG SUSPENZIJE REGISTRACIJSKOG BROJA", false, EnumSet.noneOf(ZupSection.class)),
+
+    /** Prigovor na suspenziju ({@code SUSPENDED}); kao {@link #OCITOVANJE_SUSPENZIJE}. */
+    PRIGOVOR_SUSPENZIJE("prigovor-suspenzije",
+            "Prigovor na suspenziju registracijskog broja", Smjer.ULAZNO, false, null,
+            "PRIGOVOR NA SUSPENZIJU REGISTRACIJSKOG BROJA", false, EnumSet.noneOf(ZupSection.class)),
+
+    /**
+     * Očitovanje na prijedlog povlačenja ({@code WITHDRAWAL_PROPOSED}); kao {@link #OCITOVANJE_SUSPENZIJE}.
+     * Naziv još potvrđuje MINTS. Naziv je ključ na {@code egop_pismeno}, pa ga promijeniti prije prvog
+     * podneska na okolini s uključenim eGOP-om.
+     */
+    OCITOVANJE_POVLACENJA("ocitovanje-povlacenja",
+            "Očitovanje na prijedlog povlačenja registracijskog broja", Smjer.ULAZNO, false, null,
+            "OČITOVANJE NA PRIJEDLOG POVLAČENJA REGISTRACIJSKOG BROJA", false, EnumSet.noneOf(ZupSection.class)),
+
+    /** Prigovor na povlačenje ({@code WITHDRAWN}); kao {@link #OCITOVANJE_SUSPENZIJE}. */
+    PRIGOVOR_POVLACENJA("prigovor-povlacenja",
+            "Prigovor na povlačenje registracijskog broja", Smjer.ULAZNO, false, null,
+            "PRIGOVOR NA POVLAČENJE REGISTRACIJSKOG BROJA", false, EnumSet.noneOf(ZupSection.class)),
 
     /**
      * Ukidanje suspenzije — stranci u korist, pa nema obrazloženja ni upute.
@@ -223,7 +248,7 @@ public enum StrDocumentType {
 
     /**
      * Dokument izdaje tijelo: zaglavlje s grbom, potpis tijela i ePečat. Podnesak stranke
-     * ({@link #ZAHTJEV}, {@link #PRIGOVOR}) to nema.
+     * ({@link #ZAHTJEV}, {@link #ZAHTJEV_OPOZIVA}, očitovanja i prigovori) to nema.
      */
     public boolean aktTijela() {
         return aktTijela;
@@ -234,7 +259,10 @@ public enum StrDocumentType {
         return naslov;
     }
 
-    /** {@code false} samo za {@link #ZAHTJEV}, koji ima vlastiti tablični generator. */
+    /**
+     * {@code false} za {@link #ZAHTJEV}, koji ima vlastiti tablični generator, i za podneske na akt
+     * ({@link #podnesakNaAkt}), čiji je dokument datoteka koju je stranka učitala.
+     */
     public boolean templateBacked() {
         return templateBacked;
     }
@@ -340,6 +368,40 @@ public enum StrDocumentType {
         return forTransition(to, trigger)
                 .map(akt -> akt.podnesak().map(podnesak -> List.of(podnesak, akt)).orElse(List.of(akt)))
                 .orElse(List.of());
+    }
+
+    /**
+     * Vrsta pismena za podnesak iznajmljivača (očitovanje ili prigovor, {@code SuspensionObjectionService})
+     * predan dok je broj u {@code status}. Za ostale statuse prazno — ondje se podnesak ne može predati.
+     *
+     * <p>Za razliku od {@link #podnesak()}, ovaj podnesak ne pokreće postupak nego odgovara na akt koji je
+     * broj doveo u {@code status} ({@link #pobijaniAkt()}), pa se urudžbira <b>iza</b> njega, u isti predmet.
+     */
+    public static Optional<StrDocumentType> podnesakNaAkt(RnStatus status) {
+        if (status == null) {
+            return Optional.empty();
+        }
+        return switch (status) {
+            case SUSPENSION_PROPOSED -> Optional.of(OCITOVANJE_SUSPENZIJE);
+            case SUSPENDED -> Optional.of(PRIGOVOR_SUSPENZIJE);
+            case WITHDRAWAL_PROPOSED -> Optional.of(OCITOVANJE_POVLACENJA);
+            case WITHDRAWN -> Optional.of(PRIGOVOR_POVLACENJA);
+            default -> Optional.empty();
+        };
+    }
+
+    /**
+     * Akt na koji odgovara podnesak iz {@link #podnesakNaAkt}: onaj koji nastaje prijelazom u status uz
+     * koji je podnesak predan. Za sve ostale vrste prazno.
+     */
+    public Optional<StrDocumentType> pobijaniAkt() {
+        return switch (this) {
+            case OCITOVANJE_SUSPENZIJE -> Optional.of(PRIJEDLOG_SUSPENZIJE);
+            case PRIGOVOR_SUSPENZIJE -> Optional.of(SUSPENZIJA);
+            case OCITOVANJE_POVLACENJA -> Optional.of(PRIJEDLOG_POVLACENJA);
+            case PRIGOVOR_POVLACENJA -> Optional.of(POVLACENJE);
+            default -> Optional.empty();
+        };
     }
 
     /**

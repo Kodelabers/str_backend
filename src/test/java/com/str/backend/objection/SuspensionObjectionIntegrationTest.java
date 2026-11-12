@@ -210,7 +210,7 @@ class SuspensionObjectionIntegrationTest {
         assertThat(withdrawn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
         assertThat(withdrawn.getValidTo()).isNotNull();
 
-        adminService.accept("HR00000021", id, official, null);
+        adminService.accept("HR00000021", id, official, null, null);
 
         RnEntity reinstated = rnRepository.findById("HR00000021").orElseThrow();
         assertThat(reinstated.getStatus()).isEqualTo(RnStatus.ACTIVE);
@@ -236,7 +236,7 @@ class SuspensionObjectionIntegrationTest {
                 "HR00000021", "HR00000022");
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWN)).getObjectionId();
 
-        assertThatThrownBy(() -> adminService.accept("HR00000021", id, official, null))
+        assertThatThrownBy(() -> adminService.accept("HR00000021", id, official, null, null))
                 .isInstanceOfSatisfying(com.str.backend.exception.ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
 
@@ -349,7 +349,7 @@ class SuspensionObjectionIntegrationTest {
         assertThat(objectionStatusOf("HR00000021")).as("očitovanje vrijedi i u WITHDRAWN")
                 .isEqualTo(SuspensionObjectionStatus.SUBMITTED);
 
-        adminService.accept("HR00000021", ocitovanje, official, null);
+        adminService.accept("HR00000021", ocitovanje, official, null, null);
         assertThat(objectionStatusOf("HR00000021")).as("ACTIVE").isNull();
     }
 
@@ -409,7 +409,7 @@ class SuspensionObjectionIntegrationTest {
                 .as("očitovanje predano u roku zadržava povlačenje")
                 .isEqualTo(RnStatus.WITHDRAWAL_PROPOSED);
 
-        adminService.reject("HR00000021", id, official, null);
+        adminService.reject("HR00000021", id, official, null, false);
         withdrawalJob.run();
 
         assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.WITHDRAWN);
@@ -469,7 +469,7 @@ class SuspensionObjectionIntegrationTest {
                 .as("prigovor predan u roku zadržava suspenziju")
                 .isEqualTo(RnStatus.SUSPENSION_PROPOSED);
 
-        adminService.reject("HR00000021", id, official, "Nije dostavljena suglasnost");
+        adminService.reject("HR00000021", id, official, "Nije dostavljena suglasnost", false);
         deadlineJob.run();
 
         assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.SUSPENDED);
@@ -490,7 +490,7 @@ class SuspensionObjectionIntegrationTest {
         rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today(), null, "INTERNAL:12345678903", List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
 
-        adminService.reject("HR00000021", id, "INTERNAL:12345678903", null);
+        adminService.reject("HR00000021", id, "INTERNAL:12345678903", null, false);
 
         assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus())
                 .isEqualTo(RnStatus.SUSPENSION_PROPOSED);

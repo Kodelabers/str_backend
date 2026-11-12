@@ -13,6 +13,10 @@ public enum VrstaVlasnika {
      */
     RN_LOG,
 
-    /** Prigovor ({@code suspension_objection.objection_id}); ostaje samo u STR-u, kao i prigovor. */
+    /**
+     * Prigovor ili očitovanje ({@code suspension_objection.objection_id}). U eGOP ide uz ulazno pismeno tog
+     * podneska ({@code act_ref=PRIGOVOR:<objection_id>}); u postupku županijskog službenika (T16) ostaje samo
+     * u STR-u, kao i podnesak.
+     */
     OBJECTION
 }

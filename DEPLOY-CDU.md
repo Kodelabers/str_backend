@@ -165,6 +165,10 @@ STR_DOCUMENTS_RELOAD=false
 # T12 (postupak povlačenja) dodaje tri izlazne vrste koje MINT još nije unio: prijedlog-povlacenja,
 # obustava-povlacenja, reaktivacija-povlacenja. Na CDU-u je eGOP mock, pa ništa ne treba. Uz
 # EGOP_ENABLED=true i bez EGOP_SIFRA_PISMENA_FALLBACK do unosa staviti ih ovdje (zarezom odvojeno).
+# Očitovanje i prigovor iznajmljivača (studeni 2026.) su četiri nove ULAZNE vrste: ocitovanje-suspenzije,
+# prigovor-suspenzije, ocitovanje-povlacenja, prigovor-povlacenja. Uz mock ide isti tok (pismeno se vidi u
+# logu kao egop_podnesak_filed i, s URBROJ-em, u popisu dokumenata RB-a). Uz EGOP_ENABLED=true zadati im ulaznu vrstu
+# (EGOP_SIFRA_PISMENA_<SLUG> / EGOP_NAZIV_PISMENA_<SLUG>) ili ih staviti ovdje — fallback je izlazni.
 EGOP_AKTI_BEZ_SIFRE=
 # Vrsta priloga uz pismena (T17): šifra ili naziv iz MDM šifrarnika vrsta priloga. Na CDU-u je eGOP
 # mock pa se ne koristi; uz EGOP_ENABLED=true provjerava se pri startu (startup_egop_prilog_unresolved

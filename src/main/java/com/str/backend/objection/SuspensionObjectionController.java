@@ -1,14 +1,12 @@
 package com.str.backend.objection;
 
 import com.str.backend.auth.internal.InternalAccessService;
+import com.str.backend.exception.ForbiddenException;
 import com.str.backend.rn.RnScopeGuard;
 import com.str.backend.rn.RucniAkt;
 import com.str.backend.rn.RucniAktService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
 import org.springframework.security.core.Authentication;
@@ -19,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
@@ -53,30 +50,42 @@ public class SuspensionObjectionController {
                                    @Nullable String urbroj) {
     }
 
+    /** KLASA i URBROJ kojima županijski službenik urudžbira podnesak (T16). */
+    record RegisterObjectionRequest(@Nullable String klasa, @Nullable String urbroj) {
+    }
+
     @GetMapping
     public List<SuspensionObjectionDto> list(@PathVariable String rn, Authentication authentication) {
         scopeGuard.requireInScope(rn, authentication);
         return service.list(rn);
     }
 
-    /**
-     * Dokument prigovora. PDF se otvara u pregledniku, Word se preuzima — preglednik ga ne
-     * prikazuje. {@link ContentDisposition} RFC 5987-enkodira naziv (hrvatski znakovi, bez
-     * header injectiona).
-     */
+    /** Dokument prigovora ({@link SuspensionObjectionFileDto#toResponse}: PDF inline, Word kao privitak). */
     @GetMapping("/{id}/file")
     public ResponseEntity<byte[]> file(@PathVariable String rn, @PathVariable UUID id,
                                        Authentication authentication) {
         scopeGuard.requireInScope(rn, authentication);
-        SuspensionObjectionFileDto f = service.file(rn, id);
-        ContentDisposition.Builder builder = SuspensionObjectionService.CONTENT_TYPE_PDF.equals(f.contentType())
-                ? ContentDisposition.inline()
-                : ContentDisposition.attachment();
-        ContentDisposition disposition = builder.filename(f.fileName(), StandardCharsets.UTF_8).build();
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-                .contentType(MediaType.parseMediaType(f.contentType()))
-                .body(f.content());
+        return service.file(rn, id).toResponse();
+    }
+
+    /**
+     * Urudžbiranje očitovanja ili prigovora u postupku koji vodi županija (T16): službenik upisuje KLASU i
+     * URBROJ ({@link RucniAktService#zaRadnju}: 400 kad ne valjaju), a podnesak postaje ulazno pismeno u
+     * „Dokumentima" RB-a. Službenik koji nije županijski (ministarstvo, neodređen opseg) ne može — 403
+     * {@code OBJECTION_NOT_COUNTY_OFFICIAL}; ostala pravila (409) u
+     * {@link SuspensionObjectionAdminService#register}.
+     */
+    @PostMapping("/{id}/register")
+    public SuspensionObjectionDto register(@PathVariable String rn, @PathVariable UUID id,
+                                           @RequestBody(required = false) RegisterObjectionRequest body,
+                                           Authentication authentication) {
+        scopeGuard.requireInScope(rn, authentication);
+        RucniAkt rucni = rucniAkt.zaRadnju(authentication, body != null ? body.klasa() : null,
+                body != null ? body.urbroj() : null);
+        if (rucni == null) {
+            throw new ForbiddenException("error.objection.notCountyOfficial", "OBJECTION_NOT_COUNTY_OFFICIAL");
+        }
+        return service.register(rn, id, actor(authentication), rucni);
     }
 
     /** Akter je službenik iz sesije ({@link InternalAccessService#actorFor}), nikad iz tijela zahtjeva. */
@@ -96,7 +105,8 @@ public class SuspensionObjectionController {
                                        @RequestBody(required = false) @Valid ResolveObjectionRequest body,
                                        Authentication authentication) {
         scopeGuard.requireInScope(rn, authentication);
-        service.reject(rn, id, actor(authentication), body != null ? body.note() : null);
+        service.reject(rn, id, actor(authentication), body != null ? body.note() : null,
+                rucniAkt.zupanijskiSluzbenik(authentication));
         return ResponseEntity.noContent().build();
     }
 

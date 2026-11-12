@@ -39,7 +39,7 @@ class PrilogServiceTest {
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // Mali limit veličine i nevezanih, da testovi ne trebaju 10 MB.
         stagingLock = mock(PrilogStagingLock.class);
-        service = new PrilogService(repository, stagingLock, 5, DataSize.ofBytes(100), 3, DataSize.ofBytes(250),
+        service = new PrilogService(repository, stagingLock, 5, 6, DataSize.ofBytes(100), 3, DataSize.ofBytes(250),
                 DataSize.ofBytes(150));
     }
 
@@ -226,14 +226,27 @@ class PrilogServiceTest {
     /** Ograničenje je po pismenu: zajedno s već vezanima uz istog vlasnika. */
     @Test
     void bind_togetherWithAlreadyBound_overFive_is400() {
-        UUID objectionId = UUID.randomUUID();
+        UUID submissionId = UUID.randomUUID();
         when(repository.findSazeci(List.of(1L, 2L))).thenReturn(List.of(TestPrilog.nevezan(1, ANA),
                 TestPrilog.nevezan(2, ANA)));
-        when(repository.countByVrstaVlasnikaAndVlasnikId(VrstaVlasnika.OBJECTION, objectionId)).thenReturn(4L);
+        when(repository.countByVrstaVlasnikaAndVlasnikId(VrstaVlasnika.SUBMISSION, submissionId)).thenReturn(4L);
 
-        assertCode(() -> service.bind(ANA, List.of(1L, 2L), PrilogVlasnik.prigovor(objectionId)),
+        assertCode(() -> service.bind(ANA, List.of(1L, 2L), PrilogVlasnik.zahtjev(submissionId)),
                 HttpStatus.BAD_REQUEST, PrilogException.COUNT);
         verify(repository, never()).bind(any(), any(), any(), any(), any());
+    }
+
+    /**
+     * Očitovanje i prigovor: dokument i do 5 priloga ({@code max-per-objection} = 6); ostala pismena i dalje
+     * {@code max-per-owner} = 5.
+     */
+    @Test
+    void requireBroj_objectionAllowsSix_othersFive() {
+        service.requireBroj(VrstaVlasnika.OBJECTION, 6);
+        assertCode(() -> service.requireBroj(VrstaVlasnika.OBJECTION, 7), HttpStatus.BAD_REQUEST, PrilogException.COUNT);
+        service.requireBroj(VrstaVlasnika.SUBMISSION, 5);
+        assertCode(() -> service.requireBroj(VrstaVlasnika.SUBMISSION, 6), HttpStatus.BAD_REQUEST, PrilogException.COUNT);
+        assertCode(() -> service.requireBroj(VrstaVlasnika.RN_LOG, 6), HttpStatus.BAD_REQUEST, PrilogException.COUNT);
     }
 
     // --- delete / read ---------------------------------------------------------------------
@@ -362,10 +375,10 @@ class PrilogServiceTest {
         assertThat(spremljeni).extracting(PrilogResponse::contentType).containsExactly("application/pdf", "image/jpeg");
     }
 
-    /** Dokument prigovora (vecPrilozeno = 1) + 5 dodatnih = 6 > 5. */
+    /** Dokument prigovora (vecPrilozeno = 1) + 6 dodatnih = 7 > 6 ({@code max-per-objection}). */
     @Test
     void spremiVezane_overCountWithFirstDocument_is400_andStoresNothing() {
-        List<org.springframework.web.multipart.MultipartFile> pet = java.util.stream.IntStream.range(0, 5)
+        List<org.springframework.web.multipart.MultipartFile> pet = java.util.stream.IntStream.range(0, 6)
                 .mapToObj(i -> (org.springframework.web.multipart.MultipartFile)
                         new MockMultipartFile("datoteke", "d" + i + ".pdf", null, PDF))
                 .toList();

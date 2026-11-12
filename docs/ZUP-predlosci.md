@@ -54,7 +54,7 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | :--- | :--- | :--- | :--- | :--- |
 | `zahtjev` | Zahtjev za registracijski broj | ulazno | čl. 71. — vlastiti generator | registracija |
 | `dodjela` | Obavijest o dodjeli registracijskog broja | izlazno | uvod, izreka | registracija |
-| `zahtjev-opoziva` | Zahtjev za opoziv registracijskog broja | **ulazno** | kao `prigovor` | isti prijelaz kao `opoziv`, urudžbira se prije njega |
+| `zahtjev-opoziva` | Zahtjev za opoziv registracijskog broja | **ulazno** | čl. 71. — podnesak stranke | isti prijelaz kao `opoziv`, urudžbira se prije njega |
 | `opoziv` | Obavijest o opozivu registracijskog broja | izlazno (od T15) | uvod, izreka | `LessorRnActionService.withdrawOwn` / `withdrawOwnByOib` |
 | `prijedlog-suspenzije` | Obavijest o prijedlogu suspenzije registracijskog broja | izlazno | uvod, izreka; **rok u izreci** | `RnService.suspend` |
 | `suspenzija` | Obavijest o suspenziji registracijskog broja | izlazno | uvod, izreka (prigovor je t. 5.) | `SuspensionDeadlineJob` (istek roka) |
@@ -63,7 +63,10 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | `obustava-povlacenja` | Obavijest o obustavi postupka povlačenja registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.revokeWithdrawalProposal` |
 | `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | uvod, izreka (prigovor je t. 4.) | `WithdrawalDeadlineJob` (istek roka) ili `RnService.withdrawIfDeadlineExpired` (neuvaženo očitovanje nakon roka) |
 | `reaktivacija-povlacenja` | Obavijest o reaktivaciji povučenog registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.reinstate` (uvaženi prigovor na povlačenje) |
-| `prigovor` | Prigovor na prijedlog suspenzije | **ulazno** | čl. 71. — podnesak stranke | ❌ nema |
+| `ocitovanje-suspenzije` | Očitovanje na prijedlog suspenzije registracijskog broja | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `SUSPENSION_PROPOSED` |
+| `prigovor-suspenzije` | Prigovor na suspenziju registracijskog broja | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `SUSPENDED` |
+| `ocitovanje-povlacenja` | Očitovanje na prijedlog povlačenja registracijskog broja (naziv potvrđuje MINTS) | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `WITHDRAWAL_PROPOSED` |
+| `prigovor-povlacenja` | Prigovor na povlačenje registracijskog broja | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `WITHDRAWN` |
 | `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `opoziv` | `RnService.reactivate` |
 
 Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i šalje poziv na
@@ -108,8 +111,35 @@ KP kao ostale obavijesti. Reaktivacija je u eGOP šifrarniku „Obavijest o reak
 zahtjev „Zahtjev za dodjelu…" (`StrDocumentType.egopVrstaNaziv()`); naš naziv na pismenu ostaje.
 `ZupTemplateLoaderTest` drži popis naziva iz šifrarnika u šahu.
 
-`prigovor` **nema okidač** — ne postoji nigdje u `src/main`. Predložak je isporučen i dostupan
-preko endpointa, ali automatike nema dok se ne uvede domenski model prigovora.
+**Očitovanje i prigovor iznajmljivača** (bug s testiranja MINTS-a, studeni 2026.) četiri su ulazne vrste
+pismena, po statusu broja pri predaji (`StrDocumentType.podnesakNaAkt`). **Predloška nemaju:** glavni
+dokument pismena je datoteka koju je iznajmljivač učitao (PDF, DOC ili DOCX; `KreirajDokumentZaPismeno`
+nosi samo `extension`, koja se uzima iz vrste potvrđene sadržajem), a njegove ostale datoteke idu u eGOP kao
+prilozi pismena (`VrstaVlasnika.OBJECTION`). Pismeno nastaje nakon commita predaje
+(`PodnesakFilingListener`, `act_ref` = `PRIGOVOR:<objection_id>`) i ide u predmet koji bira
+`EgopFilingService.predmetZaPostupak`, **iza** akta na koji odgovara (`pobijaniAkt()`, prijelaz
+`suspension_objection.rn_log_id`); dok taj akt nije urudžbiran, čeka bez trošenja pokušaja
+(`EgopAktDispatcher`). Ne pečati se i ne ide u KP. Raniji predložak `prigovor` („Prigovor na prijedlog
+suspenzije") uklonjen je: nitko ga nije slao, a dokument je sada ono što je stranka učitala.
+
+**Županijski postupak** (T16): kad akt na koji podnesak odgovara ima ručnu KLASU i URBROJ
+(`RegistrationNumberLogRepository.findRucniAkt(suspension_objection.rn_log_id)`), podnesak ne ide u eGOP.
+Takav postupak obrađuje **samo županijski službenik**: drugi (ministarstvo, neodređen opseg) ne može ni
+urudžbiti, ni uvažiti, ni ne uvažiti — 403 `OBJECTION_NOT_COUNTY_OFFICIAL`. Županijski službenik podnesak u
+sekciji „Prigovori" urudžbira sam — `POST /api/rn/{rn}/objections/{id}/register` s `{klasa, urbroj}`
+(`RucniAkt.provjeri`) — i tek tada smije odlučiti (inače 409 `OBJECTION_NOT_REGISTERED`). Urudžbiti se može
+i zatvoren (`CLOSED`) prigovor — sva ulazna pismena moraju biti urudžbirana — ali ne odlučen (`ACCEPTED`,
+`REJECTED`, 409). Urudžbiranje je zapis `egop_pismeno` (`EgopPismenoEntity.rucniPodnesak`: ulazno, `rucno`,
+`SYNCED`, bez `jop`-a i bez `pdf_content`); bez KP-a, e-pošte i eGOP-a. Novog statusa prigovora nema:
+„urudžbiran" = postoji pismeno s tim `act_ref` i URBROJ-em. Ostali kodovi: 409 `OBJECTION_NOT_COUNTY_PROCEDURE`
+(postupak MINTS-a), 409 `OBJECTION_ALREADY_REGISTERED`, 409 `OBJECTION_RN_STATUS` (samo uz `SUBMITTED`).
+Popis prigovora nosi `zupanijskiPostupak` i `urudzbiranje {klasa, urBroj, datum}`.
+
+**„Dokumenti" RB-a** (`RnDocumentsService`) prikazuju podnesak čim ima URBROJ — u postupku MINTS-a kad ga
+vrati eGOP, u županijskom kad ga službenik upiše — sa slugom vrste, datumom zapisa pismena i prilozima
+prigovora; dokument je `GET /api/rn/{rn}/documents/podnesak/{objectionId}` (datoteka stranke, PDF inline,
+Word kao privitak; vlasnik ili službenik u opsegu, neurudžbiran ili tuđi je 404). Prigovor nosi dokument i do
+5 priloga (`app.attachments.max-per-objection=6`, multipart do 62 MB).
 
 > Natpisi statusa i okidača žive u `documents/hr/labels.properties`. `ZupContextFactory` traži
 > natpis statusa pri **svakom** renderu i nedostajući ključ baca — a to se dogodi tek u
@@ -188,8 +218,8 @@ Naručitelj je 11.09.2026. vratio naš PDF obavijesti o dodjeli s praćenim izmj
   i mjesecima kasnije), a datum rendera za akte životnog ciklusa, koji nastaju u trenutku
   prijelaza i kojima se PDF sprema.
 
-Podnesak stranke (`PRIGOVOR`, smjer `ULAZNO`) nije akt tijela: nema grb ni naziv tijela u
-zaglavlju, potpisuje ga podnositelj (`${stranka.naziv}`), a pečat tijela se na njega ne stavlja.
+Podnesak stranke iz predloška (`ZAHTJEV_OPOZIVA`, smjer `ULAZNO`) nije akt tijela: nema grb ni naziv
+tijela u zaglavlju, potpisuje ga podnositelj (`${stranka.naziv}`), a pečat tijela se na njega ne stavlja.
 
 ### Struktura je ista na svim obavijestima
 
@@ -498,8 +528,8 @@ Javni pregled RB-a ostaje otvoren; zatvoren je samo put do akata.
    nalog), dok mail navodi jednu vrstu pismena. Jedan PDF s izrekom, ili obavijest + prilog?
 7. **Reaktivacija i SDEP obavijest** postoje u Knjizi, ali ne među 7 vrsta pismena iz maila i nemaju
    `vrstaPismena` šifru. Model ih podnosi: jedna enum konstanta + jedna `.txt` datoteka.
-8. **Dvofazna suspenzija i prigovor** — bez njih dva predloška nemaju okidač. Traži ih
-   TC-STR-2.1-001; zabilježeno kao B11/B12 u `STR-NEDOSTAJUCE-FUNKCIONALNOSTI.md`.
+8. **Dvofazna suspenzija i prigovor** — riješeno: dvofazna suspenzija postoji, a očitovanje i prigovor
+   predaje iznajmljivač kao vlastiti dokument (predložak `prigovor` je uklonjen, v. §2).
 9. **Grb u visokoj rezoluciji.** `documents/grb-rh.png` je bitmapa iz naručiteljevog predloška
    (79×100 px, ≈124 dpi na 16×20 mm) — u tisku je mekan. Treba vektor ili PNG ≥ 300 px širine.
 10. **Barkod oznake pismena** — uveden (T14): Code 93 sa sadržajem „P/<jop>", isto što je ispisano

@@ -164,7 +164,7 @@ class EgopVrstaResolverTest {
     void svakaVrstaPismenaSeRazrjesava_uzZadanFallback() throws Exception {
         when(client.getVrstePismena()).thenReturn(Map.of("Obavijest", "57"));
         EgopVrstaResolver resolver = new EgopVrstaResolver(client,
-                props(sifre(Map.of("zahtjev", "100", "prigovor", "62"), "57", true),
+                props(sifre(Map.of("zahtjev", "100", "prigovor-suspenzije", "62"), "57", true),
                         nazivi(Map.of(), null)));
 
         for (StrDocumentType type : StrDocumentType.values()) {

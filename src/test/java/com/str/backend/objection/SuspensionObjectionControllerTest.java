@@ -28,6 +28,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Wiring kontrolera; logika je u {@link SuspensionObjectionAdminServiceTest}. */
@@ -45,7 +46,13 @@ class SuspensionObjectionControllerTest {
 
     @BeforeEach
     void setUp() {
+        // Datumi kao ISO tekst, kao u aplikaciji (Spring Boot gasi WRITE_DATES_AS_TIMESTAMPS).
         mvc = MockMvcBuilders.standaloneSetup(new SuspensionObjectionController(service, internalAccess, scopeGuard, rucniAkt))
+                .setMessageConverters(new org.springframework.http.converter.json.MappingJackson2HttpMessageConverter(
+                        org.springframework.http.converter.json.Jackson2ObjectMapperBuilder.json()
+                                .featuresToDisable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                                .build()),
+                        new org.springframework.http.converter.ByteArrayHttpMessageConverter())
                 .setControllerAdvice(new GlobalExceptionHandler(new StaticMessageSource()))
                 .build();
         when(internalAccess.actorFor(any())).thenReturn(Optional.of(ACTOR));
@@ -95,7 +102,102 @@ class SuspensionObjectionControllerTest {
         mvc.perform(post(BASE + "/{id}/reject", RN, id))
                 .andExpect(status().isNoContent());
 
-        verify(service).reject(eq(RN), eq(id), eq(ACTOR), isNull());
+        verify(service).reject(eq(RN), eq(id), eq(ACTOR), isNull(), eq(false));
+    }
+
+    /** Neuvažavanje nosi je li službenik županijski (bez KLASE), a 403 iz servisa nosi kod u details.code. */
+    @Test
+    void reject_passesCountyOfficialFlag_and403CarriesCode() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(rucniAkt.zupanijskiSluzbenik(any())).thenReturn(true);
+
+        mvc.perform(post(BASE + "/{id}/reject", RN, id)).andExpect(status().isNoContent());
+        verify(service).reject(RN, id, ACTOR, null, true);
+
+        when(rucniAkt.zupanijskiSluzbenik(any())).thenReturn(false);
+        doThrow(new com.str.backend.exception.ForbiddenException("error.objection.notCountyOfficial",
+                "OBJECTION_NOT_COUNTY_OFFICIAL")).when(service).reject(RN, id, ACTOR, null, false);
+
+        mvc.perform(post(BASE + "/{id}/reject", RN, id))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.details.code").value("OBJECTION_NOT_COUNTY_OFFICIAL"));
+    }
+
+    // --- T16: urudžbiranje podneska u županijskom postupku
+
+    @Test
+    void register_countyOfficial_returnsObjectionWithRegistration() throws Exception {
+        UUID id = UUID.randomUUID();
+        com.str.backend.rn.RucniAkt rucni = new com.str.backend.rn.RucniAkt("UP/I-334-06/26-01/7", "2181-26-3",
+                "Splitsko-dalmatinska županija", null, null, 17);
+        when(rucniAkt.zaRadnju(any(), eq("UP/I-334-06/26-01/7"), eq("2181-26-3"))).thenReturn(rucni);
+        when(service.register(RN, id, ACTOR, rucni)).thenReturn(dto(id, new SuspensionObjectionDto.Urudzbiranje(
+                "UP/I-334-06/26-01/7", "2181-26-3", java.time.LocalDate.of(2026, 11, 12))));
+
+        mvc.perform(post(BASE + "/{id}/register", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"klasa\":\"UP/I-334-06/26-01/7\",\"urbroj\":\"2181-26-3\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.objectionId").value(id.toString()))
+                .andExpect(jsonPath("$.zupanijskiPostupak").value(true))
+                .andExpect(jsonPath("$.urudzbiranje.klasa").value("UP/I-334-06/26-01/7"))
+                .andExpect(jsonPath("$.urudzbiranje.urBroj").value("2181-26-3"))
+                .andExpect(jsonPath("$.urudzbiranje.datum").value("2026-11-12"));
+    }
+
+    /** Službenik ministarstva (ili neodređen opseg) ne urudžbira ručno: 403 s kodom, servis se ne zove. */
+    @Test
+    void register_notCountyOfficial_is403() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(rucniAkt.zaRadnju(any(), any(), any())).thenReturn(null);
+
+        mvc.perform(post(BASE + "/{id}/register", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"klasa\":\"UP/I-334-06/26-01/7\",\"urbroj\":\"2181-26-3\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.details.code").value("OBJECTION_NOT_COUNTY_OFFICIAL"));
+
+        verifyNoInteractions(service);
+    }
+
+    /** Neispravan URBROJ odbija {@link com.str.backend.rn.RucniAkt#provjeri} (kroz zaRadnju): 400. */
+    @Test
+    void register_invalidNumbers_is400() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(rucniAkt.zaRadnju(any(), any(), any())).thenAnswer(inv -> {
+            com.str.backend.rn.RucniAkt.provjeri(inv.getArgument(1), inv.getArgument(2));
+            return null;
+        });
+
+        mvc.perform(post(BASE + "/{id}/register", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"klasa\":\"UP/I-334-06/26-01/7\",\"urbroj\":\"2181-26-\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("error.rn.akt.urbroj.format"));
+
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void register_conflictFromService_is409WithCode() throws Exception {
+        UUID id = UUID.randomUUID();
+        com.str.backend.rn.RucniAkt rucni = new com.str.backend.rn.RucniAkt("K", "U-1", null, null, null, 17);
+        when(rucniAkt.zaRadnju(any(), any(), any())).thenReturn(rucni);
+        when(service.register(RN, id, ACTOR, rucni)).thenThrow(new com.str.backend.exception.ConflictException(
+                "error.objection.alreadyRegistered", "OBJECTION_ALREADY_REGISTERED"));
+
+        mvc.perform(post(BASE + "/{id}/register", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"klasa\":\"K\",\"urbroj\":\"U-1\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.details.code").value("OBJECTION_ALREADY_REGISTERED"));
+    }
+
+    private static SuspensionObjectionDto dto(UUID id, SuspensionObjectionDto.Urudzbiranje urudzbiranje) {
+        return new SuspensionObjectionDto(id, RN, "99999999990", null, null,
+                com.str.backend.domain.RnStatus.SUSPENDED, "prigovor.pdf", "application/pdf", 4,
+                SuspensionObjectionStatus.SUBMITTED, java.time.Instant.now(), null, null, null,
+                java.util.List.of(), java.util.List.of(), true, urudzbiranje);
     }
 
     /**
@@ -115,7 +217,11 @@ class SuspensionObjectionControllerTest {
                         .content("{\"note\":\"Dostavljena suglasnost\"}"))
                 .andExpect(status().isNotFound());
         mvc.perform(post(BASE + "/{id}/reject", RN, id)).andExpect(status().isNotFound());
+        mvc.perform(post(BASE + "/{id}/register", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"klasa\":\"K\",\"urbroj\":\"U-1\"}"))
+                .andExpect(status().isNotFound());
 
-        verifyNoInteractions(service);
+        verifyNoInteractions(service, rucniAkt);
     }
 }

@@ -51,6 +51,7 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
         UUID getLessorId();
         String getLessorEmail();
         RnStatus getRnStatus();
+        UUID getRnLogId();
         String getFileName();
         String getContentType();
         long getFileSize();
@@ -65,7 +66,7 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
     @Transactional(readOnly = true)
     @Query("""
             SELECT o.objectionId AS objectionId, o.rn AS rn, o.lessorOib AS lessorOib, o.lessorId AS lessorId,
-                   o.lessorEmail AS lessorEmail, o.rnStatus AS rnStatus, o.fileName AS fileName,
+                   o.lessorEmail AS lessorEmail, o.rnStatus AS rnStatus, o.rnLogId AS rnLogId, o.fileName AS fileName,
                    o.contentType AS contentType, o.fileSize AS fileSize, o.status AS status,
                    o.submittedAt AS submittedAt, o.resolvedBy AS resolvedBy, o.resolvedAt AS resolvedAt,
                    o.resolutionNote AS resolutionNote

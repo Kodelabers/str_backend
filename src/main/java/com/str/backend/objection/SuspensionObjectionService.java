@@ -3,6 +3,7 @@ package com.str.backend.objection;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.attachment.Ucitao;
+import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.common.Strings;
 import com.str.backend.common.VrstaDatoteke;
 import com.str.backend.domain.RnStatus;
@@ -17,6 +18,7 @@ import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnReissueGuard;
 import com.str.backend.rn.RnRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,7 +35,9 @@ import java.util.UUID;
 /**
  * Predaja prigovora na prijedlog suspenzije, suspenziju, prijedlog povlačenja ili povlačenje RB-a.
  * Iznajmljivač predaje samo dokument; zapis čeka službenika ({@link SuspensionObjectionAdminService}).
- * Kao i kod rješenja o kategorizaciji, predaja ne mijenja status RB-a, ne ide u eGOP i ne šalje email.
+ * Kao i kod rješenja o kategorizaciji, predaja ne mijenja status RB-a i ne šalje email. U eGOP ide kao
+ * ulazno pismeno u predmetu postupka ({@link SuspensionObjectionSubmittedEvent}, {@code egop.PodnesakFilingListener}),
+ * osim u postupku koji vodi županijski službenik (T16): tamo ostaje samo u STR-u.
  * Rok za očitovanje ne zaustavlja, osim prigovora predanog u roku: njega noćni posao
  * ({@code SuspensionDeadlineJob}, {@code WithdrawalDeadlineJob}) čeka da službenik odluči.
  */
@@ -66,14 +70,17 @@ public class SuspensionObjectionService {
     private final LessorRepository lessorRepository;
     private final PrilogService prilogService;
     private final RnReissueGuard reissueGuard;
+    private final ApplicationEventPublisher events;
 
     public SuspensionObjectionService(SuspensionObjectionRepository repository,
                                       RnRepository rnRepository,
                                       RegistrationNumberLogRepository rnLogRepository,
                                       LessorRepository lessorRepository,
                                       PrilogService prilogService,
-                                      RnReissueGuard reissueGuard) {
+                                      RnReissueGuard reissueGuard,
+                                      ApplicationEventPublisher events) {
         this.reissueGuard = reissueGuard;
+        this.events = events;
         this.repository = repository;
         this.rnRepository = rnRepository;
         this.rnLogRepository = rnLogRepository;
@@ -89,7 +96,8 @@ public class SuspensionObjectionService {
      * {@code OBJECTION_RN_REISSUED} kad je za objekt izdan novi broj), a tek onda datoteka (400).
      *
      * <p>Dodatne datoteke ({@code datoteke}, T17) spremaju se uz prigovor u istoj transakciji; s
-     * dokumentom prigovora najviše {@code app.attachments.max-per-owner} (400 {@code ATTACHMENT_COUNT}).
+     * dokumentom prigovora najviše {@code app.attachments.max-per-objection} — dokument i do 5 priloga
+     * (400 {@code ATTACHMENT_COUNT}).
      * Neispravna dodatna datoteka poništava cijelu predaju.
      *
      * @param submittedBy tko je fizički predao — {@code NIAS:<oib osobe>} ili {@code LESSOR:<lessorId>}
@@ -124,7 +132,7 @@ public class SuspensionObjectionService {
         }
         List<MultipartFile> dodatne = dodatneDatoteke(req);
         // Dokument prigovora + dodatne; isto pravilo kao uz pismena, provjereno prije čitanja datoteka.
-        prilogService.requireBroj(1 + dodatne.size());
+        prilogService.requireBroj(VrstaVlasnika.OBJECTION, 1 + dodatne.size());
         byte[] content = readBytes(file);
         String imeDatoteke = Strings.safeFileName(file.getOriginalFilename(), "prigovor");
         VrstaDatoteke vrsta = detectType(content, imeDatoteke);
@@ -147,6 +155,8 @@ public class SuspensionObjectionService {
             String ucitao = owner.oib() != null ? Ucitao.nias(owner.oib()) : Ucitao.lessor(owner.lessorId());
             prilogService.spremiVezane(ucitao, dodatne, PrilogVlasnik.prigovor(saved.getObjectionId()), 1);
         }
+        // Nakon priloga: ulazno pismeno nastaje nakon commita i odmah ih nosi u eGOP.
+        events.publishEvent(new SuspensionObjectionSubmittedEvent(saved.getObjectionId(), rn, rnStatus, rnLogId));
         return SuspensionObjectionResponse.of(saved);
     }
 

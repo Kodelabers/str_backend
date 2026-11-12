@@ -26,4 +26,14 @@ public interface RegistrationNumberLogRepository extends JpaRepository<Registrat
 
     /** Zadnji prijelaz zadanim okidačem — za akte čiji ciljni status ima više ulaza (ACTIVE). */
     Optional<RegistrationNumberLogEntity> findFirstByRnAndTriggerNameOrderByOccurredAtDesc(String rn, String triggerName);
+
+    /**
+     * T16: ručni akt prijelaza (KLASA i URBROJ županijskog službenika); prazno kad akt ide kroz eGOP ili
+     * zapisa nema. <b>Jedino pravilo</b> po kojem se prepoznaje postupak koji vodi županija: podnesak stranke
+     * na taj akt (očitovanje, prigovor) ne ide u eGOP ({@code PodnesakFilingListener}), nego ga službenik
+     * urudžbira ručno ({@code SuspensionObjectionAdminService#register}).
+     */
+    default Optional<RucniAkt> findRucniAkt(UUID logId) {
+        return logId == null ? Optional.empty() : findById(logId).flatMap(RegistrationNumberLogEntity::rucniAkt);
+    }
 }
