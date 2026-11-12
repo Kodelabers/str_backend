@@ -1,5 +1,7 @@
 package com.str.backend.admin;
 
+import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
 import com.str.backend.categorization.CategorizationDecisionEntity;
@@ -53,19 +55,22 @@ public class AdminCategorizationDecisionService {
     private final LessorRepository lessorRepository;
     private final RnRepository rnRepository;
     private final StrFacilityRepository facilityRepository;
+    private final AccommodationRepository accommodationRepository;
 
     public AdminCategorizationDecisionService(CategorizationDecisionRepository repository,
                                               AdminAuditService auditService,
                                               InternalAccessService internalAccess,
                                               LessorRepository lessorRepository,
                                               RnRepository rnRepository,
-                                              StrFacilityRepository facilityRepository) {
+                                              StrFacilityRepository facilityRepository,
+                                              AccommodationRepository accommodationRepository) {
         this.repository = repository;
         this.auditService = auditService;
         this.internalAccess = internalAccess;
         this.lessorRepository = lessorRepository;
         this.rnRepository = rnRepository;
         this.facilityRepository = facilityRepository;
+        this.accommodationRepository = accommodationRepository;
     }
 
     /**
@@ -173,8 +178,13 @@ public class AdminCategorizationDecisionService {
      * jedinica s tim RB-om postoji, pa se rješenje veže uz nju („Nije upisano" → „Upisano").
      *
      * <p>Vlasnik objekta se namjerno ne uspoređuje s iznajmljivačem RB-a: RB je upisao službenik, a
-     * obrt i OPG eTurizam vodi pod MBO/MIBPG, ne pod OIB-om. Veza se piše samo na rješenje, ne na
-     * {@code accommodation.facility_id} — ostali tokovi RB-a ga i dalje vide kao novi objekt.
+     * obrt i OPG eTurizam vodi pod MBO/MIBPG, ne pod OIB-om.
+     *
+     * <p>Jedinica se upisuje na rješenje („Upisano") i na smještaj RB-a ({@code accommodation.facility_id}).
+     * Od tada je RB vezan uz objekt TuRegistra kao i RB izdan za objekt iz eTurizma: opoziv i povlačenje brišu
+     * broj iz {@code str.facility}, a uvaženi prigovor na povlačenje ga vraća ({@code RnWithdrawnListener}), pa
+     * STR i TuStart ostaju usklađeni. Smještaj koji je već vezan uz objekt eTurizma (rješenje predano uz
+     * neverificirani objekt) zadržava svoju vezu — ne prepisuje se.
      *
      * <p>Kad je RB upisan na jedinice dvaju različitih objekata, službenik to mora ispraviti u eTurizmu —
      * STR ne bira umjesto njega. Jedinice istog objekta su u redu; veže se najnovija. Opozvan ili povučen RB
@@ -193,8 +203,8 @@ public class AdminCategorizationDecisionService {
             throw new ConflictException("error.categorization.noRn", "CATEGORIZATION_NO_RN");
         }
         // Opozvan ili povučen broj više ne vrijedi — u TuRegistar se ne upisuje.
-        RnStatus rnStatus = rnRepository.findById(e.getRn()).map(RnEntity::getStatus).orElse(null);
-        if (rnStatus == null || FINAL_RN_STATUSES.contains(rnStatus)) {
+        RnEntity rn = rnRepository.findById(e.getRn()).orElse(null);
+        if (rn == null || FINAL_RN_STATUSES.contains(rn.getStatus())) {
             throw new ConflictException("error.categorization.rnFinal", "CATEGORIZATION_RN_FINAL");
         }
         List<RegisteredFacilityRow> units = facilityRepository.findActiveByRegistrationNumber(e.getRn());
@@ -213,8 +223,20 @@ public class AdminCategorizationDecisionService {
                 .orElseThrow()
                 .getFacilityId());
         e.confirmRegistration(facilityId, actor);
+        boolean rnLinked = linkAccommodation(rn, facilityId);
         auditService.record(actor, "CATEGORIZATION_REGISTRATION_CONFIRM", "CATEGORIZATION_DECISION", id.toString(),
-                "facilityId=" + facilityId);
+                "facilityId=" + facilityId + (rnLinked ? "" : " (smještaj RB-a već vezan)"));
+    }
+
+    /** Veže smještaj RB-a uz jedinicu TuRegistra, osim kad već ima vezu; {@code true} kad je upisana. */
+    private boolean linkAccommodation(RnEntity rn, String facilityId) {
+        AccommodationEntity accommodation = accommodationRepository.findById(rn.getAccommodationId())
+                .orElseThrow(() -> new ResourceNotFoundException("Smještaj RB-a nije pronađen: " + rn.getRn()));
+        if (accommodation.getFacilityId() != null && !accommodation.getFacilityId().isBlank()) {
+            return false;
+        }
+        accommodation.setFacilityId(facilityId);
+        return true;
     }
 
     @Transactional

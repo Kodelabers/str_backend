@@ -1,5 +1,7 @@
 package com.str.backend.admin;
 
+import com.str.backend.accommodation.AccommodationEntity;
+import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.auth.internal.CountyScope;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
@@ -54,8 +56,10 @@ class AdminCategorizationDecisionServiceTest {
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
     private final RnRepository rnRepository = mock(RnRepository.class);
     private final StrFacilityRepository facilityRepository = mock(StrFacilityRepository.class);
+    private final AccommodationRepository accommodationRepository = mock(AccommodationRepository.class);
     private final AdminCategorizationDecisionService service = new AdminCategorizationDecisionService(
-            repository, auditService, internalAccess, lessorRepository, rnRepository, facilityRepository);
+            repository, auditService, internalAccess, lessorRepository, rnRepository, facilityRepository,
+            accommodationRepository);
 
     @Test
     void list_byStatus_mapsToDto() {
@@ -241,6 +245,10 @@ class AdminCategorizationDecisionServiceTest {
         return verifiedWithRn(RnStatus.ACTIVE);
     }
 
+    /** Smještaj RB-a; novi objekt nema vezu na eTurizam dok se upis ne potvrdi. */
+    private final AccommodationEntity accommodation = mock(AccommodationEntity.class);
+    private final UUID accommodationId = UUID.randomUUID();
+
     private CategorizationDecisionEntity verifiedWithRn(RnStatus rnStatus) {
         CategorizationDecisionEntity e = withRn(RN);
         e.verify("INTERNAL:1");
@@ -248,6 +256,8 @@ class AdminCategorizationDecisionServiceTest {
         RnEntity rn = mock(RnEntity.class);
         when(rn.getRn()).thenReturn(RN);
         when(rn.getStatus()).thenReturn(rnStatus);
+        when(rn.getAccommodationId()).thenReturn(accommodationId);
+        when(accommodationRepository.findById(accommodationId)).thenReturn(Optional.of(accommodation));
         when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
         when(rnRepository.findAllById(any())).thenReturn(List.of(rn));
         return e;
@@ -267,6 +277,35 @@ class AdminCategorizationDecisionServiceTest {
         assertThat(e.getStatus()).isEqualTo(CategorizationDecisionStatus.VERIFIED);
         verify(auditService).record("actor-3", "CATEGORIZATION_REGISTRATION_CONFIRM",
                 "CATEGORIZATION_DECISION", e.getDecisionId().toString(), "facilityId=501");
+    }
+
+    /**
+     * RB se veže uz objekt TuRegistra kao RB izdan za objekt iz eTurizma — opoziv i povlačenje tada
+     * brišu broj iz {@code str.facility}, pa STR i TuStart ostaju usklađeni.
+     */
+    @Test
+    void confirmRegistration_linksRnAccommodationToTheUnit() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(facilityRepository.findActiveByRegistrationNumber(RN)).thenReturn(List.of(unit(501, "obj-1")));
+
+        service.confirmRegistration(e.getDecisionId(), ALL, "actor-3");
+
+        verify(accommodation).setFacilityId("501");
+    }
+
+    /** Smještaj već vezan uz objekt eTurizma (rješenje uz neverificirani objekt) zadržava svoju vezu. */
+    @Test
+    void confirmRegistration_keepsExistingAccommodationLink() {
+        CategorizationDecisionEntity e = verifiedWithRn();
+        when(accommodation.getFacilityId()).thenReturn("777");
+        when(facilityRepository.findActiveByRegistrationNumber(RN)).thenReturn(List.of(unit(501, "obj-1")));
+
+        service.confirmRegistration(e.getDecisionId(), ALL, "actor-3");
+
+        assertThat(e.getFacilityId()).isEqualTo("501");
+        verify(accommodation, never()).setFacilityId(any());
+        verify(auditService).record("actor-3", "CATEGORIZATION_REGISTRATION_CONFIRM",
+                "CATEGORIZATION_DECISION", e.getDecisionId().toString(), "facilityId=501 (smještaj RB-a već vezan)");
     }
 
     /** Više jedinica istog objekta (soba, apartman…) nisu dvojba — veže se najnovija. */
