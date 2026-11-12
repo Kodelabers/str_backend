@@ -24,6 +24,18 @@ class RucniAktServiceTest {
     private final RucniAktService service = new RucniAktService(scope, access, users);
     private final Authentication auth = new TestingAuthenticationToken("x", null);
 
+    /** Županijski je samo opseg COUNTY; ministarstvo i neodređen opseg nisu (isto pravilo kao zaRadnju). */
+    @Test
+    void zupanijskiSluzbenik_samoOpsegCounty() {
+        when(scope.scopeFor(auth)).thenReturn(CountyScope.county("SDŽ", 18L, 17, "Splitsko-dalmatinska županija"));
+        org.assertj.core.api.Assertions.assertThat(service.zupanijskiSluzbenik(auth)).isTrue();
+        for (CountyScope.Outcome outcome : new CountyScope.Outcome[]{CountyScope.Outcome.MINISTRY, CountyScope.Outcome.NOT_OFFICIAL,
+                CountyScope.Outcome.AMBIGUOUS}) {
+            when(scope.scopeFor(auth)).thenReturn(CountyScope.all(outcome));
+            org.assertj.core.api.Assertions.assertThat(service.zupanijskiSluzbenik(auth)).as(outcome.name()).isFalse();
+        }
+    }
+
     @Test
     void zupanijskiSluzbenik_rucniAktSIzdavateljemIzETurizma() {
         when(scope.scopeFor(auth)).thenReturn(CountyScope.county("Splitsko-dalmatinska županija", 18L, 17,

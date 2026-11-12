@@ -280,6 +280,11 @@ public class RnController {
         if (!sluzbenik && !VLASNIKOVI_AKTI.contains(type)) {
             throw new ResourceNotFoundException("document not available: " + type.slug() + " " + rn);
         }
+        if (type.pobijaniAkt().isPresent()) {
+            // Očitovanje i prigovor nemaju predložak: dokument je ono što je stranka učitala
+            // (/documents/podnesak/{objectionId}).
+            throw new ResourceNotFoundException("document not available: " + type.slug() + " " + rn);
+        }
         String razlog = sluzbenik ? reason : null;
         byte[] pdf = switch (type) {
             // Zahtjev nema predložak — servira se pohranjeni podnesak sa submissiona.
@@ -314,6 +319,20 @@ public class RnController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "inline; filename=\"" + doc.filename() + "\"")
                 .body(doc.pdf());
+    }
+
+    /**
+     * Dokument urudžbiranog očitovanja ili prigovora iz „Dokumenata" RB-a: datoteka koju je stranka učitala,
+     * s njezinim tipom (PDF inline, DOC/DOCX kao privitak). Pristup kao za popis dokumenata (vlasnik ili
+     * službenik u opsegu); prigovor drugog RB-a ili još neurudžbiran podnesak je 404.
+     */
+    @GetMapping("/{rn}/documents/podnesak/{objectionId}")
+    public ResponseEntity<byte[]> podnesak(
+            @PathVariable @Pattern(regexp = RegistrationNumber.REGEXP) String rn,
+            @PathVariable UUID objectionId,
+            Authentication authentication) {
+        requireAccess(rn, authentication);
+        return documentsService.podnesak(rn, objectionId).toResponse();
     }
 
     /** STR §12/§13: export filtered registry as Excel. */

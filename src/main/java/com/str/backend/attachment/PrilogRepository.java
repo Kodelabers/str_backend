@@ -143,7 +143,8 @@ public interface PrilogRepository extends JpaRepository<PismenoPrilogEntity, Lon
      * koji smiju u ponovni pokušaj — ulaz {@code EgopRetryJob}-a. Pripadnost pismenu je ista kao u
      * {@code PrilogEgopService#priloziPismena}: prilozi zahtjeva idu uz ulazno pismeno zahtjeva, a
      * prilozi prijelaza uz pismeno tog prijelaza ({@code act_ref} = {@code log_id}) — službenika uz
-     * izlazno, stranke uz ulazno.
+     * izlazno, stranke uz ulazno — a prilozi prigovora uz pismeno očitovanja ili prigovora
+     * ({@code act_ref} = {@code PRIGOVOR:<objection_id>}).
      *
      * <p>Prilog koji još nije pokušan čeka {@code grace} od vezanja: prvi pokušaj radi tok urudžbe
      * odmah nakon glavnog dokumenta, a cron mu ga ne smije oteti. Neuspjeli pušta njegov backoff.
@@ -160,13 +161,15 @@ public interface PrilogRepository extends JpaRepository<PismenoPrilogEntity, Lon
                 OR (p.vrstaVlasnika = com.str.backend.attachment.VrstaVlasnika.RN_LOG
                       AND e.actRef = CAST(p.vlasnikId AS String)
                       AND ((p.ucitao LIKE 'INTERNAL:%' AND e.smjer = com.str.backend.egop.EgopPismenoEntity.Smjer.IZLAZNO)
-                        OR (p.ucitao NOT LIKE 'INTERNAL:%' AND e.smjer = com.str.backend.egop.EgopPismenoEntity.Smjer.ULAZNO))))
+                        OR (p.ucitao NOT LIKE 'INTERNAL:%' AND e.smjer = com.str.backend.egop.EgopPismenoEntity.Smjer.ULAZNO)))
+                OR (p.vrstaVlasnika = com.str.backend.attachment.VrstaVlasnika.OBJECTION
+                      AND e.actRef = CONCAT(:prigovor, CAST(p.vlasnikId AS String))))
             GROUP BY e.id
             ORDER BY MIN(p.id)
             """)
     List<UUID> findPismenaZaPonovnoPrilaganje(@Param("maxPokusaja") int maxPokusaja, @Param("grace") Instant grace,
                                               @Param("sada") Instant sada, @Param("registracija") String registracija,
-                                              @Param("zahtjev") String zahtjev);
+                                              @Param("zahtjev") String zahtjev, @Param("prigovor") String prigovor);
 
     // Pripadnost RB-u za preuzimanje: prilog tuđeg RB-a pod ovim RB-om je 404.
 

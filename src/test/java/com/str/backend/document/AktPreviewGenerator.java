@@ -117,7 +117,6 @@ class AktPreviewGenerator {
             String razlog = switch (type) {
                 case PRIJEDLOG_SUSPENZIJE -> "nepotpuni i/ili netočni podaci";
                 case POVLACENJE -> "namjerno ili krajnjom nepažnjom nisu ispravljeni podaci";
-                case PRIGOVOR -> "suglasnost suvlasnika je pribavljena i dostavlja se u privitku";
                 case ZAHTJEV_OPOZIVA -> "smještajnu jedinicu više ne iznajmljujem";
                 // Suspenzija: proslijeđena bilješka joba, kao u RnLifecycleFilingListeneru — akt
                 // svejedno ispisuje razlog s prijedloga.

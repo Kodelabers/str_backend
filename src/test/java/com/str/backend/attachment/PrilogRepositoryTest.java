@@ -67,7 +67,7 @@ class PrilogRepositoryTest {
         for (String sql : addConstraintSql()) {
             jdbc.execute(sql);
         }
-        service = new PrilogService(repository, new PrilogStagingLock(jdbc), 5, DataSize.ofMegabytes(10), 20,
+        service = new PrilogService(repository, new PrilogStagingLock(jdbc), 5, 6, DataSize.ofMegabytes(10), 20,
                 DataSize.ofMegabytes(100), DataSize.ofMegabytes(15));
     }
 
@@ -168,7 +168,7 @@ class PrilogRepositoryTest {
     /** M-BE5: kvota ukupne veličine nevezanih po učitavatelju (409 ATTACHMENT_STAGED_LIMIT). */
     @Test
     void stage_overTotalUnboundBytes_isRefused() {
-        service = new PrilogService(repository, new PrilogStagingLock(jdbc), 5, DataSize.ofMegabytes(10), 20,
+        service = new PrilogService(repository, new PrilogStagingLock(jdbc), 5, 6, DataSize.ofMegabytes(10), 20,
                 DataSize.ofBytes(PDF.length * 2L), DataSize.ofMegabytes(15));
         stage(ANA);
         stage(ANA);

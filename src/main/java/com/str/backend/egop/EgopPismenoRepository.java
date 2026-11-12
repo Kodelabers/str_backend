@@ -113,4 +113,29 @@ public interface EgopPismenoRepository extends JpaRepository<EgopPismenoEntity, 
     @Transactional(readOnly = true)
     Optional<EgopPismenoEntity> findFirstByRnAndActRefAndVrstaPismenaNaziv(String rn, String actRef,
                                                                             String vrstaPismenaNaziv);
+
+    /**
+     * Urudžbirani podnesci stranke (očitovanja i prigovori, {@code act_ref} = {@code PRIGOVOR:<objection_id>})
+     * uz RB — ručno urudžbirani u županijskom postupku i oni kojima je eGOP vratio URBROJ. Jedan upit za
+     * cijelu povijest prigovora RB-a.
+     */
+    default List<EgopPismenoEntity> findUrudzbiraniPodnesci(String rn) {
+        return findUrudzbiranaPismena(rn, EgopPismenoEntity.ACT_REF_PRIGOVOR_PREFIX + "%");
+    }
+
+    @Transactional(readOnly = true)
+    @Query("""
+            SELECT p FROM EgopPismenoEntity p
+            WHERE p.rn = :rn AND p.urBroj IS NOT NULL AND p.actRef LIKE :actRefLike
+            ORDER BY p.createdAt ASC
+            """)
+    List<EgopPismenoEntity> findUrudzbiranaPismena(@Param("rn") String rn, @Param("actRefLike") String actRefLike);
+
+    /** Postoji li za RB pismeno s tim {@code act_ref} (i bez URBROJ-a) — obrana od drugog upisa podneska. */
+    @Transactional(readOnly = true)
+    boolean existsByRnAndActRef(String rn, String actRef);
+
+    /** Urudžbirani podnesak jednog prigovora ({@link EgopPismenoEntity#actRefPodneska}); prazno dok nije. */
+    @Transactional(readOnly = true)
+    Optional<EgopPismenoEntity> findFirstByRnAndActRefAndUrBrojIsNotNull(String rn, String actRef);
 }

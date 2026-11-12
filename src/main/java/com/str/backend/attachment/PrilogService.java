@@ -30,7 +30,8 @@ import java.util.stream.Collectors;
 
 /**
  * Prilozi uz pismena (T17): do {@code app.attachments.max-per-owner} datoteka po pismenu, svaka do
- * {@code app.attachments.max-file-size}, PDF/JPG/PNG/DOC/DOCX po sadržaju ({@link VrstaDatoteke}).
+ * {@code app.attachments.max-file-size}, PDF/JPG/PNG/DOC/DOCX po sadržaju ({@link VrstaDatoteke}). Očitovanje
+ * i prigovor imaju vlastitu granicu, {@code app.attachments.max-per-objection} (dokument i do 5 priloga).
  *
  * <p>Ugovor je <b>staging, pa vezanje</b>. {@link #stage} sprema datoteku bez vlasnika, uz
  * učitavatelja ({@link Ucitao}); radnja (zahtjev za RB, opoziv, akt službenika, prigovor) u svojoj
@@ -45,6 +46,7 @@ public class PrilogService {
     private final PrilogRepository repository;
     private final PrilogStagingLock stagingLock;
     private final int maxPoVlasniku;
+    private final int maxPoPrigovoru;
     private final long maxVelicina;
     private final int maxNevezanih;
     private final long maxNevezanihUkupno;
@@ -53,6 +55,7 @@ public class PrilogService {
     public PrilogService(PrilogRepository repository,
                          PrilogStagingLock stagingLock,
                          @Value("${app.attachments.max-per-owner:5}") int maxPoVlasniku,
+                         @Value("${app.attachments.max-per-objection:6}") int maxPoPrigovoru,
                          @Value("${app.attachments.max-file-size:10MB}") DataSize maxVelicina,
                          @Value("${app.attachments.max-staged-per-uploader:20}") int maxNevezanih,
                          @Value("${app.attachments.max-staged-total-per-uploader:100MB}") DataSize maxNevezanihUkupno,
@@ -60,6 +63,7 @@ public class PrilogService {
         this.repository = repository;
         this.stagingLock = stagingLock;
         this.maxPoVlasniku = maxPoVlasniku;
+        this.maxPoPrigovoru = maxPoPrigovoru;
         this.maxVelicina = maxVelicina.toBytes();
         this.maxNevezanih = maxNevezanih;
         this.maxNevezanihUkupno = maxNevezanihUkupno.toBytes();
@@ -111,7 +115,7 @@ public class PrilogService {
             return List.of();
         }
         long vec = repository.countByVrstaVlasnikaAndVlasnikId(vlasnik.vrsta(), vlasnik.id());
-        requireBroj(vecPrilozeno + vec + datoteke.size());
+        requireBroj(vlasnik.vrsta(), vecPrilozeno + vec + datoteke.size());
         // Sve provjere prije prve pohrane: neispravna peta datoteka ne ostavlja spremljene prve četiri.
         List<Datoteka> procitane = datoteke.stream().map(this::procitaj).toList();
         return procitane.stream()
@@ -160,7 +164,7 @@ public class PrilogService {
         if (jedinstveni.isEmpty()) {
             return List.of();
         }
-        requireBroj(jedinstveni.size());
+        requireBroj(vlasnik.vrsta(), jedinstveni.size());
         List<PrilogSazetak> prilozi = repository.findSazeci(jedinstveni);
         if (prilozi.size() != jedinstveni.size()) {
             throw notFound();
@@ -169,7 +173,7 @@ public class PrilogService {
             requireUnbound(ucitao, prilog);
         }
         long vec = repository.countByVrstaVlasnikaAndVlasnikId(vlasnik.vrsta(), vlasnik.id());
-        requireBroj(vec + jedinstveni.size());
+        requireBroj(vlasnik.vrsta(), vec + jedinstveni.size());
         if (Ucitao.jeSluzbenik(ucitao)) {
             requireUkupnoSluzbenika(prilozi,
                     vec > 0 ? repository.sumVelicinaVlasnika(vlasnik.vrsta(), vlasnik.id()) : 0);
@@ -183,11 +187,13 @@ public class PrilogService {
     }
 
     /**
-     * Najviše {@code app.attachments.max-per-owner} datoteka uz jedno pismeno (400 {@code ATTACHMENT_COUNT}).
-     * Jedino mjesto te provjere — i za prigovor, čiji je prvi dokument izvan {@code pismeno_prilog}.
+     * Najviše {@code app.attachments.max-per-owner} datoteka uz jedno pismeno, a uz očitovanje i prigovor
+     * ({@link VrstaVlasnika#OBJECTION}) {@code app.attachments.max-per-objection} — dokument i do 5 priloga
+     * (400 {@code ATTACHMENT_COUNT}). Jedino mjesto te provjere — i za prigovor, čiji je dokument izvan
+     * {@code pismeno_prilog}.
      */
-    public void requireBroj(long ukupnoDatoteka) {
-        if (ukupnoDatoteka > maxPoVlasniku) {
+    public void requireBroj(VrstaVlasnika vrsta, long ukupnoDatoteka) {
+        if (ukupnoDatoteka > (vrsta == VrstaVlasnika.OBJECTION ? maxPoPrigovoru : maxPoVlasniku)) {
             throw tooMany();
         }
     }

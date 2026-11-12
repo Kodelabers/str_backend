@@ -94,4 +94,10 @@ T12 (postupak povlačenja) dodaje izlazne vrste `prijedlog-povlacenja`, `obustav
 `reaktivacija-povlacenja`. Ovdje ih pokriva `EGOP_SIFRA_PISMENA_FALLBACK=57` („Obavijest"), pa nova
 varijabla nije potrebna; i one ulaze u popis za storniranje dok MINT ne unese prave vrste.
 
+Očitovanje i prigovor iznajmljivača (studeni 2026.) su četiri nove **ulazne** vrste (`ocitovanje-suspenzije`,
+`prigovor-suspenzije`, `ocitovanje-povlacenja`, `prigovor-povlacenja`). Fallback „Obavijest" je izlazni, pa
+ih `.env.dev` vodi pod ulaznim „Prigovor" (62): `EGOP_SIFRA_PISMENA_OCITOVANJE_SUSPENZIJE=62` i isto za ostala
+tri sluga. Ranija `EGOP_SIFRA_PISMENA_PRIGOVOR` više se ne čita (vrsta „Prigovor na prijedlog suspenzije"
+uklonjena je jer je nitko nije slao).
+
 Detalji o šifrarnicima i odabranim šiframa: `docs/eGOP-endpoint-analiza.md` §17.9.

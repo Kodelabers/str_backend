@@ -54,8 +54,7 @@ public class RnLifecycleLookup {
     /** T16: ručni akt prijelaza (KLASA, URBROJ, izdavatelj); prazno kad akt ide kroz eGOP. */
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public Optional<RucniAkt> findRucniAkt(UUID logId) {
-        return logId == null ? Optional.empty()
-                : logRepository.findById(logId).flatMap(RegistrationNumberLogEntity::rucniAkt);
+        return logRepository.findRucniAkt(logId);
     }
 
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)

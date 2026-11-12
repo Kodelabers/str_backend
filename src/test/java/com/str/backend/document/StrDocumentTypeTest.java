@@ -44,8 +44,10 @@ class StrDocumentTypeTest {
         assertThat(StrDocumentType.OPOZIV.aktTijela()).isTrue();
         assertThat(StrDocumentType.values())
                 .filteredOn(t -> !t.aktTijela())
-                .containsExactlyInAnyOrder(StrDocumentType.ZAHTJEV, StrDocumentType.PRIGOVOR,
-                        StrDocumentType.ZAHTJEV_OPOZIVA)
+                .containsExactlyInAnyOrder(StrDocumentType.ZAHTJEV, StrDocumentType.ZAHTJEV_OPOZIVA,
+                        StrDocumentType.OCITOVANJE_SUSPENZIJE,
+                        StrDocumentType.PRIGOVOR_SUSPENZIJE, StrDocumentType.OCITOVANJE_POVLACENJA,
+                        StrDocumentType.PRIGOVOR_POVLACENJA)
                 .allMatch(t -> t.smjer() == ULAZNO);
     }
 
@@ -105,6 +107,47 @@ class StrDocumentTypeTest {
         assertThat(StrDocumentType.fromSlug("obustava-povlacenja")).contains(StrDocumentType.OBUSTAVA_POVLACENJA);
         assertThat(StrDocumentType.fromSlug("reaktivacija-povlacenja"))
                 .contains(StrDocumentType.REAKTIVACIJA_POVLACENJA);
+    }
+
+    /**
+     * Bug s testiranja MINTS-a: podnesak iznajmljivača na prijedlog ili mjeru je ulazno pismeno, vrste po
+     * statusu broja pri predaji. Na ACTIVE (i opozvan broj) podneska nema.
+     */
+    @Test
+    void objection_typeFollowsRnStatus_andRespondsToItsAct() {
+        assertThat(StrDocumentType.podnesakNaAkt(RnStatus.SUSPENSION_PROPOSED)).contains(StrDocumentType.OCITOVANJE_SUSPENZIJE);
+        assertThat(StrDocumentType.podnesakNaAkt(RnStatus.SUSPENDED)).contains(StrDocumentType.PRIGOVOR_SUSPENZIJE);
+        assertThat(StrDocumentType.podnesakNaAkt(RnStatus.WITHDRAWAL_PROPOSED)).contains(StrDocumentType.OCITOVANJE_POVLACENJA);
+        assertThat(StrDocumentType.podnesakNaAkt(RnStatus.WITHDRAWN)).contains(StrDocumentType.PRIGOVOR_POVLACENJA);
+        assertThat(StrDocumentType.podnesakNaAkt(RnStatus.ACTIVE)).isEmpty();
+        assertThat(StrDocumentType.podnesakNaAkt(RnStatus.REVOKED)).isEmpty();
+        assertThat(StrDocumentType.podnesakNaAkt(null)).isEmpty();
+
+        assertThat(StrDocumentType.OCITOVANJE_SUSPENZIJE.vrstaPismenaNaziv())
+                .isEqualTo("Očitovanje na prijedlog suspenzije registracijskog broja");
+        assertThat(StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv())
+                .isEqualTo("Prigovor na suspenziju registracijskog broja");
+        assertThat(StrDocumentType.OCITOVANJE_POVLACENJA.vrstaPismenaNaziv())
+                .isEqualTo("Očitovanje na prijedlog povlačenja registracijskog broja");
+        assertThat(StrDocumentType.PRIGOVOR_POVLACENJA.vrstaPismenaNaziv())
+                .isEqualTo("Prigovor na povlačenje registracijskog broja");
+
+        // Akt na koji podnesak odgovara je akt prijelaza u isti status.
+        for (RnStatus status : RnStatus.values()) {
+            StrDocumentType.podnesakNaAkt(status).ifPresent(podnesak -> {
+                assertThat(podnesak.smjer()).isEqualTo(ULAZNO);
+                assertThat(podnesak.aktTijela()).isFalse();
+                // Glavni dokument je datoteka stranke — ništa se ne generira iz predloška.
+                assertThat(podnesak.templateBacked()).isFalse();
+                assertThat(podnesak.pobijaniAkt()).isEqualTo(StrDocumentType.forTransition(status, null));
+                assertThat(StrDocumentType.fromSlug(podnesak.slug())).contains(podnesak);
+            });
+        }
+        assertThat(StrDocumentType.values())
+                .filteredOn(t -> t.pobijaniAkt().isPresent())
+                .hasSize(4);
+        // Stari, nikad korišteni „Prigovor na prijedlog suspenzije" više ne postoji.
+        assertThat(StrDocumentType.fromSlug("prigovor")).isEmpty();
     }
 
     /** Svako izlazno pismeno je akt tijela — inače bi u KP otišao dokument bez pečata tijela. */

@@ -238,12 +238,23 @@ class PriloziUgradnjaIntegrationTest {
         assertThat(prilogService.zaPreuzimanje(RN, prviPrilog).naziv()).isEqualTo("dodatak-0.png");
     }
 
-    /** Dokument + 5 dodatnih = 6 datoteka: prigovor se ne sprema. */
+    /** Dokument + 5 priloga = 6 datoteka: prigovor se sprema s pet priloga (max-per-objection). */
     @Test
-    void objection_withSixFiles_isRejected_andNothingStored() {
+    void objection_withSixFiles_isStored() {
         rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK, List.of());
 
-        assertThatThrownBy(() -> objectionService.submit(RnOwner.byOib(OIB), "NIAS:" + OIB, objectionRequest(5)))
+        objectionService.submit(RnOwner.byOib(OIB), "NIAS:" + OIB, objectionRequest(5));
+
+        assertThat(objectionRepository.count()).isEqualTo(1);
+        assertThat(prilogRepository.count()).isEqualTo(5);
+    }
+
+    /** Dokument + 6 dodatnih = 7 datoteka: prigovor se ne sprema. */
+    @Test
+    void objection_withSevenFiles_isRejected_andNothingStored() {
+        rnService.suspend(RN, RnTrigger.INSPECTION, LocalDate.now().plusDays(15), null, SLUZBENIK, List.of());
+
+        assertThatThrownBy(() -> objectionService.submit(RnOwner.byOib(OIB), "NIAS:" + OIB, objectionRequest(6)))
                 .isInstanceOfSatisfying(PrilogException.class,
                         e -> assertThat(e.getCode()).isEqualTo(PrilogException.COUNT));
 

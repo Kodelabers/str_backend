@@ -105,8 +105,8 @@ class ZupTemplateLoaderTest {
 
     @Test
     void partySubmission_keepsAddressee() {
-        assertThat(StrDocumentType.PRIGOVOR.requiredSections()).contains(ZupSection.NASLOV);
-        assertThat(loader.get(StrDocumentType.PRIGOVOR).has(ZupSection.NASLOV)).isTrue();
+        assertThat(StrDocumentType.ZAHTJEV_OPOZIVA.requiredSections()).contains(ZupSection.NASLOV);
+        assertThat(loader.get(StrDocumentType.ZAHTJEV_OPOZIVA).has(ZupSection.NASLOV)).isTrue();
     }
 
     static java.util.stream.Stream<StrDocumentType> obavijesti() {
@@ -167,13 +167,13 @@ class ZupTemplateLoaderTest {
                         "Obavijest o obustavi postupka suspenzije registracijskog broja",
                         "Obavijest o suspenziji registracijskog broja",
                         "Obavijest o reaktiviranju registracijskog broja",
-                        "Obavijest o povlačenju registracijskog broja",
-                        "Prigovor na prijedlog suspenzije");
+                        "Obavijest o povlačenju registracijskog broja");
     }
 
     /**
      * Tipovi bez vrste u eGOP šifrarniku: tri akta postupka povlačenja (T12) MINT još nije unio — do tada idu pod zamjenskom šifrom ili na popis
      * {@code EGOP_AKTI_BEZ_SIFRE} (DEPLOY-*.md); kad ih unese, premjestiti ih u šifrarnik ovdje i gore.
+     * Isto vrijedi za četiri ulazne vrste očitovanja i prigovora (bug s testiranja MINTS-a, studeni 2026.).
      *
      * <p>Popis, a ne broj tipova: novi tip mora natjerati autora da svjesno odluči ima li vrstu
      * u eGOP šifrarniku, a ne samo da podigne brojku.
@@ -191,11 +191,15 @@ class ZupTemplateLoaderTest {
                 "Obavijest o suspenziji registracijskog broja",
                 "Obavijest o reaktiviranju registracijskog broja",
                 "Obavijest o povlačenju registracijskog broja",
+                // Postoji u šifrarniku MINT-a, ali je naša vrsta „Prigovor na prijedlog suspenzije" uklonjena
+                // (nitko je nije slao); očitovanje se na nju može preslikati kroz EGOP_NAZIV_PISMENA_*.
                 "Prigovor na prijedlog suspenzije");
 
         assertThat(StrDocumentType.values())
                 .filteredOn(t -> !uSifrarniku.contains(t.egopVrstaNaziv()))
-                .containsExactly(StrDocumentType.PRIJEDLOG_POVLACENJA, StrDocumentType.OBUSTAVA_POVLACENJA,
+                .containsExactly(StrDocumentType.OCITOVANJE_SUSPENZIJE, StrDocumentType.PRIGOVOR_SUSPENZIJE,
+                        StrDocumentType.OCITOVANJE_POVLACENJA, StrDocumentType.PRIGOVOR_POVLACENJA,
+                        StrDocumentType.PRIJEDLOG_POVLACENJA, StrDocumentType.OBUSTAVA_POVLACENJA,
                         StrDocumentType.REAKTIVACIJA_POVLACENJA);
     }
 }

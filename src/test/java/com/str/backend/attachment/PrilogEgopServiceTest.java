@@ -262,6 +262,33 @@ class PrilogEgopServiceTest {
         assertThat(sent.getValue().getRbrPriloga()).isEqualTo(1);
     }
 
+    /**
+     * Očitovanje ili prigovor: uz ulazno pismeno idu ostale datoteke stranke (vlasnik OBJECTION), sve redom;
+     * act_ref PRIGOVOR:<id> se ne čita kao log_id prijelaza.
+     */
+    @Test
+    void objectionPismeno_getsObjectionAttachments() throws Exception {
+        UUID objectionId = UUID.randomUUID();
+        when(repository.findSazeciVlasnika(VrstaVlasnika.OBJECTION, objectionId)).thenReturn(List.of(
+                TestPrilog.vezan(41, VrstaVlasnika.OBJECTION, objectionId, "dokaz.pdf", STRANKA),
+                new TestPrilog(42L, VrstaVlasnika.OBJECTION, objectionId, "dopis.docx",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", 5, STRANKA, null,
+                        null)));
+        EgopPismenoEntity podnesak = EgopPismenoEntity.forPodnesak(UUID.randomUUID(), "HR1", objectionId,
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        podnesak.applyPismeno(2009, "529-06/26-4", "108", false);
+
+        service.prilozi(podnesak, "MINT\\str-svc");
+
+        ArgumentCaptor<KreirajPrilogIPridruziDokument> sent = ArgumentCaptor.forClass(KreirajPrilogIPridruziDokument.class);
+        verify(egopClient, times(2)).kreirajPrilogIPridruziDokument(sent.capture());
+        assertThat(sent.getAllValues()).extracting(KreirajPrilogIPridruziDokument::getJop).containsOnly(2009);
+        assertThat(sent.getAllValues()).extracting(KreirajPrilogIPridruziDokument::getRbrPriloga).containsExactly(1, 2);
+        assertThat(sent.getAllValues()).extracting(KreirajPrilogIPridruziDokument::getExtension)
+                .containsExactly("pdf", "docx");
+        verify(repository, never()).findSazeciVlasnika(eq(VrstaVlasnika.RN_LOG), any(UUID.class));
+    }
+
     @Test
     void registration_zahtjevGetsSubmissionAttachments_dodjelaNone() throws Exception {
         UUID submissionId = UUID.randomUUID();
@@ -339,7 +366,7 @@ class PrilogEgopServiceTest {
     void ponovi_retriesCandidatePismena_underItsUser() throws Exception {
         UUID logId = UUID.randomUUID();
         EgopPismenoEntity akt = akt(logId, EgopPismenoEntity.Smjer.IZLAZNO, 1003);
-        when(repository.findPismenaZaPonovnoPrilaganje(eq(10), any(), any(), eq("REGISTRACIJA"), anyString()))
+        when(repository.findPismenaZaPonovnoPrilaganje(eq(10), any(), any(), eq("REGISTRACIJA"), anyString(), eq("PRIGOVOR:")))
                 .thenReturn(List.of(akt.getId()));
         when(filingStore.findAkt(akt.getId())).thenReturn(Optional.of(akt));
         when(korisnik.za(akt)).thenReturn("ana.sluzbenica");

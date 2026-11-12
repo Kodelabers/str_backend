@@ -511,6 +511,56 @@ public class EgopFilingService {
         kpOtprema.otpremi(akt.getId());
     }
 
+    /**
+     * Glavni dokument podneska stranke kakav je učitan.
+     *
+     * @param ekstenzija bez točke ({@code pdf}, {@code doc}, {@code docx}) — eGOP po njoj tipizira dokument
+     */
+    public record PodnesakDokument(byte[] sadrzaj, String ekstenzija) {}
+
+    /**
+     * Urudžbira podnesak stranke na akt (očitovanje, prigovor) kao <b>ulazno</b> pismeno u predmet koji bira
+     * {@link #predmetZaPostupak}, pa prilaže dokument koji je stranka učitala i njezine ostale datoteke kao
+     * priloge. Ništa se ne renderira, ne pečati ni ne otprema u korisnički pretinac.
+     *
+     * <p>Redoslijed (podnesak iza akta na koji odgovara) drži {@link EgopAktDispatcher}; ovdje se samo
+     * nastavlja gdje je prethodni pokušaj stao: kreirano pismeno ({@code jop}) se ne kreira ponovo, a
+     * priloženi dokument ne prilaže ponovo.
+     */
+    public void filePodnesak(EgopPismenoEntity podnesak, SubmissionEntity submission, LessorEntity lessor,
+                             String korisnik, PodnesakDokument dokument) throws EgopException {
+        if (podnesak.getSmjer() != EgopPismenoEntity.Smjer.ULAZNO) {
+            throw new EgopBadRequestException("Podnesak " + podnesak.getId() + " nije ulazno pismeno");
+        }
+        if (dokument.sadrzaj() == null || dokument.sadrzaj().length == 0) {
+            throw new EgopBadRequestException("Podnesak " + podnesak.getId() + " nema dokument — uredsko poslovanje"
+                    + " traži dokument uz svako pismeno, pa se prazan podnesak ne šalje.");
+        }
+
+        Integer subjektOznaka = ensureSubjekt(lessor);
+        String klasa = null;
+        if (!podnesak.isFiled()) {
+            PredmetAkta predmet = predmetZaPostupak(podnesak, submission, lessor, subjektOznaka, korisnik);
+            klasa = predmet.klasa();
+            Kreirano kreirano = kreirajPismeno(predmet.uredskaGodina(), predmet.rbrPredmeta(),
+                    podnesak.getVrstaPismenaNaziv(), podnesak.getSmjer(), subjektOznaka, lessor.getLessorOib(), korisnik);
+            podnesak.applyPismeno(kreirano.jop(), kreirano.urBroj(), kreirano.vrsta().sifra(),
+                    kreirano.vrsta().privremena());
+            store.applyPismeno(podnesak.getId(), kreirano.jop(), kreirano.urBroj(),
+                    kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
+        }
+
+        // markDocumentAttached ujedno postavlja SYNCED — pismeno je urudžbirano kad ima glavni dokument.
+        attachDocumentOnce(podnesak, dokument.sadrzaj(), dokument.ekstenzija(), korisnik);
+
+        log.info("egop_podnesak_filed pismeno={} rn={} vrsta='{}' klasa={} urbroj={} ekstenzija={} korisnik={}",
+                podnesak.getId(), podnesak.getRn(), podnesak.getVrstaPismenaNaziv(), klasa, podnesak.getUrBroj(),
+                dokument.ekstenzija(), korisnik);
+
+        // Ostale datoteke stranke (T17, vlasnik OBJECTION) nakon glavnog dokumenta; ne bacaju iznimke.
+        prilozi.prilozi(podnesak, korisnik);
+    }
+
     /** Predmet u koji ide pismeno akta: identitet u eGOP-u i KLASA za dokument. */
     private record PredmetAkta(Integer uredskaGodina, Integer rbrPredmeta, String klasa) {}
 
@@ -519,12 +569,17 @@ public class EgopFilingService {
      * za akte nakon dodjele. Podnesak i akt istog postupka (zahtjev za opoziv pa obavijest o opozivu)
      * idu u isti predmet, redom kojim ih šalje {@link EgopAktDispatcher}.
      *
-     * <p>Zasad je to jedan predmet po RB-u (klasa 334-06/11, odluka 21.10.2026.), za sve postupke.
-     * T16: potvrdi li MINT/eGOP predmet po postupku (npr. opoziv otvara novi predmet: zahtjev
-     * urbroj 1, obavijest urbroj 2), mijenja se ova metoda. Postupak se prepoznaje po
-     * {@code act_ref} (log_id prijelaza), koji podnesak i akt dijele; identitet predmeta tada mora
-     * živjeti po postupku, a ne na {@code submission.egop_akti_*}. KLASU za snimak prije urudžbe
-     * čita {@code StrDocumentService.klasaZa}, pa i nju treba uskladiti.
+     * <p>I dalje vrijedi jedan predmet po RB-u (klasa 334-06/11, odluka 21.10.2026.), za sve postupke i za
+     * podneske stranke. MINTS je 11.11.2026. odlučio da se ide na predmet po postupku (kao eTurizam); to tek
+     * dolazi i mijenja ovu metodu — obuhvatit će i podneske (očitovanje, prigovor), koji idu u predmet postupka
+     * akta na koji odgovaraju. Postupak se tada prepoznaje po {@code act_ref} (log_id prijelaza), koji podnesak
+     * i akt dijele; identitet predmeta mora živjeti po postupku, a ne na {@code submission.egop_akti_*}. KLASU
+     * za snimak prije urudžbe čita {@code StrDocumentService.klasaZa}, pa i nju treba uskladiti.
+     *
+     * <p>Očitovanje i prigovor ({@link #filePodnesak}) nemaju {@code log_id} u {@code act_ref}, nego
+     * {@code PRIGOVOR:<objection_id>}: postupak im je prijelaz iz {@code suspension_objection.rn_log_id}
+     * (akt na koji odgovaraju, {@link EgopAktDispatcher} ga zna), pa predmet po postupku za njih treba
+     * izvesti preko toga zapisa.
      */
     private PredmetAkta predmetZaPostupak(EgopPismenoEntity akt, SubmissionEntity submission, LessorEntity lessor,
                                           Integer subjektOznaka, String korisnik) throws EgopException {
@@ -592,14 +647,23 @@ public class EgopFilingService {
      * pa bi retry nakon djelomičnog pada duplicirao dokument na pismenu.
      */
     private void attachPdfOnce(EgopPismenoEntity pismeno, byte[] pdf, String korisnik) throws EgopException {
+        attachDocumentOnce(pismeno, pdf, "pdf", korisnik);
+    }
+
+    /**
+     * {@code KreirajDokumentZaPismeno} nema naziv datoteke — eGOP dokument tipizira samo po {@code extension},
+     * pa ona mora odgovarati sadržaju (podnesak stranke može biti i DOC ili DOCX).
+     */
+    private void attachDocumentOnce(EgopPismenoEntity pismeno, byte[] dokument, String ekstenzija, String korisnik)
+            throws EgopException {
         if (pismeno.isDocumentAttached()) {
             return;
         }
         KreirajDokumentZaPismeno request = new KreirajDokumentZaPismeno();
         request.setUserName(korisnik);
         request.setJop(pismeno.getJop());
-        request.setExtension("pdf");
-        request.setAttachment(pdf);
+        request.setExtension(ekstenzija);
+        request.setAttachment(dokument);
         egopClient.kreirajDokumentZaPismeno(request);
         pismeno.markDocumentAttached();
         store.markDocumentAttached(pismeno.getId());

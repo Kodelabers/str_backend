@@ -14,8 +14,9 @@ import java.util.List;
  *
  * <p>{@code datoteka} je dokument prigovora (PDF ili Word) i ostaje u
  * {@code suspension_objection.file_content}, kao i prije. {@code datoteke} (ponovljeni dio
- * {@code datoteke}, neobavezno) su ostale datoteke prigovora (T17): PDF, JPG, PNG, DOC ili DOCX, do
- * ukupno 5 datoteka s dokumentom; spremaju se u {@code pismeno_prilog} kao {@code OBJECTION}.
+ * {@code datoteke}, neobavezno) su ostale datoteke prigovora (T17): PDF, JPG, PNG, DOC ili DOCX, uz
+ * dokument najviše 5 ({@code app.attachments.max-per-objection}); spremaju se u {@code pismeno_prilog} kao
+ * {@code OBJECTION}.
  */
 @Getter
 @Setter

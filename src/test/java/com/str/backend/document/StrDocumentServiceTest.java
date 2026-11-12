@@ -763,12 +763,12 @@ class StrDocumentServiceTest {
     }
 
     /**
-     * Prigovor je podnesak stranke (čl. 71.): tijelo mu je adresat, ne izdavatelj. Ne smije
+     * Zahtjev za opoziv je podnesak stranke (čl. 71.): tijelo mu je adresat, ne izdavatelj. Ne smije
      * nositi grb ni potpis tijela, a pečat tijela ni kad je uključen.
      */
     @Test
     void partySubmission_hasNoMinistryFrameOrSeal() throws IOException {
-        byte[] pdf = service(PROPERTIES_S_PECATOM).render(StrDocumentType.PRIGOVOR, RN, "razlog");
+        byte[] pdf = service(PROPERTIES_S_PECATOM).render(StrDocumentType.ZAHTJEV_OPOZIVA, RN, "razlog");
         String text = textOf(pdf);
 
         assertThat(text).doesNotContain("REPUBLIKA HRVATSKA");

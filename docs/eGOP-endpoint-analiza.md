@@ -1085,7 +1085,7 @@ Sedam vrsta pismena → sedam PDF predložaka. Trenutno stanje u kodu:
 | Obavijest o prijedlogu suspenzije | ✅ `documents/hr/prijedlog-suspenzije.txt` |
 | Obavijest o suspenziji | ✅ `documents/hr/suspenzija.txt` |
 | Obavijest o povlačenju | ✅ `documents/hr/povlacenje.txt` |
-| Prigovor na prijedlog suspenzije | ✅ `documents/hr/prigovor.txt` |
+| Prigovor na prijedlog suspenzije | ❌ uklonjen (studeni 2026.) — očitovanje i prigovor su dokument koji učita iznajmljivač, v. `docs/ZUP-predlosci.md` §2 |
 
 > **Ažurirano 26.07.2026.** Svih 7 predložaka je izrađeno po strukturi čl. 98. ZUP-a —
 > `StrDocumentType` je sada jedini izvor naziva vrsta pismena (ranije su živjeli na tri mjesta:

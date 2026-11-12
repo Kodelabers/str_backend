@@ -188,6 +188,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, resolve(ex.getMessage()), Map.of("code", ex.getCode()));
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenException ex) {
+        return build(HttpStatus.FORBIDDEN, resolve(ex.getMessage()), Map.of("code", ex.getCode()));
+    }
+
     @ExceptionHandler(GoneException.class)
     public ResponseEntity<ErrorResponse> handleGone(GoneException ex) {
         return build(HttpStatus.GONE, resolve(ex.getMessage()), Map.of("code", ex.getCode()));

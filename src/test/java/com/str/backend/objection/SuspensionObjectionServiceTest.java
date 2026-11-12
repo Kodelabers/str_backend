@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -59,8 +60,9 @@ class SuspensionObjectionServiceTest {
     private final LessorRepository lessorRepository = mock(LessorRepository.class);
     private final PrilogService prilogService = mock(PrilogService.class);
     private final com.str.backend.rn.RnReissueGuard reissueGuard = mock(com.str.backend.rn.RnReissueGuard.class);
+    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final SuspensionObjectionService service = new SuspensionObjectionService(
-            repository, rnRepository, logRepository, lessorRepository, prilogService, reissueGuard);
+            repository, rnRepository, logRepository, lessorRepository, prilogService, reissueGuard, events);
 
     private final RnEntity rn = mock(RnEntity.class);
 
@@ -90,6 +92,26 @@ class SuspensionObjectionServiceTest {
         assertThat(saved.getFileSize()).isEqualTo(PDF.length);
         assertThat(saved.getStatus()).isEqualTo(SuspensionObjectionStatus.SUBMITTED);
         assertThat(saved.getSubmittedAt()).isNotNull();
+    }
+
+    /** Predaja najavljuje ulazno pismeno za eGOP: prigovor, status broja i prijelaz na koji odgovara. */
+    @Test
+    void submit_publishesEvent_forIncomingPismeno() {
+        SuspensionObjectionEntity saved = capture(OWNER, request(file("prigovor.pdf", PDF)));
+
+        verify(events).publishEvent(new SuspensionObjectionSubmittedEvent(saved.getObjectionId(), RN,
+                RnStatus.SUSPENSION_PROPOSED, LOG_ID));
+    }
+
+    /** Na ACTIVE podneska nema (409), pa ni pismena. */
+    @Test
+    void activeRn_publishesNothing() {
+        when(rn.getStatus()).thenReturn(RnStatus.ACTIVE);
+
+        assertThatThrownBy(() -> service.submit(OWNER, SUBMITTED_BY, request(file("prigovor.pdf", PDF))))
+                .isInstanceOf(ConflictException.class);
+
+        verify(events, never()).publishEvent(any());
     }
 
     @Test
@@ -247,22 +269,40 @@ class SuspensionObjectionServiceTest {
                 PrilogVlasnik.prigovor(saved.getObjectionId()), 1);
     }
 
-    /** Dokument + 5 dodatnih = 6: odbija se prije pohrane prigovora. */
+    /** Dokument + 5 priloga = 6 datoteka: pravilo broja za prigovor (OBJECTION) prolazi, prilozi se spremaju. */
     @Test
-    void sixFiles_is400_andNothingStored() {
+    void sixFiles_documentAndFiveAttachments_areAccepted() {
         SuspensionObjectionRequest req = request(file("prigovor.pdf", PDF));
-        req.setDatoteke(java.util.stream.IntStream.range(0, 5)
-                .mapToObj(i -> (org.springframework.web.multipart.MultipartFile)
-                        new MockMultipartFile("datoteke", "d" + i + ".pdf", null, PDF))
-                .toList());
+        List<org.springframework.web.multipart.MultipartFile> dodatne = dodatne(5);
+        req.setDatoteke(dodatne);
+
+        SuspensionObjectionEntity saved = capture(OWNER, req);
+
+        verify(prilogService).requireBroj(com.str.backend.attachment.VrstaVlasnika.OBJECTION, 6);
+        verify(prilogService).spremiVezane(Ucitao.nias(OIB), dodatne, PrilogVlasnik.prigovor(saved.getObjectionId()), 1);
+    }
+
+    /** Dokument + 6 dodatnih = 7: odbija se prije pohrane prigovora. */
+    @Test
+    void sevenFiles_is400_andNothingStored() {
+        SuspensionObjectionRequest req = request(file("prigovor.pdf", PDF));
+        req.setDatoteke(dodatne(6));
         // Pravilo broja je jedno, u PrilogService (dijeli ga s prilozima uz pismena).
         org.mockito.Mockito.doThrow(new PrilogException(org.springframework.http.HttpStatus.BAD_REQUEST,
-                "error.attachment.count", PrilogException.COUNT)).when(prilogService).requireBroj(6);
+                "error.attachment.count", PrilogException.COUNT)).when(prilogService)
+                .requireBroj(com.str.backend.attachment.VrstaVlasnika.OBJECTION, 7);
 
         assertThatThrownBy(() -> service.submit(OWNER, SUBMITTED_BY, req))
                 .isInstanceOfSatisfying(PrilogException.class, e -> assertThat(e.getCode()).isEqualTo("ATTACHMENT_COUNT"));
         verify(repository, never()).saveAndFlush(any());
         verify(prilogService, never()).spremiVezane(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    private static List<org.springframework.web.multipart.MultipartFile> dodatne(int broj) {
+        return java.util.stream.IntStream.range(0, broj)
+                .mapToObj(i -> (org.springframework.web.multipart.MultipartFile)
+                        new MockMultipartFile("datoteke", "d" + i + ".pdf", null, PDF))
+                .toList();
     }
 
     /** Prazan dio bez naziva (polje bez odabrane datoteke) se preskače; bez dodatnih nema poziva. */

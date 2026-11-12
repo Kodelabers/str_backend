@@ -6,11 +6,14 @@ import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
 import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.common.Uuids;
+import com.str.backend.common.Zagreb;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.objection.SuspensionObjectionFileDto;
+import com.str.backend.objection.SuspensionObjectionRepository;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.dto.RnDocumentDto;
@@ -20,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -43,6 +45,12 @@ import java.util.UUID;
  *       {@code RnLifecycleFilingListener} pri svakom prijelazu koji
  *       {@link StrDocumentType#forTransition} mapira na akt, i kad je eGOP ugašen.</li>
  * </ol>
+ *
+ * <p>Očitovanja i prigovori iznajmljivača imaju svoje ulazno pismeno u {@code egop_pismeno}
+ * ({@code act_ref} = {@code PRIGOVOR:<objection_id>}) i ovdje se prikazuju tek kad su <b>urudžbirani</b>
+ * (imaju URBROJ): u postupku MINTS-a kad eGOP vrati URBROJ, u županijskom kad ga službenik upiše
+ * ({@code SuspensionObjectionAdminService#register}). Dokument je datoteka koju je stranka učitala
+ * ({@code /documents/podnesak/{objectionId}}), a prilozi njezine ostale datoteke.
  *
  * <p>Uz svako pismeno idu i njegovi prilozi (T17): uz zahtjev prilozi zahtjeva, uz akt prijelaza
  * prilozi tog prijelaza — uz ulazno pismeno stranke, uz izlazni akt službenika.
@@ -69,17 +77,20 @@ public class RnDocumentsService {
     private final SubmissionRepository submissionRepository;
     private final EgopPismenoRepository egopPismenoRepository;
     private final PrilogService prilogService;
+    private final SuspensionObjectionRepository objectionRepository;
     private final boolean zahtjevVisible;
 
     public RnDocumentsService(RnRepository rnRepository,
                               SubmissionRepository submissionRepository,
                               EgopPismenoRepository egopPismenoRepository,
                               PrilogService prilogService,
+                              SuspensionObjectionRepository objectionRepository,
                               @Value("${str.rn.documents.zahtjev-visible:true}") boolean zahtjevVisible) {
         this.rnRepository = rnRepository;
         this.submissionRepository = submissionRepository;
         this.egopPismenoRepository = egopPismenoRepository;
         this.prilogService = prilogService;
+        this.objectionRepository = objectionRepository;
         this.zahtjevVisible = zahtjevVisible;
     }
 
@@ -112,7 +123,24 @@ public class RnDocumentsService {
         // Prilozi prijelaza, jednim upitom: akt nosi act_ref = log_id prijelaza.
         Map<UUID, List<PrilogSazetak>> priloziPrijelaza = prilogService.zaVlasnike(VrstaVlasnika.RN_LOG,
                 akti.stream().map(a -> Uuids.parse(a.getActRef())).flatMap(Optional::stream).toList());
+        // Dodatne datoteke urudžbiranih očitovanja i prigovora, isto jednim upitom.
+        Map<UUID, List<PrilogSazetak>> priloziPodnesaka = prilogService.zaVlasnike(VrstaVlasnika.OBJECTION,
+                akti.stream().filter(RnDocumentsService::urudzbiranPodnesak)
+                        .map(EgopPismenoEntity::objectionId).flatMap(Optional::stream).toList());
         for (EgopPismenoEntity akt : akti) {
+            Optional<UUID> objectionId = akt.objectionId();
+            if (objectionId.isPresent()) {
+                // Podnesak stranke (očitovanje, prigovor): dokument je na prigovoru, ne na pismenu. Dok nije
+                // urudžbiran, nije dio spisa — vidi se samo u panelu prigovora.
+                if (urudzbiranPodnesak(akt)) {
+                    String slug = StrDocumentType.fromVrstaPismenaNaziv(akt.getVrstaPismenaNaziv())
+                            .map(StrDocumentType::slug).orElse(null);
+                    out.add(new RnDocumentDto(akt.getId(), slug, akt.getVrstaPismenaNaziv(), akt.getSmjer().name(),
+                            toLocalDate(akt.getCreatedAt()), href(rn, "podnesak/" + objectionId.get()),
+                            prilozi(rn, priloziPodnesaka.getOrDefault(objectionId.get(), List.of()))));
+                }
+                continue;
+            }
             if (akt.getPdfContent() == null) {
                 continue; // akt bez pohranjenog dokumenta se ne može ponuditi na preuzimanje
             }
@@ -157,6 +185,24 @@ public class RnDocumentsService {
             throw new ResourceNotFoundException("document has no pdf: " + aktId);
         }
         return new StoredDocument(filename(akt, rn), akt.getPdfContent());
+    }
+
+    /**
+     * Dokument urudžbiranog očitovanja ili prigovora — datoteka koju je stranka učitala (PDF, DOC ili DOCX).
+     * 404 kad prigovor ne pripada RB-u ili podnesak još nije urudžbiran: tada nije u „Dokumentima".
+     */
+    @Transactional(readOnly = true)
+    public SuspensionObjectionFileDto podnesak(String rn, UUID objectionId) {
+        egopPismenoRepository.findFirstByRnAndActRefAndUrBrojIsNotNull(rn, EgopPismenoEntity.actRefPodneska(objectionId))
+                .orElseThrow(() -> new ResourceNotFoundException("document not found: " + objectionId));
+        return objectionRepository.findByObjectionIdAndRn(objectionId, rn)
+                .map(o -> new SuspensionObjectionFileDto(o.getFileName(), o.getContentType(), o.getFileContent()))
+                .orElseThrow(() -> new ResourceNotFoundException("document not found: " + objectionId));
+    }
+
+    /** Ulazno pismeno očitovanja ili prigovora kojem je dodijeljen URBROJ (eGOP ili županijski službenik). */
+    private static boolean urudzbiranPodnesak(EgopPismenoEntity akt) {
+        return akt.objectionId().isPresent() && akt.getUrBroj() != null;
     }
 
     /**
@@ -216,6 +262,7 @@ public class RnDocumentsService {
     }
 
     private static LocalDate toLocalDate(Instant instant) {
-        return instant == null ? null : instant.atZone(ZoneId.systemDefault()).toLocalDate();
+        // Hrvatski dan, kao urudzbiranje.datum na prigovoru; kontejner radi u UTC-u.
+        return instant == null ? null : instant.atZone(Zagreb.ZONE).toLocalDate();
     }
 }

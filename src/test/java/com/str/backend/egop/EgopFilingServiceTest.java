@@ -756,6 +756,118 @@ class EgopFilingServiceTest {
         };
     }
 
+    // --- očitovanje i prigovor stranke: ulazno pismeno s učitanim dokumentom ----------------
+
+    /** Vrsta po našem nazivu; uz {@code predmetAkata} predmet postoji (u njemu je akt na koji se odgovara). */
+    private EgopPismenoEntity givenPodnesak(boolean predmetAkata) throws Exception {
+        lessor.assignEgopSubjekt(42);
+        if (predmetAkata) {
+            submission.applyEgopAktiPredmet(2026, 77, "334-06/11-26/77");
+        }
+        PredmetInfo postoji = new PredmetInfo();
+        postoji.setOperationSucceeded(true);
+        when(egopClient.dohvatiPodatkePredmeta(any())).thenReturn(postoji);
+        when(egopClient.getVrstePismena()).thenReturn(Map.of("Prigovor na suspenziju registracijskog broja", "108"));
+        when(egopClient.kreirajPismeno2(any())).thenReturn(pismeno(1009, "529-06-03/TUREGBROJ-26-3"));
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenReturn(new DokumentInfo());
+        return EgopPismenoEntity.forPodnesak(submission.getSubmissionId(), "HR1", UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+    }
+
+    /**
+     * Podnesak stranke: KreirajPismeno2 sa subjektom u predmet postupka, glavni dokument je učitana
+     * datoteka pod svojom ekstenzijom (DOCX), bez pečata (i uz uključen eSeal) i bez KP-a; prilozi iza
+     * glavnog dokumenta.
+     */
+    @Test
+    void filePodnesak_isIncomingInPredmetAkata_withUploadedDocument() throws Exception {
+        givenSealing();
+        EgopPrilozi prilozi = priloziService();
+        EgopPismenoEntity podnesak = givenPodnesak(true);
+        byte[] docx = {0x50, 0x4B, 0x03, 0x04};
+
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc",
+                new EgopFilingService.PodnesakDokument(docx, "docx"));
+
+        verify(egopClient, never()).kreirajPredmet2(any());
+        ArgumentCaptor<KreirajPismeno2> request = ArgumentCaptor.forClass(KreirajPismeno2.class);
+        verify(egopClient).kreirajPismeno2(request.capture());
+        assertEquals(77, request.getValue().getRbrSpisa());
+        assertEquals("108", request.getValue().getVrstaPismena());
+        assertEquals("Prigovor na suspenziju registracijskog broja", request.getValue().getNazivPismena());
+        assertEquals(42, request.getValue().getSubjektOznaka());
+        assertEquals("12345678901", request.getValue().getSubjektOIB());
+        verify(egopClient, never()).kreirajIzlaznoPismeno(any());
+        verify(store).applyPismeno(podnesak.getId(), 1009, "529-06-03/TUREGBROJ-26-3", "108", false);
+
+        ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient).kreirajDokumentZaPismeno(dokument.capture());
+        assertEquals(1009, dokument.getValue().getJop());
+        assertEquals("docx", dokument.getValue().getExtension());
+        assertArrayEquals(docx, dokument.getValue().getAttachment());
+        assertTrue(podnesak.isSynced());
+
+        verify(sealer, never()).seal(any(), anyString(), any());
+        verify(store, never()).freezeForSealing(any(), any(), anyString());
+        verify(kpOtprema, never()).otpremi(any());
+        verify(kpOtprema, never()).register(any(), any(), any());
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(egopClient, prilozi);
+        order.verify(egopClient).kreirajDokumentZaPismeno(any());
+        order.verify(prilozi).prilozi(podnesak, "MINT\\str-svc");
+    }
+
+    /** Predmet akata još ne postoji: otvara ga podnesak, kroz isti predmetZaPostupak kao i akti. */
+    @Test
+    void filePodnesak_withoutPredmet_opensItThroughPredmetZaPostupak() throws Exception {
+        EgopPismenoEntity podnesak = givenPodnesak(false);
+        PredmetBasicInfo2 predmet = new PredmetBasicInfo2();
+        predmet.setOperationSucceeded(true);
+        predmet.setUredskaGodina(2026);
+        predmet.setRbrPredmeta(79);
+        predmet.setKlasifikacijskaOznaka("334-06/11-26/79");
+        when(egopClient.kreirajPredmet2(any())).thenReturn(predmet);
+
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc",
+                new EgopFilingService.PodnesakDokument("%PDF".getBytes(), "pdf"));
+
+        verify(store).saveAktiPredmet(submission.getSubmissionId(), 2026, 79, "334-06/11-26/79");
+        ArgumentCaptor<KreirajPismeno2> request = ArgumentCaptor.forClass(KreirajPismeno2.class);
+        verify(egopClient).kreirajPismeno2(request.capture());
+        assertEquals(79, request.getValue().getRbrSpisa());
+    }
+
+    /** Ponovni pokušaj nakon pada dokumenta: pismeno se ne kreira drugi put, samo se priloži dokument (DOC). */
+    @Test
+    void filePodnesak_retryAfterDocumentFailure_doesNotCreateSecondPismeno() throws Exception {
+        EgopPismenoEntity podnesak = givenPodnesak(true);
+        when(egopClient.kreirajDokumentZaPismeno(any())).thenThrow(new EgopBadRequestException("dokument"))
+                .thenReturn(new DokumentInfo());
+        EgopFilingService.PodnesakDokument doc = new EgopFilingService.PodnesakDokument(
+                new byte[]{(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0}, "doc");
+
+        assertThrows(EgopBadRequestException.class,
+                () -> service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", doc));
+        assertFalse(podnesak.isSynced());
+        service.filePodnesak(podnesak, submission, lessor, "MINT\\str-svc", doc);
+
+        verify(egopClient, times(1)).kreirajPismeno2(any());
+        ArgumentCaptor<KreirajDokumentZaPismeno> dokument = ArgumentCaptor.forClass(KreirajDokumentZaPismeno.class);
+        verify(egopClient, times(2)).kreirajDokumentZaPismeno(dokument.capture());
+        assertEquals("doc", dokument.getValue().getExtension());
+        assertTrue(podnesak.isSynced());
+    }
+
+    /** Bez dokumenta nema pismena — uredsko poslovanje traži dokument uz svako pismeno. */
+    @Test
+    void filePodnesak_emptyDocument_isRejectedBeforeAnyCall() throws Exception {
+        EgopPismenoEntity podnesak = givenPodnesak(true);
+
+        assertThrows(EgopBadRequestException.class, () -> service.filePodnesak(podnesak, submission, lessor,
+                "MINT\\str-svc", new EgopFilingService.PodnesakDokument(new byte[0], "pdf")));
+
+        verify(egopClient, never()).kreirajPismeno2(any());
+    }
+
     // --- kvalificirani e-pečat izlaznih akata ---------------------------------------
 
     private static final byte[] PECACENI = "%PDF-pecaceni".getBytes();

@@ -12,6 +12,9 @@ import com.str.backend.domain.RnTrigger;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
 import com.str.backend.exception.ResourceNotFoundException;
+import com.str.backend.objection.SuspensionObjectionEntity;
+import com.str.backend.objection.SuspensionObjectionFileDto;
+import com.str.backend.objection.SuspensionObjectionRepository;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
 import com.str.backend.rn.dto.RnDocumentDto;
@@ -46,6 +49,7 @@ class RnDocumentsServiceTest {
     private SubmissionRepository submissionRepository;
     private EgopPismenoRepository egopPismenoRepository;
     private PrilogService prilogService;
+    private SuspensionObjectionRepository objectionRepository;
     private RnDocumentsService service;
 
     private UUID submissionId;
@@ -56,13 +60,16 @@ class RnDocumentsServiceTest {
         submissionRepository = mock(SubmissionRepository.class);
         egopPismenoRepository = mock(EgopPismenoRepository.class);
         prilogService = mock(PrilogService.class);
-        service = new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, prilogService, true);
+        objectionRepository = mock(SuspensionObjectionRepository.class);
+        service = new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, prilogService,
+                objectionRepository, true);
         submissionId = UUID.randomUUID();
     }
 
     /** Varijanta s ugašenim prikazom podneska ({@code str.rn.documents.zahtjev-visible=false}). */
     private RnDocumentsService serviceWithoutZahtjev() {
-        return new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, prilogService, false);
+        return new RnDocumentsService(rnRepository, submissionRepository, egopPismenoRepository, prilogService,
+                objectionRepository, false);
     }
 
     @Test
@@ -149,6 +156,93 @@ class RnDocumentsServiceTest {
     }
 
     /**
+     * Očitovanje ili prigovor ulazi u „Dokumente" tek kad je urudžbiran (ima URBROJ): eGOP-ov u postupku
+     * MINTS-a i ručni u županijskom. Dokument je datoteka s prigovora ({@code /documents/podnesak/{id}}), a
+     * prilozi ostale datoteke stranke. Neurudžbiran podnesak se ne vidi. Zapisan zadnji, stoji zadnji.
+     */
+    @Test
+    void listForRn_registeredPodnesak_listedLastWithObjectionAttachments_unregisteredHidden() {
+        stubRn(submissionId, LocalDate.now().minusDays(2));
+        stubSubmission("pdf".getBytes(), Instant.now().minus(3, ChronoUnit.DAYS));
+        EgopPismenoEntity suspenzija = EgopPismenoEntity.forAct(submissionId, RN, "log1",
+                "Obavijest o suspenziji registracijskog broja", EgopPismenoEntity.Smjer.IZLAZNO, new byte[]{1});
+        UUID neurudzbiranId = UUID.randomUUID();
+        EgopPismenoEntity neurudzbiran = EgopPismenoEntity.forPodnesak(submissionId, RN, neurudzbiranId,
+                StrDocumentType.OCITOVANJE_SUSPENZIJE.vrstaPismenaNaziv());
+        UUID mintsId = UUID.randomUUID();
+        EgopPismenoEntity mints = EgopPismenoEntity.forPodnesak(submissionId, RN, mintsId,
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        mints.applyPismeno(1009, "529-06/26-4", "108", false);
+        mints.markDocumentAttached();
+        UUID zupanijaId = UUID.randomUUID();
+        EgopPismenoEntity zupanija = EgopPismenoEntity.rucniPodnesak(submissionId, RN, zupanijaId,
+                StrDocumentType.PRIGOVOR_POVLACENJA.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3");
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN))
+                .thenReturn(List.of(suspenzija, neurudzbiran, mints, zupanija));
+        when(prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, List.of(mintsId, zupanijaId))).thenReturn(Map.of(
+                zupanijaId, List.of(TestPrilog.vezan(31, VrstaVlasnika.OBJECTION, zupanijaId, "dokaz.png",
+                        "NIAS:12345678903"))));
+
+        List<RnDocumentDto> docs = service.listForRn(RN);
+
+        assertThat(docs).extracting(RnDocumentDto::slug).containsExactly(
+                "zahtjev", "dodjela", "suspenzija", "prigovor-suspenzije", "prigovor-povlacenja");
+        assertThat(docs).extracting(RnDocumentDto::href).doesNotContain(
+                "/api/rn/" + RN + "/documents/podnesak/" + neurudzbiranId);
+        RnDocumentDto zadnji = docs.get(docs.size() - 1);
+        assertThat(zadnji.id()).isEqualTo(zupanija.getId());
+        assertThat(zadnji.naziv()).isEqualTo(StrDocumentType.PRIGOVOR_POVLACENJA.vrstaPismenaNaziv());
+        assertThat(zadnji.smjer()).isEqualTo("ULAZNO");
+        assertThat(zadnji.izdano()).isEqualTo(LocalDate.now(com.str.backend.common.Zagreb.ZONE));
+        assertThat(zadnji.href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + zupanijaId);
+        assertThat(zadnji.prilozi()).extracting(PrilogDto::naziv).containsExactly("dokaz.png");
+        assertThat(zadnji.prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/attachments/31");
+        assertThat(docs.get(3).href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + mintsId);
+        assertThat(docs.get(3).prilozi()).isEmpty();
+    }
+
+    /**
+     * Datum u „Dokumentima" je hrvatski dan, kao {@code urudzbiranje.datum} na prigovoru: pismeno zapisano u
+     * 23:30 UTC (01:30 u Zagrebu ljeti, 00:30 zimi) je sljedeći dan.
+     */
+    @Test
+    void listForRn_izdano_isZagrebDay() {
+        stubRn(submissionId, LocalDate.of(2026, 7, 1));
+        stubSubmission(null, Instant.parse("2026-07-01T10:00:00Z"));
+        EgopPismenoEntity podnesak = EgopPismenoEntity.rucniPodnesak(submissionId, RN, UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3");
+        org.springframework.test.util.ReflectionTestUtils.setField(podnesak, "createdAt",
+                Instant.parse("2026-07-14T23:30:00Z"));
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN)).thenReturn(List.of(podnesak));
+
+        assertThat(service.listForRn(RN)).last()
+                .satisfies(d -> assertThat(d.izdano()).isEqualTo(LocalDate.of(2026, 7, 15)));
+    }
+
+    /** Dokument podneska je datoteka s prigovora; neurudžbiran ili tuđi podnesak je 404. */
+    @Test
+    void podnesak_registered_returnsObjectionFile_unregisteredOrForeign_404() {
+        SuspensionObjectionEntity objection = SuspensionObjectionEntity.createForOib("99999999990", RN,
+                RnStatus.SUSPENDED, UUID.randomUUID(), "NIAS:99999999990", "prigovor.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", new byte[]{0x50, 0x4B});
+        UUID id = objection.getObjectionId();
+        EgopPismenoEntity pismeno = EgopPismenoEntity.rucniPodnesak(submissionId, RN, id,
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv(), "UP/I-334-06/26-01/7", "2181-26-3");
+        when(egopPismenoRepository.findFirstByRnAndActRefAndUrBrojIsNotNull(RN, "PRIGOVOR:" + id))
+                .thenReturn(Optional.of(pismeno));
+        when(objectionRepository.findByObjectionIdAndRn(id, RN)).thenReturn(Optional.of(objection));
+
+        SuspensionObjectionFileDto file = service.podnesak(RN, id);
+
+        assertThat(file.fileName()).isEqualTo("prigovor.docx");
+        assertThat(file.contentType()).isEqualTo(objection.getContentType());
+        assertArrayEquals(new byte[]{0x50, 0x4B}, file.content());
+        UUID neurudzbiran = UUID.randomUUID();
+        assertThrows(ResourceNotFoundException.class, () -> service.podnesak(RN, neurudzbiran));
+        assertThrows(ResourceNotFoundException.class, () -> service.podnesak("HR180000123456789999", id));
+    }
+
+    /**
      * Akti suspenzijskog toka moraju stajati u istom popisu kao zahtjev i obavijest o dodjeli —
      * s vlastitim slugom, smjerom i linkom za preuzimanje. Uvjet je da postoji redak u
      * {@code egop_pismeno}; {@code RnLifecycleFilingListener} ga zato zapisuje i onda kad se akt
@@ -201,7 +295,9 @@ class RnDocumentsServiceTest {
         assertThat(lifecycleTypes).containsExactlyInAnyOrder(
                 StrDocumentType.PRIJEDLOG_SUSPENZIJE, StrDocumentType.OBUSTAVA_SUSPENZIJE,
                 StrDocumentType.SUSPENZIJA, StrDocumentType.REAKTIVACIJA,
-                StrDocumentType.POVLACENJE, StrDocumentType.ZAHTJEV_OPOZIVA, StrDocumentType.OPOZIV);
+                StrDocumentType.POVLACENJE, StrDocumentType.ZAHTJEV_OPOZIVA, StrDocumentType.OPOZIV,
+                StrDocumentType.PRIJEDLOG_POVLACENJA, StrDocumentType.OBUSTAVA_POVLACENJA,
+                StrDocumentType.REAKTIVACIJA_POVLACENJA);
 
         List<EgopPismenoEntity> akti = new ArrayList<>();
         for (StrDocumentType type : lifecycleTypes) {

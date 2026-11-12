@@ -43,7 +43,9 @@ import java.util.UUID;
  *   <li>ulazno pismeno zahtjeva ({@code act_ref=REGISTRACIJA}) ← prilozi {@link VrstaVlasnika#SUBMISSION};</li>
  *   <li>pismeno prijelaza RB-a ({@code act_ref=log_id}) ← prilozi {@link VrstaVlasnika#RN_LOG}, i to
  *       ulazno (podnesak stranke, npr. opoziv) samo prilozi stranke, a izlazno (akt) samo prilozi
- *       službenika ({@link PrilogService#pripadaPismenu}).</li>
+ *       službenika ({@link PrilogService#pripadaPismenu});</li>
+ *   <li>ulazno pismeno očitovanja ili prigovora ({@code act_ref=PRIGOVOR:<objection_id>}) ← prilozi
+ *       {@link VrstaVlasnika#OBJECTION}.</li>
  * </ul>
  *
  * <p><b>Akt ne čeka na priloge</b> ({@link EgopPrilozi}): prvi pokušaj ide nakon glavnog dokumenta,
@@ -148,7 +150,8 @@ public class PrilogEgopService implements EgopPrilozi {
     @Override
     public void ponovi(Instant sada) {
         List<UUID> kandidati = repository.findPismenaZaPonovnoPrilaganje(retryPolicy.maxAttempts(),
-                sada.minus(grace), sada, EgopPismenoEntity.ACT_REF_REGISTRACIJA, ZAHTJEV_NAZIV);
+                sada.minus(grace), sada, EgopPismenoEntity.ACT_REF_REGISTRACIJA, ZAHTJEV_NAZIV,
+                EgopPismenoEntity.ACT_REF_PRIGOVOR_PREFIX);
         if (kandidati.isEmpty()) {
             return;
         }
@@ -336,6 +339,12 @@ public class PrilogEgopService implements EgopPrilozi {
                     && ZAHTJEV_NAZIV.equals(pismeno.getVrstaPismenaNaziv())
                     ? repository.findSazeciVlasnika(VrstaVlasnika.SUBMISSION, pismeno.getSubmissionId())
                     : List.of();
+        }
+        // Očitovanje i prigovor: sve ostale datoteke koje je stranka predala uz podnesak (glavni dokument je
+        // na samom pismenu). Učitava ih samo stranka, pa filtra po autoru nema.
+        Optional<UUID> objectionId = pismeno.objectionId();
+        if (objectionId.isPresent()) {
+            return repository.findSazeciVlasnika(VrstaVlasnika.OBJECTION, objectionId.get());
         }
         Optional<UUID> logId = Uuids.parse(pismeno.getActRef());
         if (logId.isEmpty()) {

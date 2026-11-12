@@ -420,6 +420,17 @@ S tim postavkama otvaranje oba predmeta, pismena i otprema u KP prošli su na te
    `STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest` (pismeno označeno `egop_vrsta_privremena=true`).
    Bez fallbacka ih do unosa staviti u `EGOP_AKTI_BEZ_SIFRE`, inače urudžba tih akata pada u retry.
    Nema novih obaveznih varijabli; changeset 155 izvršava se sam pri startu.
+9. **Očitovanje i prigovor iznajmljivača (studeni 2026.):** četiri nove **ulazne** vrste pismena —
+   „Očitovanje na prijedlog suspenzije registracijskog broja", „Prigovor na suspenziju registracijskog
+   broja", „Očitovanje na prijedlog povlačenja registracijskog broja" (naziv još potvrđuje MINTS) i
+   „Prigovor na povlačenje registracijskog broja" (slugovi `ocitovanje-suspenzije`, `prigovor-suspenzije`,
+   `ocitovanje-povlacenja`, `prigovor-povlacenja`). Glavni dokument je datoteka koju je iznajmljivač
+   učitao (PDF, DOC ili DOCX, `extension` po vrsti), ostale datoteke idu kao prilozi; bez pečata i KP-a.
+   Pismeno ide u predmet postupka tek kad je akt na koji odgovara urudžbiran. Postupak županijskog
+   službenika (ručni akt, T16) podnesak ne šalje. Dok MINT vrste ne unese, uz posudbene vrste postaviti
+   `EGOP_NAZIV_PISMENA_<SLUG>=Zahtjev` (`<SLUG>` velikim slovima s podvlakom), inače bi ulazni podnesak
+   otišao pod fallbackom „Obavijest". Log: `egop_podnesak_recorded`, `egop_podnesak_filed`,
+   `egop_podnesak_skipped reason=zupanijski_postupak`.
 
 ### B5a.2 Paljenje
 
@@ -442,6 +453,10 @@ EGOP_NAZIV_USTROJ=Sektor za pravne poslove
 EGOP_AKTI_KORISNIK=APLIKACIJSKI
 STR_EGOP_VRSTE_NAZIVI_PISMENA_ZAHTJEV=Zahtjev
 STR_EGOP_VRSTE_NAZIVI_PISMENAFALLBACK=Obavijest
+EGOP_NAZIV_PISMENA_OCITOVANJE_SUSPENZIJE=Zahtjev
+EGOP_NAZIV_PISMENA_PRIGOVOR_SUSPENZIJE=Zahtjev
+EGOP_NAZIV_PISMENA_OCITOVANJE_POVLACENJA=Zahtjev
+EGOP_NAZIV_PISMENA_PRIGOVOR_POVLACENJA=Zahtjev
 EGOP_SIFRE_PRIVREMENE=true
 EGOP_MOCK_FILING_PREFIX=
 EGOP_KP_ENABLED=true
