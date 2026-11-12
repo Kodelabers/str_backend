@@ -105,7 +105,9 @@ class PodnesakEgopIntegrationTest {
 
     /**
      * Sva četiri statusa: vrsta po statusu, ulazno pismeno urudžbirano u istom predmetu kao akt na koji odgovara
-     * i iza njega (veći JOP i urbroj), s prilozima u eGOP-u. Čim ima URBROJ, zadnje je u „Dokumentima" RB-a.
+     * i iza njega (veći JOP i urbroj). Glavni dokument je PDF podneska (zaglavlje Ministarstva, oznake iz eGOP-a),
+     * spremljen na pismeno; dokument stranke je prilog 1, ostale njezine datoteke iza njega. Čim ima URBROJ,
+     * zadnje je u „Dokumentima" RB-a, s pohranjenim PDF-om i dokumentima stranke kao prilozima.
      */
     @ParameterizedTest
     @EnumSource(value = RnStatus.class, names = {"SUSPENSION_PROPOSED", "SUSPENDED", "WITHDRAWAL_PROPOSED", "WITHDRAWN"})
@@ -122,7 +124,9 @@ class PodnesakEgopIntegrationTest {
         assertThat(podnesak.getSmjer()).isEqualTo(EgopPismenoEntity.Smjer.ULAZNO);
         assertThat(podnesak.isSynced()).isTrue();
         assertThat(podnesak.isDocumentAttached()).isTrue();
-        assertThat(podnesak.getPdfContent()).isNull();
+        String pdf = tekst(podnesak.getPdfContent());
+        assertThat(pdf).contains(vrsta.naslov()).contains("Ministarstvo").contains(podnesak.getUrBroj())
+                .contains("prigovor.pdf");
         assertThat(podnesak.isSealed()).isFalse();
         // Akt na koji podnesak odgovara urudžbiran je prije njega (redoslijed drže jedinični testovi dispatchera).
         assertThat(akt.isSynced()).isTrue();
@@ -131,15 +135,18 @@ class PodnesakEgopIntegrationTest {
         List<PismenoPrilogEntity> prilozi = prilogRepository.findAll().stream()
                 .filter(p -> p.getVrstaVlasnika() == VrstaVlasnika.OBJECTION).toList();
         assertThat(prilozi).hasSize(2).allSatisfy(p -> assertThat(p.getEgopJop()).isEqualTo(podnesak.getJop()));
-        assertThat(uEgopu(podnesak.getJop())).extracting(PriloziPismenaInfo::getRbrPriloga).containsExactly(1, 2);
+        assertThat(uEgopu(podnesak.getJop())).extracting(PriloziPismenaInfo::getRbrPriloga).containsExactly(1, 2, 3);
+        assertThat(uEgopu(podnesak.getJop()).get(0).getNazivPriloga()).isEqualTo("prigovor.pdf");
 
         List<RnDocumentDto> dokumenti = documentsService.listForRn(RN);
         assertThat(dokumenti.get(dokumenti.size() - 1)).satisfies(d -> {
             assertThat(d.naziv()).isEqualTo(vrsta.vrstaPismenaNaziv());
             assertThat(d.slug()).isEqualTo(vrsta.slug());
-            assertThat(d.href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + objectionId);
-            assertThat(d.prilozi()).hasSize(2);
+            assertThat(d.href()).isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + podnesak.getId());
+            assertThat(d.prilozi()).hasSize(3);
+            assertThat(d.prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + objectionId);
         });
+        assertThat(documentsService.storedAktPdf(RN, podnesak.getId()).pdf()).isEqualTo(podnesak.getPdfContent());
         assertThat(adminService.list(RN)).singleElement().satisfies(o -> {
             assertThat(o.zupanijskiPostupak()).isFalse();
             assertThat(o.urudzbiranje().urBroj()).isEqualTo(podnesak.getUrBroj());
@@ -172,7 +179,8 @@ class PodnesakEgopIntegrationTest {
         prilogEgopService.ponovi(Instant.now());
 
         assertThat(prilogRepository.findById(prilogId).orElseThrow().getEgopJop()).isEqualTo(podnesak.getJop());
-        assertThat(uEgopu(podnesak.getJop())).hasSize(1);
+        // Izvornik stranke (rbr 1) i jedan prilog — ništa poslano dvaput.
+        assertThat(uEgopu(podnesak.getJop())).hasSize(2);
     }
 
     /**
@@ -203,14 +211,26 @@ class PodnesakEgopIntegrationTest {
         EgopPismenoEntity podnesak = pismeno(StrDocumentType.OCITOVANJE_SUSPENZIJE);
         assertThat(podnesak.isRucno()).isTrue();
         assertThat(podnesak.getJop()).as("nije u eGOP-u").isNull();
+        String pdf = tekst(podnesak.getPdfContent());
+        assertThat(pdf).startsWith("Primorsko-goranska županija").doesNotContain("Ministarstvo")
+                .contains("OČITOVANJE NA PRIJEDLOG SUSPENZIJE REGISTRACIJSKOG BROJA")
+                .contains("334-06/26-01/5").contains("2170-26-2").contains("ocitovanje.pdf");
         List<RnDocumentDto> dokumenti = documentsService.listForRn(RN);
         assertThat(dokumenti.get(dokumenti.size() - 1)).satisfies(d -> {
             assertThat(d.slug()).isEqualTo("ocitovanje-suspenzije");
             assertThat(d.smjer()).isEqualTo("ULAZNO");
-            assertThat(d.href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + objectionId);
-            assertThat(d.prilozi()).hasSize(2);
+            assertThat(d.href()).isEqualTo("/api/rn/" + RN + "/documents/pohranjeno/" + podnesak.getId());
+            assertThat(d.prilozi()).hasSize(3);
+            assertThat(d.prilozi().get(0).naziv()).isEqualTo("ocitovanje.pdf");
+            assertThat(d.prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/documents/podnesak/" + objectionId);
         });
         assertThat(documentsService.podnesak(RN, objectionId).content()).isEqualTo(PDF);
+
+        // Pismeno urudžbirano prije PDF-a podneska (CDU test): prvi dohvat ga izvodi iz retka i sprema.
+        jdbc.update("UPDATE str_rn.egop_pismeno SET pdf_content = NULL WHERE id = ?", podnesak.getId());
+        byte[] naknadni = documentsService.storedAktPdf(RN, podnesak.getId()).pdf();
+        assertThat(tekst(naknadni)).startsWith("Primorsko-goranska županija").contains("2170-26-2");
+        assertThat(pismeno(StrDocumentType.OCITOVANJE_SUSPENZIJE).getPdfContent()).isEqualTo(naknadni);
 
         adminService.accept(RN, objectionId, SLUZBENIK, null, obustava);
 
@@ -267,6 +287,27 @@ class PodnesakEgopIntegrationTest {
                 .filter(p -> vrsta.vrstaPismenaNaziv().equals(p.getVrstaPismenaNaziv()))
                 .reduce((a, b) -> b)
                 .orElseThrow(() -> new AssertionError("nema pismena " + vrsta));
+    }
+
+    /** Tekst PDF-a u jednom retku (ekstraktor ćelije spaja bez razmaka, pa se provjeravaju samo vrijednosti). */
+    private static String tekst(byte[] pdf) {
+        assertThat(pdf).isNotNull();
+        try {
+            com.lowagie.text.pdf.PdfReader reader = new com.lowagie.text.pdf.PdfReader(pdf);
+            try {
+                com.lowagie.text.pdf.parser.PdfTextExtractor extractor =
+                        new com.lowagie.text.pdf.parser.PdfTextExtractor(reader);
+                StringBuilder sb = new StringBuilder();
+                for (int page = 1; page <= reader.getNumberOfPages(); page++) {
+                    sb.append(extractor.getTextFromPage(page)).append('\n');
+                }
+                return sb.toString().replaceAll("\\s+", " ").strip();
+            } finally {
+                reader.close();
+            }
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private List<PriloziPismenaInfo> uEgopu(int jop) {

@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,6 +44,7 @@ class EgopAktDispatcherTest {
     private StrDocumentService documentService;
     private RnLifecycleLookup lookup;
     private SuspensionObjectionLookup prigovori;
+    private com.str.backend.objection.PodnesakPdfService podnesakPdf;
     private EgopAktDispatcher dispatcher;
     private UUID logId;
 
@@ -59,9 +61,10 @@ class EgopAktDispatcherTest {
         documentService = mock(StrDocumentService.class);
         lookup = mock(RnLifecycleLookup.class);
         prigovori = mock(SuspensionObjectionLookup.class);
+        podnesakPdf = mock(com.str.backend.objection.PodnesakPdfService.class);
         dispatcher = new EgopAktDispatcher(store, lessorRepository, filingService,
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)), korisnik,
-                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of()), prigovori);
+                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of()), prigovori, podnesakPdf);
         logId = UUID.randomUUID();
 
         lessor = LessorEntity.create("Ana", "Anić", "Ilica", "1", "Zagreb", "Grad Zagreb",
@@ -268,7 +271,8 @@ class EgopAktDispatcherTest {
     void opoziv_requestWithoutCode_doesNotBlockNotice() throws Exception {
         dispatcher = new EgopAktDispatcher(store, lessorRepository, filingService,
                 new EgopRetryPolicy(10, Duration.ofMinutes(2), Duration.ofHours(2)), korisnik,
-                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of("zahtjev-opoziva")), prigovori);
+                documentService, lookup, new EgopAktiBezSifre(java.util.Set.of("zahtjev-opoziva")), prigovori,
+                podnesakPdf);
         opoziv();
 
         dispatcher.dispatch(obavijestOOpozivu.getId());
@@ -312,25 +316,41 @@ class EgopAktDispatcherTest {
         return prigovor;
     }
 
-    private EgopFilingService.PodnesakDokument poslaniDokument() throws Exception {
-        ArgumentCaptor<EgopFilingService.PodnesakDokument> dokument =
-                ArgumentCaptor.forClass(EgopFilingService.PodnesakDokument.class);
+    private EgopFilingService.PodnesakDokumenti poslaniDokumenti() throws Exception {
+        ArgumentCaptor<EgopFilingService.PodnesakDokumenti> dokumenti =
+                ArgumentCaptor.forClass(EgopFilingService.PodnesakDokumenti.class);
         verify(filingService).filePodnesak(eq(podnesak), eq(submission), eq(lessor), eq("strservis4"),
-                dokument.capture());
-        return dokument.getValue();
+                dokumenti.capture());
+        return dokumenti.getValue();
     }
 
-    /** Akt je urudžbiran: podnesak ide odmah, s dokumentom stranke kakav je učitan (PDF). */
+    /** Izvornik stranke kakav je učitan — ide uz pismeno kao prvi prilog. */
+    private EgopFilingService.PodnesakDokument poslaniDokument() throws Exception {
+        return poslaniDokumenti().izvornik();
+    }
+
+    /**
+     * Akt je urudžbiran: podnesak ide odmah. Glavni dokument je PDF podneska sa zaglavljem Ministarstva i
+     * oznakama pismena; izvornik stranke (PDF) ide kakav je učitan, kao prilog.
+     */
     @Test
-    void podnesak_actFiled_filesUploadedDocument() throws Exception {
-        prigovor("prigovor.pdf", "application/pdf", "%PDF-1.7".getBytes());
+    void podnesak_actFiled_filesPodnesakPdf_withUploadedDocumentAsAttachment() throws Exception {
+        SuspensionObjectionEntity prigovor = prigovor("prigovor.pdf", "application/pdf", "%PDF-1.7".getBytes());
         akt.applyPismeno(3001, "529-06-03/01-26-2", "57", false);
+        List<String> ministarstvo = List.of("Ministarstvo turizma i sporta");
+        when(podnesakPdf.zaglavljeMinistarstva()).thenReturn(ministarstvo);
+        com.str.backend.document.FilingReference oznake =
+                new com.str.backend.document.FilingReference("334-06/26-11/3", "529-06-03/01-26-4", 3002);
+        when(podnesakPdf.renderNakonCommita(prigovor, ministarstvo, oznake)).thenReturn("%PDF-podnesak".getBytes());
 
         dispatcher.dispatch(podnesak.getId());
 
-        EgopFilingService.PodnesakDokument dokument = poslaniDokument();
-        assertThat(dokument.sadrzaj()).isEqualTo("%PDF-1.7".getBytes());
-        assertThat(dokument.ekstenzija()).isEqualTo("pdf");
+        EgopFilingService.PodnesakDokumenti dokumenti = poslaniDokumenti();
+        assertThat(dokumenti.pdf(oznake)).isEqualTo("%PDF-podnesak".getBytes());
+        EgopFilingService.PodnesakDokument izvornik = dokumenti.izvornik();
+        assertThat(izvornik.naziv()).isEqualTo("prigovor.pdf");
+        assertThat(izvornik.sadrzaj()).isEqualTo("%PDF-1.7".getBytes());
+        assertThat(izvornik.ekstenzija()).isEqualTo("pdf");
         verify(filingService, never()).fileAct(any(), any(), any(), any(), any());
     }
 

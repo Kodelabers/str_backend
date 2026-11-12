@@ -289,6 +289,76 @@ class PrilogEgopServiceTest {
         verify(repository, never()).findSazeciVlasnika(eq(VrstaVlasnika.RN_LOG), any(UUID.class));
     }
 
+    /**
+     * Podnesak s PDF-om podneska kao glavnim dokumentom: rbr 1 je izvornik stranke ({@code prilogIzvornika}),
+     * pa ostale njezine datoteke idu od rbr 2 — i na retryju, jer je pomak izveden iz samog pismena.
+     */
+    @Test
+    void objectionPismeno_withPodnesakPdf_attachmentsStartAtTwo() throws Exception {
+        UUID objectionId = UUID.randomUUID();
+        when(repository.findSazeciVlasnika(VrstaVlasnika.OBJECTION, objectionId)).thenReturn(List.of(
+                TestPrilog.vezan(41, VrstaVlasnika.OBJECTION, objectionId, "dokaz.pdf", STRANKA),
+                TestPrilog.vezan(42, VrstaVlasnika.OBJECTION, objectionId, "uplatnica.pdf", STRANKA)));
+        EgopPismenoEntity podnesak = EgopPismenoEntity.forPodnesak(UUID.randomUUID(), "HR1", objectionId,
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        podnesak.applyPismeno(2009, "529-06/26-4", "108", false);
+        podnesak.replacePdf("%PDF-podnesak".getBytes());
+
+        service.prilozi(podnesak, "MINT\\str-svc");
+
+        ArgumentCaptor<KreirajPrilogIPridruziDokument> sent = ArgumentCaptor.forClass(KreirajPrilogIPridruziDokument.class);
+        verify(egopClient, times(2)).kreirajPrilogIPridruziDokument(sent.capture());
+        assertThat(sent.getAllValues()).extracting(KreirajPrilogIPridruziDokument::getRbrPriloga).containsExactly(2, 3);
+        verify(repository).markEgopPrilozeno(eq(41L), eq(2009), eq(2), any());
+        verify(repository).markEgopPrilozeno(eq(42L), eq(2009), eq(3), any());
+    }
+
+    /** Izvornik stranke ide kao prilog 1 pismena, pod svojim nazivom i ekstenzijom. */
+    @Test
+    void prilogIzvornika_sendsUploadedDocumentAsFirstAttachment() throws Exception {
+        EgopPismenoEntity podnesak = EgopPismenoEntity.forPodnesak(UUID.randomUUID(), "HR1", UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        podnesak.applyPismeno(2009, "529-06/26-4", "108", false);
+        byte[] docx = {0x50, 0x4B, 0x03, 0x04};
+
+        service.prilogIzvornika(podnesak, "MINT\\str-svc", "prigovor.docx", "docx", docx);
+
+        ArgumentCaptor<KreirajPrilogIPridruziDokument> sent = ArgumentCaptor.forClass(KreirajPrilogIPridruziDokument.class);
+        verify(egopClient).kreirajPrilogIPridruziDokument(sent.capture());
+        assertThat(sent.getValue().getJop()).isEqualTo(2009);
+        assertThat(sent.getValue().getRbrPriloga()).isEqualTo(1);
+        assertThat(sent.getValue().getIdVrstaPriloga()).isEqualTo(7);
+        assertThat(sent.getValue().getNazivPriloga()).isEqualTo("prigovor.docx");
+        assertThat(sent.getValue().getExtension()).isEqualTo("docx");
+        assertThat(sent.getValue().getAttachment()).isEqualTo(docx);
+    }
+
+    /**
+     * Retry: eGOP već ima prilog 1 s dokumentom (poziv je prošao, glavni dokument nije) — ne šalje se ponovo.
+     * Prilog 1 bez dokumenta je nedovršen — iznimka, podnesak se ne zaključuje naslijepo.
+     */
+    @Test
+    void prilogIzvornika_isIdempotent_viaEgopAttachmentList() throws Exception {
+        EgopPismenoEntity podnesak = EgopPismenoEntity.forPodnesak(UUID.randomUUID(), "HR1", UUID.randomUUID(),
+                StrDocumentType.PRIGOVOR_SUSPENZIJE.vrstaPismenaNaziv());
+        podnesak.applyPismeno(2009, "529-06/26-4", "108", false);
+        PriloziPismenaInfo postojeci = new PriloziPismenaInfo();
+        postojeci.setRbrPriloga(1);
+        postojeci.setNazivPriloga("prigovor.pdf");
+        postojeci.setPostojiEDokument(true);
+        when(egopClient.dohvatiListuPrilogaPismena(any())).thenReturn(List.of(postojeci));
+
+        service.prilogIzvornika(podnesak, "MINT\\str-svc", "prigovor.pdf", "pdf", "%PDF".getBytes());
+
+        verify(egopClient, never()).kreirajPrilogIPridruziDokument(any());
+
+        postojeci.setPostojiEDokument(false);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.prilogIzvornika(podnesak, "MINT\\str-svc",
+                        "prigovor.pdf", "pdf", "%PDF".getBytes()))
+                .isInstanceOf(com.str.backend.egop.exception.EgopBadRequestException.class);
+        verify(egopClient, never()).kreirajPrilogIPridruziDokument(any());
+    }
+
     @Test
     void registration_zahtjevGetsSubmissionAttachments_dodjelaNone() throws Exception {
         UUID submissionId = UUID.randomUUID();

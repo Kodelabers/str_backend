@@ -63,10 +63,10 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | `obustava-povlacenja` | Obavijest o obustavi postupka povlačenja registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.revokeWithdrawalProposal` |
 | `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | uvod, izreka (prigovor je t. 4.) | `WithdrawalDeadlineJob` (istek roka) ili `RnService.withdrawIfDeadlineExpired` (neuvaženo očitovanje nakon roka) |
 | `reaktivacija-povlacenja` | Obavijest o reaktivaciji povučenog registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.reinstate` (uvaženi prigovor na povlačenje) |
-| `ocitovanje-suspenzije` | Očitovanje na prijedlog suspenzije registracijskog broja | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `SUSPENSION_PROPOSED` |
-| `prigovor-suspenzije` | Prigovor na suspenziju registracijskog broja | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `SUSPENDED` |
-| `ocitovanje-povlacenja` | Očitovanje na prijedlog povlačenja registracijskog broja (naziv potvrđuje MINTS) | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `WITHDRAWAL_PROPOSED` |
-| `prigovor-povlacenja` | Prigovor na povlačenje registracijskog broja | **ulazno** (nova vrsta) | ❌ bez predloška — dokument stranke | `SuspensionObjectionService.submit` uz `WITHDRAWN` |
+| `ocitovanje-suspenzije` | Očitovanje na prijedlog suspenzije registracijskog broja | **ulazno** (nova vrsta) | čl. 71. — `PodnesakPdfGenerator` (skraćeni zahtjev) | `SuspensionObjectionService.submit` uz `SUSPENSION_PROPOSED` |
+| `prigovor-suspenzije` | Prigovor na suspenziju registracijskog broja | **ulazno** (nova vrsta) | čl. 71. — `PodnesakPdfGenerator` (skraćeni zahtjev) | `SuspensionObjectionService.submit` uz `SUSPENDED` |
+| `ocitovanje-povlacenja` | Očitovanje na prijedlog povlačenja registracijskog broja (naziv potvrđuje MINTS) | **ulazno** (nova vrsta) | čl. 71. — `PodnesakPdfGenerator` (skraćeni zahtjev) | `SuspensionObjectionService.submit` uz `WITHDRAWAL_PROPOSED` |
+| `prigovor-povlacenja` | Prigovor na povlačenje registracijskog broja | **ulazno** (nova vrsta) | čl. 71. — `PodnesakPdfGenerator` (skraćeni zahtjev) | `SuspensionObjectionService.submit` uz `WITHDRAWN` |
 | `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `opoziv` | `RnService.reactivate` |
 
 Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i šalje poziv na
@@ -112,15 +112,21 @@ zahtjev „Zahtjev za dodjelu…" (`StrDocumentType.egopVrstaNaziv()`); naš naz
 `ZupTemplateLoaderTest` drži popis naziva iz šifrarnika u šahu.
 
 **Očitovanje i prigovor iznajmljivača** (bug s testiranja MINTS-a, studeni 2026.) četiri su ulazne vrste
-pismena, po statusu broja pri predaji (`StrDocumentType.podnesakNaAkt`). **Predloška nemaju:** glavni
-dokument pismena je datoteka koju je iznajmljivač učitao (PDF, DOC ili DOCX; `KreirajDokumentZaPismeno`
-nosi samo `extension`, koja se uzima iz vrste potvrđene sadržajem), a njegove ostale datoteke idu u eGOP kao
-prilozi pismena (`VrstaVlasnika.OBJECTION`). Pismeno nastaje nakon commita predaje
+pismena, po statusu broja pri predaji (`StrDocumentType.podnesakNaAkt`). Glavni dokument pismena je **PDF
+podneska** (`PodnesakPdfGenerator`, klijent studeni 2026.): skraćeni obrazac zahtjeva u istom izgledu
+(`PdfObrazac`) — adresat, naslov i vrsta podneska, datum zaprimanja, KLASA i URBROJ, RB, „Odnosi se na" (akt
+na koji podnesak odgovara, s njegovim oznakama), podnositelj, objekt (skupina i adresa) i popis učitanih
+datoteka; bez kapaciteta, ostalih sadržaja, izjave i napomene. Datoteka koju je iznajmljivač učitao (PDF, DOC
+ili DOCX) i njegove ostale datoteke su prilozi pismena. Adresat je u postupku MINTS-a Ministarstvo
+(`str.documents.tijelo`), a u županijskom organizacija i jedinica službenika koji urudžbira. Pismeno nastaje
+nakon commita predaje
 (`PodnesakFilingListener`, `act_ref` = `PRIGOVOR:<objection_id>`) i ide u predmet koji bira
 `EgopFilingService.predmetZaPostupak`, **iza** akta na koji odgovara (`pobijaniAkt()`, prijelaz
 `suspension_objection.rn_log_id`); dok taj akt nije urudžbiran, čeka bez trošenja pokušaja
-(`EgopAktDispatcher`). Ne pečati se i ne ide u KP. Raniji predložak `prigovor` („Prigovor na prijedlog
-suspenzije") uklonjen je: nitko ga nije slao, a dokument je sada ono što je stranka učitala.
+(`EgopAktDispatcher`). PDF se renderira nakon `KreirajPismeno2` (oznake iz eGOP-a) i sprema na pismeno prije
+prilaganja, pa ga retry ne renderira ponovo; datoteka stranke ide kao prilog 1 prije glavnog dokumenta
+(idempotentno preko `DohvatiListuPrilogaPismena`), a ostale datoteke od priloga 2. Ne pečati se i ne ide u KP.
+Raniji predložak `prigovor` („Prigovor na prijedlog suspenzije") uklonjen je: nitko ga nije slao.
 
 **Županijski postupak** (T16): kad akt na koji podnesak odgovara ima ručnu KLASU i URBROJ
 (`RegistrationNumberLogRepository.findRucniAkt(suspension_objection.rn_log_id)`), podnesak ne ide u eGOP.
@@ -136,9 +142,11 @@ i zatvoren (`CLOSED`) prigovor — sva ulazna pismena moraju biti urudžbirana �
 Popis prigovora nosi `zupanijskiPostupak` i `urudzbiranje {klasa, urBroj, datum}`.
 
 **„Dokumenti" RB-a** (`RnDocumentsService`) prikazuju podnesak čim ima URBROJ — u postupku MINTS-a kad ga
-vrati eGOP, u županijskom kad ga službenik upiše — sa slugom vrste, datumom zapisa pismena i prilozima
-prigovora; dokument je `GET /api/rn/{rn}/documents/podnesak/{objectionId}` (datoteka stranke, PDF inline,
-Word kao privitak; vlasnik ili službenik u opsegu, neurudžbiran ili tuđi je 404). Prigovor nosi dokument i do
+vrati eGOP, u županijskom kad ga službenik upiše — sa slugom vrste i datumom zapisa pismena. Dokument je
+pohranjeni PDF podneska (`/documents/pohranjeno/{id}`); pismeno urudžbirano prije PDF-a podneska ga dobiva
+pri prvom dohvatu (`PodnesakPdfService.zaPismeno`, oznake s retka, zaglavlje ručnog pismena = izdavatelj akta na
+koji odgovara). Prilozi su datoteka stranke (`GET /api/rn/{rn}/documents/podnesak/{objectionId}`, PDF inline,
+Word kao privitak; vlasnik ili službenik u opsegu, neurudžbiran ili tuđi je 404) i njezine ostale datoteke. Prigovor nosi dokument i do
 5 priloga (`app.attachments.max-per-objection=6`, multipart do 62 MB).
 
 > Natpisi statusa i okidača žive u `documents/hr/labels.properties`. `ZupContextFactory` traži

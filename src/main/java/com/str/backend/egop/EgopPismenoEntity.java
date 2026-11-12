@@ -193,10 +193,10 @@ public class EgopPismenoEntity {
     }
 
     /**
-     * Podnesak stranke na akt (očitovanje, prigovor): ulazno pismeno bez vlastitog dokumenta. Glavni
-     * dokument je datoteka koju je stranka učitala i ostaje samo na prigovoru
-     * ({@code suspension_objection.file_content}, nepromjenjiva), pa se ne kopira ovamo: {@code pdf_content}
-     * ostaje prazan, a dokument može biti i DOC ili DOCX.
+     * Podnesak stranke na akt (očitovanje, prigovor): ulazno pismeno. Glavni dokument je PDF podneska
+     * ({@code PodnesakPdfService}), koji nosi KLASU i URBROJ pa nastaje tek nakon {@code KreirajPismeno2} —
+     * do tada je {@code pdf_content} prazan. Datoteke koje je stranka učitala (i njezin glavni dokument,
+     * {@code suspension_objection.file_content}) idu uz pismeno kao prilozi.
      */
     public static EgopPismenoEntity forPodnesak(UUID submissionId, String rn, UUID objectionId,
                                                 String vrstaPismenaNaziv) {
@@ -233,12 +233,14 @@ public class EgopPismenoEntity {
     /**
      * Podnesak stranke (očitovanje, prigovor) u postupku koji vodi županijski službenik (T16): ne ide u eGOP,
      * nego ga službenik urudžbira ručno, upisom KLASE i URBROJ-a. Kao {@link #rucniAkt} je odmah
-     * {@code SYNCED} (retry job i prilozi ga preskaču), a kao {@link #forPodnesak} nema vlastiti dokument —
-     * glavni dokument je datoteka s prigovora.
+     * {@code SYNCED} (retry job i prilozi ga preskaču).
+     *
+     * @param pdf PDF podneska sa zaglavljem županije i upisanim brojevima ({@code PodnesakPdfService})
      */
     public static EgopPismenoEntity rucniPodnesak(UUID submissionId, String rn, UUID objectionId,
-                                                  String vrstaPismenaNaziv, String klasa, String urBroj) {
+                                                  String vrstaPismenaNaziv, String klasa, String urBroj, byte[] pdf) {
         EgopPismenoEntity e = forPodnesak(submissionId, rn, objectionId, vrstaPismenaNaziv);
+        e.pdfContent = pdf;
         e.klasa = klasa;
         e.urBroj = urBroj;
         e.rucno = true;
@@ -291,6 +293,15 @@ public class EgopPismenoEntity {
         this.status = EgopSyncStatus.SYNCED;
         this.syncError = null;
         this.nextAttemptAt = null;
+        this.updatedAt = Instant.now();
+    }
+
+    /**
+     * Glavni dokument podneska na akt je priložen, ali pismeno <b>nije dovršeno</b>: iza njega ide izvornik stranke
+     * kao prilog 1, pa status ostaje (ne {@code SYNCED}) i retry job ga vidi. Dovršava ga {@link #markSynced}.
+     */
+    public void markGlavniDokumentPrilozen() {
+        this.documentAttached = true;
         this.updatedAt = Instant.now();
     }
 

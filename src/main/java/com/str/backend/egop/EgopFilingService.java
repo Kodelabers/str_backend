@@ -512,34 +512,56 @@ public class EgopFilingService {
     }
 
     /**
-     * Glavni dokument podneska stranke kakav je učitan.
+     * Dokument kakav ga je podnositelj učitao (očitovanje, prigovor).
      *
+     * @param naziv      naziv datoteke — ide kao naziv priloga
      * @param ekstenzija bez točke ({@code pdf}, {@code doc}, {@code docx}) — eGOP po njoj tipizira dokument
      */
-    public record PodnesakDokument(byte[] sadrzaj, String ekstenzija) {}
+    public record PodnesakDokument(String naziv, byte[] sadrzaj, String ekstenzija) {}
+
+    /** Dokumenti podneska: glavni (PDF podneska, s oznakama pismena) i izvorni dokument podnositelja. */
+    public interface PodnesakDokumenti {
+
+        /** PDF podneska s KLASOM i URBROJ-em pismena — renderira se tek kad pismeno postoji. */
+        byte[] pdf(FilingReference filing);
+
+        /** Dokument koji je podnositelj učitao; ide uz pismeno kao prvi prilog. */
+        PodnesakDokument izvornik();
+    }
 
     /**
      * Urudžbira podnesak stranke na akt (očitovanje, prigovor) kao <b>ulazno</b> pismeno u predmet koji bira
-     * {@link #predmetZaPostupak}, pa prilaže dokument koji je stranka učitala i njezine ostale datoteke kao
-     * priloge. Ništa se ne renderira, ne pečati ni ne otprema u korisnički pretinac.
+     * {@link #predmetZaPostupak}. Glavni dokument je PDF podneska (kao PDF zahtjeva), renderiran nakon
+     * {@code KreirajPismeno2} s KLASOM i URBROJ-em pismena i spremljen na pismeno; dokument koji je stranka
+     * učitala ide kao prvi prilog, a njezine ostale datoteke iza njega. Ne pečati se i ne otprema u
+     * korisnički pretinac.
      *
      * <p>Redoslijed (podnesak iza akta na koji odgovara) drži {@link EgopAktDispatcher}; ovdje se samo
-     * nastavlja gdje je prethodni pokušaj stao: kreirano pismeno ({@code jop}) se ne kreira ponovo, a
-     * priloženi dokument ne prilaže ponovo.
+     * nastavlja gdje je prethodni pokušaj stao, kao kod zahtjeva: kreirano pismeno ({@code jop}) se ne kreira
+     * ponovo, priloženi glavni dokument ({@code document_attached}) se ne prilaže ponovo, a izvornik koji eGOP
+     * već ima kao prilog 1 se ne šalje ponovo ({@link EgopPrilozi#prilogIzvornika}).
+     *
+     * <p>Redoslijed kao kod ostalih pismena: KreirajPismeno2 → PDF → glavni dokument → izvornik (prilog 1) →
+     * tek onda {@code SYNCED} → ostale datoteke od priloga 2. Do izvornika pismeno ostaje nedovršeno, pa ga
+     * {@code EgopRetryJob} vidi i doprilaže izvornik.
      */
     public void filePodnesak(EgopPismenoEntity podnesak, SubmissionEntity submission, LessorEntity lessor,
-                             String korisnik, PodnesakDokument dokument) throws EgopException {
+                             String korisnik, PodnesakDokumenti dokumenti) throws EgopException {
         if (podnesak.getSmjer() != EgopPismenoEntity.Smjer.ULAZNO) {
             throw new EgopBadRequestException("Podnesak " + podnesak.getId() + " nije ulazno pismeno");
         }
-        if (dokument.sadrzaj() == null || dokument.sadrzaj().length == 0) {
+        PodnesakDokument izvornik = dokumenti.izvornik();
+        if (izvornik.sadrzaj() == null || izvornik.sadrzaj().length == 0) {
             throw new EgopBadRequestException("Podnesak " + podnesak.getId() + " nema dokument — uredsko poslovanje"
                     + " traži dokument uz svako pismeno, pa se prazan podnesak ne šalje.");
         }
 
-        Integer subjektOznaka = ensureSubjekt(lessor);
-        String klasa = null;
+        // Predmet (i SOAP provjera predmetPostoji) treba samo za kreiranje pismena; retry već kreiranog pismena
+        // KLASU čita sa submissiona, a predmet traži tek ako je tamo nema, a PDF još treba renderirati.
+        // KLASA predmeta akata RB-a (submission.egop_akti_klasa) — mijenja se s predmetom po postupku.
+        String klasa = submission.getEgopAktiKlasa();
         if (!podnesak.isFiled()) {
+            Integer subjektOznaka = ensureSubjekt(lessor);
             PredmetAkta predmet = predmetZaPostupak(podnesak, submission, lessor, subjektOznaka, korisnik);
             klasa = predmet.klasa();
             Kreirano kreirano = kreirajPismeno(predmet.uredskaGodina(), predmet.rbrPredmeta(),
@@ -550,12 +572,37 @@ public class EgopFilingService {
                     kreirano.vrsta().sifra(), kreirano.vrsta().privremena());
         }
 
-        // markDocumentAttached ujedno postavlja SYNCED — pismeno je urudžbirano kad ima glavni dokument.
-        attachDocumentOnce(podnesak, dokument.sadrzaj(), dokument.ekstenzija(), korisnik);
+        if (!podnesak.isDocumentAttached()) {
+            byte[] pdf = podnesak.getPdfContent();
+            if (pdf == null || pdf.length == 0) {
+                if (klasa == null) {
+                    klasa = predmetZaPostupak(podnesak, submission, lessor, ensureSubjekt(lessor), korisnik).klasa();
+                }
+                pdf = dokumenti.pdf(new FilingReference(klasa, podnesak.getUrBroj(), podnesak.getJop()));
+                podnesak.replacePdf(pdf);
+                store.replacePdf(podnesak.getId(), pdf);
+            }
+            KreirajDokumentZaPismeno request = new KreirajDokumentZaPismeno();
+            request.setUserName(korisnik);
+            request.setJop(podnesak.getJop());
+            request.setExtension("pdf");
+            request.setAttachment(pdf);
+            egopClient.kreirajDokumentZaPismeno(request);
+            // Glavni dokument je priložen (document_attached — ne prilaže se ponovo), ali pismeno još nije
+            // dovršeno: izvornik ide iza njega.
+            podnesak.markGlavniDokumentPrilozen();
+            store.markGlavniDokumentPrilozen(podnesak.getId());
+        }
 
-        log.info("egop_podnesak_filed pismeno={} rn={} vrsta='{}' klasa={} urbroj={} ekstenzija={} korisnik={}",
-                podnesak.getId(), podnesak.getRn(), podnesak.getVrstaPismenaNaziv(), klasa, podnesak.getUrBroj(),
-                dokument.ekstenzija(), korisnik);
+        if (!podnesak.isSynced()) {
+            prilozi.prilogIzvornika(podnesak, korisnik, izvornik.naziv(), izvornik.ekstenzija(), izvornik.sadrzaj());
+            podnesak.markSynced();
+            store.markPismenoSynced(podnesak.getId());
+        }
+
+        log.info("egop_podnesak_filed pismeno={} rn={} vrsta='{}' klasa={} urbroj={} izvornik='{}' korisnik={}",
+                podnesak.getId(), podnesak.getRn(), podnesak.getVrstaPismenaNaziv(), klasa,
+                podnesak.getUrBroj(), izvornik.naziv(), korisnik);
 
         // Ostale datoteke stranke (T17, vlasnik OBJECTION) nakon glavnog dokumenta; ne bacaju iznimke.
         prilozi.prilozi(podnesak, korisnik);
@@ -652,7 +699,7 @@ public class EgopFilingService {
 
     /**
      * {@code KreirajDokumentZaPismeno} nema naziv datoteke — eGOP dokument tipizira samo po {@code extension},
-     * pa ona mora odgovarati sadržaju (podnesak stranke može biti i DOC ili DOCX).
+     * pa ona mora odgovarati sadržaju.
      */
     private void attachDocumentOnce(EgopPismenoEntity pismeno, byte[] dokument, String ekstenzija, String korisnik)
             throws EgopException {

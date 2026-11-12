@@ -8,6 +8,7 @@ import com.str.backend.document.StrDocumentType;
 import com.str.backend.egop.exception.EgopException;
 import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
+import com.str.backend.objection.PodnesakPdfService;
 import com.str.backend.objection.SuspensionObjectionEntity;
 import com.str.backend.objection.SuspensionObjectionLookup;
 import com.str.backend.request.SubmissionEntity;
@@ -32,8 +33,8 @@ import java.util.UUID;
  * ponovnog pokušaja. Miješanje bi značilo da pad suspenzije mijenja status registracije.
  *
  * <p>Isti dispatcher šalje i podneske stranke na akt (očitovanje, prigovor; {@code act_ref}
- * {@code PRIGOVOR:<objection_id>}): ulazno pismeno s dokumentom koji je stranka učitala, iza akta na koji
- * odgovara ({@link #dispatchPodnesak}).
+ * {@code PRIGOVOR:<objection_id>}): ulazno pismeno s PDF-om podneska kao glavnim dokumentom i dokumentima koje
+ * je stranka učitala kao prilozima, iza akta na koji odgovara ({@link #dispatchPodnesak}).
  *
  * <p><b>Ne drži transakciju</b> preko SOAP poziva — upisi idu kroz {@link EgopFilingStore},
  * svaki u vlastitoj kratkoj transakciji.
@@ -52,6 +53,7 @@ public class EgopAktDispatcher {
     private final RnLifecycleLookup lookup;
     private final EgopAktiBezSifre bezSifre;
     private final SuspensionObjectionLookup prigovori;
+    private final PodnesakPdfService podnesakPdf;
 
     public EgopAktDispatcher(EgopFilingStore store,
                              LessorRepository lessorRepository,
@@ -61,7 +63,9 @@ public class EgopAktDispatcher {
                              StrDocumentService documentService,
                              RnLifecycleLookup lookup,
                              EgopAktiBezSifre bezSifre,
-                             SuspensionObjectionLookup prigovori) {
+                             SuspensionObjectionLookup prigovori,
+                             PodnesakPdfService podnesakPdf) {
+        this.podnesakPdf = podnesakPdf;
         this.store = store;
         this.lessorRepository = lessorRepository;
         this.filingService = filingService;
@@ -128,8 +132,9 @@ public class EgopAktDispatcher {
     }
 
     /**
-     * Podnesak stranke na akt (očitovanje, prigovor) ide u eGOP kao ulazno pismeno, s dokumentom koji je
-     * stranka učitala ({@code suspension_objection.file_content}) i njezinim ostalim datotekama kao prilozima.
+     * Podnesak stranke na akt (očitovanje, prigovor) ide u eGOP kao ulazno pismeno: glavni dokument je PDF
+     * podneska sa zaglavljem Ministarstva ({@link PodnesakPdfService}), a dokument koji je stranka učitala
+     * ({@code suspension_objection.file_content}) i njezine ostale datoteke su prilozi.
      * U predmet ide tek <b>iza</b> akta na koji odgovara ({@link StrDocumentType#pobijaniAkt()}, prijelaz
      * {@code rn_log_id}): dok taj akt nije urudžbiran, podnesak čeka bez trošenja pokušaja, kao obavijest o
      * opozivu iza zahtjeva ({@link #cekaPrethodno}). Pad slanja troši pokušaj i ponavlja ga {@link EgopRetryJob}.
@@ -143,7 +148,7 @@ public class EgopAktDispatcher {
             if (!podnesak.isFiled() && cekaAkt(podnesak, prigovor.getRnLogId())) {
                 return;
             }
-            filingService.filePodnesak(podnesak, submission, lessor, korisnik.za(podnesak), dokument(prigovor));
+            filingService.filePodnesak(podnesak, submission, lessor, korisnik.za(podnesak), dokumenti(prigovor));
         } catch (EgopException | RuntimeException e) {
             handleFailure(podnesak, e);
         }
@@ -177,13 +182,28 @@ public class EgopAktDispatcher {
         return cekaPrethodno(podnesak, akt.filter(a -> !a.isRucno()), "pobijani_akt", "akta");
     }
 
-    /** Glavni dokument kakav je učitan; ekstenzija iz vrste koju je sadržaj potvrdio pri predaji. */
-    private static EgopFilingService.PodnesakDokument dokument(SuspensionObjectionEntity prigovor) {
+    /** PDF podneska (zaglavlje Ministarstva, oznake pismena) i izvornik podnositelja. */
+    private EgopFilingService.PodnesakDokumenti dokumenti(SuspensionObjectionEntity prigovor) {
+        return new EgopFilingService.PodnesakDokumenti() {
+            @Override
+            public byte[] pdf(FilingReference filing) {
+                return podnesakPdf.renderNakonCommita(prigovor, podnesakPdf.zaglavljeMinistarstva(), filing);
+            }
+
+            @Override
+            public EgopFilingService.PodnesakDokument izvornik() {
+                return EgopAktDispatcher.izvornik(prigovor);
+            }
+        };
+    }
+
+    /** Dokument kakav je učitan; ekstenzija iz vrste koju je sadržaj potvrdio pri predaji. */
+    static EgopFilingService.PodnesakDokument izvornik(SuspensionObjectionEntity prigovor) {
         String ekstenzija = VrstaDatoteke.poContentType(prigovor.getContentType())
                 .map(VrstaDatoteke::ekstenzija)
                 .orElseThrow(() -> new IllegalStateException("Prigovor " + prigovor.getObjectionId()
                         + " ima nepoznat content_type '" + prigovor.getContentType() + "'"));
-        return new EgopFilingService.PodnesakDokument(prigovor.getFileContent(), ekstenzija);
+        return new EgopFilingService.PodnesakDokument(prigovor.getFileName(), prigovor.getFileContent(), ekstenzija);
     }
 
     /**
