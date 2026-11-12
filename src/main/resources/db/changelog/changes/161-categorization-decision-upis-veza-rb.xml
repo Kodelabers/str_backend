@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        T19: potvrda upisa objekta sada jedinicu TuRegistra upisuje i na smještaj RB-a
+        (accommodation.facility_id), da opoziv i povlačenje broj obrišu i iz str.facility. Upisi
+        potvrđeni prije toga imaju jedinicu samo na rješenju — ovdje se prenose na smještaj.
+
+        Samo smještaj bez veze: već vezan (rješenje uz neverificirani objekt iz eTurizma) zadržava
+        svoju, kao i u AdminCategorizationDecisionService.confirmRegistration. Aktivno rješenje je
+        najviše jedno po RB-u (126), pa MAX ne bira između više vrijednosti.
+    -->
+    <changeSet id="161-categorization-decision-upis-veza-rb" author="str-backend">
+        <sql>
+            UPDATE str_rn.accommodation acc
+               SET facility_id = (SELECT MAX(d.facility_id)
+                                    FROM str_rn.categorization_decision d
+                                    JOIN str_rn.registration_number r ON r.rn = d.rn
+                                   WHERE r.accommodation_id = acc.accommodation_id
+                                     AND d.status = 'VERIFIED'
+                                     AND d.facility_id IS NOT NULL
+                                     AND TRIM(d.facility_id) &lt;&gt; '')
+             WHERE (acc.facility_id IS NULL OR TRIM(acc.facility_id) = '')
+               AND EXISTS (SELECT 1
+                             FROM str_rn.categorization_decision d
+                             JOIN str_rn.registration_number r ON r.rn = d.rn
+                            WHERE r.accommodation_id = acc.accommodation_id
+                              AND d.status = 'VERIFIED'
+                              AND d.facility_id IS NOT NULL
+                              AND TRIM(d.facility_id) &lt;&gt; '');
+        </sql>
+        <rollback/>
+    </changeSet>
+
+</databaseChangeLog>

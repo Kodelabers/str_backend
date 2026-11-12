@@ -739,15 +739,21 @@ public interface StrFacilityRepository extends JpaRepository<StrFacilityEntity, 
      * može dobiti novi. Briše samo ako je u polju upravo taj broj — ništa drugo ne dira.
      * {@code REQUIRES_NEW} iz istog razloga kao {@link #writeBackRegistrationNumber}.
      *
-     * @return 1 kad je obrisan, 0 kad objekt ne postoji ili u polju stoji drugi broj
+     * <p>Briše se na zadanoj jedinici i na ostalim jedinicama istog objekta ({@code system_uuid}) koje drže
+     * isti broj: kod novog objekta s rješenjem (T19) službenik broj upisuje ručno i može ga upisati na više
+     * jedinica. Usporedba ne razlikuje velika i mala slova ni rubne razmake, kao i potvrda upisa
+     * ({@link #findActiveByRegistrationNumber}).
+     *
+     * @return broj jedinica s kojih je broj obrisan; 0 kad objekt ne postoji ili u polju stoji drugi broj
      */
     @Modifying
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Query(value = """
             UPDATE str.facility
                SET registration_number = NULL
-             WHERE id = :facilityId
-               AND registration_number = :rn
+             WHERE upper(trim(registration_number)) = upper(trim(:rn))
+               AND (id = :facilityId
+                    OR system_uuid = (SELECT fx.system_uuid FROM str.facility fx WHERE fx.id = :facilityId))
             """, nativeQuery = true)
     int clearRegistrationNumber(@Param("facilityId") long facilityId, @Param("rn") String rn);
 }

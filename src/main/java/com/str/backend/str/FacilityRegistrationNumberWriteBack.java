@@ -117,7 +117,7 @@ public class FacilityRegistrationNumberWriteBack {
             if (updated == 0) {
                 log.info("facility_clear_no_row facility={} rn={} — u str.facility nije taj broj", id, rn);
             } else {
-                log.info("facility_clear_ok facility={} rn={}", id, rn);
+                log.info("facility_clear_ok facility={} rn={} units={}", id, rn, updated);
             }
         } catch (RuntimeException e) {
             // Namjerno se guta: povlačenje je već commitano, a ovo je upis u tuđi registar.

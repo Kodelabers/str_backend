@@ -165,6 +165,28 @@ class StrFacilityRegistrationNumberQueryTest {
                 .containsExactly(8015L);
     }
 
+    /**
+     * T19: službenik broj novog objekta upisuje ručno, možda na više jedinica istog objekta — povlačenje ga
+     * briše sa svih njih, ali ne s drugog objekta ni s jedinice koja drži drugi broj.
+     */
+    @Test
+    void clear_removesRnFromAllUnitsOfTheSameObject() {
+        jdbc.update("INSERT INTO str.facility (id, active, registration_number, system_uuid) VALUES (?, true, ?, ?)",
+                8021, WITHDRAWN, "obj-c");
+        jdbc.update("INSERT INTO str.facility (id, active, registration_number, system_uuid) VALUES (?, true, ?, ?)",
+                8022, " " + WITHDRAWN.toLowerCase(), "obj-c");
+        jdbc.update("INSERT INTO str.facility (id, active, registration_number, system_uuid) VALUES (?, true, ?, ?)",
+                8023, FOREIGN, "obj-c");
+        jdbc.update("INSERT INTO str.facility (id, active, registration_number, system_uuid) VALUES (?, true, ?, ?)",
+                8024, WITHDRAWN, "obj-d");
+
+        assertThat(facilityRepository.clearRegistrationNumber(8021, WITHDRAWN)).isEqualTo(2);
+        assertThat(stored(8021)).isNull();
+        assertThat(stored(8022)).isNull();
+        assertThat(stored(8023)).isEqualTo(FOREIGN);
+        assertThat(stored(8024)).isEqualTo(WITHDRAWN);
+    }
+
     /** Brisanje pri povlačenju pogađa objekt preko RB → smještaj → facility_id. */
     @Test
     void findFacilityIdByRn_followsRnToFacility() {
