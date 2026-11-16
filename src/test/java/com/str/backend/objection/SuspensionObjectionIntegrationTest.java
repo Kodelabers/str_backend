@@ -1,5 +1,6 @@
 package com.str.backend.objection;
 
+import com.str.backend.rn.AktSluzbenika;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.common.Zagreb;
@@ -40,6 +41,16 @@ import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import com.str.backend.attachment.PrilogException;
+import com.str.backend.attachment.PrilogRepository;
+import com.str.backend.attachment.PrilogService;
+import com.str.backend.attachment.PrilogVlasnik;
+import com.str.backend.rn.RegistrationNumberLogEntity;
+import com.str.backend.rn.RegistrationNumberLogRepository;
+import java.nio.charset.StandardCharsets;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.mock.web.MockMultipartFile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -73,6 +84,8 @@ class SuspensionObjectionIntegrationTest {
     @Autowired private com.str.backend.rn.RnReissueGuard reissueGuard;
     @Autowired private com.str.backend.rn.RnVerification verification;
     @Autowired private ApplicationEvents events;
+    @Autowired private PrilogService prilogService;
+    @Autowired private RegistrationNumberLogRepository logRepository;
 
     private UUID lessorId;
 
@@ -139,8 +152,8 @@ class SuspensionObjectionIntegrationTest {
     }
 
     /** Obustava povlačenja uvijek vraća broj u ACTIVE — i kad je pokrenuto iz bilo kojeg stojećeg statusa. */
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.EnumSource(value = RnStatus.class,
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class,
             names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
     void revokingWithdrawalProposal_alwaysReturnsToActive(RnStatus from) {
         String official = "INTERNAL:12345678903";
@@ -156,7 +169,7 @@ class SuspensionObjectionIntegrationTest {
 
         rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
                 null, official, List.of());
-        rnService.revokeWithdrawalProposal("HR00000021", official);
+        rnService.revokeWithdrawalProposal("HR00000021", official, AktSluzbenika.NEMA);
 
         RnEntity back = rnRepository.findById("HR00000021").orElseThrow();
         assertThat(back.getStatus()).isEqualTo(RnStatus.ACTIVE);
@@ -210,7 +223,7 @@ class SuspensionObjectionIntegrationTest {
         assertThat(withdrawn.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
         assertThat(withdrawn.getValidTo()).isNotNull();
 
-        adminService.accept("HR00000021", id, official, null, null);
+        adminService.accept("HR00000021", id, official, AktSluzbenika.NEMA);
 
         RnEntity reinstated = rnRepository.findById("HR00000021").orElseThrow();
         assertThat(reinstated.getStatus()).isEqualTo(RnStatus.ACTIVE);
@@ -219,6 +232,73 @@ class SuspensionObjectionIntegrationTest {
                 .isEqualTo(SuspensionObjectionStatus.ACCEPTED);
         assertThat(events.stream(RnLifecycleEvent.class).filter(e -> e.trigger() == RnTrigger.REINSTATE))
                 .singleElement();
+    }
+
+    /**
+     * UAT 13.11.: uvažavanje s bilješkom i prilozima službenika nad stvarnom pohranom — obrazloženje je na
+     * zapisu prijelaza ({@code akt_obrazlozenje}), a prilozi vezani uz taj zapis ({@code RN_LOG}, log_id), odakle
+     * ih akt, KP, e-pošta i „Dokumenti" RB-a čitaju.
+     */
+    @Test
+    void acceptWithStatementAndAttachments_storesThemOnTransitionLog() {
+        String official = "INTERNAL:12345678903";
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(8), null, official, List.of());
+        UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
+        Long prilogId = prilogService.stage(official, pdf("suglasnost.pdf")).id();
+
+        adminService.accept("HR00000021", id, official,
+                new AktSluzbenika(null, "  Stranka je dostavila suglasnost.  ", List.of(prilogId)));
+
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.ACTIVE);
+        RegistrationNumberLogEntity zapis = logRepository
+                .findFirstByRnAndTriggerNameOrderByOccurredAtDesc("HR00000021", RnTrigger.REVOKE_PROPOSAL.name())
+                .orElseThrow();
+        assertThat(zapis.getAktObrazlozenje()).isEqualTo("Stranka je dostavila suglasnost.");
+        assertThat(zapis.getReason()).isNull();
+        assertThat(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(zapis.getLogId())))
+                .extracting(PrilogRepository.PrilogSazetak::getNazivDatoteke)
+                .containsExactly("suglasnost.pdf");
+    }
+
+    /** Tuđi prilog (učitao ga je drugi službenik) poništava cijelo uvažavanje: prigovor i broj ostaju kakvi jesu. */
+    @Test
+    void acceptWithForeignAttachment_rollsBackEverything() {
+        String official = "INTERNAL:12345678903";
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(8), null, official, List.of());
+        UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
+        Long tudi = prilogService.stage("INTERNAL:98765432106", pdf("tudi.pdf")).id();
+
+        assertThatThrownBy(() -> adminService.accept("HR00000021", id, official,
+                new AktSluzbenika(null, "Obrazloženje", List.of(tudi))))
+                .isInstanceOfSatisfying(PrilogException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(PrilogException.NOT_FOUND));
+
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus())
+                .isEqualTo(RnStatus.SUSPENSION_PROPOSED);
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+        assertThat(logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc("HR00000021",
+                RnTrigger.REVOKE_PROPOSAL.name())).isEmpty();
+    }
+
+    /** Ručna obustava povlačenja s obrazloženjem: isto spremanje kao uvažavanje. */
+    @Test
+    void manualRevokeWithdrawalProposal_storesStatementOfReasons() {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(8),
+                null, official, List.of());
+
+        rnService.revokeWithdrawalProposal("HR00000021", official,
+                new AktSluzbenika(null, "Podaci su ispravljeni.", List.of()));
+
+        assertThat(logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc("HR00000021",
+                RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL.name()).orElseThrow().getAktObrazlozenje())
+                .isEqualTo("Podaci su ispravljeni.");
+    }
+
+    private static MockMultipartFile pdf(String naziv) {
+        return new MockMultipartFile("datoteka", naziv, "application/pdf",
+                ("%PDF-1.4\n" + naziv + "\n%%EOF").getBytes(StandardCharsets.US_ASCII));
     }
 
     /**
@@ -236,7 +316,7 @@ class SuspensionObjectionIntegrationTest {
                 "HR00000021", "HR00000022");
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWN)).getObjectionId();
 
-        assertThatThrownBy(() -> adminService.accept("HR00000021", id, official, null, null))
+        assertThatThrownBy(() -> adminService.accept("HR00000021", id, official, AktSluzbenika.NEMA))
                 .isInstanceOfSatisfying(com.str.backend.exception.ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
 
@@ -349,7 +429,7 @@ class SuspensionObjectionIntegrationTest {
         assertThat(objectionStatusOf("HR00000021")).as("očitovanje vrijedi i u WITHDRAWN")
                 .isEqualTo(SuspensionObjectionStatus.SUBMITTED);
 
-        adminService.accept("HR00000021", ocitovanje, official, null, null);
+        adminService.accept("HR00000021", ocitovanje, official, AktSluzbenika.NEMA);
         assertThat(objectionStatusOf("HR00000021")).as("ACTIVE").isNull();
     }
 
@@ -377,7 +457,7 @@ class SuspensionObjectionIntegrationTest {
         assertThat(rnRepository.findByLessorOib(OIB)).filteredOn(r -> r.rn().equals("HR00000021"))
                 .singleElement().satisfies(r -> assertThat(r.prijedlogIzSuspenzije()).isTrue());
 
-        rnService.revokeWithdrawalProposal("HR00000021", official);
+        rnService.revokeWithdrawalProposal("HR00000021", official, AktSluzbenika.NEMA);
         RnEntity back = rnRepository.findById("HR00000021").orElseThrow();
         assertThat(back.getStatus()).isEqualTo(RnStatus.ACTIVE);
         assertThat(back.isWithdrawalFromSuspended()).isFalse();

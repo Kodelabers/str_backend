@@ -4,7 +4,11 @@
 #
 # Akt zatvara postupak pokrenut „Obaviješću o prijedlogu suspenzije": stranka se očitovala
 # odnosno otklonila nedostatak, pa razloga za suspenziju više nema. Stranci je u korist, pa
-# po čl. 30. st. 2 ZUP-a nema potrebe za obrazloženjem ni uputom o pravnom lijeku.
+# po čl. 30. st. 2 ZUP-a obrazloženje nije obvezno, a upute o pravnom lijeku nema.
+#
+# UAT 13.11.2026: obrazloženje je neobavezno — službenik ga upisuje pri obustavi (ručno ili uvažavanjem
+# očitovanja), a sekcija „Obrazloženje" ispisuje se samo kad je upisano (${akt.obrazlozenje}; prazna
+# sekcija izostaje zajedno s naslovom). Prilozi službenika idu uz akt kao kod prijedloga.
 #
 # MINTS, studeni 2026.: propis o nadležnosti čl. 48. st. 2.; stranka se ne imenuje u uvodu nego u
 # točki 1. („dodijeljenog na zahtjev stranke: …"); bez razloga pokretanja postupka i bez točke o
@@ -19,6 +23,9 @@ ${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po slu
 1. Obustavlja se postupak suspenzije registracijskog broja ${rn.broj}, dodijeljenog na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
 
 2. Utvrđuje se da su razlozi za suspenziju otklonjeni te da registracijski broj ostaje važeći bez prekida.
+
+[OBRAZLOZENJE]
+${akt.obrazlozenje}
 
 [POTPISNIK]
 ${sluzbenik.potpisTijela}

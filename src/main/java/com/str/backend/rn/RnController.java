@@ -13,7 +13,9 @@ import com.str.backend.rn.dto.RnDocumentDto;
 import com.str.backend.rn.dto.RnResponse;
 import com.str.backend.rn.dto.RnSummaryDto;
 import com.str.backend.statistics.StatisticsExportService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,11 +25,13 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.lang.Nullable;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -155,6 +159,9 @@ public class RnController {
      * iz `POST /api/rn/attachments`, uz isti oblik zahtjeva kao ostali parametri (tijela nema), pa
      * poziv bez priloga ostaje kakav je bio. Najviše 5 priloga i zajedno do
      * `app.attachments.official-max-total` (15 MB, dostava e-poštom non-EU iznajmljivaču).
+     *
+     * Obustava i reaktivacija (UAT 13.11.) obrazloženje i priloge primaju u neobaveznom JSON tijelu
+     * (AktSluzbenikaRequest) — obrazloženje je predugo za query parametar.
      */
 
     @PostMapping("/{rn}/suspend")
@@ -173,24 +180,43 @@ public class RnController {
                 prilogIds != null ? prilogIds : List.of(), rucni));
     }
 
+    /**
+     * Neobavezno JSON tijelo obustave i reaktivacije (UAT 13.11.): {@code note} je obrazloženje službenika koje
+     * akt ispisuje kao sekciju „Obrazloženje" (samo kad je upisano), a {@code prilogIds} prilozi službenika uz
+     * akt (id-evi iz {@code POST /api/rn/attachments}, ista pravila kao uz prijedlog). KLASA i URBROJ ostaju
+     * query parametri, pa poziv bez tijela radi kao i dosad.
+     */
+    record AktSluzbenikaRequest(@Nullable @Size(max = AktSluzbenika.MAX_OBRAZLOZENJE) String note,
+                                @Nullable List<Long> prilogIds) {
+
+        /** Tijelo zahtjeva uz ručne oznake; bez tijela samo ručne oznake. */
+        static AktSluzbenika akt(AktSluzbenikaRequest body, RucniAkt rucni) {
+            return body == null ? AktSluzbenika.rucni(rucni) : new AktSluzbenika(rucni, body.note(), body.prilogIds());
+        }
+    }
+
     @PostMapping("/{rn}/revoke-proposal")
     public RnResponse revokeProposal(@PathVariable String rn,
                                      @RequestParam(required = false) String klasa,
                                      @RequestParam(required = false) String urbroj,
+                                     @RequestBody(required = false) @Valid AktSluzbenikaRequest body,
                                      Authentication authentication) {
         requireInScope(rn, authentication);
         RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
-        return mapper.toResponse(service.revokeProposal(rn, actor(authentication), rucni));
+        return mapper.toResponse(service.revokeProposal(rn, actor(authentication),
+                AktSluzbenikaRequest.akt(body, rucni)));
     }
 
     @PostMapping("/{rn}/reactivate")
     public RnResponse reactivate(@PathVariable String rn,
                                  @RequestParam(required = false) String klasa,
                                  @RequestParam(required = false) String urbroj,
+                                 @RequestBody(required = false) @Valid AktSluzbenikaRequest body,
                                  Authentication authentication) {
         requireInScope(rn, authentication);
         RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
-        return mapper.toResponse(service.reactivate(rn, actor(authentication), rucni));
+        return mapper.toResponse(service.reactivate(rn, actor(authentication),
+                AktSluzbenikaRequest.akt(body, rucni)));
     }
 
     /**
@@ -215,15 +241,20 @@ public class RnController {
                 actor(authentication), prilogIds != null ? prilogIds : List.of(), rucni));
     }
 
-    /** T12: obustava postupka povlačenja — broj se uvijek vraća u ACTIVE. */
+    /**
+     * T12: obustava postupka povlačenja — broj se uvijek vraća u ACTIVE. Neobavezno tijelo kao kod
+     * {@link #revokeProposal} ({@link AktSluzbenikaRequest}).
+     */
     @PostMapping("/{rn}/revoke-withdrawal-proposal")
     public RnResponse revokeWithdrawalProposal(@PathVariable String rn,
                                                @RequestParam(required = false) String klasa,
                                                @RequestParam(required = false) String urbroj,
+                                               @RequestBody(required = false) @Valid AktSluzbenikaRequest body,
                                                Authentication authentication) {
         requireInScope(rn, authentication);
         RucniAkt rucni = rucniAkt.zaRadnju(authentication, klasa, urbroj);
-        return mapper.toResponse(service.revokeWithdrawalProposal(rn, actor(authentication), rucni));
+        return mapper.toResponse(service.revokeWithdrawalProposal(rn, actor(authentication),
+                AktSluzbenikaRequest.akt(body, rucni)));
     }
 
     /**

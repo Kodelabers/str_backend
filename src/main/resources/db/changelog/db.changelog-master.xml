@@ -314,4 +314,7 @@
     <!-- T19: već potvrđeni upisi — jedinica TuRegistra prenosi se s rješenja na smještaj RB-a. -->
     <include file="db/changelog/changes/161-categorization-decision-upis-veza-rb.xml"/>
 
+    <!-- UAT 13.11.: obrazloženje službenika na obavijesti o obustavi i reaktivaciji. -->
+    <include file="db/changelog/changes/162-rn-log-akt-obrazlozenje.xml"/>
+
 </databaseChangeLog>

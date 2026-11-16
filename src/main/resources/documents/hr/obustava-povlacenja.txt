@@ -5,8 +5,9 @@
 # EGOP_AKTI_BEZ_SIFRE (DEPLOY-*.md).
 #
 # Akt zatvara postupak pokrenut „Obaviješću o prijedlogu povlačenja": službenik ga je obustavio ili je
-# uvažio očitovanje stranke. Stranci je u korist, pa po čl. 30. st. 2 ZUP-a nema obrazloženja ni
-# upute o pravnom lijeku.
+# uvažio očitovanje stranke. Stranci je u korist, pa po čl. 30. st. 2 ZUP-a obrazloženje nije obvezno,
+# a upute o pravnom lijeku nema. Neobavezno obrazloženje službenika (UAT 13.11.2026) ispisuje se kao
+# sekcija „Obrazloženje" samo kad je upisano (${akt.obrazlozenje}).
 #
 # Obustava uvijek vraća broj u ACTIVE (odluka korisnika, T12; RnService.revokeWithdrawalProposal), i
 # kad je povlačenje predloženo iz suspenzije ili prijedloga suspenzije — postupak suspenzije time
@@ -23,6 +24,9 @@ ${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po slu
 1. Obustavlja se postupak povlačenja registracijskog broja ${rn.broj}, dodijeljenog na zahtjev stranke: ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
 
 2. Registracijski broj je važeći.
+
+[OBRAZLOZENJE]
+${akt.obrazlozenje}
 
 [POTPISNIK]
 ${sluzbenik.potpisTijela}

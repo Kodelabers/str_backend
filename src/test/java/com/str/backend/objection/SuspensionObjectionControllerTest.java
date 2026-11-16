@@ -1,5 +1,6 @@
 package com.str.backend.objection;
 
+import com.str.backend.rn.AktSluzbenika;
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.exception.GlobalExceptionHandler;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -12,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -92,7 +94,70 @@ class SuspensionObjectionControllerTest {
                         .content("{\"note\":\"Dostavljena suglasnost\"}"))
                 .andExpect(status().isNoContent());
 
-        verify(service).accept(RN, id, ACTOR, "Dostavljena suglasnost", null);
+        verify(service).accept(RN, id, ACTOR, new AktSluzbenika(null, "Dostavljena suglasnost", List.of()));
+    }
+
+    /** UAT 13.11.: prilozi službenika uz akt uvažavanja idu u tijelu, uz bilješku (obrazloženje akta). */
+    @Test
+    void accept_passesAttachments() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mvc.perform(post(BASE + "/{id}/accept", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"Obrazloženje\",\"prilogIds\":[11,12]}"))
+                .andExpect(status().isNoContent());
+
+        verify(service).accept(RN, id, ACTOR, new AktSluzbenika(null, "Obrazloženje", List.of(11L, 12L)));
+    }
+
+    @Test
+    void accept_withoutBody_hasNoNoteNorAttachments() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mvc.perform(post(BASE + "/{id}/accept", RN, id)).andExpect(status().isNoContent());
+
+        verify(service).accept(RN, id, ACTOR, AktSluzbenika.NEMA);
+    }
+
+    /** Bilješka (obrazloženje akta) duža od 1000 znakova je 400, bez odluke. */
+    @Test
+    void accept_tooLongNote_is400() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mvc.perform(post(BASE + "/{id}/accept", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"" + "a".repeat(1001) + "\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
+    }
+
+    /**
+     * Neuvažavanje nema akta (odluka korisnika, UAT 13.11.): tijelo nosi samo bilješku, a prilozi koje bi klijent
+     * ipak poslao se zanemaruju.
+     */
+    @Test
+    void reject_takesNoteOnly_attachmentsIgnored() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mvc.perform(post(BASE + "/{id}/reject", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"Nije dostavljena suglasnost\",\"prilogIds\":[11]}"))
+                .andExpect(status().isNoContent());
+
+        verify(service).reject(RN, id, ACTOR, "Nije dostavljena suglasnost", false);
+    }
+
+    @Test
+    void reject_tooLongNote_is400() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mvc.perform(post(BASE + "/{id}/reject", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"" + "a".repeat(1001) + "\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
     }
 
     @Test

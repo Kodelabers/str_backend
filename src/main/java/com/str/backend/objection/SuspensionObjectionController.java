@@ -2,6 +2,7 @@ package com.str.backend.objection;
 
 import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.exception.ForbiddenException;
+import com.str.backend.rn.AktSluzbenika;
 import com.str.backend.rn.RnScopeGuard;
 import com.str.backend.rn.RucniAkt;
 import com.str.backend.rn.RucniAktService;
@@ -44,10 +45,22 @@ public class SuspensionObjectionController {
         this.scopeGuard = scopeGuard;
     }
 
-    /** {@code klasa} i {@code urbroj}: ručni akt županijskog službenika uz uvažavanje (T16). */
-    record ResolveObjectionRequest(@Nullable @Size(max = 1000) String note,
+    /**
+     * Uvažavanje: {@code klasa} i {@code urbroj} su ručni akt županijskog službenika (T16); {@code note} je bilješka
+     * uz odluku i ujedno obrazloženje akta (UAT 13.11.); {@code prilogIds} su prilozi službenika uz akt (id-evi iz
+     * {@code POST /api/rn/attachments}).
+     */
+    record ResolveObjectionRequest(@Nullable @Size(max = AktSluzbenika.MAX_OBRAZLOZENJE) String note,
                                    @Nullable String klasa,
-                                   @Nullable String urbroj) {
+                                   @Nullable String urbroj,
+                                   @Nullable List<Long> prilogIds) {
+    }
+
+    /**
+     * Neuvažavanje: samo bilješka uz odluku. Akta tada nema, pa ni priloga ni obrazloženja (odluka korisnika,
+     * UAT 13.11.).
+     */
+    record RejectObjectionRequest(@Nullable @Size(max = AktSluzbenika.MAX_OBRAZLOZENJE) String note) {
     }
 
     /** KLASA i URBROJ kojima županijski službenik urudžbira podnesak (T16). */
@@ -96,13 +109,14 @@ public class SuspensionObjectionController {
         scopeGuard.requireInScope(rn, authentication);
         RucniAkt rucni = rucniAkt.zaRadnju(authentication, body != null ? body.klasa() : null,
                 body != null ? body.urbroj() : null);
-        service.accept(rn, id, actor(authentication), body != null ? body.note() : null, rucni);
+        service.accept(rn, id, actor(authentication), body == null ? AktSluzbenika.rucni(rucni)
+                : new AktSluzbenika(rucni, body.note(), body.prilogIds()));
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/reject")
     public ResponseEntity<Void> reject(@PathVariable String rn, @PathVariable UUID id,
-                                       @RequestBody(required = false) @Valid ResolveObjectionRequest body,
+                                       @RequestBody(required = false) @Valid RejectObjectionRequest body,
                                        Authentication authentication) {
         scopeGuard.requireInScope(rn, authentication);
         service.reject(rn, id, actor(authentication), body != null ? body.note() : null,

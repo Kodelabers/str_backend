@@ -48,6 +48,16 @@ public class RnStatusTransitionService {
     @Transactional
     public UUID transition(RnEntity rn, RnStatus target, RnTrigger trigger, String actor, String reason,
                            RucniAkt rucni) {
+        return transition(rn, target, trigger, actor, reason, rucni, null);
+    }
+
+    /**
+     * @param obrazlozenje obrazloženje službenika na aktu prijelaza (UAT 13.11., obustava i reaktivacija);
+     *                     {@code null} = akt bez sekcije „Obrazloženje"
+     */
+    @Transactional
+    public UUID transition(RnEntity rn, RnStatus target, RnTrigger trigger, String actor, String reason,
+                           RucniAkt rucni, String obrazlozenje) {
         RnStatus current = rn.getStatus();
         if (!current.canTransitionTo(target, trigger)) {
             throw new IllegalStatusTransitionException(
@@ -57,7 +67,7 @@ public class RnStatusTransitionService {
         // logId dodjeljuje factory, pa ga uzimamo s vlastite reference umjesto iz povratne
         // vrijednosti save() — identitet zapisa ne smije ovisiti o tome što repozitorij vrati.
         RegistrationNumberLogEntity zapis = RegistrationNumberLogEntity.transition(
-                rn.getRn(), current.name(), target.name(), trigger.name(), actor, reason, rucni);
+                rn.getRn(), current.name(), target.name(), trigger.name(), actor, reason, rucni, obrazlozenje);
         rnLogRepository.save(zapis);
         log.info("rn_transition rn={} from={} to={} trigger={} rucni_akt={}", rn.getRn(), current, target, trigger,
                 rucni != null);

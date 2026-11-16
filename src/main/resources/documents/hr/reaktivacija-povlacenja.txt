@@ -7,7 +7,9 @@
 # Po uzoru na reaktivaciju nakon suspenzije: službenik je uvažio prigovor stranke na povlačenje
 # (RnService.reinstate), pa je povučeni broj odmah ponovno aktivan i upisuje se natrag u eTurizam.
 # Status se mijenja pri uvažavanju, a ne dostavom, pa točka 2. važenje ne veže uz dan dostave. Akt je
-# stranci u korist, pa po čl. 30. st. 2 ZUP-a nema obrazloženja ni upute o pravnom lijeku.
+# stranci u korist, pa po čl. 30. st. 2 ZUP-a obrazloženje nije obvezno, a upute o pravnom lijeku nema.
+# Neobavezno obrazloženje službenika (UAT 13.11.2026) ispisuje se kao sekcija „Obrazloženje" samo kad je
+# upisano (${akt.obrazlozenje}).
 #
 # Struktura je ista kao na obavijesti o reaktivaciji: stranka je imenovana u uvodu, potpisuje
 # tijelo. Propis o nadležnosti je čl. 48. st. 2. (STR_PROPIS_POSTUPCI).
@@ -21,3 +23,6 @@ ${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${akt.propisNadleznosti}, po slu
 1. Uvažava se prigovor stranke i ukida povlačenje registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
 
 2. Registracijski broj ponovno je važeći i smještajna jedinica smije se oglašavati na internetskim platformama za kratkoročno iznajmljivanje smještaja.
+
+[OBRAZLOZENJE]
+${akt.obrazlozenje}

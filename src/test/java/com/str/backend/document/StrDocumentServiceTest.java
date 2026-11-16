@@ -29,6 +29,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
+import java.nio.charset.StandardCharsets;
+import org.junit.jupiter.params.provider.Arguments;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -336,11 +338,11 @@ class StrDocumentServiceTest {
 
         byte[] pdf = service(pdfa).render(type, RN, "razlog");
 
-        assertThat(new String(pdf, 0, 8, java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("%PDF-1.4");
+        assertThat(new String(pdf, 0, 8, StandardCharsets.US_ASCII)).isEqualTo("%PDF-1.4");
         PdfReader reader = new PdfReader(pdf);
         try {
             assertThat(reader.getCatalog().getAsArray(PdfName.OUTPUTINTENTS)).isNotNull();
-            String xmp = new String(reader.getMetadata(), java.nio.charset.StandardCharsets.UTF_8);
+            String xmp = new String(reader.getMetadata(), StandardCharsets.UTF_8);
             assertThat(xmp).contains("pdfaid:part").contains("1");
             assertThat(xmp).containsPattern("pdfaid:conformance[^A-Za-z]*B");
         } finally {
@@ -931,6 +933,86 @@ class StrDocumentServiceTest {
 
         assertThat(text).doesNotContain("nepotpuni i/ili netočni podaci");
         assertThat(text).doesNotContain("obustava postupka suspenzije");
+    }
+
+    // ---- UAT 13.11.: neobavezno obrazloženje službenika na obustavi i reaktivaciji
+
+    /** Akt → okidač prijelaza s kojeg čita obrazloženje ({@code StrDocumentService#zapisPrijelaza}). */
+    static Stream<Arguments> aktiSObrazlozenjem() {
+        return Stream.of(
+                Arguments.of(StrDocumentType.OBUSTAVA_SUSPENZIJE,
+                        "REVOKE_PROPOSAL", "SUSPENSION_PROPOSED"),
+                Arguments.of(StrDocumentType.REAKTIVACIJA,
+                        "REACTIVATE", "SUSPENDED"),
+                Arguments.of(StrDocumentType.OBUSTAVA_POVLACENJA,
+                        "REVOKE_WITHDRAWAL_PROPOSAL", "WITHDRAWAL_PROPOSED"),
+                Arguments.of(StrDocumentType.REAKTIVACIJA_POVLACENJA,
+                        "REINSTATE", "WITHDRAWN"));
+    }
+
+    /**
+     * Obrazloženje koje je službenik upisao ispisuje se kao zasebna sekcija „Obrazloženje" — iza izreke, a
+     * ispred potpisa, s odlomcima kako ih je upisao.
+     */
+    @ParameterizedTest
+    @MethodSource("aktiSObrazlozenjem")
+    void statementOfReasons_printedAsSection_whenEntered(StrDocumentType type, String trigger, String from)
+            throws IOException {
+        when(logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc(RN, trigger)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, from, "ACTIVE", trigger, null, null, null,
+                        "Stranka je dostavila suglasnost suvlasnika.\n\nNadzor je okončan bez nalaza.")));
+
+        String text = textOf(service.render(type, RN, null));
+
+        assertThat(text).contains("Obrazloženje Stranka je dostavila suglasnost suvlasnika."
+                + " Nadzor je okončan bez nalaza.");
+        assertThat(text.indexOf("2. ")).isLessThan(text.indexOf("Obrazloženje"));
+        assertThat(text.indexOf("Obrazloženje")).isLessThan(text.lastIndexOf("MINISTARSTVO TURIZMA I SPORTA"));
+        assertThat(text).doesNotContain("${");
+    }
+
+    /** Bez upisanog obrazloženja sekcija izostaje cijela — i naslov. */
+    @ParameterizedTest
+    @MethodSource("aktiSObrazlozenjem")
+    void statementOfReasons_absentWithHeading_whenNotEntered(StrDocumentType type, String trigger, String from)
+            throws IOException {
+        when(logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc(RN, trigger)).thenReturn(Optional.of(
+                RegistrationNumberLogEntity.transition(RN, from, "ACTIVE", trigger, null, null, null, "   ")));
+
+        String text = textOf(service.render(type, RN, null));
+
+        assertThat(text).doesNotContain("Obrazloženje");
+        assertThat(text).contains(RN);
+    }
+
+    /** Akt bez zapisa prijelaza u tragu (render na zahtjev starijeg predmeta) — bez sekcije, bez greške. */
+    @ParameterizedTest
+    @MethodSource("aktiSObrazlozenjem")
+    void statementOfReasons_absent_withoutTransitionInTrail(StrDocumentType type, String trigger, String from)
+            throws IOException {
+        String text = textOf(service.render(type, RN, null));
+
+        assertThat(text).doesNotContain("Obrazloženje");
+    }
+
+    /**
+     * Obrazloženje službenika čita samo zapis prijelaza akta obustave ili reaktivacije — slobodan
+     * {@code ?reason=} ili razlog prijedloga ga ne pune.
+     */
+    @Test
+    void statementOfReasons_notTakenFromReason() throws IOException {
+        String text = textOf(service.render(StrDocumentType.OBUSTAVA_SUSPENZIJE, RN, "dokumentacija je dopunjena"));
+
+        assertThat(text).doesNotContain("Obrazloženje");
+        assertThat(text).doesNotContain("dokumentacija je dopunjena");
+    }
+
+    /** Postojeća sekcija „Obrazloženje" sa stalnim tekstom (zahtjev za opoziv) i dalje se ispisuje s naslovom. */
+    @Test
+    void existingStatementOfReasonsSection_unaffected() throws IOException {
+        String text = textOf(service.render(StrDocumentType.ZAHTJEV_OPOZIVA, RN, "prodajem stan"));
+
+        assertThat(text).contains("Obrazloženje Podnositelj traži opoziv registracijskog broja " + RN);
     }
 
     /** Jednofazna suspenzija iz starijih podataka nema prijedlog u tragu — vrijedi zadnji zapis. */

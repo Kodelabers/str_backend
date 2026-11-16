@@ -1,5 +1,6 @@
 package com.str.backend.egop;
 
+import com.str.backend.rn.AktSluzbenika;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.attachment.PismenoPrilogEntity;
@@ -199,7 +200,7 @@ class PodnesakEgopIntegrationTest {
             assertThat(o.urudzbiranje()).isNull();
         });
         RucniAkt obustava = new RucniAkt("334-06/26-01/5", "2170-26-3", "Primorsko-goranska županija", null, null, 8);
-        assertThatThrownBy(() -> adminService.accept(RN, objectionId, SLUZBENIK, null, obustava))
+        assertThatThrownBy(() -> adminService.accept(RN, objectionId, SLUZBENIK, AktSluzbenika.rucni(obustava)))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_NOT_REGISTERED"));
 
@@ -232,7 +233,7 @@ class PodnesakEgopIntegrationTest {
         assertThat(tekst(naknadni)).startsWith("Primorsko-goranska županija").contains("2170-26-2");
         assertThat(pismeno(StrDocumentType.OCITOVANJE_SUSPENZIJE).getPdfContent()).isEqualTo(naknadni);
 
-        adminService.accept(RN, objectionId, SLUZBENIK, null, obustava);
+        adminService.accept(RN, objectionId, SLUZBENIK, AktSluzbenika.rucni(obustava));
 
         assertThat(rnRepository.findById(RN).orElseThrow().getStatus()).isEqualTo(RnStatus.ACTIVE);
         EgopPismenoEntity akt = pismeno(StrDocumentType.OBUSTAVA_SUSPENZIJE);

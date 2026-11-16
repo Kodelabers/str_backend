@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Service
@@ -266,28 +267,19 @@ public class RnService {
         return expireIfDeadlinePassed(ProposalProcedure.SUSPENSION, rn, actor);
     }
 
+    /**
+     * Obustava postupka suspenzije — ručna ili uvaženim očitovanjem. Obrazloženje i prilozi službenika idu uz
+     * akt (UAT 13.11.), v. {@link #uAktivan}.
+     */
     @Transactional
-    public RnEntity revokeProposal(String rn, String actor) {
-        return revokeProposal(rn, actor, null);
+    public RnEntity revokeProposal(String rn, String actor, AktSluzbenika akt) {
+        return uAktivan(rn, RnTrigger.REVOKE_PROPOSAL, actor, akt, e -> { });
     }
 
+    /** Reaktivacija suspendiranog broja — ručna ili uvaženim prigovorom ({@link #uAktivan}). */
     @Transactional
-    public RnEntity revokeProposal(String rn, String actor, RucniAkt rucni) {
-        RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null, rucni);
-        return e;
-    }
-
-    @Transactional
-    public RnEntity reactivate(String rn, String actor) {
-        return reactivate(rn, actor, null);
-    }
-
-    @Transactional
-    public RnEntity reactivate(String rn, String actor, RucniAkt rucni) {
-        RnEntity e = loadForUpdate(rn);
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null, rucni);
-        return e;
+    public RnEntity reactivate(String rn, String actor, AktSluzbenika akt) {
+        return uAktivan(rn, RnTrigger.REACTIVATE, actor, akt, e -> { });
     }
 
     /**
@@ -347,20 +339,15 @@ public class RnService {
     /**
      * Obustava postupka povlačenja — ručna ili uvaženim očitovanjem: broj se uvijek vraća u
      * {@code ACTIVE} (odluka korisnika, T12), bez obzira na to iz kojeg je statusa povlačenje predloženo.
+     * Obrazloženje i prilozi službenika kao kod {@link #revokeProposal}.
      */
     @Transactional
-    public RnEntity revokeWithdrawalProposal(String rn, String actor) {
-        return revokeWithdrawalProposal(rn, actor, null);
-    }
-
-    @Transactional
-    public RnEntity revokeWithdrawalProposal(String rn, String actor, RucniAkt rucni) {
-        RnEntity e = loadForUpdate(rn);
-        if (e.getStatus() != RnStatus.WITHDRAWAL_PROPOSED) {
-            throw new ConflictException("error.rn.withdraw.proposal.notPending", "RN_NOT_WITHDRAWAL_PROPOSED");
-        }
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL, actor, null, rucni);
-        return e;
+    public RnEntity revokeWithdrawalProposal(String rn, String actor, AktSluzbenika akt) {
+        return uAktivan(rn, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL, actor, akt, e -> {
+            if (e.getStatus() != RnStatus.WITHDRAWAL_PROPOSED) {
+                throw new ConflictException("error.rn.withdraw.proposal.notPending", "RN_NOT_WITHDRAWAL_PROPOSED");
+            }
+        });
     }
 
     /**
@@ -399,17 +386,32 @@ public class RnService {
      * broj ({@link RnReissueGuard}). Dva važeća broja za isti objekt ne smiju postojati.
      */
     @Transactional
-    public RnEntity reinstate(String rn, String actor) {
-        return reinstate(rn, actor, null);
+    public RnEntity reinstate(String rn, String actor, AktSluzbenika akt) {
+        return uAktivan(rn, RnTrigger.REINSTATE, actor, akt, e -> {
+            if (e.getStatus() == RnStatus.WITHDRAWN && reissueGuard.noviBrojIzdan(e)) {
+                throw new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED");
+            }
+        });
     }
 
-    @Transactional
-    public RnEntity reinstate(String rn, String actor, RucniAkt rucni) {
+    /**
+     * Zajednički prijelaz obustave i reaktivacije u {@code ACTIVE}. Obrazloženje službenika (UAT 13.11.) ide u
+     * {@code registration_number_log.akt_obrazlozenje}, a ne u {@code reason}: akt obustave razlog čita s
+     * prijedloga postupka ({@code StrDocumentService#razlogAkta}), pa {@code reason} ostaje prazan. Čisti se
+     * prije zaključavanja ({@link AktSluzbenika#ocistiObrazlozenje}: preduga je 400, a ne 500 iz baze). Prilozi
+     * se vežu uz zapis prijelaza kao kod {@link #suspend} ({@link #bindPrilozi}), pa ih eGOP, KP i e-pošta
+     * prilažu uz akt, a „Dokumenti" RB-a prikazuju ispod njega.
+     *
+     * @param provjera pravilo statusa specifično za radnju, nad zaključanim RB-om, prije prijelaza
+     */
+    private RnEntity uAktivan(String rn, RnTrigger trigger, String actor, AktSluzbenika akt,
+                              Consumer<RnEntity> provjera) {
+        AktSluzbenika a = akt != null ? akt : AktSluzbenika.NEMA;
+        String obrazlozenje = AktSluzbenika.ocistiObrazlozenje(a.obrazlozenje());
         RnEntity e = loadForUpdate(rn);
-        if (e.getStatus() == RnStatus.WITHDRAWN && reissueGuard.noviBrojIzdan(e)) {
-            throw new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED");
-        }
-        transitionService.transition(e, RnStatus.ACTIVE, RnTrigger.REINSTATE, actor, null, rucni);
+        provjera.accept(e);
+        UUID logId = transitionService.transition(e, RnStatus.ACTIVE, trigger, actor, null, a.rucni(), obrazlozenje);
+        bindPrilozi(actor, a.prilogIds(), logId);
         return e;
     }
 

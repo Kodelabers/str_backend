@@ -61,6 +61,14 @@ public class RegistrationNumberLogEntity {
     @Column(name = "akt_izdavatelj_zu_rb", updatable = false)
     private Integer aktIzdavateljZuRb;
 
+    /**
+     * Obrazloženje službenika na aktu prijelaza (UAT 13.11.): obustava postupka suspenzije ili povlačenja i
+     * reaktivacija. Akt ga ispisuje kao sekciju „Obrazloženje" samo kad je upisano. Namjerno nije u
+     * {@link #reason}: akt obustave razlog čita s prijedloga postupka.
+     */
+    @Column(name = "akt_obrazlozenje", length = 1000, updatable = false)
+    private String aktObrazlozenje;
+
     public static RegistrationNumberLogEntity transition(String rn, String from, String to,
                                                          String trigger, String actor, String reason) {
         RegistrationNumberLogEntity e = new RegistrationNumberLogEntity();
@@ -87,6 +95,15 @@ public class RegistrationNumberLogEntity {
             e.aktIzdavateljJedinica = rucni.izdavateljJedinica();
             e.aktIzdavateljZuRb = rucni.izdavateljZuRb();
         }
+        return e;
+    }
+
+    /** Prijelaz s obrazloženjem službenika na aktu ({@link #aktObrazlozenje}; {@code null} = bez njega). */
+    public static RegistrationNumberLogEntity transition(String rn, String from, String to, String trigger,
+                                                         String actor, String reason, RucniAkt rucni,
+                                                         String obrazlozenje) {
+        RegistrationNumberLogEntity e = transition(rn, from, to, trigger, actor, reason, rucni);
+        e.aktObrazlozenje = obrazlozenje;
         return e;
     }
 

@@ -27,8 +27,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Set;
 
 /**
- * Prilozi na back-office putu: učitavanje službenika (staging, uz prijedlog suspenzije i povlačenje —
- * samo te dvije radnje vežu priloge službenika) i preuzimanje priloga RB-a.
+ * Prilozi na back-office putu: učitavanje službenika (staging, uz prijedlog suspenzije i povlačenja te,
+ * od UAT-a 13.11., uz obustavu postupka i reaktivaciju — ručno ili uvažavanjem očitovanja odnosno
+ * prigovora) i preuzimanje priloga RB-a.
  *
  * <p>{@code /api/rn/attachments} je pod {@code /api/rn/**} i traži rolu {@code RN_MANAGEMENT}
  * ({@code SecurityConfig}). {@code /api/rn/{rn}/attachments/**} je kao {@code /documents/**}: prijava
