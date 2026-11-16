@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ZupContextFactoryTest {
 
@@ -47,6 +48,46 @@ class ZupContextFactoryTest {
                 detail(LocalDate.of(2026, mjesec, 9)), null, FilingReference.NONE);
 
         assertThat(ctx.get("rn.datumIzdavanja")).isEqualTo(ocekivano);
+    }
+
+    /**
+     * Izjava o valjanosti bez pečata je natpis tijela: akt tijela je uvijek nosi u kontekstu (renderer
+     * odlučuje ispisuje li je), podnesak stranke nikad.
+     */
+    @Test
+    void validityStatement_inContextForAuthorityActsOnly() {
+        for (StrDocumentType type : StrDocumentType.templateBackedTypes()) {
+            Map<String, String> ctx = factory(false).forRn(type, detail(LocalDate.of(2026, 9, 9)), null,
+                    FilingReference.NONE);
+
+            if (type.aktTijela()) {
+                assertThat(ctx.get(ZupContextFactory.IZJAVA_BEZ_PECATA)).as(type.name())
+                        .isEqualTo(labels.get("akt.izjavaBezPecata"))
+                        .startsWith("Ovaj dokument izrađen je u informacijskom sustavu");
+            } else {
+                assertThat(ctx).as(type.name()).doesNotContainKey(ZupContextFactory.IZJAVA_BEZ_PECATA);
+            }
+        }
+    }
+
+    /**
+     * Nepečaćeni akt bez izjave je upravo kvar koji izjava popravlja: prazan ili nestao natpis ruši
+     * render umjesto da akt izađe s praznim odlomkom ispod potpisa.
+     */
+    @ParameterizedTest
+    @CsvSource(value = {"NULL", "'  '"}, nullValues = "NULL")
+    void renderer_failsWhenUnsealedActHasNoStatement(String izjava) {
+        DocumentProperties props = new DocumentProperties(TIJELO, null, null, Map.of(), false, false, Map.of());
+        ZupTemplateLoader loader = new ZupTemplateLoader(props);
+        loader.loadAll();
+        Map<String, String> ctx = new java.util.HashMap<>(factory(false).forRn(StrDocumentType.DODJELA,
+                detail(LocalDate.of(2026, 9, 9)), null, FilingReference.NONE));
+        ctx.put(ZupContextFactory.IZJAVA_BEZ_PECATA, izjava);
+        ZupDocumentRenderer renderer = new ZupDocumentRenderer(props, type -> false);
+
+        assertThatThrownBy(() -> renderer.render(loader.get(StrDocumentType.DODJELA), ctx))
+                .isInstanceOf(DocumentTemplateException.class)
+                .hasMessageContaining(ZupContextFactory.IZJAVA_BEZ_PECATA);
     }
 
     @Test

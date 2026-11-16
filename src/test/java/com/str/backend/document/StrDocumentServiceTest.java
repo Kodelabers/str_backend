@@ -103,14 +103,22 @@ class StrDocumentServiceTest {
         when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.empty());
     }
 
+    /** eSeal ugašen, kao na svim okolinama danas: akti tijela nose izjavu o valjanosti bez pečata. */
     private StrDocumentService service(DocumentProperties properties) {
+        return service(properties, type -> false);
+    }
+
+    private StrDocumentService service(DocumentProperties properties, PecatiranjeAkta pecatiranje) {
         ZupTemplateLoader loader = new ZupTemplateLoader(properties);
         loader.loadAll();
         DocumentLabels labels = new DocumentLabels();
         return new StrDocumentService(rnRepository, lessorRepository, submissionRepository,
                 logRepository, loader, new ZupContextFactory(properties, labels),
-                new ZupDocumentRenderer(properties), labels, internalUsers);
+                new ZupDocumentRenderer(properties, pecatiranje), labels, internalUsers);
     }
+
+    /** eSeal uključen za sve vrste — akt se pečatira, pa ide blok e-pečata (uz epecat.enabled), ne izjava. */
+    private static final PecatiranjeAkta PECATIRA_SE = type -> true;
 
     @ParameterizedTest
     @MethodSource("templateBackedTypes")
@@ -355,7 +363,7 @@ class StrDocumentServiceTest {
     /** Blok po uzoru na Poreznu upravu: podaci o pečatu, broj zapisa, QR i tekst provjere. */
     @Test
     void act_printsSealBlock_whenSealIsEnabled() throws IOException {
-        byte[] pdf = service(PROPERTIES_S_PECATOM).render(StrDocumentType.DODJELA, RN, null);
+        byte[] pdf = service(PROPERTIES_S_PECATOM, PECATIRA_SE).render(StrDocumentType.DODJELA, RN, null);
         String text = textOf(pdf);
 
         // Ekstraktor susjedne ćelije tablice spaja bez razmaka („natpis:vrijednost").
@@ -377,7 +385,7 @@ class StrDocumentServiceTest {
                 PROPERTIES.potpisnik(), new DocumentProperties.Epecat(true, null, null, null, null),
                 PROPERTIES.uputa(), false, false, PROPERTIES.propis());
 
-        String text = textOf(service(bezCertifikata).render(StrDocumentType.DODJELA, RN, null));
+        String text = textOf(service(bezCertifikata, PECATIRA_SE).render(StrDocumentType.DODJELA, RN, null));
 
         assertThat(text).contains("[nije konfigurirano: str.documents.epecat.izdavatelj-certifikata]");
         assertThat(text).contains("[nije konfigurirano: str.documents.epecat.url-provjere]");
@@ -567,7 +575,7 @@ class StrDocumentServiceTest {
 
         String text = textOf(service.render(StrDocumentType.valueOf(slug), RN, "razlog"));
 
-        assertThat(text).endsWith("Ana Službenica ");
+        assertThat(text).endsWith("Ana Službenica " + IZJAVA + " ");
         // Naziv tijela velikim slovima ostaje samo u zaglavlju.
         assertThat(text.split("MINISTARSTVO TURIZMA I SPORTA", -1).length - 1).isEqualTo(1);
         assertThat(text).doesNotContain("Ivana Ivić");
@@ -585,7 +593,8 @@ class StrDocumentServiceTest {
                                 "334-06/26-01/7", "2181-26-2", "Splitsko-dalmatinska županija", "40781519492",
                                 "Upravni odjel za turizam", 17))));
 
-        byte[] pdf = service(PROPERTIES_S_PECATOM).render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN, "razlog");
+        byte[] pdf = service(PROPERTIES_S_PECATOM, PECATIRA_SE).render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN,
+                "razlog");
         String text = textOf(pdf);
 
         assertThat(text).contains("SPLITSKO-DALMATINSKA ŽUPANIJA");
@@ -595,6 +604,91 @@ class StrDocumentServiceTest {
         assertThat(text).doesNotContain("MINISTARSTVO TURIZMA I SPORTA");
         assertThat(text).doesNotContain("Vrijeme izdavanja");
         assertThat(text).doesNotContain("Kontrolni broj");
+        // Županijski akt se nikad ne pečatira, pa nosi izjavu i uz uključen eSeal — i dakako uz ugašen.
+        assertThat(text).endsWith(IZJAVA + " ");
+        assertThat(textOf(service(PROPERTIES_S_PECATOM).render(StrDocumentType.PRIJEDLOG_SUSPENZIJE, RN,
+                "razlog"))).endsWith(IZJAVA + " ").doesNotContain("Vrijeme izdavanja");
+    }
+
+    /**
+     * Vrsta s {@code str.egop.akti-bez-sifre} ne ide u eGOP pa ni na pečat, a stranci stiže snimak —
+     * uz uključen eSeal nosi izjavu, dok susjedna vrsta koja se urudžbira ostaje bez nje.
+     */
+    @Test
+    void typeWithoutEgopCode_carriesStatement_evenWithSealEnabled() throws IOException {
+        com.str.backend.eseal.PdfSealer sealer = mock(com.str.backend.eseal.PdfSealer.class);
+        when(sealer.isEnabled()).thenReturn(true);
+        StrDocumentService s = service(PROPERTIES, new com.str.backend.egop.EgopPecatiranjeAkta(sealer,
+                new com.str.backend.egop.EgopAktiBezSifre(Set.of(StrDocumentType.SUSPENZIJA.slug()))));
+
+        assertThat(textOf(s.render(StrDocumentType.SUSPENZIJA, RN, "razlog"))).endsWith(IZJAVA + " ");
+        assertThat(textOf(s.render(StrDocumentType.POVLACENJE, RN, "razlog"))).doesNotContain("valjan je bez");
+    }
+
+    /** Izjava ide odmah ispod potpisa, ispred bloka e-pečata kad bi ga bilo — nikad uz njega. */
+    @Test
+    void statement_followsSignatureDirectly() throws IOException {
+        String text = textOf(service.render(StrDocumentType.DODJELA, RN, null));
+
+        assertThat(text).endsWith("MINISTARSTVO TURIZMA I SPORTA Ivana Ivić " + IZJAVA + " ");
+    }
+
+    private static final String IZJAVA = "Ovaj dokument izrađen je u informacijskom sustavu i valjan je"
+            + " bez pečata i vlastoručnog potpisa.";
+
+    /** UAT 13.11.2026.: akt MINTS-a dok je eSeal ugašen ne dobiva pečat — izjava ide ispod potpisa. */
+    @ParameterizedTest
+    @MethodSource("aktiTijela")
+    void unsealedAct_carriesValidityStatementBelowSignature(StrDocumentType type) throws IOException {
+        String text = textOf(service(PROPERTIES).render(type, RN, "razlog"));
+
+        assertThat(text).endsWith(IZJAVA + " ");
+        assertThat(text.lastIndexOf("MINISTARSTVO TURIZMA I SPORTA")).isLessThan(text.indexOf(IZJAVA));
+    }
+
+    /** Akt koji će se pečatirati ne smije tvrditi da je valjan bez pečata. */
+    @ParameterizedTest
+    @MethodSource("aktiTijela")
+    void sealedAct_hasNoValidityStatement(StrDocumentType type) throws IOException {
+        assertThat(textOf(service(PROPERTIES, PECATIRA_SE).render(type, RN, "razlog"))).doesNotContain("valjan je bez");
+    }
+
+    /**
+     * Vizualni blok e-pečata uz ugašen eSeal bio bi neistinita tvrdnja o ovjeri: ne ispisuje se, a
+     * umjesto njega ide izjava — nikad oboje.
+     */
+    @Test
+    void sealBlockAndStatement_areMutuallyExclusive() throws IOException {
+        String nepecaceno = textOf(service(PROPERTIES_S_PECATOM).render(StrDocumentType.DODJELA, RN, null));
+        String pecaceno = textOf(service(PROPERTIES_S_PECATOM, PECATIRA_SE).render(StrDocumentType.DODJELA, RN, null));
+
+        assertThat(nepecaceno).contains(IZJAVA).doesNotContain("Vrijeme izdavanja");
+        assertThat(pecaceno).contains("Vrijeme izdavanja").doesNotContain("valjan je bez");
+    }
+
+    /** Podnesak stranke nije akt tijela — izjava tijela na njemu nema mjesta, ni uz ugašen eSeal. */
+    @Test
+    void partySubmission_hasNoValidityStatement() throws IOException {
+        String text = textOf(service(PROPERTIES).render(StrDocumentType.ZAHTJEV_OPOZIVA, RN, "razlog"));
+
+        assertThat(text).doesNotContain("valjan je bez");
+        assertThat(text).endsWith("Ana Anić ");
+    }
+
+    /**
+     * Izjava je dio nepreljevnog završnog bloka: na višestraničnom aktu ostaje uz potpis na zadnjoj
+     * stranici, iznad podnožja s KLASOM. Dugi razlog gura akt na drugu stranicu.
+     */
+    @Test
+    void multiPageUnsealedAct_keepsStatementWithSignatureOnLastPage() throws IOException {
+        byte[] pdf = service(PROPERTIES).render(StrDocumentType.POVLACENJE, RN,
+                "nepotpuni podaci ".repeat(200).strip(), new FilingReference("334-06/26-10/1", null));
+
+        assertThat(pageCount(pdf)).isEqualTo(2);
+        String zadnja = textOfPage(pdf, 2);
+        assertThat(zadnja).contains("MINISTARSTVO TURIZMA I SPORTA");
+        assertThat(zadnja).endsWith(IZJAVA + " KLASA: 334-06/26-10/1 · stranica 2 od 2");
+        assertThat(textOfPage(pdf, 1)).doesNotContain("valjan je bez");
     }
 
     /** Suspenziju istekom roka radi sustav — potpisuje je službenik koji je postupak pokrenuo. */
@@ -611,7 +705,7 @@ class StrDocumentServiceTest {
         String text = textOf(service.render(StrDocumentType.SUSPENZIJA, RN,
                 "Rok za rješavanje nepravilnosti istekao."));
 
-        assertThat(text).endsWith("Ana Službenica ");
+        assertThat(text).endsWith("Ana Službenica " + IZJAVA + " ");
         // Razlog je materijalni razlog s prijedloga, ne bilješka joba koju pozivatelj proslijedi.
         assertThat(text).contains("zbog sljedećeg razloga: nalaz inspekcijskog nadzora.");
         assertThat(text).doesNotContain("Rok za rješavanje");
@@ -638,7 +732,7 @@ class StrDocumentServiceTest {
         String text = textOf(service.render(StrDocumentType.POVLACENJE, RN,
                 "Rok za očitovanje na prijedlog povlačenja istekao."));
 
-        assertThat(text).endsWith("Ana Službenica ");
+        assertThat(text).endsWith("Ana Službenica " + IZJAVA + " ");
         assertThat(text).contains("zbog sljedećeg razloga: dostavljene su nevjerodostojne ili nevaljane informacije.");
         assertThat(text).doesNotContain("Rok za očitovanje na prijedlog");
         assertThat(service.razlogAkta(StrDocumentType.POVLACENJE, RN, "Rok za očitovanje na prijedlog povlačenja istekao."))
@@ -695,14 +789,14 @@ class StrDocumentServiceTest {
                 RegistrationNumberLogEntity.transition(RN, "WITHDRAWAL_PROPOSED", "WITHDRAWN",
                         "WITHDRAWAL_DEADLINE_EXCEEDED", "SYSTEM", null)));
         assertThat(textOf(service.render(StrDocumentType.PRIJEDLOG_POVLACENJA, RN, null)))
-                .endsWith("Ana Službenica ");
+                .endsWith("Ana Službenica " + IZJAVA + " ");
 
         // Zadnji zapis: REINSTATE drugog službenika.
         when(logRepository.findFirstByRnOrderByOccurredAtDesc(RN)).thenReturn(Optional.of(
                 RegistrationNumberLogEntity.transition(RN, "WITHDRAWN", "ACTIVE", "REINSTATE",
                         "INTERNAL:98765432109", null)));
         String text = textOf(service.render(StrDocumentType.PRIJEDLOG_POVLACENJA, RN, null));
-        assertThat(text).endsWith("Ana Službenica ").doesNotContain("Ivo Drugi");
+        assertThat(text).endsWith("Ana Službenica " + IZJAVA + " ").doesNotContain("Ivo Drugi");
     }
 
     /** M-BE1: isto pravilo razloga za akt i obavijest e-poštom — suspenzija čita prijedlog. */
@@ -743,7 +837,7 @@ class StrDocumentServiceTest {
 
         String text = textOf(service.render(StrDocumentType.POVLACENJE, RN, null));
 
-        assertThat(text).endsWith("MINISTARSTVO TURIZMA I SPORTA Ivana Ivić ");
+        assertThat(text).endsWith("MINISTARSTVO TURIZMA I SPORTA Ivana Ivić " + IZJAVA + " ");
     }
 
     /** Okvir svih akata tijela: grb, tijelo velikim slovima, dugi datum, bez podnožja. */
@@ -881,7 +975,7 @@ class StrDocumentServiceTest {
      */
     @Test
     void multiPageAct_carriesKlasaAndPageNumberInFooter() throws IOException {
-        byte[] pdf = service(PROPERTIES_S_PECATOM).render(StrDocumentType.SUSPENZIJA, RN, "razlog",
+        byte[] pdf = service(PROPERTIES_S_PECATOM, PECATIRA_SE).render(StrDocumentType.SUSPENZIJA, RN, "razlog",
                 new FilingReference("334-06/26-10/1", null));
         String text = textOf(pdf);
 
@@ -909,7 +1003,7 @@ class StrDocumentServiceTest {
                 new DocumentProperties.Epecat(true, "CN=Fina RDC 2020", "CN=PEČAT", null, null),
                 PROPERTIES.uputa(), false, false, PROPERTIES.propis());
 
-        byte[] pdf = service(bezUrla).render(StrDocumentType.DODJELA, RN, null);
+        byte[] pdf = service(bezUrla, PECATIRA_SE).render(StrDocumentType.DODJELA, RN, null);
 
         assertThat(imageCount(pdf)).isEqualTo(2);
         assertThat(textOf(pdf)).contains("[nije konfigurirano: str.documents.epecat.url-provjere]");
@@ -1012,6 +1106,15 @@ class StrDocumentServiceTest {
         PdfReader reader = new PdfReader(pdf);
         try {
             return reader.getNumberOfPages();
+        } finally {
+            reader.close();
+        }
+    }
+
+    private static String textOfPage(byte[] pdf, int page) throws IOException {
+        PdfReader reader = new PdfReader(pdf);
+        try {
+            return new PdfTextExtractor(reader).getTextFromPage(page).replaceAll("\\s+", " ");
         } finally {
             reader.close();
         }

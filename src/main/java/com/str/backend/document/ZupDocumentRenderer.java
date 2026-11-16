@@ -42,8 +42,9 @@ import java.util.Map;
  * uvod po ZUP-u završava riječju „donosi"/„izdaje".
  *
  * <p>Okvir akta (zaglavlje s grbom, potpis nazivom tijela, blok e-pečata, bez podnožja) slijedi
- * predložak MINT-a od 11.09.2026. Razmaci su izmjereni na tom predlošku, pa ih ne treba
- * „zaokruživati" bez usporedbe s njim.
+ * predložak MINT-a od 11.09.2026. Akt koji se neće pečatirati umjesto bloka e-pečata nosi izjavu
+ * da je valjan bez pečata i potpisa (UAT 13.11.2026.). Razmaci su izmjereni na tom predlošku, pa
+ * ih ne treba „zaokruživati" bez usporedbe s njim.
  *
  * <p>{@link ZupSection#ZAGLAVLJE} i {@link ZupSection#POTPISNIK} renderer zna složiti sam iz
  * konfiguracije; predložak ih smije nadjačati. Nadjačano zaglavlje mijenja samo urudžbeni blok
@@ -99,6 +100,11 @@ public class ZupDocumentRenderer {
     private static final Font FNT_ZAGLAVLJE = new Font(ARIAL_BOLD, 11f, Font.NORMAL, CRNA);
     private static final Font FNT_JOP = new Font(ARIAL, 11f, Font.NORMAL, CRNA);
     private static final Font FNT_SITNO = new Font(ARIAL, 8f, Font.NORMAL, SIVA);
+    /** Izjava o valjanosti bez pečata: 8 pt kao tekst bloka e-pečata, crno jer je dio akta. */
+    private static final Font FNT_IZJAVA = new Font(ARIAL, 8f, Font.NORMAL, CRNA);
+    /** Razmak između potpisa i izjave — kao prazan redak prije bloka e-pečata, malo stisnut. */
+    private static final float IZJAVA_RAZMAK_PRIJE = 24f;
+    private static final float IZJAVA_PRORED = 10f;
 
     private static final float PODNOZJE_SIRINA = 400f;
     private static final float PODNOZJE_VISINA = 12f;
@@ -123,6 +129,8 @@ public class ZupDocumentRenderer {
             ${stranka.naziv}""";
 
     private final DocumentProperties properties;
+    /** Hoće li eGOP tok akt pečatirati — odlučuje blok e-pečata ili izjavu bez pečata. */
+    private final PecatiranjeAkta pecatiranje;
     private final EpecatBlok epecatBlok = new EpecatBlok(ARIAL, ARIAL_BOLD);
 
     /**
@@ -131,8 +139,9 @@ public class ZupDocumentRenderer {
      */
     private final byte[] grb;
 
-    public ZupDocumentRenderer(DocumentProperties properties) {
+    public ZupDocumentRenderer(DocumentProperties properties, PecatiranjeAkta pecatiranje) {
         this.properties = properties;
+        this.pecatiranje = pecatiranje;
         this.grb = ucitajGrb();
     }
 
@@ -154,9 +163,9 @@ public class ZupDocumentRenderer {
             // Prolaz kroz values() umjesto niza ručnih poziva: nova sekcija u ZupSection time
             // automatski dobiva svoje mjesto na papiru. S ručnim popisom bi se dodala u enum,
             // prošla validaciju predloška i tiho izostala iz PDF-a.
-            // Potpis, dostavna lista i e-pečat idu u jedan blok koji se ne prelama — inače zna
-            // ispasti da na drugoj stranici stoji samo „Dostaviti" s dva retka, što na aktu
-            // izgleda kao da dokument nije dovršen.
+            // Potpis (s izjavom o valjanosti bez pečata), dostavna lista i e-pečat idu u jedan blok
+            // koji se ne prelama — inače zna ispasti da na drugoj stranici stoji samo „Dostaviti" s
+            // dva retka, što na aktu izgleda kao da dokument nije dovršen.
             PdfPCell zavrsna = celijaBezOkvira();
             Odrediste stranica = doc::add;
             Odrediste zavrsni = zavrsna::addElement;
@@ -164,7 +173,11 @@ public class ZupDocumentRenderer {
             for (ZupSection section : ZupSection.values()) {
                 switch (section) {
                     case ZAGLAVLJE -> zaglavlje(doc, template, ctx);
-                    case POTPISNIK -> potpisnik(zavrsni, template, ctx);
+                    case POTPISNIK -> {
+                        potpisnik(zavrsni, template, ctx);
+                        // „Ispod potpisa" (UAT 13.11.2026.) — ispred dostavne liste.
+                        izjavaBezPecata(zavrsni, template, ctx);
+                    }
                     case DOSTAVNA_LISTA -> sekcija(zavrsni, template, ctx, section);
                     default -> sekcija(stranica, template, ctx, section);
                 }
@@ -337,12 +350,13 @@ public class ZupDocumentRenderer {
     /**
      * Čl. 98. st. 8: akt iz informacijskog sustava ovjerava se isključivo kvalificiranim
      * elektroničkim pečatom. Dok pečata nema, blok se ne ispisuje — tvrdnja o ovjeri na
-     * nepečaćenom aktu bila bi neistinita. Podnesak stranke tijelo ne pečati.
+     * nepečaćenom aktu bila bi neistinita. Zato blok traži i uključen vizualni blok
+     * ({@code str.documents.epecat.enabled}) i akt koji će se stvarno pečatirati
+     * ({@link #bitCePecatiran}). Podnesak stranke tijelo ne pečati.
      */
     private void epecat(Odrediste odrediste, ZupTemplate template, Map<String, String> ctx)
             throws DocumentException, IOException {
-        if (!properties.epecat().enabled() || !aktTijela(template)
-                || "true".equals(ctx.get(ZupContextFactory.BEZ_EPECATA))) {
+        if (!properties.epecat().enabled() || !bitCePecatiran(template, ctx)) {
             return;
         }
         Paragraph razmak = new Paragraph(" ", FNT_TEKST);
@@ -350,6 +364,51 @@ public class ZupDocumentRenderer {
         razmak.setSpacingBefore(29f);
         odrediste.dodaj(razmak);
         odrediste.dodaj(epecatBlok.izgradi(ctx, grb()));
+    }
+
+    /**
+     * UAT 13.11.2026.: akt tijela koji neće dobiti kvalificirani e-pečat nosi izjavu da je izrađen u
+     * informacijskom sustavu i valjan bez pečata i vlastoručnog potpisa. Stoji odmah ispod potpisa
+     * (ispred dostavne liste) i isključuje se s blokom e-pečata: blok ide samo na akt koji će se
+     * pečatirati, izjava samo na onaj koji neće. Tekst je {@code akt.izjavaBezPecata} u
+     * labels.properties; bez njega render pada — nepečaćeni akt bez izjave je upravo ono što se
+     * popravlja.
+     *
+     * <p>Podnesak stranke nije akt tijela, pa izjavu ne dobiva.
+     */
+    private void izjavaBezPecata(Odrediste odrediste, ZupTemplate template, Map<String, String> ctx)
+            throws DocumentException {
+        if (!aktTijela(template) || bitCePecatiran(template, ctx)) {
+            return;
+        }
+        String izjava = ctx.get(ZupContextFactory.IZJAVA_BEZ_PECATA);
+        if (izjava == null || izjava.isBlank()) {
+            throw new DocumentTemplateException("Akt " + template.type() + " se neće pečatirati, a u kontekstu"
+                    + " nema izjave o valjanosti bez pečata (" + ZupContextFactory.IZJAVA_BEZ_PECATA + ")");
+        }
+        Paragraph p = new Paragraph(izjava, FNT_IZJAVA);
+        p.setAlignment(Element.ALIGN_LEFT);
+        p.setLeading(IZJAVA_PRORED);
+        p.setSpacingBefore(IZJAVA_RAZMAK_PRIJE);
+        odrediste.dodaj(p);
+    }
+
+    /**
+     * Je li ovaj PDF namijenjen kvalificiranom e-pečatu ({@code EgopFilingService.sealOnce}): akt
+     * tijela čiju vrstu eGOP tok pečatira ({@link PecatiranjeAkta} — eSeal uključen, vrsta nije na
+     * {@code str.egop.akti-bez-sifre}), osim ručnog akta županije (T16,
+     * {@link ZupContextFactory#BEZ_EPECATA}) koji ne ide kroz MINTS-ov eGOP.
+     *
+     * <p>Odluka vrijedi za trenutak rendera, ne jamči da će baš ovi bajtovi stranci stići pečaćeni.
+     * Uz uključen eSeal akt čiji pečat (još) nije uspio ne prilaže se u eGOP i ne otprema u KP, ali
+     * nepečaćena verzija bez izjave i dalje stiže drugim kanalima: snimak na portalu, render
+     * obavijesti o dodjeli na zahtjev, preslika e-poštom iznajmljivaču s OIB-om. Popis je u
+     * docs/ESEAL-SPREMNOST.md.
+     */
+    private boolean bitCePecatiran(ZupTemplate template, Map<String, String> ctx) {
+        return aktTijela(template)
+                && !"true".equals(ctx.get(ZupContextFactory.BEZ_EPECATA))
+                && pecatiranje.bitCePecatiran(template.type());
     }
 
     private void sekcija(Odrediste odrediste, ZupTemplate template, Map<String, String> ctx,

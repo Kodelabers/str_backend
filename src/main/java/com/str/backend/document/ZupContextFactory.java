@@ -166,6 +166,8 @@ public class ZupContextFactory {
         // certifikat, upisao ERROR za blok koji se nikad ne ispisuje.
         if (type.aktTijela()) {
             putEpecat(ctx, naziv);
+            // Renderer je ispisuje samo na akt koji se neće pečatirati (ZupDocumentRenderer.izjavaBezPecata).
+            ctx.put(IZJAVA_BEZ_PECATA, labels.get(IZJAVA_BEZ_PECATA));
         }
 
         return ctx;
@@ -270,6 +272,9 @@ public class ZupContextFactory {
      */
     /** Ključ konteksta: akt bez e-pečata (ručni akt županijskog službenika, T16). */
     public static final String BEZ_EPECATA = "akt.bezEpecata";
+
+    /** Ključ konteksta i natpisa: izjava o valjanosti akta bez pečata i potpisa (UAT 13.11.2026.). */
+    public static final String IZJAVA_BEZ_PECATA = "akt.izjavaBezPecata";
 
     /**
      * T16: izdavatelj ručnog akta je županija službenika, ne tijelo iz konfiguracije (MINTS). Naziv, OIB i
