@@ -53,7 +53,8 @@ class ZupDocumentRendererTest {
         Map<String, String> ctx = new HashMap<>(Map.of(
                 "tijelo.nazivVelikim", "TIJELO", "tijelo.ustrojstvenaJedinica", "",
                 "akt.klasaRedak", "", "akt.urbrojRedak", "", "akt.mjestoDatum", "Zagreb, 1. rujna 2026.",
-                "akt.jopRedak", "", "akt.naslov", "OBAVIJEST", "akt.obrazlozenje", " "));
+                "akt.jopRedak", "", "akt.naslov", "OBAVIJEST", "akt.obrazlozenje", " ",
+                ZupContextFactory.IZJAVA_BEZ_PECATA, "Izjava o valjanosti bez pečata."));
 
         String bez = tekst(renderer.render(predlozak, ctx));
         ctx.put("akt.obrazlozenje", "Stranka je otklonila nedostatak.");
@@ -81,16 +82,13 @@ class ZupDocumentRendererTest {
                 "1. Suglasnost je dostavljena.", "2. Nadzor je okončan.", "3. Ostalo.");
     }
 
-    /**
-     * Renderer za testove na jednom mjestu: grana {@code be-uat-izjava} konstruktoru dodaje
-     * {@code PecatiranjeAkta}, pa se nakon spajanja prilagođava samo ovo.
-     */
+    /** Renderer za testove na jednom mjestu; akt se ne pečatira (kao u produkciji dok je eSeal ugašen). */
     private static ZupDocumentRenderer noviRenderer() {
         return new ZupDocumentRenderer(new DocumentProperties(
                 new DocumentProperties.Tijelo("Tijelo", "12345678901", null, "Zagreb", null, "propis"),
                 new DocumentProperties.Potpisnik(null, null),
                 new DocumentProperties.Epecat(false, null, null, null, null),
-                Map.of(), false, false, Map.of()));
+                Map.of(), false, false, Map.of()), type -> false);
     }
 
     private static String tekst(byte[] pdf) throws Exception {
