@@ -123,6 +123,25 @@ Testovi provjeravaju oznake (verzija, output intent, XMP), ne punu sukladnost �
 - Preslika u mailu iznajmljivaču s OIB-om je nepečaćeni render (akt mu stiže pečaćen u KP); prije pečata
   portal poslužuje nepečaćenu verziju (snimak akta, odnosno render obavijesti o dodjeli).
 - Blok e-pečata na aktu ostaje ugašen (`STR_EPECAT_ENABLED=false`) do odgovora na pitanje 2.
+- **Izjava o valjanosti bez pečata** (`akt.izjavaBezPecata`, UAT 13.11.2026.): akt tijela koji se neće
+  pečatirati nosi je ispod potpisa (ručni akt županije uvijek; ostali dok je eSeal ugašen ili im je vrsta
+  na `str.egop.akti-bez-sifre` — `egop.EgopPecatiranjeAkta`). Odluka se donosi **pri renderu**, prema
+  tome hoće li eGOP tok taj akt pečatirati, a ne prema tome kako će baš ti bajtovi stići stranci. Uz
+  uključivanje eSeala zato ostaju poznata ograničenja (odluka: dokumentirati, presliku ne označavati):
+  - (a) **Preslika e-poštom iznajmljivaču s OIB-om** (akti životnog ciklusa, `RnLifecycleEmailListener`,
+    dostava `PRETINAC`) svježi je render — nepečaćen i bez izjave; pečaćeni akt stiže u KP. Obavijest
+    o dodjeli to nema: uz eSeal mail čeka pečaćenu verziju.
+  - (b) **Portal, `/documents/pohranjeno/{aktId}`**: prije pečata, ili nakon trajnog pada pečatiranja,
+    poslužuje se snimak iz `pdf_content` — nepečaćen i bez izjave.
+  - (c) **Obavijest o dodjeli na portalu** (`RnController`, `DODJELA`): dok pečaćene nema, renderira se
+    na zahtjev — nepečaćena i bez izjave.
+  - (d) **eSeal uključen → ugašen** dok akti čekaju retry: zamrznuti bajtovi (`isSealFrozen`,
+    `EgopFilingService` kod obavijesti o dodjeli i u `fileAct`) ne renderiraju se iznova, pa se prilažu
+    i otpremaju bez pečata i bez izjave.
+  - (e) **Snimak pečatiran s izjavom**: akt renderiran dok je eSeal bio ugašen, a pečatiran nakon
+    uključivanja bez novog rendera — noviji prijelaz istog RB-a (`superseded`), pad konačnog rendera,
+    nedostajući događaj ili staro pismeno u predmetu registracije (`pismenoUPredmetuRegistracije`). Akt
+    tada nosi i pečat i izjavu da je valjan bez njega. Inače se prije pečata renderira iznova.
 - E2, javna stranica provjere, status pečata na frontendu.
 - Retry ne čita `Retry-After` (backoff vodi postojeći `EgopRetryPolicy`).
 - Promjena `ESEAL_PROJECT` ili ključa dok akti čekaju retry: zamrznuti ključevi pripadaju starom projektu —

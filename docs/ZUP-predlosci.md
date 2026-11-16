@@ -42,6 +42,8 @@ Dvije posljedice koje su oblikovale kod:
    dakle od krivog dana.
 2. **Blok e-pečata se ne ispisuje dok pečata nema.** Tvrdnja o ovjeri na nepečaćenom PDF-u
    bila bi neistinita izjava na pravnom aktu. Ispis je iza `str.documents.epecat.enabled`.
+   Nepečaćeni akt tijela umjesto bloka nosi **izjavu o valjanosti bez pečata** (UAT 13.11.2026.,
+   vidi §3).
 
 ---
 
@@ -216,7 +218,19 @@ Naručitelj je 11.09.2026. vratio naš PDF obavijesti o dodjeli s praćenim izmj
   nosi), pa je `${sluzbenik.funkcija}` zasad prazan. Bez službenika potpis ostaje naziv tijela.
   Kvalificirani elektronički potpis službenika nije uveden — akt ovjerava e-pečat tijela.
 - **Blok e-pečata** po uzoru na Poreznu upravu (grb i tijelo | podaci o certifikatu, broj zapisa,
-  kontrolni broj | QR i tekst provjere) — **samo uz `str.documents.epecat.enabled=true`**.
+  kontrolni broj | QR i tekst provjere) — **samo uz `str.documents.epecat.enabled=true`** i samo na
+  aktu koji će se stvarno pečatirati (`ZupDocumentRenderer.bitCePecatiran`, v. iduću točku).
+- **Izjava o valjanosti bez pečata** (UAT 13.11.2026.): „Ovaj dokument izrađen je u informacijskom
+  sustavu i valjan je bez pečata i vlastoručnog potpisa." odmah ispod potpisa (ispred dostavne
+  liste), 8 pt, u nepreljevnom završnom bloku, na svakom aktu tijela koji **neće** dobiti
+  kvalificirani e-pečat: ručni akt županije (T16, `akt.bezEpecata`) uvijek, ostali kad
+  `egop.EgopPecatiranjeAkta` (sučelje `document.PecatiranjeAkta`) kaže da se neće pečatirati —
+  eSeal ugašen (`PdfSealer.isEnabled()`, isti izvor kao `EgopFilingService.sealOnce`) ili vrsta na
+  `str.egop.akti-bez-sifre` (ne ide u eGOP, pa ni na pečat). Blok i izjava se isključuju. Podnesak
+  stranke je ne dobiva. Tekst je `akt.izjavaBezPecata` u `documents/hr/labels.properties`; prazan
+  ili nestao natpis ruši render. Odluka vrijedi u trenutku rendera — kanali kojima uz uključen eSeal
+  ipak izlazi nepečaćena verzija bez izjave popisani su u `docs/ESEAL-SPREMNOST.md`.
+  **Formulaciju još potvrđuje naručitelj** (§8).
 - **Podnožje samo na aktu s više stranica:** „KLASA: … · stranica 1 od 2". Predložak naručitelja
   je jednostranični i podnožje ne nosi, ali akt s obrazloženjem i uputom ide na dvije stranice, a
   odvojen list bez KLASE i broja stranice ne može se povezati s predmetom. Ukupan broj stranica
@@ -555,6 +569,11 @@ Javni pregled RB-a ostaje otvoren; zatvoren je samo put do akata.
     MINTS-ov oblik s dvotočkom („na zahtjev stranke: Ana Anić, OIB: …"), koji nominativ dopušta.
     Dodjela i opoziv zadržali su naručiteljev oblik „na zahtjev Ana Anić, OIB: …" (nominativ). Ako pravna služba
     traži genitiv, treba nam polje s imenom u genitivu — iz podataka se ne može izvesti.
+15. **Izjava o valjanosti bez pečata** (UAT 13.11.2026.). Prijedlog teksta: „Ovaj dokument izrađen
+    je u informacijskom sustavu i valjan je bez pečata i vlastoručnog potpisa." **Treba potvrda
+    pravne službe** (formulacija, i smije li stajati na aktu županije koji nije izrađen u sustavu
+    MINTS-a nego u našem). Mijenja se samo `akt.izjavaBezPecata` u `documents/hr/labels.properties`
+    (classpath — traži rebuild).
 
 ---
 

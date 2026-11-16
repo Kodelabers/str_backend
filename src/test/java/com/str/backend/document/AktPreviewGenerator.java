@@ -82,12 +82,16 @@ class AktPreviewGenerator {
     @Test
     void generate() throws IOException {
         Files.createDirectories(OUT);
-        akti();
+        // Ciljani izgled (pečaćeni akt s blokom e-pečata) i današnji (eSeal ugašen: izjava o
+        // valjanosti bez pečata umjesto bloka).
+        akti(true, OUT);
+        akti(false, OUT.resolve("bez-pecata"));
         zahtjev();
         System.out.println("PREVIEW OK -> " + OUT.toAbsolutePath());
     }
 
-    private void akti() throws IOException {
+    private void akti(boolean esealUkljucen, Path dir) throws IOException {
+        Files.createDirectories(dir);
         RnRepository rnRepository = mock(RnRepository.class);
         LessorRepository lessorRepository = mock(LessorRepository.class);
         SubmissionRepository submissionRepository = mock(SubmissionRepository.class);
@@ -111,7 +115,7 @@ class AktPreviewGenerator {
         DocumentLabels labels = new DocumentLabels();
         StrDocumentService service = new StrDocumentService(rnRepository, lessorRepository,
                 submissionRepository, logRepository, loader, new ZupContextFactory(PROPS, labels),
-                new ZupDocumentRenderer(PROPS), labels, internalUsers);
+                new ZupDocumentRenderer(PROPS, type -> esealUkljucen), labels, internalUsers);
 
         for (StrDocumentType type : StrDocumentType.templateBackedTypes()) {
             String razlog = switch (type) {
@@ -129,9 +133,10 @@ class AktPreviewGenerator {
                     ? new FilingReference("334-06/27-10/1", "529-06-03/TUREGBROJ-27-2", 81591802)
                     : new FilingReference("334-06/27-11/1", "529-06-03/TUREGBROJ-27-2", 81591803);
             byte[] pdf = service.render(type, RN, razlog, filing);
-            Files.write(OUT.resolve(type.slug() + ".pdf"), pdf);
+            Files.write(dir.resolve(type.slug() + ".pdf"), pdf);
         }
     }
+
 
     private void zahtjev() throws IOException {
         SubmissionPdfGenerator generator = new SubmissionPdfGenerator(PROPS);
