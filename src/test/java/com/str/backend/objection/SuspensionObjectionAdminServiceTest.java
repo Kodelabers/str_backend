@@ -1,6 +1,7 @@
 package com.str.backend.objection;
 
 import java.util.List;
+import com.str.backend.rn.AktSluzbenika;
 import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.attachment.TestPrilog;
 import com.str.backend.attachment.PrilogDto;
@@ -34,6 +35,10 @@ import org.junit.jupiter.params.provider.EnumSource;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.UUID;
+import com.str.backend.attachment.PrilogException;
+import java.util.HashMap;
+import java.util.Map;
+import org.springframework.http.HttpStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -83,14 +88,16 @@ class SuspensionObjectionAdminServiceTest {
 
     @Test
     void accept_onProposal_revokesProposal() {
-        service.accept(RN, objection.getObjectionId(), ACTOR, "  Dostavljena suglasnost  ", null);
+        service.accept(RN, objection.getObjectionId(), ACTOR,
+                new AktSluzbenika(null, "  Dostavljena suglasnost  ", null));
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
         assertThat(objection.getResolvedBy()).isEqualTo(ACTOR);
         assertThat(objection.getResolvedAt()).isNotNull();
         assertThat(objection.getResolutionNote()).isEqualTo("Dostavljena suglasnost");
-        verify(rnService).revokeProposal(RN, ACTOR, null);
-        verify(rnService, never()).reactivate(anyString(), anyString());
+        // Bilješka (očišćena) je ujedno obrazloženje akta obustave (UAT 13.11.).
+        verify(rnService).revokeProposal(RN, ACTOR, new AktSluzbenika(null, "Dostavljena suglasnost", List.of()));
+        verify(rnService, never()).reactivate(any(), any(), any());
         verify(auditService).record(ACTOR, "OBJECTION_ACCEPT", "SUSPENSION_OBJECTION",
                 objection.getObjectionId().toString(), "Dostavljena suglasnost");
     }
@@ -99,12 +106,12 @@ class SuspensionObjectionAdminServiceTest {
     void accept_onSuspension_reactivates() {
         when(rn.getStatus()).thenReturn(RnStatus.SUSPENDED);
 
-        service.accept(RN, objection.getObjectionId(), ACTOR, null, null);
+        service.accept(RN, objection.getObjectionId(), ACTOR, AktSluzbenika.NEMA);
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
         assertThat(objection.getResolutionNote()).isNull();
-        verify(rnService).reactivate(RN, ACTOR, null);
-        verify(rnService, never()).revokeProposal(anyString(), anyString());
+        verify(rnService).reactivate(RN, ACTOR, AktSluzbenika.NEMA);
+        verify(rnService, never()).revokeProposal(any(), any(), any());
     }
 
     @ParameterizedTest
@@ -112,7 +119,7 @@ class SuspensionObjectionAdminServiceTest {
     void accept_whenRnLeftProposalAndSuspension_is409(RnStatus status) {
         when(rn.getStatus()).thenReturn(status);
 
-        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, null, null))
+        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, AktSluzbenika.NEMA))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_STATUS"));
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.SUBMITTED);
@@ -123,6 +130,15 @@ class SuspensionObjectionAdminServiceTest {
      * Neuvažavanje na prijedlogu: o suspenziji odlučuje {@link RnService#suspendIfDeadlineExpired}
      * (suspendira samo ako je rok istekao), uvijek tek nakon što je prigovor REJECTED.
      */
+    @Test
+    void reject_stripsControlCharacters_keepsLineBreaks() {
+        when(rnService.suspendIfDeadlineExpired(RN, ACTOR)).thenReturn(false);
+
+        service.reject(RN, objection.getObjectionId(), ACTOR, "  Prvi\u0000 red\nDrugi red\u0007  ", false);
+
+        assertThat(objection.getResolutionNote()).isEqualTo("Prvi red\nDrugi red");
+    }
+
     @Test
     void reject_onProposal_recordsNote_andSuspendsIfDeadlineExpired() {
         when(rnService.suspendIfDeadlineExpired(RN, ACTOR)).thenAnswer(inv -> {
@@ -147,10 +163,10 @@ class SuspensionObjectionAdminServiceTest {
     void accept_onWithdrawalProposal_revokesWithdrawalProposal() {
         when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWAL_PROPOSED);
 
-        service.accept(RN, objection.getObjectionId(), ACTOR, null, null);
+        service.accept(RN, objection.getObjectionId(), ACTOR, AktSluzbenika.NEMA);
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
-        verify(rnService).revokeWithdrawalProposal(RN, ACTOR, null);
+        verify(rnService).revokeWithdrawalProposal(RN, ACTOR, AktSluzbenika.NEMA);
         verifyNoMoreInteractions(rnService);
     }
 
@@ -159,10 +175,10 @@ class SuspensionObjectionAdminServiceTest {
     void accept_onWithdrawn_reinstates() {
         when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
 
-        service.accept(RN, objection.getObjectionId(), ACTOR, null, null);
+        service.accept(RN, objection.getObjectionId(), ACTOR, AktSluzbenika.NEMA);
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
-        verify(rnService).reinstate(RN, ACTOR, null);
+        verify(rnService).reinstate(RN, ACTOR, AktSluzbenika.NEMA);
         verifyNoMoreInteractions(rnService);
     }
 
@@ -173,12 +189,64 @@ class SuspensionObjectionAdminServiceTest {
     @Test
     void accept_onWithdrawn_reissued_is409() {
         when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
-        when(rnService.reinstate(RN, ACTOR, null))
+        when(rnService.reinstate(RN, ACTOR, AktSluzbenika.NEMA))
                 .thenThrow(new ConflictException("error.objection.rnReissued", "OBJECTION_RN_REISSUED"));
 
-        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, null, null))
+        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, AktSluzbenika.NEMA))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
+        verifyNoInteractions(auditService);
+    }
+
+    // ---- UAT 13.11.: obrazloženje i prilozi službenika uz akt uvažavanja
+
+    /**
+     * Uvažavanje u svakom statusu: bilješka ide prijelazu kao obrazloženje akta, a prilozi službenika uz
+     * zapis prijelaza — isti prijelaz kao i bez njih.
+     */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class,
+            names = {"SUSPENSION_PROPOSED", "SUSPENDED", "WITHDRAWAL_PROPOSED", "WITHDRAWN"})
+    void accept_passesNoteAsStatementOfReasons_andAttachments(RnStatus status) {
+        when(rn.getStatus()).thenReturn(status);
+        List<Long> prilozi = List.of(11L, 12L);
+
+        service.accept(RN, objection.getObjectionId(), ACTOR,
+                new AktSluzbenika(null, "  Suglasnost je dostavljena.  ", prilozi));
+
+        assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
+        assertThat(objection.getResolutionNote()).isEqualTo("Suglasnost je dostavljena.");
+        // Bilješka se čisti jednom; prijelaz dobiva očišćenu.
+        AktSluzbenika akt = new AktSluzbenika(null, "Suglasnost je dostavljena.", prilozi);
+        switch (status) {
+            case SUSPENSION_PROPOSED -> verify(rnService).revokeProposal(RN, ACTOR, akt);
+            case SUSPENDED -> verify(rnService).reactivate(RN, ACTOR, akt);
+            case WITHDRAWAL_PROPOSED -> verify(rnService).revokeWithdrawalProposal(RN, ACTOR, akt);
+            case WITHDRAWN -> verify(rnService).reinstate(RN, ACTOR, akt);
+            default -> throw new IllegalStateException(status.name());
+        }
+        verifyNoMoreInteractions(rnService);
+    }
+
+    /** Prazna bilješka nije obrazloženje: akt ide bez sekcije „Obrazloženje". */
+    @Test
+    void accept_blankNote_passesNoStatementOfReasons() {
+        service.accept(RN, objection.getObjectionId(), ACTOR, new AktSluzbenika(null, "   ", null));
+
+        assertThat(objection.getResolutionNote()).isNull();
+        verify(rnService).revokeProposal(RN, ACTOR, AktSluzbenika.NEMA);
+    }
+
+    /** Neispravan prilog (npr. tuđi) iz prijelaza izlazi iz transakcijske metode — bez audita. */
+    @Test
+    void accept_invalidAttachment_propagates_andIsNotAudited() {
+        when(rnService.revokeProposal(RN, ACTOR, new AktSluzbenika(null, null, List.of(99L)))).thenThrow(
+                new PrilogException(HttpStatus.NOT_FOUND,
+                        "error.attachment.notFound", PrilogException.NOT_FOUND));
+
+        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR,
+                new AktSluzbenika(null, null, List.of(99L))))
+                .isInstanceOf(PrilogException.class);
         verifyNoInteractions(auditService);
     }
 
@@ -224,7 +292,7 @@ class SuspensionObjectionAdminServiceTest {
         when(rn.getStatus()).thenReturn(RnStatus.SUSPENDED);
         service.reject(RN, objection.getObjectionId(), ACTOR, null, false);
 
-        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, null, null))
+        assertThatThrownBy(() -> service.accept(RN, objection.getObjectionId(), ACTOR, AktSluzbenika.NEMA))
                 .isInstanceOf(IllegalStatusTransitionException.class);
         assertThatThrownBy(() -> service.reject(RN, objection.getObjectionId(), ACTOR, null, false))
                 .isInstanceOf(IllegalStatusTransitionException.class);
@@ -251,8 +319,8 @@ class SuspensionObjectionAdminServiceTest {
         when(row.getRn()).thenReturn(RN);
         when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
         when(repository.findSummariesByRn(RN)).thenReturn(List.of(row));
-        when(internalAccess.displayNames(any())).thenReturn(new java.util.HashMap<>());
-        when(prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, List.of(id))).thenReturn(java.util.Map.of(id, List.of(
+        when(internalAccess.displayNames(any())).thenReturn(new HashMap<>());
+        when(prilogService.zaVlasnike(VrstaVlasnika.OBJECTION, List.of(id))).thenReturn(Map.of(id, List.of(
                 TestPrilog.vezan(21, VrstaVlasnika.OBJECTION, id, "foto.png", "NIAS:99999999990"),
                 TestPrilog.vezan(22, VrstaVlasnika.OBJECTION, id, "dopis.pdf", "NIAS:99999999990"))));
 
@@ -275,8 +343,8 @@ class SuspensionObjectionAdminServiceTest {
         when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
         when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
         when(repository.findSummariesByRn(RN)).thenReturn(List.of(row));
-        when(internalAccess.displayNames(any())).thenReturn(new java.util.HashMap<>());
-        when(prilogService.zaVlasnike(any(), any())).thenReturn(java.util.Map.of());
+        when(internalAccess.displayNames(any())).thenReturn(new HashMap<>());
+        when(prilogService.zaVlasnike(any(), any())).thenReturn(Map.of());
         when(reissueGuard.brojeviNaIstojAdresi(RN)).thenReturn(List.of("HR120001000000000999"));
 
         assertThat(service.list(RN)).singleElement()
@@ -453,7 +521,7 @@ class SuspensionObjectionAdminServiceTest {
     void acceptAndReject_countyProcedure_byNonCountyOfficial_is403() {
         SuspensionObjectionEntity o = countyObjection(RnStatus.SUSPENSION_PROPOSED);
 
-        assertThatThrownBy(() -> service.accept(RN, o.getObjectionId(), ACTOR, null, null))
+        assertThatThrownBy(() -> service.accept(RN, o.getObjectionId(), ACTOR, AktSluzbenika.NEMA))
                 .isInstanceOfSatisfying(ForbiddenException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_NOT_COUNTY_OFFICIAL"));
         assertThatThrownBy(() -> service.reject(RN, o.getObjectionId(), ACTOR, null, false))
@@ -500,7 +568,7 @@ class SuspensionObjectionAdminServiceTest {
     void acceptAndReject_countyWithoutRegistration_is409() {
         SuspensionObjectionEntity o = countyObjection(RnStatus.SUSPENSION_PROPOSED);
 
-        assertThatThrownBy(() -> service.accept(RN, o.getObjectionId(), ACTOR, null, URUDZBA))
+        assertThatThrownBy(() -> service.accept(RN, o.getObjectionId(), ACTOR, AktSluzbenika.rucni(URUDZBA)))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_NOT_REGISTERED"));
         assertThatThrownBy(() -> service.reject(RN, o.getObjectionId(), ACTOR, null, true))
@@ -517,10 +585,10 @@ class SuspensionObjectionAdminServiceTest {
         RucniAkt obustava = new RucniAkt("UP/I-334-06/26-01/7", "2181-26-3", "Splitsko-dalmatinska županija",
                 null, null, 17);
 
-        service.accept(RN, o.getObjectionId(), ACTOR, null, obustava);
+        service.accept(RN, o.getObjectionId(), ACTOR, AktSluzbenika.rucni(obustava));
 
         assertThat(o.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
-        verify(rnService).revokeProposal(RN, ACTOR, obustava);
+        verify(rnService).revokeProposal(RN, ACTOR, AktSluzbenika.rucni(obustava));
     }
 
     /** Postupak MINTS-a (prijelaz bez ručnog akta): odlučuje se odmah, bez urudžbiranja. */
@@ -534,10 +602,10 @@ class SuspensionObjectionAdminServiceTest {
         when(logRepository.findRucniAkt(logId)).thenReturn(Optional.empty());
         when(rn.getStatus()).thenReturn(RnStatus.SUSPENDED);
 
-        service.accept(RN, o.getObjectionId(), ACTOR, null, null);
+        service.accept(RN, o.getObjectionId(), ACTOR, AktSluzbenika.NEMA);
 
         assertThat(o.getStatus()).isEqualTo(SuspensionObjectionStatus.ACCEPTED);
-        verify(rnService).reactivate(RN, ACTOR, null);
+        verify(rnService).reactivate(RN, ACTOR, AktSluzbenika.NEMA);
         verify(pismenoRepository, never()).findFirstByRnAndActRefAndUrBrojIsNotNull(any(), any());
     }
 
@@ -559,7 +627,7 @@ class SuspensionObjectionAdminServiceTest {
         when(rnRepository.findById(RN)).thenReturn(Optional.of(rn));
         when(rn.getSubmissionId()).thenReturn(SUBMISSION_ID);
         when(repository.findSummariesByRn(RN)).thenReturn(List.of(zupanija, zupanijaNeurudzbiran, mints));
-        when(internalAccess.displayNames(any())).thenReturn(new java.util.HashMap<>());
+        when(internalAccess.displayNames(any())).thenReturn(new HashMap<>());
         RegistrationNumberLogEntity rucniLog = mock(RegistrationNumberLogEntity.class);
         when(rucniLog.getLogId()).thenReturn(zupanijaLog);
         when(rucniLog.rucniAkt()).thenReturn(Optional.of(PRIJEDLOG));

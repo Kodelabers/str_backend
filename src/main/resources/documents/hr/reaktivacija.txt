@@ -2,8 +2,9 @@
 # Vrsta pismena (eGOP): „Obavijest o reaktiviranju registracijskog broja" — izlazno, ide u KP
 # (MINT ju je unio 22.10.2026. pod tim nazivom; naš naziv na pismenu ostaje „…o reaktivaciji…").
 #
-# Akt je stranci u korist (ukida se ograničenje), pa po čl. 30. st. 2 ZUP-a nema potrebe za
-# obrazloženjem ni uputom o pravnom lijeku.
+# Akt je stranci u korist (ukida se ograničenje), pa po čl. 30. st. 2 ZUP-a obrazloženje nije
+# obvezno, a upute o pravnom lijeku nema. Neobavezno obrazloženje službenika (UAT 13.11.2026)
+# ispisuje se kao sekcija „Obrazloženje" samo kad je upisano (${akt.obrazlozenje}).
 #
 # Struktura je ista kao na obavijesti o dodjeli (predložak MINT-a od 11.09.2026.): bez adresata,
 # bez naslova izreke, bez priloga i dostavne liste. Stranka je imenovana u uvodu, a dostava ide
@@ -18,3 +19,6 @@ ${tijelo.naziv}, OIB: ${tijelo.oib}, na temelju ${tijelo.propisNadleznosti}, po 
 1. Ukida se suspenzija registracijskog broja ${rn.broj}, dodijeljenog smještajnoj jedinici „${objekt.naziv}", na adresi ${objekt.adresa}, skupine: ${objekt.skupina}, vrste: ${objekt.vrsta}.
 
 2. Registracijski broj je od dana dostave ove Obavijesti ponovno važeći i smještajna jedinica smije se oglašavati na internetskim platformama za kratkoročni najam.
+
+[OBRAZLOZENJE]
+${akt.obrazlozenje}

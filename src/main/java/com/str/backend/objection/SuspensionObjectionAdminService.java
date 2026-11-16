@@ -6,7 +6,6 @@ import com.str.backend.attachment.PrilogRepository.PrilogSazetak;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.auth.internal.InternalAccessService;
-import com.str.backend.common.Strings;
 import com.str.backend.common.Zagreb;
 import com.str.backend.document.FilingReference;
 import com.str.backend.document.StrDocumentType;
@@ -21,6 +20,7 @@ import com.str.backend.lessor.LessorEntity;
 import com.str.backend.lessor.LessorRepository;
 import com.str.backend.request.SubmissionEntity;
 import com.str.backend.request.SubmissionRepository;
+import com.str.backend.rn.AktSluzbenika;
 import com.str.backend.rn.RegistrationNumberLogEntity;
 import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnEntity;
@@ -51,10 +51,11 @@ import java.util.stream.Collectors;
  * {@link RnService#revokeProposal} (akt „obustava"), iz suspenzije {@link RnService#reactivate}, iz
  * prijedloga povlačenja {@link RnService#revokeWithdrawalProposal} (uvijek u {@code ACTIVE}), iz
  * povlačenja {@link RnService#reinstate} (T12) — pa nastaju isti akti i obavijesti
- * kao kad službenik to napravi ručno. Razlog se prijelazu
- * namjerno ne prosljeđuje: akt obustave ispisuje razlog pokretanja suspenzije, a ne razlog
- * obustave (v. {@code StrDocumentService#razlogIzTraga}). Veza s prigovorom stoji u prigovoru
- * ({@code resolved_by}, {@code resolution_note}) i u auditu.
+ * kao kad službenik to napravi ručno. Bilješka službenika ide prijelazu kao <b>obrazloženje akta</b>
+ * (UAT 13.11.: zasebna sekcija „Obrazloženje" na obavijesti, samo kad je upisana), a prilozi službenika
+ * vežu se uz zapis prijelaza i idu uz akt. Razlog prijelaza ({@code registration_number_log.reason}) i dalje
+ * ostaje prazan: akt obustave razlog čita s prijedloga postupka (v. {@code StrDocumentService#razlogAkta}).
+ * Veza s prigovorom stoji u prigovoru ({@code resolved_by}, {@code resolution_note}) i u auditu.
  *
  * <p><b>Županijski postupak</b> (T16): kad je akt na koji podnesak odgovara izdao županijski službenik s
  * ručnom KLASOM i URBROJEM ({@link RegistrationNumberLogRepository#findRucniAkt}), podnesak ne ide u eGOP
@@ -230,11 +231,17 @@ public class SuspensionObjectionAdminService {
      * <p>U županijskom postupku: službenik koji nije županijski 403 {@code OBJECTION_NOT_COUNTY_OFFICIAL}, a
      * neurudžbiran podnesak 409 {@code OBJECTION_NOT_REGISTERED}.
      *
-     * @param rucni ručni akt županijskog službenika (T16, {@code RucniAktService#zaRadnju}); {@code null} = akt
-     *              kroz eGOP, tj. službenik nije županijski
+     * <p>Bilješka službenika ({@link AktSluzbenika#obrazlozenje}) zapisuje se uz prigovor i ujedno je obrazloženje
+     * akta (UAT 13.11.); čisti se jednom ({@link AktSluzbenika#ocistiObrazlozenje}). Prilozi službenika vežu se uz
+     * zapis prijelaza u istoj transakciji — neispravan prilog (tuđi, istekao, previše, ukupno preko 15 MB)
+     * poništava i uvažavanje.
+     *
+     * @param akt ručni akt županijskog službenika (T16, {@code RucniAktService#zaRadnju}; {@code null} = akt kroz
+     *            eGOP, tj. službenik nije županijski), bilješka i prilozi
      */
     @Transactional
-    public void accept(String rn, UUID id, String actor, String note, RucniAkt rucni) {
+    public void accept(String rn, UUID id, String actor, AktSluzbenika akt) {
+        AktSluzbenika a = akt != null ? akt : AktSluzbenika.NEMA;
         RnEntity rnEntity = rnRepository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
         SuspensionObjectionEntity e = findOrThrow(rn, id);
@@ -242,15 +249,16 @@ public class SuspensionObjectionAdminService {
         if (!SuspensionObjectionService.OBJECTION_ALLOWED_RN_STATUSES.contains(rnStatus)) {
             throw new ConflictException("error.objection.rnStatus", "OBJECTION_RN_STATUS");
         }
-        requireCountyRulesForDecision(rn, e, rucni != null);
-        String cleanNote = Strings.blankToNull(note);
+        requireCountyRulesForDecision(rn, e, a.rucni() != null);
+        String cleanNote = AktSluzbenika.ocistiObrazlozenje(a.obrazlozenje());
         // Prigovor prvi: zatvaranje neobrađenih prigovora pri prijelazu RB-a ovaj više ne dira.
         e.accept(actor, cleanNote);
+        AktSluzbenika uz = new AktSluzbenika(a.rucni(), cleanNote, a.prilogIds());
         switch (rnStatus) {
-            case SUSPENSION_PROPOSED -> rnService.revokeProposal(rn, actor, rucni);
-            case SUSPENDED -> rnService.reactivate(rn, actor, rucni);
-            case WITHDRAWAL_PROPOSED -> rnService.revokeWithdrawalProposal(rn, actor, rucni);
-            case WITHDRAWN -> rnService.reinstate(rn, actor, rucni);
+            case SUSPENSION_PROPOSED -> rnService.revokeProposal(rn, actor, uz);
+            case SUSPENDED -> rnService.reactivate(rn, actor, uz);
+            case WITHDRAWAL_PROPOSED -> rnService.revokeWithdrawalProposal(rn, actor, uz);
+            case WITHDRAWN -> rnService.reinstate(rn, actor, uz);
             default -> throw new ConflictException("error.objection.rnStatus", "OBJECTION_RN_STATUS");
         }
         auditService.record(actor, "OBJECTION_ACCEPT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
@@ -276,7 +284,8 @@ public class SuspensionObjectionAdminService {
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
         SuspensionObjectionEntity e = findOrThrow(rn, id);
         requireCountyRulesForDecision(rn, e, zupanijskiSluzbenik);
-        String cleanNote = Strings.blankToNull(note);
+        // Isto čišćenje kao kod uvažavanja: NUL bi PostgreSQL odbio (500), a bilješka nikamo ne ide osim u odluku.
+        String cleanNote = AktSluzbenika.ocistiObrazlozenje(note);
         e.reject(actor, cleanNote);
         if (rnEntity.getStatus() == RnStatus.SUSPENSION_PROPOSED) {
             rnService.suspendIfDeadlineExpired(rn, actor);

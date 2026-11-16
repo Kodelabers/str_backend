@@ -252,6 +252,19 @@ tijelu u roku od osam dana…"). Time pravni lijek nije nestao (čl. 111.), samo
 stranicu; s uključenim blokom e-pečata suspenzija i povlačenje prelaze na drugu (potpis i blok
 idu zajedno).
 
+**Iznimka (UAT 13.11.2026): neobavezno obrazloženje službenika.** Obavijesti o obustavi postupka
+(suspenzije, povlačenja) i o reaktivaciji (nakon suspenzije, povlačenja) imaju sekciju
+`[OBRAZLOZENJE]` s `${akt.obrazlozenje}`. Službenik ga upisuje pri uvažavanju očitovanja ili
+prigovora (bilješka uz odluku) odnosno pri ručnoj obustavi; čuva se u
+`registration_number_log.akt_obrazlozenje` (changeset 162), bez kontrolnih znakova (osim prijeloma i
+tabulatora, `AktSluzbenika.ocistiObrazlozenje`). Svaki prijelom retka koji je službenik upisao ispisuje se kao
+novi odlomak (`ZupContextFactory.putObrazlozenje`; sekcija je PROZA, u kojoj bi se retci inače spojili).
+Bilješka uz **neuvažavanje** ne ide ni u jedan akt i neuvažavanje nema priloga. Kad nije upisano, sekcija izostaje
+**zajedno s naslovom**: renderer preskače svaku sekciju koja je nakon vezanja prazna
+(`ZupDocumentRenderer.sekcija`). Akt je i dalje stranci u korist, pa obrazloženje po čl. 30. st. 2
+nije obvezno. Prilozi službenika uz te akte vežu se uz zapis prijelaza kao kod prijedloga (T17) i idu
+uz akt u eGOP, KP i e-poštu te ispod njega u „Dokumentima" RB-a.
+
 Akti službenika ne imenuju stranku u uvodu nego u točki 1.: „…dodijeljen(og) na zahtjev stranke:
 ${stranka.naziv}, ${stranka.identifikator}, smještajnoj jedinici…". Dodjela i opoziv zadržavaju
 „na zahtjev ${stranka.naziv}" u uvodu.
@@ -294,6 +307,7 @@ i mora biti izričito u kontekstu.
 | `${akt.klasaRedak}`, `${akt.urbrojRedak}`, `${akt.mjestoDatum}` | izvedeno | gotovi redci zaglavlja; prazni kad nema oznaka |
 | `${akt.jopRedak}` | `egop_pismeno.jop` | „P/21748084"; prazno prije urudžbiranja (akti životnog ciklusa ga zato nemaju) |
 | `${akt.datum}` | datum izdavanja RB-a za dodjelu, inače današnji (Europe/Zagreb) | datum akta u zaglavlju; svi datumi u obliku „10. rujna 2026." (genitiv, `ZupContextFactoryTest`) |
+| `${akt.obrazlozenje}` | `registration_number_log.akt_obrazlozenje` prijelaza koji akt izriče (`StrDocumentService.dopuniObrazlozenje`) | samo obustava suspenzije, obustava povlačenja, reaktivacija i reaktivacija povlačenja (UAT 13.11.); ostali akti prazno. Prazno → sekcija „Obrazloženje" izostaje s naslovom |
 | `${prijelaz.datum}` | `registration_number_log.occurred_at` prijelaza u status koji akt izriče, u Europe/Zagreb (`StrDocumentService.dopuniDatumPrijelaza`) | pravni dan učinka („prestaje važiti … s danom …" u suspenziji, povlačenju i opozivu). Ne datum rendera: konačni dokument se renderira nakon urudžbe, i na retryju danima kasnije; bez zapisa prijelaza = `${akt.datum}` |
 | `${stranka.naziv}` | `lessorLegalEntityName` → `firstName lastName` | |
 | `${stranka.identifikator}` | OIB ili „bez dodijeljenog OIB-a" | non-EU iznajmljivač nema OIB |

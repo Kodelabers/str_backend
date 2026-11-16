@@ -358,6 +358,11 @@ public class ZupDocumentRenderer {
         if (izvor == null) {
             return;
         }
+        // Sekcija bez sadržaja nakon vezanja (neobavezno obrazloženje službenika, UAT 13.11.) izostaje cijela,
+        // s naslovom — prazan „Obrazloženje" na aktu izgledao bi kao nedovršen akt.
+        if (ZupPlaceholders.bind(izvor, ctx, template.origin() + " [" + section + "]").isBlank()) {
+            return;
+        }
         float razmakPrije = section.spacingBefore();
         if (section.hasHeading()) {
             Paragraph naslov = new Paragraph(section.heading(), FNT_NASLOV_SEKCIJE);

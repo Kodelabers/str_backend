@@ -134,6 +134,40 @@ class RnDocumentsServiceTest {
         assertThat(docs.get(3).prilozi()).extracting(PrilogDto::naziv).containsExactly("sluzbenik.pdf");
     }
 
+    /**
+     * UAT 13.11.: prilozi službenika uz obustavu i reaktivaciju vežu se uz zapis prijelaza (RN_LOG, log_id),
+     * pa ih popis prikazuje ispod obavijesti tog prijelaza — i za akt kroz eGOP i za ručni akt županije.
+     */
+    @Test
+    void listForRn_officialAttachments_listedUnderDiscontinuationAndReactivationNotices() {
+        stubRn(submissionId, LocalDate.now().minusDays(2));
+        stubSubmission("pdf".getBytes(), Instant.now().minus(3, ChronoUnit.DAYS));
+        UUID obustavaLog = UUID.randomUUID();
+        UUID reaktivacijaLog = UUID.randomUUID();
+        EgopPismenoEntity obustava = EgopPismenoEntity.forAct(submissionId, RN, obustavaLog.toString(),
+                StrDocumentType.OBUSTAVA_SUSPENZIJE.vrstaPismenaNaziv(), EgopPismenoEntity.Smjer.IZLAZNO,
+                new byte[]{1});
+        EgopPismenoEntity reaktivacija = EgopPismenoEntity.rucniAkt(submissionId, RN, reaktivacijaLog.toString(),
+                StrDocumentType.REAKTIVACIJA_POVLACENJA.vrstaPismenaNaziv(), new byte[]{2},
+                "UP/I-334-06/26-01/7", "2181-26-4");
+        when(egopPismenoRepository.findByRnOrderByCreatedAtAsc(RN)).thenReturn(List.of(obustava, reaktivacija));
+        when(prilogService.zaVlasnike(VrstaVlasnika.RN_LOG, List.of(obustavaLog, reaktivacijaLog))).thenReturn(Map.of(
+                obustavaLog, List.of(
+                        TestPrilog.vezan(21, VrstaVlasnika.RN_LOG, obustavaLog, "suglasnost.pdf", "INTERNAL:98765432106")),
+                reaktivacijaLog, List.of(
+                        TestPrilog.vezan(22, VrstaVlasnika.RN_LOG, reaktivacijaLog, "zapisnik.pdf", "INTERNAL:98765432106"),
+                        TestPrilog.vezan(23, VrstaVlasnika.RN_LOG, reaktivacijaLog, "nalaz.pdf", "INTERNAL:98765432106"))));
+
+        List<RnDocumentDto> docs = service.listForRn(RN);
+
+        assertThat(docs).extracting(RnDocumentDto::slug)
+                .containsExactly("zahtjev", "dodjela", StrDocumentType.OBUSTAVA_SUSPENZIJE.slug(),
+                        StrDocumentType.REAKTIVACIJA_POVLACENJA.slug());
+        assertThat(docs.get(2).prilozi()).extracting(PrilogDto::naziv).containsExactly("suglasnost.pdf");
+        assertThat(docs.get(2).prilozi().get(0).href()).isEqualTo("/api/rn/" + RN + "/attachments/21");
+        assertThat(docs.get(3).prilozi()).extracting(PrilogDto::naziv).containsExactly("zapisnik.pdf", "nalaz.pdf");
+    }
+
     @Test
     void listForRn_lifecycleActs_appendedInDateOrderWithStoredHref() {
         stubRn(submissionId, LocalDate.now().minusDays(2));

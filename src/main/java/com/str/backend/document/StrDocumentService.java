@@ -42,6 +42,11 @@ public class StrDocumentService {
     /** Akter službenika u {@code registration_number_log} ({@code InternalAccessService.actorFor}). */
     private static final String INTERNAL_PREFIX = "INTERNAL:";
 
+    /** Akti na kojima službenik upisuje obrazloženje ({@code RnService}: obustave i reaktivacije). */
+    private static final Set<StrDocumentType> OBRAZLOZENJE_SLUZBENIKA = Set.of(
+            StrDocumentType.OBUSTAVA_SUSPENZIJE, StrDocumentType.REAKTIVACIJA,
+            StrDocumentType.OBUSTAVA_POVLACENJA, StrDocumentType.REAKTIVACIJA_POVLACENJA);
+
     private final RnRepository rnRepository;
     private final LessorRepository lessorRepository;
     private final SubmissionRepository submissionRepository;
@@ -100,10 +105,13 @@ public class StrDocumentService {
         RnDetailDto detail = rnRepository.findDetail(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("rn not found: " + rn));
 
+        // Zapis prijelaza koji akt izriče, jednom po renderu: iz njega su ručne oznake, potpisnik, dan učinka i
+        // obrazloženje službenika.
+        Optional<RegistrationNumberLogEntity> zapis = zapisPrijelaza(type, rn);
         // T16: ručni akt županijskog službenika nosi KLASU i URBROJ koje je službenik upisao (ili izvedene s
         // prijedloga) i županiju kao izdavatelja; eGOP oznaka (filing) postoji samo za akte kroz eGOP.
         Optional<RucniAkt> rucni = filing != null ? Optional.empty()
-                : zapisPrijelaza(type, rn).flatMap(RegistrationNumberLogEntity::rucniAkt);
+                : zapis.flatMap(RegistrationNumberLogEntity::rucniAkt);
         FilingReference oznake = filing != null ? filing
                 : rucni.map(r -> new FilingReference(r.klasa(), r.urBroj()))
                         .orElseGet(() -> new FilingReference(klasaZa(type, detail), null));
@@ -115,8 +123,9 @@ public class StrDocumentService {
                     r.izdavateljNaziv(), r.izdavateljOib() != null, r.klasa(), r.urBroj());
         });
         dopuniAdresu(ctx, detail);
-        dopuniSluzbenika(ctx, type, rn);
-        dopuniDatumPrijelaza(ctx, type, rn);
+        dopuniSluzbenika(ctx, type, rn, zapis);
+        dopuniDatumPrijelaza(ctx, zapis);
+        dopuniObrazlozenje(ctx, type, zapis);
 
         byte[] pdf = renderer.render(templates.get(type), ctx);
         log.info("document_rendered type={} rn={} klasa={} bytes={}",
@@ -244,9 +253,20 @@ public class StrDocumentService {
      * Dan od kojeg akt djeluje ({@code ${prijelaz.datum}}): prijelaz u status koji akt izriče, a ne
      * zadnji zapis traga — akt se renderira i kasnije (konačni dokument nakon urudžbe, na zahtjev).
      */
-    private void dopuniDatumPrijelaza(Map<String, String> ctx, StrDocumentType type, String rn) {
-        zapisPrijelaza(type, rn)
-                .ifPresent(zapis -> ZupContextFactory.putDatumPrijelaza(ctx, zapis.getOccurredAt()));
+    private static void dopuniDatumPrijelaza(Map<String, String> ctx, Optional<RegistrationNumberLogEntity> zapis) {
+        zapis.ifPresent(z -> ZupContextFactory.putDatumPrijelaza(ctx, z.getOccurredAt()));
+    }
+
+    /**
+     * Obrazloženje službenika ({@code ${akt.obrazlozenje}}, UAT 13.11.) — upisano pri obustavi postupka ili
+     * reaktivaciji (ručno ili uvažavanjem očitovanja odnosno prigovora), sa zapisa prijelaza koji akt izriče.
+     * Ostali akti ga nemaju; bez njega sekcija „Obrazloženje" izostaje.
+     */
+    private static void dopuniObrazlozenje(Map<String, String> ctx, StrDocumentType type,
+                                           Optional<RegistrationNumberLogEntity> zapis) {
+        if (OBRAZLOZENJE_SLUZBENIKA.contains(type)) {
+            zapis.ifPresent(z -> ZupContextFactory.putObrazlozenje(ctx, z.getAktObrazlozenje()));
+        }
     }
 
     /**
@@ -317,13 +337,14 @@ public class StrDocumentService {
      * <p>Naziv službene dužnosti {@code str.application_user} ne nosi, pa se ne ispisuje. Bez
      * službenika (stari zapis, nedostupna shema {@code str}) potpis ostaje naziv tijela.
      */
-    private void dopuniSluzbenika(Map<String, String> ctx, StrDocumentType type, String rn) {
+    private void dopuniSluzbenika(Map<String, String> ctx, StrDocumentType type, String rn,
+                                  Optional<RegistrationNumberLogEntity> zapis) {
         if (!type.potpisujeSluzbenik()) {
             return;
         }
         // Zapis prijelaza koji akt izriče, a ne zadnji zapis traga: akt se renderira i kasnije (konačni
         // dokument nakon urudžbe, na zahtjev), kad je zadnji prijelaz već neki drugi (npr. REINSTATE).
-        Optional<String> oib = zapisPrijelaza(type, rn)
+        Optional<String> oib = zapis
                 .or(() -> logRepository.findFirstByRnOrderByOccurredAtDesc(rn))
                 .flatMap(StrDocumentService::oibSluzbenika);
         if (oib.isEmpty() && potpisSPrijedloga(type)) {

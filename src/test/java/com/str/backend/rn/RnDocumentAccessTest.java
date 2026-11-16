@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -351,7 +352,7 @@ class RnDocumentAccessTest {
     @Test
     void withdrawalProposalEndpoints_withRole_passParametersToService() throws Exception {
         when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
-        when(internalAccess.actorFor(any())).thenReturn(java.util.Optional.of("INTERNAL:" + OFFICIAL_OIB));
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:" + OFFICIAL_OIB));
 
         mvc.perform(post("/api/rn/{rn}/propose-withdrawal", RN).param("reason", "OTHER")
                         .param("withdrawalDeadline", "2099-01-31").param("note", "opis")
@@ -364,7 +365,68 @@ class RnDocumentAccessTest {
 
         verify(service).proposeWithdrawal(RN, com.str.backend.domain.WithdrawalReason.OTHER,
                 java.time.LocalDate.of(2099, 1, 31), "opis", "INTERNAL:" + OFFICIAL_OIB, java.util.List.of(11L, 12L), null);
-        verify(service).revokeWithdrawalProposal(RN, "INTERNAL:" + OFFICIAL_OIB, null);
+        verify(service).revokeWithdrawalProposal(RN, "INTERNAL:" + OFFICIAL_OIB, AktSluzbenika.NEMA);
+    }
+
+    /**
+     * UAT 13.11.: obustava i reaktivacija primaju neobavezno JSON tijelo s obrazloženjem i prilozima; KLASA i
+     * URBROJ ostaju query parametri, a poziv bez tijela (stari FE) radi kao i dosad.
+     */
+    @Test
+    void revokeAndReactivate_optionalBody_passesStatementAndAttachments() throws Exception {
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:" + OFFICIAL_OIB));
+        String akter = "INTERNAL:" + OFFICIAL_OIB;
+
+        mvc.perform(post("/api/rn/{rn}/revoke-proposal", RN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"Suglasnost dostavljena\",\"prilogIds\":[11,12]}")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/rn/{rn}/reactivate", RN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"Nadzor je okončan\"}")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/rn/{rn}/revoke-withdrawal-proposal", RN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"prilogIds\":[13]}")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isOk());
+
+        verify(service).revokeProposal(RN, akter, new AktSluzbenika(null, "Suglasnost dostavljena", List.of(11L, 12L)));
+        verify(service).reactivate(RN, akter, new AktSluzbenika(null, "Nadzor je okončan", List.of()));
+        verify(service).revokeWithdrawalProposal(RN, akter, new AktSluzbenika(null, null, List.of(13L)));
+    }
+
+    /** Bez tijela: kao prije (KLASA/URBROJ u queryju idu u RucniAktService), bez obrazloženja i priloga. */
+    @Test
+    void revokeProposal_withoutBody_keepsQueryParameters() throws Exception {
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:" + OFFICIAL_OIB));
+
+        mvc.perform(post("/api/rn/{rn}/revoke-proposal", RN).param("klasa", "UP/I-334-06/26-01/7")
+                        .param("urbroj", "2181-26-3")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isOk());
+
+        verify(rucniAktService).zaRadnju(any(), eq("UP/I-334-06/26-01/7"), eq("2181-26-3"));
+        verify(service).revokeProposal(RN, "INTERNAL:" + OFFICIAL_OIB, AktSluzbenika.NEMA);
+    }
+
+    /** Obrazloženje dulje od 1000 znakova je 400, bez prijelaza. */
+    @Test
+    void reactivate_tooLongNote_is400() throws Exception {
+        when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:" + OFFICIAL_OIB));
+
+        mvc.perform(post("/api/rn/{rn}/reactivate", RN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"" + "a".repeat(1001) + "\"}")
+                        .with(authentication(official())).with(ajax()))
+                .andExpect(status().isBadRequest());
+
+        verify(service, never()).reactivate(any(), any(), any());
     }
 
     /** Bez prijave nema prijedloga povlačenja. */
@@ -383,7 +445,7 @@ class RnDocumentAccessTest {
     @Test
     void suspend_withRepeatedPrilogIds_passAttachmentsToService() throws Exception {
         when(internalAccess.hasRole(any(), eq(InternalAccessService.RN_MANAGEMENT))).thenReturn(true);
-        when(internalAccess.actorFor(any())).thenReturn(java.util.Optional.of("INTERNAL:" + OFFICIAL_OIB));
+        when(internalAccess.actorFor(any())).thenReturn(Optional.of("INTERNAL:" + OFFICIAL_OIB));
 
         mvc.perform(post("/api/rn/{rn}/suspend", RN).param("reason", "INSPECTION")
                         .param("suspensionDeadline", "2099-01-31")

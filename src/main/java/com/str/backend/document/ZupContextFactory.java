@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -145,6 +146,10 @@ public class ZupContextFactory {
         ctx.put("opoziv.razlogRedak", type == StrDocumentType.ZAHTJEV_OPOZIVA
                 ? prefiks("Kao razlog opoziva podnositelj navodi: ", razlog == null ? null : razlog.strip())
                 : "");
+
+        // Obrazloženje službenika na aktu obustave ili reaktivacije (UAT 13.11.). Puni ga StrDocumentService
+        // iz zapisa prijelaza (putObrazlozenje); prazno → renderer izostavlja cijelu sekciju, i naslov.
+        ctx.put("akt.obrazlozenje", "");
 
         ctx.put("objekt.naziv", fallback(d.accommodationName()));
         ctx.put("objekt.adresa", objektAdresa(d));
@@ -290,6 +295,21 @@ public class ZupContextFactory {
         ctx.put("akt.mjestoDatum", optional(ctx.get("akt.datum")));
         ctx.put(BEZ_EPECATA, "true");
     }
+
+    /**
+     * Obrazloženje službenika sa zapisa prijelaza ({@code akt_obrazlozenje}); prazno ne mijenja ništa. Svaki
+     * prijelom retka koji je službenik upisao postaje granica odlomka: sekcija je {@code PROZA}, u kojoj bi
+     * jednostruki prijelom spojio retke („1. … 2. …" u jedan odlomak). Više praznih redaka svodi se na jedan.
+     */
+    public static void putObrazlozenje(Map<String, String> ctx, String obrazlozenje) {
+        if (obrazlozenje == null || obrazlozenje.isBlank()) {
+            return;
+        }
+        ctx.put("akt.obrazlozenje", PRIJELOMI_OBRAZLOZENJA.matcher(obrazlozenje.strip()).replaceAll("\n\n"));
+    }
+
+    /** Niz prijeloma retka s razmacima oko njih — jedna granica odlomka ({@link #putObrazlozenje}). */
+    private static final Pattern PRIJELOMI_OBRAZLOZENJA = Pattern.compile("[ \\t]*(\\R[ \\t]*)+");
 
     public static void putSluzbenik(Map<String, String> ctx, String ime) {
         if (ime == null || ime.isBlank()) {

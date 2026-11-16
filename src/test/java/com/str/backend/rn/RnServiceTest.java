@@ -26,6 +26,9 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpStatus;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -256,7 +259,7 @@ class RnServiceTest {
 
         assertThatThrownBy(() -> service.suspend(rn.getRn(), RnTrigger.INSPECTION, DEADLINE, null, null, List.of(7L)))
                 .isInstanceOfSatisfying(PrilogException.class, ex -> {
-                    assertThat(ex.getStatus()).isEqualTo(org.springframework.http.HttpStatus.FORBIDDEN);
+                    assertThat(ex.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
                     assertThat(ex.getCode()).isEqualTo(PrilogException.FORBIDDEN);
                 });
         verify(prilogService, never()).bind(any(), any(), any());
@@ -339,8 +342,8 @@ class RnServiceTest {
     // ---- T12: prijedlog povlačenja, obustava, istek roka i uvaženi prigovor
 
     /** Prijedlog iz svakog stojećeg statusa: rok se pamti, a rok suspenzije briše (postupak suspenzije završava). */
-    @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.EnumSource(value = RnStatus.class,
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class,
             names = {"ACTIVE", "SUSPENSION_PROPOSED", "SUSPENDED"})
     void proposeWithdrawal_setsDeadline(RnStatus from) {
         RnEntity rn = rnIn(from);
@@ -470,10 +473,10 @@ class RnServiceTest {
         RnEntity rn = withdrawalProposedRn(DEADLINE);
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        service.revokeWithdrawalProposal(rn.getRn(), "INTERNAL:12345678903");
+        service.revokeWithdrawalProposal(rn.getRn(), "INTERNAL:12345678903", AktSluzbenika.NEMA);
 
         verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL,
-                "INTERNAL:12345678903", null, null);
+                "INTERNAL:12345678903", null, null, null);
     }
 
     @Test
@@ -481,10 +484,10 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        assertThatThrownBy(() -> service.revokeWithdrawalProposal(rn.getRn(), null))
+        assertThatThrownBy(() -> service.revokeWithdrawalProposal(rn.getRn(), null, AktSluzbenika.NEMA))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("RN_NOT_WITHDRAWAL_PROPOSED"));
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any(), any());
     }
 
     /** Neuvaženo očitovanje nakon isteka roka: odmah povlačenje, istim prijelazom kao posao. */
@@ -522,9 +525,10 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         when(reissueGuard.noviBrojIzdan(rn)).thenReturn(false);
 
-        service.reinstate(rn.getRn(), "INTERNAL:12345678903");
+        service.reinstate(rn.getRn(), "INTERNAL:12345678903", AktSluzbenika.NEMA);
 
-        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REINSTATE, "INTERNAL:12345678903", null, null);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REINSTATE, "INTERNAL:12345678903", null, null,
+                null);
     }
 
     /** Za objekt je izdan drugi važeći broj → 409 OBJECTION_RN_REISSUED, bez prijelaza. */
@@ -534,10 +538,10 @@ class RnServiceTest {
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
         when(reissueGuard.noviBrojIzdan(rn)).thenReturn(true);
 
-        assertThatThrownBy(() -> service.reinstate(rn.getRn(), null))
+        assertThatThrownBy(() -> service.reinstate(rn.getRn(), null, AktSluzbenika.NEMA))
                 .isInstanceOfSatisfying(ConflictException.class,
                         e -> assertThat(e.getCode()).isEqualTo("OBJECTION_RN_REISSUED"));
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any(), any());
     }
 
     /** Neuvaženi prigovor nakon isteka roka: odmah suspenzija, u ime službenika, istim prijelazom kao job. */
@@ -656,11 +660,11 @@ class RnServiceTest {
         verify(transitionService).transition(rn, RnStatus.SUSPENSION_PROPOSED, RnTrigger.INSPECTION, actor,
                 "nalaz inspekcijskog nadzora", null);
 
-        service.revokeProposal(rn.getRn(), actor);
-        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null, null);
+        service.revokeProposal(rn.getRn(), actor, AktSluzbenika.NEMA);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, actor, null, null, null);
 
-        service.reactivate(rn.getRn(), actor);
-        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null, null);
+        service.reactivate(rn.getRn(), actor, AktSluzbenika.NEMA);
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REACTIVATE, actor, null, null, null);
     }
 
     // ---- T17: prilozi službenika uz prijedlog suspenzije i povlačenje
@@ -697,12 +701,119 @@ class RnServiceTest {
         when(repository.findForUpdate("HR00000001")).thenReturn(Optional.of(rn));
         when(transitionService.transition(any(), any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
         when(prilogService.bind(any(), any(), any())).thenThrow(new PrilogException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "error.attachment.totalTooLarge",
+                HttpStatus.BAD_REQUEST, "error.attachment.totalTooLarge",
                 PrilogException.TOTAL_TOO_LARGE));
 
         assertThatThrownBy(() -> service.suspend("HR00000001", RnTrigger.INSPECTION, DEADLINE, null,
                 "INTERNAL:12345678903", List.of(1L)))
                 .isInstanceOfSatisfying(PrilogException.class,
                         e -> assertThat(e.getCode()).isEqualTo("ATTACHMENT_TOTAL_TOO_LARGE"));
+    }
+
+    // ---- UAT 13.11.: obrazloženje i prilozi službenika uz obustavu i reaktivaciju
+
+    private static final String SLUZBENIK = "INTERNAL:12345678903";
+
+    /**
+     * Svaki od četiri prijelaza: obrazloženje (očišćeno) ide uz zapis prijelaza, a prilozi se vežu uz upravo
+     * nastali zapis ({@code RN_LOG}, owner = log_id) pod službenikom koji je radnju napravio.
+     */
+    @ParameterizedTest
+    @EnumSource(value = RnTrigger.class,
+            names = {"REVOKE_PROPOSAL", "REACTIVATE", "REVOKE_WITHDRAWAL_PROPOSAL", "REINSTATE"})
+    void obustavaIReaktivacija_storeStatementOfReasons_andBindAttachmentsToLog(RnTrigger trigger) {
+        RnEntity rn = rnIn(switch (trigger) {
+            case REVOKE_PROPOSAL -> RnStatus.SUSPENSION_PROPOSED;
+            case REACTIVATE -> RnStatus.SUSPENDED;
+            case REVOKE_WITHDRAWAL_PROPOSAL -> RnStatus.WITHDRAWAL_PROPOSED;
+            default -> RnStatus.WITHDRAWN;
+        });
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        UUID logId = UUID.randomUUID();
+        when(transitionService.transition(rn, RnStatus.ACTIVE, trigger, SLUZBENIK, null, null,
+                "Dostavljena je suglasnost.")).thenReturn(logId);
+
+        String obrazlozenje = "  Dostavljena je suglasnost.  ";
+        List<Long> prilozi = List.of(7L, 8L);
+        AktSluzbenika akt = new AktSluzbenika(null, obrazlozenje, prilozi);
+        switch (trigger) {
+            case REVOKE_PROPOSAL -> service.revokeProposal(rn.getRn(), SLUZBENIK, akt);
+            case REACTIVATE -> service.reactivate(rn.getRn(), SLUZBENIK, akt);
+            case REVOKE_WITHDRAWAL_PROPOSAL -> service.revokeWithdrawalProposal(rn.getRn(), SLUZBENIK, akt);
+            default -> service.reinstate(rn.getRn(), SLUZBENIK, akt);
+        }
+
+        // Razlog prijelaza ostaje prazan: akt obustave razlog čita s prijedloga postupka.
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, trigger, SLUZBENIK, null, null,
+                "Dostavljena je suglasnost.");
+        verify(prilogService).bind(SLUZBENIK, prilozi, PrilogVlasnik.prijelaz(logId));
+    }
+
+    /** Ručna obustava bez tijela: bez obrazloženja i bez vezanja priloga. */
+    @Test
+    void revokeProposal_withoutStatementOrAttachments_bindsNothing() {
+        RnEntity rn = rnIn(RnStatus.SUSPENSION_PROPOSED);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.revokeProposal(rn.getRn(), SLUZBENIK, new AktSluzbenika(null, "   ", List.of()));
+
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, SLUZBENIK, null, null,
+                null);
+        verify(prilogService, never()).bind(any(), any(), any());
+    }
+
+    /** Kontrolni znakovi (NUL bi PostgreSQL odbio s 500) se izbacuju; prijelomi i tabulatori ostaju. */
+    @Test
+    void revokeProposal_stripsControlCharacters_keepsLineBreaks() {
+        RnEntity rn = rnIn(RnStatus.SUSPENSION_PROPOSED);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        service.revokeProposal(rn.getRn(), SLUZBENIK,
+                new AktSluzbenika(null, "1. Prva\u0000 točka\u0007\n2.\tDruga\u001B točka", List.of()));
+
+        verify(transitionService).transition(rn, RnStatus.ACTIVE, RnTrigger.REVOKE_PROPOSAL, SLUZBENIK, null, null,
+                "1. Prva točka\n2.\tDruga točka");
+    }
+
+    /** Predugo obrazloženje je 400 prije prijelaza — ne 500 iz baze. */
+    @Test
+    void revokeProposal_tooLongStatement_is400_withoutTransition() {
+        RnEntity rn = rnIn(RnStatus.SUSPENSION_PROPOSED);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        assertThatThrownBy(() -> service.revokeProposal(rn.getRn(), SLUZBENIK,
+                new AktSluzbenika(null, "a".repeat(AktSluzbenika.MAX_OBRAZLOZENJE + 1), List.of())))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("error.rn.obrazlozenje.tooLong");
+        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any(), any());
+        assertThat(rn.getStatus()).isEqualTo(RnStatus.SUSPENSION_PROPOSED);
+    }
+
+    /** Tuđi ili napušteni (istekao, obrisan) prilog: iznimka vezanja izlazi iz transakcijske metode (rollback). */
+    @Test
+    void reactivate_foreignOrAbandonedAttachment_propagates() {
+        RnEntity rn = rnIn(RnStatus.SUSPENDED);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+        when(transitionService.transition(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(UUID.randomUUID());
+        when(prilogService.bind(any(), any(), any())).thenThrow(new PrilogException(
+                HttpStatus.NOT_FOUND, "error.attachment.notFound", PrilogException.NOT_FOUND));
+
+        assertThatThrownBy(() -> service.reactivate(rn.getRn(), SLUZBENIK, new AktSluzbenika(null, null, List.of(99L))))
+                .isInstanceOfSatisfying(PrilogException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("ATTACHMENT_NOT_FOUND"));
+    }
+
+    /** Prilozi bez identificiranog službenika: 403 ATTACHMENT_FORBIDDEN, kao kod prijedloga. */
+    @Test
+    void revokeWithdrawalProposal_attachmentsWithoutActor_is403() {
+        RnEntity rn = withdrawalProposedRn(DEADLINE);
+        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+
+        assertThatThrownBy(() -> service.revokeWithdrawalProposal(rn.getRn(), null,
+                new AktSluzbenika(null, null, List.of(1L))))
+                .isInstanceOfSatisfying(PrilogException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(PrilogException.FORBIDDEN));
+        verify(prilogService, never()).bind(any(), any(), any());
     }
 }

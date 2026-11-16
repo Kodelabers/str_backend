@@ -142,13 +142,68 @@ paths:
         "404":
           $ref: '#/components/responses/NotFound'
 
+  /api/rn/{rn}/revoke-proposal:
+    post:
+      tags: [rn]
+      summary: Discontinue the suspension procedure (SUSPENSION_PROPOSED back to ACTIVE)
+      description: |
+        Issues „Obavijest o obustavi postupka suspenzije". The optional body carries the
+        official's statement of reasons (printed as section „Obrazloženje" only when entered;
+        every line break starts a new paragraph) and attachments that go with the notice
+        (eGOP, KP, e-mail, RB „Dokumenti").
+      operationId: revokeProposalRn
+      parameters:
+        - $ref: '#/components/parameters/rn'
+        - $ref: '#/components/parameters/klasa'
+        - $ref: '#/components/parameters/urbroj'
+      requestBody:
+        required: false
+        description: |
+          Optional (UAT 13.11.2026). Without a body the call works as before.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AktSluzbenikaRequest'
+      responses:
+        "200":
+          description: Suspension procedure discontinued, the number is ACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RnResponse'
+        "400":
+          description: |
+            `note` over 1000 characters (error.validation.failed, no details), invalid KLASA/URBROJ,
+            or an attachment rule (details.code ATTACHMENT_COUNT, ATTACHMENT_TOTAL_TOO_LARGE)
+        "403":
+          description: Attachments without an identified official (details.code ATTACHMENT_FORBIDDEN)
+        "404":
+          description: |
+            Unknown number or out of the official's scope, or an unknown/foreign/expired attachment
+            (details.code ATTACHMENT_NOT_FOUND)
+        "409":
+          description: |
+            Illegal status transition, or attachment already bound (details.code ATTACHMENT_ALREADY_BOUND)
+
   /api/rn/{rn}/reactivate:
     post:
       tags: [rn]
       summary: Reactivate a suspended registration number
+      description: |
+        Issues „Obavijest o reaktivaciji". Optional body as for `revoke-proposal`.
       operationId: reactivateRn
       parameters:
         - $ref: '#/components/parameters/rn'
+        - $ref: '#/components/parameters/klasa'
+        - $ref: '#/components/parameters/urbroj'
+      requestBody:
+        required: false
+        description: |
+          Optional (UAT 13.11.2026). Without a body the call works as before.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AktSluzbenikaRequest'
       responses:
         "200":
           description: Registration number reactivated
@@ -157,9 +212,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/RnResponse'
         "400":
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            `note` over 1000 characters (error.validation.failed, no details), invalid KLASA/URBROJ,
+            or an attachment rule (details.code ATTACHMENT_COUNT, ATTACHMENT_TOTAL_TOO_LARGE)
+        "403":
+          description: Attachments without an identified official (details.code ATTACHMENT_FORBIDDEN)
         "404":
-          $ref: '#/components/responses/NotFound'
+          description: |
+            Unknown number or out of the official's scope, or an unknown/foreign/expired attachment
+            (details.code ATTACHMENT_NOT_FOUND)
+        "409":
+          description: |
+            Illegal status transition, or attachment already bound (details.code ATTACHMENT_ALREADY_BOUND)
 
   /api/rn/{rn}/propose-withdrawal:
     post:
@@ -227,9 +291,21 @@ paths:
     post:
       tags: [rn]
       summary: Discontinue the withdrawal procedure (back to ACTIVE)
+      description: |
+        Issues „Obavijest o obustavi postupka povlačenja". Optional body as for `revoke-proposal`.
       operationId: revokeWithdrawalProposalRn
       parameters:
         - $ref: '#/components/parameters/rn'
+        - $ref: '#/components/parameters/klasa'
+        - $ref: '#/components/parameters/urbroj'
+      requestBody:
+        required: false
+        description: |
+          Optional (UAT 13.11.2026). Without a body the call works as before.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AktSluzbenikaRequest'
       responses:
         "200":
           description: Withdrawal procedure discontinued, the number is ACTIVE
@@ -237,10 +313,89 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RnResponse'
+        "400":
+          description: |
+            `note` over 1000 characters (error.validation.failed, no details), invalid KLASA/URBROJ,
+            or an attachment rule (details.code ATTACHMENT_COUNT, ATTACHMENT_TOTAL_TOO_LARGE)
+        "403":
+          description: Attachments without an identified official (details.code ATTACHMENT_FORBIDDEN)
+        "404":
+          description: |
+            Unknown number or out of the official's scope, or an unknown/foreign/expired attachment
+            (details.code ATTACHMENT_NOT_FOUND)
+        "409":
+          description: |
+            The number is not proposed for withdrawal (details.code RN_NOT_WITHDRAWAL_PROPOSED), or
+            attachment already bound (details.code ATTACHMENT_ALREADY_BOUND)
+
+  /api/rn/{rn}/objections/{id}/accept:
+    post:
+      tags: [rn]
+      summary: Accept a statement or objection (očitovanje / prigovor)
+      description: |
+        The objection becomes ACCEPTED and the number returns to ACTIVE through the transition
+        matching its current status: SUSPENSION_PROPOSED → obustava postupka suspenzije,
+        SUSPENDED → reaktivacija, WITHDRAWAL_PROPOSED → obustava postupka povlačenja,
+        WITHDRAWN → reaktivacija povučenog broja. `note` is stored on the objection and is also
+        the statement of reasons on the issued notice (section „Obrazloženje", only when entered);
+        `prilogIds` go with the notice. Any attachment error rolls back the whole decision.
+      operationId: acceptObjection
+      parameters:
+        - $ref: '#/components/parameters/rn'
+        - $ref: '#/components/parameters/objectionId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveObjectionRequest'
+      responses:
+        "204":
+          description: Accepted, the notice is issued after commit
+        "400":
+          description: |
+            `note` over 1000 characters (error.validation.failed, details.note), invalid KLASA/URBROJ,
+            or an attachment rule (details.code ATTACHMENT_COUNT, ATTACHMENT_TOTAL_TOO_LARGE)
+        "403":
+          description: |
+            County procedure decided by a non-county official (details.code OBJECTION_NOT_COUNTY_OFFICIAL),
+            or attachments without an identified official (ATTACHMENT_FORBIDDEN)
+        "404":
+          description: Unknown number/objection, out of scope, or unknown/foreign attachment (ATTACHMENT_NOT_FOUND)
+        "409":
+          description: |
+            details.code OBJECTION_RN_STATUS, OBJECTION_RN_REISSUED, OBJECTION_NOT_REGISTERED or
+            ATTACHMENT_ALREADY_BOUND; an already decided objection is 409 without a code
+
+  /api/rn/{rn}/objections/{id}/reject:
+    post:
+      tags: [rn]
+      summary: Reject a statement or objection (očitovanje / prigovor)
+      description: |
+        The objection becomes REJECTED. No notice is issued at this point, so the body carries
+        only the decision note (no attachments; other fields are ignored). If the response
+        deadline has already passed, the number is suspended or withdrawn at once.
+      operationId: rejectObjection
+      parameters:
+        - $ref: '#/components/parameters/rn'
+        - $ref: '#/components/parameters/objectionId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectObjectionRequest'
+      responses:
+        "204":
+          description: Rejected
+        "400":
+          description: "`note` over 1000 characters (error.validation.failed, details.note)"
+        "403":
+          description: County procedure decided by a non-county official (OBJECTION_NOT_COUNTY_OFFICIAL)
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
-          description: The number is not proposed for withdrawal (RN_NOT_WITHDRAWAL_PROPOSED)
+          description: Not registered yet (OBJECTION_NOT_REGISTERED), or already decided
 
   # ─────────────────────────────────────────────────────────────
   # Accommodation registration
@@ -1097,6 +1252,30 @@ paths:
 components:
 
   parameters:
+    klasa:
+      name: klasa
+      in: query
+      required: false
+      description: KLASA of a county official's own act (T16); ignored for a ministry official
+      schema:
+        type: string
+        maxLength: 64
+    urbroj:
+      name: urbroj
+      in: query
+      required: false
+      description: URBROJ of a county official's own act (T16); ignored for a ministry official
+      schema:
+        type: string
+        maxLength: 64
+    objectionId:
+      name: id
+      in: path
+      required: true
+      description: Objection (očitovanje / prigovor) id
+      schema:
+        type: string
+        format: uuid
     rn:
       name: rn
       in: path
@@ -1189,6 +1368,61 @@ components:
           example: true
 
     # ── Registration number ─────────────────────────────────────
+
+    ResolveObjectionRequest:
+      type: object
+      description: Accepting a statement or objection; all fields optional.
+      properties:
+        note:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: Decision note, also the statement of reasons on the notice
+        klasa:
+          type: string
+          nullable: true
+          description: KLASA of a county official's own act (T16)
+        urbroj:
+          type: string
+          nullable: true
+          description: URBROJ of a county official's own act (T16)
+        prilogIds:
+          type: array
+          nullable: true
+          description: Staged attachment ids from `POST /api/rn/attachments` (at most 5, together at most 15 MB)
+          items:
+            type: integer
+            format: int64
+
+    RejectObjectionRequest:
+      type: object
+      description: Rejecting a statement or objection — decision note only, no attachments.
+      properties:
+        note:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+    AktSluzbenikaRequest:
+      type: object
+      description: |
+        Official's statement of reasons and attachments on a discontinuation or reactivation
+        notice (UAT 13.11.2026). Both fields are optional.
+      properties:
+        note:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: Statement of reasons; blank = no „Obrazloženje" section in the notice
+        prilogIds:
+          type: array
+          nullable: true
+          description: |
+            Staged attachment ids from `POST /api/rn/attachments` (same rules as with a proposal:
+            at most 5, together at most 15 MB)
+          items:
+            type: integer
+            format: int64
 
     RnResponse:
       type: object

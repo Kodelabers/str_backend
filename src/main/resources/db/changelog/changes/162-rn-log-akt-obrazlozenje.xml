@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        UAT 13.11.2026: obrazloženje službenika na obavijesti o obustavi postupka (suspenzije, povlačenja) i o
+        reaktivaciji (nakon suspenzije, povlačenja). Upisuje ga službenik pri uvažavanju očitovanja ili prigovora
+        odnosno pri ručnoj obustavi; akt ga ispisuje kao zasebnu sekciju „Obrazloženje" samo kad je upisano.
+
+        Zaseban stupac, a ne registration_number_log.reason: akt obustave razlog čita s prijedloga postupka
+        (StrDocumentService.razlogAkta), a obavijest e-poštom ga ispisuje kao ${razlog}. Širina je najveća
+        duljina bilješke uz odluku o prigovoru (suspension_objection.resolution_note, 145).
+    -->
+    <changeSet id="162-rn-log-akt-obrazlozenje" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="registration_number_log">
+            <column name="akt_obrazlozenje" type="VARCHAR(1000)"
+                    remarks="Obrazloženje službenika na aktu prijelaza (obustava, reaktivacija); NULL kad ga nema"/>
+        </addColumn>
+        <rollback>
+            <dropColumn schemaName="str_rn" tableName="registration_number_log" columnName="akt_obrazlozenje"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

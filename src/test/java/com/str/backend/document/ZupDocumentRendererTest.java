@@ -1,7 +1,10 @@
 package com.str.backend.document;
 
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,6 +36,71 @@ class ZupDocumentRendererTest {
 
         assertThat(ZupDocumentRenderer.odlomci(vezano, ZupSection.Mode.PROZA))
                 .containsExactly("Prvi odlomak", "Treći");
+    }
+
+    /**
+     * Sekcija koja nakon vezanja ostane prazna (neobavezno obrazloženje, UAT 13.11.) ne ispisuje se — ni
+     * naslov; s vrijednošću se ispisuje s naslovom.
+     */
+    @Test
+    void sectionBlankAfterBinding_isOmittedWithHeading() throws Exception {
+        ZupTemplate predlozak = new ZupTemplate(StrDocumentType.OBUSTAVA_SUSPENZIJE, Map.of(
+                ZupSection.UVOD, "Uvod akta",
+                ZupSection.IZREKA, "1. Izreka akta",
+                ZupSection.OBRAZLOZENJE, "${akt.obrazlozenje}",
+                ZupSection.POTPISNIK, "Potpis"));
+        ZupDocumentRenderer renderer = noviRenderer();
+        Map<String, String> ctx = new HashMap<>(Map.of(
+                "tijelo.nazivVelikim", "TIJELO", "tijelo.ustrojstvenaJedinica", "",
+                "akt.klasaRedak", "", "akt.urbrojRedak", "", "akt.mjestoDatum", "Zagreb, 1. rujna 2026.",
+                "akt.jopRedak", "", "akt.naslov", "OBAVIJEST", "akt.obrazlozenje", " "));
+
+        String bez = tekst(renderer.render(predlozak, ctx));
+        ctx.put("akt.obrazlozenje", "Stranka je otklonila nedostatak.");
+        String s = tekst(renderer.render(predlozak, ctx));
+
+        assertThat(bez).contains("1. Izreka akta").doesNotContain("Obrazloženje");
+        assertThat(s).contains("Obrazloženje").contains("Stranka je otklonila nedostatak.");
+    }
+
+    /**
+     * Prijelom retka u obrazloženju službenika je granica odlomka ({@link ZupContextFactory#putObrazlozenje}):
+     * sekcija je PROZA, pa bi se „1. …" i „2. …" inače spojili u jedan odlomak.
+     */
+    @Test
+    void statementOfReasons_singleLineBreaks_becomeParagraphs() {
+        Map<String, String> ctx = new HashMap<>();
+        ZupContextFactory.putObrazlozenje(ctx, "  1. Suglasnost je dostavljena.\n2. Nadzor je okončan.  \r\n\n\n\n"
+                + "   3. Ostalo.\t");
+
+        String vezano = ZupDocumentRenderer.vezi("${akt.obrazlozenje}", ctx, "test");
+
+        assertThat(ctx.get("akt.obrazlozenje"))
+                .isEqualTo("1. Suglasnost je dostavljena.\n\n2. Nadzor je okončan.\n\n3. Ostalo.");
+        assertThat(ZupDocumentRenderer.odlomci(vezano, ZupSection.Mode.PROZA)).containsExactly(
+                "1. Suglasnost je dostavljena.", "2. Nadzor je okončan.", "3. Ostalo.");
+    }
+
+    /**
+     * Renderer za testove na jednom mjestu: grana {@code be-uat-izjava} konstruktoru dodaje
+     * {@code PecatiranjeAkta}, pa se nakon spajanja prilagođava samo ovo.
+     */
+    private static ZupDocumentRenderer noviRenderer() {
+        return new ZupDocumentRenderer(new DocumentProperties(
+                new DocumentProperties.Tijelo("Tijelo", "12345678901", null, "Zagreb", null, "propis"),
+                new DocumentProperties.Potpisnik(null, null),
+                new DocumentProperties.Epecat(false, null, null, null, null),
+                Map.of(), false, false, Map.of()));
+    }
+
+    private static String tekst(byte[] pdf) throws Exception {
+        PdfReader reader = new PdfReader(pdf);
+        try {
+            return new PdfTextExtractor(reader).getTextFromPage(1)
+                    .replaceAll("\\s+", " ");
+        } finally {
+            reader.close();
+        }
     }
 
     /**
