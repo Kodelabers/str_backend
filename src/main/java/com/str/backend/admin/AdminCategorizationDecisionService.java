@@ -8,6 +8,7 @@ import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionRepository;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
+import com.str.backend.categorization.CategorizationRegistrationFilter;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ResourceNotFoundException;
@@ -82,8 +83,27 @@ public class AdminCategorizationDecisionService {
     @Transactional(readOnly = true)
     public Page<CategorizationDecisionAdminDto> list(CategorizationDecisionStatus status, List<String> scopeCounties,
                                                      Pageable pageable) {
+        return list(status, null, scopeCounties, pageable);
+    }
+
+    /**
+     * Kao {@link #list(CategorizationDecisionStatus, List, Pageable)}, uz filtar „Upis u TuRegistar" (MINTS 17.11.,
+     * točka 1). Taj filtar vrijedi samo za prihvaćena rješenja, pa uz drugi status daje prazan popis.
+     */
+    @Transactional(readOnly = true)
+    public Page<CategorizationDecisionAdminDto> list(CategorizationDecisionStatus status,
+                                                     CategorizationRegistrationFilter registration,
+                                                     List<String> scopeCounties, Pageable pageable) {
         Page<CategorizationDecisionEntity> page;
-        if (scopeCounties == null) {
+        if (registration != null) {
+            if (status != null && status != CategorizationDecisionStatus.VERIFIED) {
+                return Page.empty(pageable);
+            }
+            page = repository.findForReviewByRegistration(registration.name(),
+                    scopeCounties == null ? null : "ON",
+                    scopeCounties == null || scopeCounties.isEmpty() ? List.of("") : scopeCounties,
+                    pageable);
+        } else if (scopeCounties == null) {
             page = status != null
                     ? repository.findForReviewByStatus(status, pageable)
                     : repository.findForReview(pageable);

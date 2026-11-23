@@ -72,7 +72,8 @@ class RnServiceTest {
         service = new RnService(repository, transitionService, accommodationRepository,
                 accommodationTypeRepository, clock, new DocumentLabels(), prilogService, reissueGuard,
                 objectionRepository, objectGroupPolicy, logRepository,
-                mock(com.str.backend.categorization.CategorizationDecisionRepository.class));
+                mock(com.str.backend.categorization.CategorizationDecisionRepository.class),
+                new CategorizationDeadline(30, clock));
     }
 
     @Test

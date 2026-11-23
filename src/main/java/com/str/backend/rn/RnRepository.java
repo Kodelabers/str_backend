@@ -350,6 +350,24 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " AND (CAST(:tok8 AS string) IS NULL OR " + RN_HAYSTACK + " LIKE CONCAT('%', CAST(:tok8 AS string), '%'))" +
             " AND (CAST(:tok9 AS string) IS NULL OR " + RN_HAYSTACK + " LIKE CONCAT('%', CAST(:tok9 AS string), '%'))";
 
+    /**
+     * Radni popisi internog portala (MINTS 17.11., točka 1; {@link RnRegistryFilter}):
+     * <ul>
+     *   <li>{@code :eturizamOnly} — samo objekti iz eTurizma (uz smještaj zapisan {@code facility_id}), pa
+     *       „Neverificirani objekti" ne miješaju RB-ove novih objekata;</li>
+     *   <li>{@code :decisionMissing} — aktivan RB koji traži rješenje ({@link #DECISION_REQUIRED_CONDITION}), a
+     *       nema ni prihvaćeno ni predano: stupac „Rješenje" je „Nije predano" ili „Odbijeno";</li>
+     *   <li>{@code :issuedBefore} — RB izdan prije granice ({@code CategorizationDeadline#overdueIssuedBefore}),
+     *       tj. rok za rješenje je istekao. Bez CAST-a, kao {@code :deadlineBefore}.</li>
+     * </ul>
+     */
+    String RN_WORKLIST_FILTERS =
+            " AND (CAST(:eturizamOnly AS string) IS NULL OR (a.facilityId IS NOT NULL AND TRIM(a.facilityId) <> ''))" +
+            " AND (CAST(:decisionMissing AS string) IS NULL" +
+            "      OR (r.status = com.str.backend.domain.RnStatus.ACTIVE AND " + DECISION_REQUIRED_CONDITION +
+            "          AND NOT " + DECISION_VERIFIED_EXISTS + " AND NOT " + DECISION_SUBMITTED_EXISTS + "))" +
+            " AND (:issuedBefore IS NULL OR r.issueDate < :issuedBefore)";
+
     /** Per-field discrete filters (each optional, case-insensitive substring) + existing county/type filters. */
     String RN_FILTERS =
             " AND (CAST(:rb AS string) IS NULL OR LOWER(r.rn) LIKE CONCAT('%', LOWER(CAST(:rb AS string)), '%'))" +
@@ -380,7 +398,9 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " AND (:deadlineBefore IS NULL" +
             "      OR (r.suspensionDeadline IS NOT NULL AND r.suspensionDeadline <= :deadlineBefore)" +
             "      OR (r.withdrawalDeadline IS NOT NULL AND r.withdrawalDeadline <= :deadlineBefore))" +
-            " AND (CAST(:decision AS string) IS NULL OR " + CATEGORIZATION_SHOWN + " = CAST(:decision AS string))";
+            " AND (CAST(:decision AS string) IS NULL OR " + CATEGORIZATION_SHOWN + " = CAST(:decision AS string))" +
+            RN_WORKLIST_FILTERS;
+
 
     /**
      * Filtar „Verificiran". Verifikacija se ne čita iz str_rn nego iz eTurizma, pa skup
@@ -442,6 +462,9 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("lessor") String lessor,
             @Param("deadlineBefore") LocalDate deadlineBefore,
             @Param("decision") String decision,
+            @Param("eturizamOnly") String eturizamOnly,
+            @Param("decisionMissing") String decisionMissing,
+            @Param("issuedBefore") LocalDate issuedBefore,
             @Param("verifiedMode") String verifiedMode,
             @Param("verifiedIds") Collection<String> verifiedIds,
             Pageable pageable);
@@ -472,7 +495,10 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("name") String name,
             @Param("lessor") String lessor,
             @Param("deadlineBefore") LocalDate deadlineBefore,
-            @Param("decision") String decision);
+            @Param("decision") String decision,
+            @Param("eturizamOnly") String eturizamOnly,
+            @Param("decisionMissing") String decisionMissing,
+            @Param("issuedBefore") LocalDate issuedBefore);
 
     @Transactional(readOnly = true)
     @Query("""

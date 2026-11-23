@@ -5,6 +5,7 @@ import com.str.backend.auth.internal.InternalAccessService;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
 import com.str.backend.categorization.CategorizationDecisionStatus;
 import com.str.backend.categorization.CategorizationFileDto;
+import com.str.backend.categorization.CategorizationRegistrationFilter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
@@ -55,12 +56,17 @@ public class AdminCategorizationDecisionController {
         }
     }
 
+    /**
+     * {@code registration} je filtar „Upis u TuRegistar" (MINTS 17.11., točka 1): {@code PENDING} prihvaćena
+     * rješenja koja čekaju „Potvrdu upisa objekta", {@code REGISTERED} potvrđeni upisi.
+     */
     @GetMapping
     public Page<CategorizationDecisionAdminDto> list(
             @RequestParam(required = false) CategorizationDecisionStatus status,
+            @RequestParam(required = false) CategorizationRegistrationFilter registration,
             @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable,
             Authentication authentication) {
-        return service.list(status, countyScope.accommodationCounties(authentication), pageable);
+        return service.list(status, registration, countyScope.accommodationCounties(authentication), pageable);
     }
 
     @GetMapping("/{id}")

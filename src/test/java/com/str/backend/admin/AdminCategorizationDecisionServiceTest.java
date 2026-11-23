@@ -110,6 +110,27 @@ class AdminCategorizationDecisionServiceTest {
         verify(repository, never()).findAll(any(Pageable.class));
     }
 
+    /** Filtar „Upis u TuRegistar" (MINTS 17.11.): samo prihvaćena rješenja, uz opseg kao u registru. */
+    @Test
+    void list_byRegistration_usesRegistrationQuery_andIsEmptyForOtherStatus() {
+        Pageable pageable = PageRequest.of(0, 20);
+        List<String> counties = List.of("Splitsko-dalmatinska županija");
+        when(repository.findForReviewByRegistration("PENDING", "ON", counties, pageable))
+                .thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
+        when(repository.findForReviewByRegistration(eq("REGISTERED"), eq(null), any(), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        assertThat(service.list(CategorizationDecisionStatus.VERIFIED,
+                com.str.backend.categorization.CategorizationRegistrationFilter.PENDING, counties, pageable)
+                .getTotalElements()).isEqualTo(1);
+        assertThat(service.list(null, com.str.backend.categorization.CategorizationRegistrationFilter.REGISTERED,
+                null, pageable).getTotalElements()).isZero();
+        assertThat(service.list(CategorizationDecisionStatus.SUBMITTED,
+                com.str.backend.categorization.CategorizationRegistrationFilter.PENDING, null, pageable)
+                .getTotalElements()).isZero();
+        verify(repository, never()).findForReviewByStatus(any(), any());
+    }
+
     @Test
     void file_returnsContentAndType() {
         CategorizationDecisionEntity e = submitted();

@@ -108,6 +108,7 @@ public class RnService {
     private final ObjectGroupPolicy objectGroupPolicy;
     private final RegistrationNumberLogRepository logRepository;
     private final CategorizationDecisionRepository decisionRepository;
+    private final CategorizationDeadline categorizationDeadline;
 
     public RnService(RnRepository repository, RnStatusTransitionService transitionService,
                      AccommodationRepository accommodationRepository,
@@ -115,7 +116,9 @@ public class RnService {
                      DocumentLabels labels, PrilogService prilogService, RnReissueGuard reissueGuard,
                      SuspensionObjectionRepository objectionRepository, ObjectGroupPolicy objectGroupPolicy,
                      RegistrationNumberLogRepository logRepository,
-                     CategorizationDecisionRepository decisionRepository) {
+                     CategorizationDecisionRepository decisionRepository,
+                     CategorizationDeadline categorizationDeadline) {
+        this.categorizationDeadline = categorizationDeadline;
         this.logRepository = logRepository;
         this.decisionRepository = decisionRepository;
         this.reissueGuard = reissueGuard;
@@ -508,9 +511,19 @@ public class RnService {
                 Strings.blankToNull(filter.lessor()),
                 deadlineBefore(filter.deadlineWithinDays()),
                 filter.decision() == null ? null : filter.decision().name(),
+                filter.eturizamOnly() ? "true" : null,
+                filter.decisionMissing() ? "true" : null,
+                issuedBefore(filter),
                 verifiedMode,
                 verifiedMode == null ? UNUSED_FACILITY_IDS : verifiedFacilityIds,
-                pageable);
+                pageable)
+                .map(row -> row.withCategorizationDeadline(categorizationDeadline.deadlineFor(
+                        row.issueDate(), row.categorizationRequired(), row.categorizationStatus())));
+    }
+
+    /** Granica filtra „Samo istekao rok" za rješenje ({@link CategorizationDeadline}); bez njega {@code null}. */
+    private LocalDate issuedBefore(RnRegistryFilter filter) {
+        return filter.decisionOverdue() ? categorizationDeadline.overdueIssuedBefore() : null;
     }
 
     /**
@@ -542,7 +555,10 @@ public class RnService {
                 Strings.blankToNull(filter.street()), Strings.blankToNull(filter.name()),
                 Strings.blankToNull(filter.lessor()),
                 deadlineBefore(filter.deadlineWithinDays()),
-                filter.decision() == null ? null : filter.decision().name());
+                filter.decision() == null ? null : filter.decision().name(),
+                filter.eturizamOnly() ? "true" : null,
+                filter.decisionMissing() ? "true" : null,
+                issuedBefore(filter));
     }
 
     /**

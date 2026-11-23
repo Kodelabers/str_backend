@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        MINTS 17.11.2026, točka 1: interni popis očitovanja i prigovora preko svih RB-ova (/api/admin/objections).
+        Popis i kartice („Ukupno na čekanju", „Zaprimljeno danas", „Starije od 5 dana") filtriraju po statusu i
+        trenutku zaprimanja, a dosadašnji indeksi idu po RB-u (rn, submitted_at) i iznajmljivaču.
+    -->
+    <changeSet id="163-suspension-objection-status-index" author="str-backend">
+        <createIndex schemaName="str_rn" tableName="suspension_objection"
+                     indexName="idx_suspension_objection_status_submitted">
+            <column name="status"/>
+            <column name="submitted_at"/>
+        </createIndex>
+        <rollback>
+            <dropIndex schemaName="str_rn" tableName="suspension_objection"
+                       indexName="idx_suspension_objection_status_submitted"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

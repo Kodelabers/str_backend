@@ -30,11 +30,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.nio.charset.StandardCharsets;
+import java.sql.Date;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -78,6 +80,7 @@ class RnRegistrySearchIntegrationTest {
     @Autowired private LessorRepository lessorRepository;
     @Autowired private AccommodationTypeRepository accommodationTypeRepository;
     @Autowired private AccommodationActivityRepository activityRepository;
+    @Autowired private JdbcTemplate jdbc;
 
     private Long apartmanTypeId;
 
@@ -827,6 +830,102 @@ class RnRegistrySearchIntegrationTest {
                         CategorizationDecisionStatus.SUBMITTED, List.of("Primorsko-goranska županija"), page)
                 .getContent())
                 .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000001");
+    }
+
+    // --- Radni popisi internog portala (MINTS 17.11., točka 1) ---
+
+    /** „Neverificirani objekti": uz {@code objectSource=ETURIZAM} RB-ovi novih objekata ne ulaze u „Ne". */
+    @Test
+    void worklist_eturizamOnly_dropsNewObjectsFromUnverified() throws Exception {
+        setFacility("HR00000002", "153049");
+        setFacility("HR00000003", "200");
+        when(facilityVerification.verifiedFacilityIds(any())).thenReturn(Set.of("153049"));
+
+        mvc.perform(get("/api/rn").param("verified", "false").param("objectSource", "ETURIZAM"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000003"));
+    }
+
+    /**
+     * „Bez objekta i bez rješenja": aktivan RB novog objekta, rješenje nije predano ili je odbijeno. Predano
+     * rješenje, objekt iz eTurizma i RB koji nije aktivan ne ulaze; rok je izdavanje + 30 dana (zadana postavka).
+     */
+    @Test
+    void worklist_decisionMissing_activeNewObjectsWithoutOrWithRejectedDecision() throws Exception {
+        decision("HR00000001");
+        CategorizationDecisionEntity rejected = decision("HR00000002");
+        rejected.reject("sluzbenik");
+        decisionRepository.save(rejected);
+        seedRn("HR00000009", null, "Grad Zagreb", "Zagreb", "Ilica", "9", "Objekt iz eTurizma");
+        setFacility("HR00000009", "300");
+        seedRn("HR00000010", null, "Grad Zagreb", "Zagreb", "Ilica", "10", "Suspendiran");
+        jdbc.update("UPDATE str_rn.registration_number SET status = 'SUSPENDED' WHERE rn = 'HR00000010'");
+
+        mvc.perform(get("/api/rn").param("decisionMissing", "true").param("sort", "rn,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000002"))
+                .andExpect(jsonPath("$.content[0].categorizationStatus").value("REJECTED"))
+                .andExpect(jsonPath("$.content[0].categorizationDeadline")
+                        .value(LocalDate.now().plusDays(30).toString()))
+                .andExpect(jsonPath("$.content[1].rn").value("HR00000003"));
+
+        // Predano rješenje roka nema.
+        mvc.perform(get("/api/rn").param("rb", "HR00000001"))
+                .andExpect(jsonPath("$.content[0].categorizationDeadline").doesNotExist());
+    }
+
+    /** „Samo istekao rok": rok je istekao kad je prije danas — na sam dan roka RB još nije na popisu. */
+    @Test
+    void worklist_decisionOverdue_onlyPastDeadline() throws Exception {
+        LocalDate today = LocalDate.now();
+        jdbc.update("UPDATE str_rn.registration_number SET issue_date = ? WHERE rn = 'HR00000002'",
+                Date.valueOf(today.minusDays(30)));
+        jdbc.update("UPDATE str_rn.registration_number SET issue_date = ? WHERE rn = 'HR00000003'",
+                Date.valueOf(today.minusDays(31)));
+
+        mvc.perform(get("/api/rn").param("decisionMissing", "true").param("decisionOverdue", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000003"))
+                .andExpect(jsonPath("$.content[0].categorizationDeadline").value(today.minusDays(1).toString()));
+
+        // Bez decisionMissing filtar roka ne vrijedi.
+        mvc.perform(get("/api/rn").param("decisionOverdue", "true"))
+                .andExpect(jsonPath("$.totalElements").value(3));
+    }
+
+    /**
+     * Filtar „Upis u TuRegistar": čeka upis samo prihvaćeno, neupisano rješenje uz RB koji nije povučen ni
+     * opozvan; upisano je ono s jedinicom TuRegistra. Opseg županije vrijedi i ovdje.
+     */
+    @Test
+    void decisionReviewByRegistration_pendingAndRegistered() {
+        CategorizationDecisionEntity pending = decision("HR00000001");
+        pending.verify("sluzbenik");
+        decisionRepository.save(pending);
+        CategorizationDecisionEntity registered = decision("HR00000002");
+        registered.verify("sluzbenik");
+        registered.confirmRegistration("F-1", "sluzbenik");
+        decisionRepository.save(registered);
+        CategorizationDecisionEntity withdrawn = decision("HR00000003");
+        withdrawn.verify("sluzbenik");
+        decisionRepository.save(withdrawn);
+        jdbc.update("UPDATE str_rn.registration_number SET status = 'WITHDRAWN' WHERE rn = 'HR00000003'");
+        seedRn("HR00000011", null, "Grad Zagreb", "Zagreb", "Ilica", "11", "Predano");
+        decision("HR00000011");   // predano, nije prihvaćeno — ne ulazi ni u jedan
+        PageRequest page = PageRequest.of(0, 20);
+        List<String> unused = List.of("");
+
+        assertThat(decisionRepository.findForReviewByRegistration("PENDING", null, unused, page).getContent())
+                .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000001");
+        assertThat(decisionRepository.findForReviewByRegistration("REGISTERED", null, unused, page).getContent())
+                .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000002");
+        assertThat(decisionRepository.findForReviewByRegistration("PENDING", "ON", List.of("Grad Zagreb"), page)
+                .getTotalElements()).isZero();
+        assertThat(decisionRepository.findForReviewByRegistration("REGISTERED", "ON", List.of("Grad Zagreb"), page)
+                .getContent()).extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000002");
     }
 
     private void activity(Long platformId, String rn, LocalDate from, LocalDate to) {
