@@ -92,7 +92,7 @@ postojeće opozive po tom kriteriju preveo u `REVOKED` / `REVOCATION`.
 
 | Šifra | Hrvatski naziv | Prijelaz | Tko okida | Akt |
 | :--- | :--- | :--- | :--- | :--- |
-| `DEADLINE_EXCEEDED` | istek roka za očitovanje | `SUSPENSION_PROPOSED → SUSPENDED` | sustav (`SuspensionDeadlineJob`, dnevno u 01:00) ili službenik neuvažavanjem prigovora nakon isteka roka | Obavijest o suspenziji |
+| `DEADLINE_EXCEEDED` | istek roka za očitovanje | `SUSPENSION_PROPOSED → SUSPENDED` | sustav (`SuspensionDeadlineJob`, dnevno u 01:00) ili službenik neuvažavanjem očitovanja (odmah, bez obzira na rok) | Obavijest o suspenziji |
 | `REVOKE_PROPOSAL` | obustava postupka suspenzije | `SUSPENSION_PROPOSED → ACTIVE` | službenik (stranka je ispravila nedostatak) | Obavijest o obustavi postupka |
 | `REACTIVATE` | reaktivacija registracijskog broja | `SUSPENDED → ACTIVE` | službenik | Obavijest o reaktivaciji |
 
@@ -100,17 +100,18 @@ postojeće opozive po tom kriteriju preveo u `REVOKED` / `REVOCATION`.
 
 ## 3. Rok za očitovanje
 
-Suspenzija je dvofazna: prijedlog otvara rok, a suspendira tek njegov istek.
+Suspenzija je dvofazna: prijedlog otvara rok, a suspendira njegov istek ili neuvaženo očitovanje.
 
 - Rok se šalje uz zahtjev (`?suspensionDeadline=2026-09-01`) i **obvezan je**
   (`error.rn.suspend.deadline.required`); sustav ga više ne postavlja sam, pa nema ni postavke
   `str.rn.suspension.response-days`. **Rok u prošlosti se odbija**
   (`error.rn.suspend.deadline.past`) — inače bi ga `SuspensionDeadlineJob` pokupio već iduće noći i
   RB bi bio suspendiran a da se stranka nije imala kad očitovati. Rok koji ističe danas je valjan.
-- Istekom roka RB se **automatski suspendira**, osim ako uz njega čeka prigovor (`SUBMITTED`)
-  predan do kraja dana roka (po hrvatskom vremenu). Tada odlučuje službenik: uvažavanje obustavlja
-  postupak, a neuvažavanje RB odmah suspendira u ime službenika (isti prijelaz i akt kao job).
-  Prigovor predan nakon roka suspenziju ne zaustavlja.
+- Istekom roka RB se **automatski suspendira**, osim ako uz njega čeka očitovanje (`SUBMITTED`)
+  predano do kraja dana roka (po hrvatskom vremenu). O očitovanju odlučuje službenik, i prije isteka
+  roka: uvažavanje obustavlja postupak (RB je aktivan), a neuvažavanje RB odmah suspendira u ime
+  službenika (isti prijelaz i akt kao job, UAT 17.11.2026). Očitovanje predano nakon roka suspenziju
+  ne zaustavlja.
 - Radna lista „rok ističe uskoro":
   `GET /api/rn?view=SUSPENSION_PROPOSED&deadlineWithinDays=7`. Filtar nema donju granicu, pa
   obuhvaća i već istekle, a još neobrađene rokove.

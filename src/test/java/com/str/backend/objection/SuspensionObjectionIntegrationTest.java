@@ -564,17 +564,53 @@ class SuspensionObjectionIntegrationTest {
         assertThat(rejected.getResolvedBy()).isEqualTo(official);
     }
 
-    /** Dok rok teče, neuvažavanje RB ostavlja pred suspenzijom. */
+    /**
+     * UAT 17.11.: i dok rok još teče, neuvaženo očitovanje odmah suspendira — jedan prijelaz (jedan akt),
+     * u ime službenika — a noćni job nakon toga RB više ne dira.
+     */
     @Test
-    void rejectBeforeDeadline_keepsProposal() {
-        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today(), null, "INTERNAL:12345678903", List.of());
+    void rejectBeforeDeadline_suspendsAtOnce() {
+        String official = "INTERNAL:12345678903";
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(5), null, official, List.of());
         UUID id = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
 
-        adminService.reject("HR00000021", id, "INTERNAL:12345678903", null, false);
+        adminService.reject("HR00000021", id, official, null, false);
+        deadlineJob.run();
 
-        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus())
-                .isEqualTo(RnStatus.SUSPENSION_PROPOSED);
-        assertThat(events.stream(RnLifecycleEvent.class).filter(e -> e.to() == RnStatus.SUSPENDED)).isEmpty();
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.SUSPENDED);
+        assertThat(events.stream(RnLifecycleEvent.class).filter(e -> e.to() == RnStatus.SUSPENDED))
+                .singleElement()
+                .satisfies(e -> assertThat(e.actor()).isEqualTo(official));
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.REJECTED);
+    }
+
+    /**
+     * UAT 17.11.: i dok rok još teče, neuvaženo očitovanje na prijedlog povlačenja odmah povlači broj — jedan
+     * prijelaz, u ime službenika, uz {@code valid_to} — a očitovanje ostaje REJECTED.
+     */
+    @Test
+    void rejectWithdrawalBeforeDeadline_withdrawsAtOnce() {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(5),
+                null, official, List.of());
+        UUID id = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWAL_PROPOSED))
+                .getObjectionId();
+
+        adminService.reject("HR00000021", id, official, null, false);
+
+        RnEntity povucen = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(povucen.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+        assertThat(povucen.getValidTo()).isNotNull();
+        assertThat(povucen.getWithdrawalDeadline()).isNull();
+        assertThat(events.stream(RnLifecycleEvent.class).filter(e -> e.to() == RnStatus.WITHDRAWN))
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.trigger()).isEqualTo(RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED);
+                    assertThat(e.actor()).isEqualTo(official);
+                });
+        assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
+                .isEqualTo(SuspensionObjectionStatus.REJECTED);
     }
 
     /** Upit joba: prigovor predan do kraja dana roka (po hrvatskom vremenu) je u roku, kasniji nije. */

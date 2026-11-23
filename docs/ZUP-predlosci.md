@@ -63,7 +63,7 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | `obustava-suspenzije` | Obavijest o obustavi postupka suspenzije registracijskog broja | izlazno | kao `opoziv` | `RnService.revokeProposal` |
 | `prijedlog-povlacenja` | Obavijest o prijedlogu povlačenja registracijskog broja | izlazno (nova vrsta, T12) | uvod, izreka; **rok u izreci** | `RnService.proposeWithdrawal` |
 | `obustava-povlacenja` | Obavijest o obustavi postupka povlačenja registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.revokeWithdrawalProposal` |
-| `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | uvod, izreka (prigovor je t. 4.) | `WithdrawalDeadlineJob` (istek roka) ili `RnService.withdrawIfDeadlineExpired` (neuvaženo očitovanje nakon roka) |
+| `povlacenje` | Obavijest o povlačenju registracijskog broja | izlazno | uvod, izreka (prigovor je t. 4.) | `WithdrawalDeadlineJob` (istek roka) ili `RnService.withdrawAfterRejectedObjection` (neuvaženo očitovanje, odmah) |
 | `reaktivacija-povlacenja` | Obavijest o reaktivaciji povučenog registracijskog broja | izlazno (nova vrsta, T12) | kao `opoziv` | `RnService.reinstate` (uvaženi prigovor na povlačenje) |
 | `ocitovanje-suspenzije` | Očitovanje na prijedlog suspenzije registracijskog broja | **ulazno** (nova vrsta) | čl. 71. — `PodnesakPdfGenerator` (skraćeni zahtjev) | `SuspensionObjectionService.submit` uz `SUSPENSION_PROPOSED` |
 | `prigovor-suspenzije` | Prigovor na suspenziju registracijskog broja | **ulazno** (nova vrsta) | čl. 71. — `PodnesakPdfGenerator` (skraćeni zahtjev) | `SuspensionObjectionService.submit` uz `SUSPENDED` |
@@ -72,16 +72,17 @@ Definirane u `document/StrDocumentType.java`. `vrstaPismenaNaziv` je **točan kl
 | `reaktivacija` | Obavijest o reaktivaciji registracijskog broja | izlazno | kao `opoziv` | `RnService.reactivate` |
 
 Suspenzija je **dvofazna**: `RnService.suspend()` ide u `SUSPENSION_PROPOSED` i šalje poziv na
-izjašnjavanje (`prijedlog-suspenzije`), a tek `SuspensionDeadlineJob` po isteku roka prelazi u
-`SUSPENDED` i šalje `suspenzija`. Ispravi li stranka nedostatak, `revokeProposal` vraća RB u
+izjašnjavanje (`prijedlog-suspenzije`), a u `SUSPENDED` uz `suspenzija` prelazi istekom roka
+(`SuspensionDeadlineJob`) ili odmah, kad službenik ne uvaži očitovanje
+(`suspendAfterRejectedObjection`, UAT 17.11.2026). Ispravi li stranka nedostatak, `revokeProposal` vraća RB u
 `ACTIVE` uz `obustava-suspenzije`.
 
 Od T12 je i povlačenje **dvofazno**, s istim tekstovima kao suspenzija, samo za povlačenje:
 `RnService.proposeWithdrawal()` (iz `ACTIVE`, `SUSPENSION_PROPOSED` ili `SUSPENDED`) ide u
 `WITHDRAWAL_PROPOSED` uz `prijedlog-povlacenja` s rokom za očitovanje iz `withdrawal_deadline`;
-broj se povlači (`WITHDRAWN`, `povlacenje`) samo istekom roka — `WithdrawalDeadlineJob` (osim uz
-očitovanje predano u roku) ili `withdrawIfDeadlineExpired` kad službenik nakon roka ne uvaži
-očitovanje. Ručnog povlačenja nema, kao ni ručne suspenzije. Obustava (`revokeWithdrawalProposal`, i
+broj se povlači (`WITHDRAWN`, `povlacenje`) istekom roka — `WithdrawalDeadlineJob` (osim uz
+očitovanje predano u roku) — ili odmah, `withdrawAfterRejectedObjection` kad službenik ne uvaži
+očitovanje (UAT 17.11.2026). Ručnog povlačenja nema, kao ni ručne suspenzije. Obustava (`revokeWithdrawalProposal`, i
 uvaženo očitovanje) uvijek vraća broj u `ACTIVE` uz `obustava-povlacenja` („Registracijski broj je
 važeći."), i kad je povlačenje predloženo iz suspenzije — postupak suspenzije time završava. Dok rok
 teče, broj u `WITHDRAWAL_PROPOSED` vrijedi, kao i u `SUSPENSION_PROPOSED` — osim kad je povlačenje

@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  *   <li>{@link #zaRadnju} — radnja službenika: županijski ({@link CountyScope.Outcome#COUNTY}) mora upisati
  *       KLASU i URBROJ; ministarstvo i neodređen opseg (AMBIGUOUS, ERROR) idu kroz eGOP, a upisani brojevi
  *       se zanemaruju.</li>
- *   <li>akt bez službenika (noćni posao) ili neuvažavanje očitovanja nakon roka izvodi se iz prijedloga
+ *   <li>akt bez službenika (noćni posao) ili nakon neuvaženog očitovanja izvodi se iz prijedloga
  *       ({@link RucniAkt#izPrijedloga}).</li>
  * </ul>
  */

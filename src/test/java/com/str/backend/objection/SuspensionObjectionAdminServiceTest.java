@@ -126,22 +126,22 @@ class SuspensionObjectionAdminServiceTest {
         verifyNoInteractions(rnService, auditService);
     }
 
-    /**
-     * Neuvažavanje na prijedlogu: o suspenziji odlučuje {@link RnService#suspendIfDeadlineExpired}
-     * (suspendira samo ako je rok istekao), uvijek tek nakon što je prigovor REJECTED.
-     */
     @Test
     void reject_stripsControlCharacters_keepsLineBreaks() {
-        when(rnService.suspendIfDeadlineExpired(RN, ACTOR)).thenReturn(false);
+        when(rnService.suspendAfterRejectedObjection(RN, ACTOR)).thenReturn(true);
 
         service.reject(RN, objection.getObjectionId(), ACTOR, "  Prvi\u0000 red\nDrugi red\u0007  ", false);
 
         assertThat(objection.getResolutionNote()).isEqualTo("Prvi red\nDrugi red");
     }
 
+    /**
+     * Neuvaženo očitovanje na prijedlog suspenzije (UAT 17.11.): broj se odmah suspendira
+     * ({@link RnService#suspendAfterRejectedObjection}), tek nakon što je prigovor REJECTED.
+     */
     @Test
-    void reject_onProposal_recordsNote_andSuspendsIfDeadlineExpired() {
-        when(rnService.suspendIfDeadlineExpired(RN, ACTOR)).thenAnswer(inv -> {
+    void reject_onProposal_recordsNote_andSuspendsAtOnce() {
+        when(rnService.suspendAfterRejectedObjection(RN, ACTOR)).thenAnswer(inv -> {
             assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
             return true;
         });
@@ -150,7 +150,7 @@ class SuspensionObjectionAdminServiceTest {
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
         assertThat(objection.getResolutionNote()).isEqualTo("Nije dostavljena suglasnost");
-        verify(rnService, times(1)).suspendIfDeadlineExpired(RN, ACTOR);
+        verify(rnService, times(1)).suspendAfterRejectedObjection(RN, ACTOR);
         verifyNoMoreInteractions(rnService);
         verify(auditService).record(ACTOR, "OBJECTION_REJECT", "SUSPENSION_OBJECTION",
                 objection.getObjectionId().toString(), "Nije dostavljena suglasnost");
@@ -250,18 +250,19 @@ class SuspensionObjectionAdminServiceTest {
         verifyNoInteractions(auditService);
     }
 
-    /** Neuvaženo očitovanje na prijedlog povlačenja: povlači odmah ako je rok istekao. */
+    /** Neuvaženo očitovanje na prijedlog povlačenja: broj se odmah povlači. */
     @Test
-    void reject_onWithdrawalProposal_withdrawsIfDeadlineExpired() {
+    void reject_onWithdrawalProposal_withdrawsAtOnce() {
+        objection = objectionOn(RnStatus.WITHDRAWAL_PROPOSED);
         when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWAL_PROPOSED);
-        when(rnService.withdrawIfDeadlineExpired(RN, ACTOR)).thenAnswer(inv -> {
+        when(rnService.withdrawAfterRejectedObjection(RN, ACTOR)).thenAnswer(inv -> {
             assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
             return true;
         });
 
         service.reject(RN, objection.getObjectionId(), ACTOR, null, false);
 
-        verify(rnService).withdrawIfDeadlineExpired(RN, ACTOR);
+        verify(rnService).withdrawAfterRejectedObjection(RN, ACTOR);
         verifyNoMoreInteractions(rnService);
     }
 
@@ -358,6 +359,28 @@ class SuspensionObjectionAdminServiceTest {
     private static final RucniAkt URUDZBA = new RucniAkt("UP/I-334-06/26-01/7", "2181-26-2",
             "Splitsko-dalmatinska županija", null, null, 17);
     private static final UUID SUBMISSION_ID = UUID.randomUUID();
+
+    /** Neobrađen podnesak predan dok je RB bio u {@code rnStatus}, dostupan servisu. */
+    private SuspensionObjectionEntity objectionOn(RnStatus rnStatus) {
+        SuspensionObjectionEntity o = SuspensionObjectionEntity.createForOib("99999999990", RN, rnStatus, null,
+                "NIAS:99999999990", "prigovor.pdf", "application/pdf", "%PDF".getBytes(StandardCharsets.US_ASCII));
+        when(repository.findByObjectionIdAndRn(o.getObjectionId(), RN)).thenReturn(Optional.of(o));
+        return o;
+    }
+
+    /**
+     * Zaostali podnesak iz drugog postupka (predan na prijedlog suspenzije, a RB je sada predložen za
+     * povlačenje): neuvažavanje ga zatvara, ali mjeru ne izriče — stranci rok za očitovanje i dalje teče.
+     */
+    @Test
+    void reject_objectionFromOtherProcedure_doesNotApplyMeasure() {
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWAL_PROPOSED);
+
+        service.reject(RN, objection.getObjectionId(), ACTOR, null, false);
+
+        assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
+        verifyNoInteractions(rnService);
+    }
 
     /** Prigovor na akt županijskog službenika (ručna KLASA i URBROJ na zapisu prijelaza). */
     private SuspensionObjectionEntity countyObjection(RnStatus rnStatus) {

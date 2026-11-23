@@ -5,9 +5,9 @@ public enum RnStatus {
     SUSPENSION_PROPOSED,
     SUSPENDED,
     /**
-     * Predložen za povlačenje (T12): stranka je pozvana na očitovanje, a broj se povlači tek istekom
-     * roka ({@link RnTrigger#WITHDRAWAL_DEADLINE_EXCEEDED}) — noćnim poslom ili kad službenik nakon roka
-     * ne uvaži očitovanje. Kao i prijedlog suspenzije, broj dok rok teče vrijedi.
+     * Predložen za povlačenje (T12): stranka je pozvana na očitovanje, a broj se povlači istekom roka
+     * ({@link RnTrigger#WITHDRAWAL_DEADLINE_EXCEEDED}, noćni posao) ili odmah kad službenik ne uvaži
+     * očitovanje (isti okidač). Kao i prijedlog suspenzije, broj dok rok teče vrijedi.
      */
     WITHDRAWAL_PROPOSED,
     /** Opozvan: iznajmljivač je sam opozvao RB (čl. 5. st. 5 STR Uredbe). Konačan. */
@@ -62,7 +62,7 @@ public enum RnStatus {
     /**
      * Prijedlog suspenzije i prijedlog povlačenja su međukorak, ne mjera: dok rok za očitovanje teče
      * RB vrijedi i smije se oglašavati, pa se svugdje izvan samog postupka broji i prikazuje kao
-     * aktivan. Mjera nastupa tek istekom roka ({@link RnTrigger#DEADLINE_EXCEEDED},
+     * aktivan. Mjera nastupa istekom roka ili neuvaženim očitovanjem ({@link RnTrigger#DEADLINE_EXCEEDED},
      * {@link RnTrigger#WITHDRAWAL_DEADLINE_EXCEEDED}).
      */
     public boolean isActiveForPublicUse() {

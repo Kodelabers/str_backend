@@ -38,7 +38,7 @@ Defines legal transitions for `submission.status` (SubmissionStatus) and `regist
 
 `REVOKED` and `WITHDRAWN` are both final (`RnStatus.isTerminal()`): no reactivation, and one never becomes the other. Treat them together wherever "the RN no longer holds" matters (`valid_to`, eTurizam clearing, reissue, retention, `INVALID` view, public verify) and separately wherever the client's status table distinguishes them (labels, statistics, registry views, acts).
 
-Suspension is **two-phase**: `suspend()` only *proposes* it. The party is invited to respond within `suspension_deadline` (čl. 30. st. 2 ZUP); `SuspensionDeadlineJob` (daily) performs `DEADLINE_EXCEEDED` when the deadline passes unanswered. Never transition `ACTIVE → SUSPENDED` directly.
+Suspension is **two-phase**: `suspend()` only *proposes* it. The party is invited to respond within `suspension_deadline` (čl. 30. st. 2 ZUP); `SuspensionDeadlineJob` (daily) performs `DEADLINE_EXCEEDED` when the deadline passes unanswered, and an official who rejects the očitovanje performs the same transition at once (`RnService.suspendAfterRejectedObjection`; withdrawal mirrors it with `WITHDRAWAL_DEADLINE_EXCEEDED`). Never transition `ACTIVE → SUSPENDED` directly.
 
 ## Documents
 

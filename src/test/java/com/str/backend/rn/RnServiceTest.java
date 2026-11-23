@@ -490,30 +490,31 @@ class RnServiceTest {
         verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any(), any());
     }
 
-    /** Neuvaženo očitovanje nakon isteka roka: odmah povlačenje, istim prijelazom kao posao. */
+    /**
+     * Neuvaženo očitovanje na prijedlog povlačenja (UAT 17.11.): povlačenje odmah, i dok rok još teče, istim
+     * prijelazom kao posao (isti akt), uz bilješku o neuvaženom očitovanju.
+     */
     @Test
-    void withdrawIfDeadlineExpired_withdrawsInOfficialsName() {
-        RnEntity rn = withdrawalProposedRn(LocalDate.now(clock).minusDays(1));
+    void withdrawAfterRejectedObjection_withdrawsAtOnce_evenWhileDeadlineRuns() {
+        RnEntity rn = withdrawalProposedRn(LocalDate.now(clock).plusDays(5));
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        assertThat(service.withdrawIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isTrue();
+        assertThat(service.withdrawAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903")).isTrue();
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED,
-                "INTERNAL:12345678903", WithdrawalDeadlineJob.DEADLINE_EXCEEDED_NOTE, null);
+                "INTERNAL:12345678903", ProposalProcedure.WITHDRAWAL.rejectionNote(), null);
     }
 
+    /** Broj koji više nije predložen za povlačenje ostaje kakav jest. */
     @Test
-    void withdrawIfDeadlineExpired_keepsProposalWhileDeadlineRuns_andIgnoresOtherStatuses() {
-        RnEntity running = withdrawalProposedRn(LocalDate.now(clock));
-        when(repository.findForUpdate(running.getRn())).thenReturn(Optional.of(running));
-        assertThat(service.withdrawIfDeadlineExpired(running.getRn(), null)).isFalse();
-
+    void withdrawAfterRejectedObjection_ignoresOtherStatuses() {
         RnEntity suspensionProposed = RnEntity.issue("HR120001000000000005", UUID.randomUUID(), UUID.randomUUID(),
                 LocalDate.of(2026, 4, 1));
         suspensionProposed.applyStatus(RnStatus.SUSPENSION_PROPOSED);
         suspensionProposed.setSuspensionDeadline(LocalDate.now(clock).minusDays(3));
         when(repository.findForUpdate(suspensionProposed.getRn())).thenReturn(Optional.of(suspensionProposed));
-        assertThat(service.withdrawIfDeadlineExpired(suspensionProposed.getRn(), null)).isFalse();
+
+        assertThat(service.withdrawAfterRejectedObjection(suspensionProposed.getRn(), null)).isFalse();
 
         verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
@@ -544,35 +545,30 @@ class RnServiceTest {
         verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any(), any());
     }
 
-    /** Neuvaženi prigovor nakon isteka roka: odmah suspenzija, u ime službenika, istim prijelazom kao job. */
+    /**
+     * Neuvaženo očitovanje na prijedlog suspenzije (UAT 17.11.): suspenzija odmah, bez obzira na rok (teče,
+     * ističe danas ili je istekao), u ime službenika, istim prijelazom kao job (isti akt), uz bilješku o
+     * neuvaženom očitovanju.
+     */
     @Test
-    void suspendIfDeadlineExpired_suspendsInOfficialsName() {
-        RnEntity rn = proposedRn(LocalDate.now(clock).minusDays(1));
-        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
+    void suspendAfterRejectedObjection_suspendsAtOnce_whateverTheDeadline() {
+        for (long danaDoRoka : new long[] {5, 0, -1}) {
+            RnEntity rn = proposedRn(LocalDate.now(clock).plusDays(danaDoRoka));
+            when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isTrue();
+            assertThat(service.suspendAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903")).isTrue();
 
-        verify(transitionService, times(1)).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
-                "INTERNAL:12345678903", SuspensionDeadlineJob.DEADLINE_EXCEEDED_NOTE, null);
-    }
-
-    /** Rok koji ističe danas još teče — kao i u jobu. */
-    @Test
-    void suspendIfDeadlineExpired_keepsProposalWhileDeadlineRuns() {
-        RnEntity rn = proposedRn(LocalDate.now(clock));
-        when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
-
-        assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isFalse();
-
-        verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
+            verify(transitionService, times(1)).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
+                    "INTERNAL:12345678903", ProposalProcedure.SUSPENSION.rejectionNote(), null);
+        }
     }
 
     @Test
-    void suspendIfDeadlineExpired_ignoresRnNoLongerProposed() {
+    void suspendAfterRejectedObjection_ignoresRnNoLongerProposed() {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        assertThat(service.suspendIfDeadlineExpired(rn.getRn(), "INTERNAL:12345678903")).isFalse();
+        assertThat(service.suspendAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903")).isFalse();
 
         verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
