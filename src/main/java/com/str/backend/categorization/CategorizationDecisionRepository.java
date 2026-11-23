@@ -66,6 +66,35 @@ public interface CategorizationDecisionRepository extends JpaRepository<Categori
             @Param("counties") Collection<String> counties,
             Pageable pageable);
 
+    /**
+     * Filtar „Upis u TuRegistar" (MINTS 17.11., točka 1) — samo prihvaćena rješenja. {@code PENDING} čeka upis:
+     * jedinica TuRegistra nije zapisana, a RB nije opozvan ni povučen — isto pravilo kao „Potvrda upisa objekta"
+     * ({@code AdminCategorizationDecisionService#registrationConfirmable}), pa popis nudi samo ono što se može
+     * upisati. {@code REGISTERED} je potvrđen upis.
+     */
+    String REGISTRATION_FILTER = " d.status = com.str.backend.categorization.CategorizationDecisionStatus.VERIFIED"
+            + " AND ((CAST(:registration AS string) = 'REGISTERED'"
+            + "       AND d.facilityId IS NOT NULL AND TRIM(d.facilityId) <> '')"
+            + "   OR (CAST(:registration AS string) = 'PENDING'"
+            + "       AND (d.facilityId IS NULL OR TRIM(d.facilityId) = '')"
+            + "       AND EXISTS (SELECT 1 FROM RnEntity rr WHERE rr.rn = d.rn"
+            + "           AND rr.status NOT IN (com.str.backend.domain.RnStatus.REVOKED,"
+            + "                                 com.str.backend.domain.RnStatus.WITHDRAWN))))";
+
+    /**
+     * Interni red s filtrom „Upis u TuRegistar" ({@link #REGISTRATION_FILTER}), bez prenesenih izvora. Opseg kao u
+     * registru: kad {@code :scopeMode} nije zadan, (neprazna) lista županija se ne koristi.
+     */
+    @Transactional(readOnly = true)
+    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE" + REGISTRATION_FILTER + " AND" + NOT_CARRIED_OVER
+            + " AND (CAST(:scopeMode AS string) IS NULL OR" + IN_COUNTIES + ")",
+            countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE" + REGISTRATION_FILTER + " AND"
+                    + NOT_CARRIED_OVER + " AND (CAST(:scopeMode AS string) IS NULL OR" + IN_COUNTIES + ")")
+    Page<CategorizationDecisionEntity> findForReviewByRegistration(@Param("registration") String registration,
+                                                                   @Param("scopeMode") String scopeMode,
+                                                                   @Param("counties") Collection<String> counties,
+                                                                   Pageable pageable);
+
     /** Sažetak rješenja bez sadržaja datoteke (predpopuna ponovnog zahtjeva ne treba BLOB). */
     interface DecisionSummary {
         UUID getDecisionId();

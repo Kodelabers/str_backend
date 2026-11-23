@@ -317,4 +317,7 @@
     <!-- UAT 13.11.: obrazloženje službenika na obavijesti o obustavi i reaktivaciji. -->
     <include file="db/changelog/changes/162-rn-log-akt-obrazlozenje.xml"/>
 
+    <!-- MINTS 17.11., točka 1: indeks za popis očitovanja i prigovora preko svih RB-ova. -->
+    <include file="db/changelog/changes/163-suspension-objection-status-index.xml"/>
+
 </databaseChangeLog>

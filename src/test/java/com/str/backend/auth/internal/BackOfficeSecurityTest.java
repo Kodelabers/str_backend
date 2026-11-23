@@ -3,6 +3,8 @@ package com.str.backend.auth.internal;
 import com.str.backend.activity.AccommodationActivityController;
 import com.str.backend.activity.AccommodationActivityService;
 import com.str.backend.activity.ActivityMapper;
+import com.str.backend.admin.AdminObjectionController;
+import com.str.backend.admin.AdminObjectionService;
 import com.str.backend.admin.AdminPendingRegistrationController;
 import com.str.backend.admin.AdminPendingRegistrationService;
 import com.str.backend.auth.SecurityConfig;
@@ -44,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(SecurityConfig.class)
 @WebMvcTest(value = {AdminPendingRegistrationController.class, InternalAccessController.class,
-                     AccommodationActivityController.class},
+                     AccommodationActivityController.class, AdminObjectionController.class},
             excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class)
 class BackOfficeSecurityTest {
 
@@ -57,6 +59,7 @@ class BackOfficeSecurityTest {
     @MockBean AccommodationActivityService activityService;
     @MockBean ActivityMapper activityMapper;
     @MockBean CountyScopeService countyScope;
+    @MockBean AdminObjectionService objectionService;
 
     @BeforeEach
     void wholeCountry() {
@@ -90,6 +93,28 @@ class BackOfficeSecurityTest {
 
         mvc.perform(get("/api/admin/pending-registrations/stats").with(authentication(signedIn())))
                 .andExpect(status().isOk());
+    }
+
+    /** Popis očitovanja i prigovora (MINTS 17.11., točka 1): iza role, a opseg dolazi iz sesije. */
+    @Test
+    void adminObjections_requireRole_andPassCountyScope() throws Exception {
+        mvc.perform(get("/api/admin/objections/stats")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/admin/objections").with(authentication(signedIn())))
+                .andExpect(status().isForbidden());
+        verify(objectionService, never()).search(any(), any(), any());
+
+        when(internalAccess.hasRole(any(), eq(RN_MANAGEMENT))).thenReturn(true);
+        when(countyScope.accommodationCounties(any())).thenReturn(java.util.List.of("Splitsko-dalmatinska županija"));
+        when(objectionService.search(any(), any(), any())).thenReturn(org.springframework.data.domain.Page.empty());
+
+        mvc.perform(get("/api/admin/objections").param("kind", "PRIGOVOR_SUSPENZIJE").param("status", "ALL")
+                        .with(authentication(signedIn())))
+                .andExpect(status().isOk());
+        verify(objectionService).search(
+                eq(new AdminObjectionService.Filter(null, null, null, null,
+                        com.str.backend.objection.ObjectionKind.PRIGOVOR_SUSPENZIJE,
+                        com.str.backend.objection.ObjectionResolution.ALL, null)),
+                eq(java.util.List.of("Splitsko-dalmatinska županija")), any());
     }
 
     @Test

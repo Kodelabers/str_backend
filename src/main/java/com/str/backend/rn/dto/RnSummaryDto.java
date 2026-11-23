@@ -48,7 +48,12 @@ public record RnSummaryDto(
          * Prijedlog povlačenja pokrenut iz suspenzije (T12): broj javno ostaje suspendiran. {@code true}
          * samo u statusu WITHDRAWAL_PROPOSED.
          */
-        boolean prijedlogIzSuspenzije
+        boolean prijedlogIzSuspenzije,
+        /**
+         * Rok za prilaganje rješenja o kategorizaciji ({@code rn.CategorizationDeadline}): samo uz RB kojem rješenje
+         * nedostaje (potrebno, a nije predano ili je odbijeno), inače {@code null}. Dopunjuje se nakon upita.
+         */
+        LocalDate categorizationDeadline
 ) {
 
     /** Registar — {@code facilityVerified} se dopunjava nakon upita ({@link #withFacilityVerified}). */
@@ -64,7 +69,7 @@ public record RnSummaryDto(
                 city, street, streetNumber, accommodationName, accommodationTypeName, lessorId,
                 lessorFirstName, lessorLastName, lessorLegalEntityName, facilityId,
                 categorizationRequired, categorizationStatus, categorizationRegistered, null, withdrawalDeadline,
-                prijedlogIzSuspenzije);
+                prijedlogIzSuspenzije, null);
     }
 
     /**
@@ -80,6 +85,14 @@ public record RnSummaryDto(
                 accommodationId, county, city, street, streetNumber, accommodationName,
                 accommodationTypeName, lessorId, lessorFirstName, lessorLastName,
                 lessorLegalEntityName, facilityId, categorizationRequired, categorizationStatus,
-                categorizationRegistered, verified, withdrawalDeadline, prijedlogIzSuspenzije);
+                categorizationRegistered, verified, withdrawalDeadline, prijedlogIzSuspenzije, categorizationDeadline);
+    }
+
+    public RnSummaryDto withCategorizationDeadline(LocalDate deadline) {
+        return new RnSummaryDto(rn, status, issueDate, validFrom, validTo, suspensionDeadline,
+                accommodationId, county, city, street, streetNumber, accommodationName,
+                accommodationTypeName, lessorId, lessorFirstName, lessorLastName,
+                lessorLegalEntityName, facilityId, categorizationRequired, categorizationStatus,
+                categorizationRegistered, facilityVerified, withdrawalDeadline, prijedlogIzSuspenzije, deadline);
     }
 }

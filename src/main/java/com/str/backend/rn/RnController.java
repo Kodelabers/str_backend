@@ -99,6 +99,11 @@ public class RnController {
      *
      * <p>Županijski službenik vidi samo svoju županiju ({@link CountyScopeService}); njegov
      * {@code county} iz zahtjeva se zanemaruje, i u izvozima.
+     *
+     * <p>Radni popisi internog portala (MINTS 17.11., točka 1; {@link RnRegistryFilter}): {@code objectSource=ETURIZAM}
+     * ostavlja samo objekte iz eTurizma, {@code decisionMissing} aktivne RB-ove novog objekta bez rješenja
+     * (nije predano ili je odbijeno), a {@code decisionOverdue} od njih one kojima je rok za rješenje istekao.
+     * Izvozi ih ne nude — popisi se ne izvoze.
      */
     @GetMapping
     public Page<RnSummaryDto> registry(
@@ -116,10 +121,14 @@ public class RnController {
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
             @RequestParam(required = false) Boolean verified,
+            @RequestParam(required = false) RegistryObjectSource objectSource,
+            @RequestParam(defaultValue = "false") boolean decisionMissing,
+            @RequestParam(defaultValue = "false") boolean decisionOverdue,
             @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable,
             Authentication authentication) {
         return registrySearch.search(filter(authentication, view, q, county, municipality, typeId,
-                foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified),
+                        foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified)
+                        .withWorklist(objectSource == RegistryObjectSource.ETURIZAM, decisionMissing, decisionOverdue),
                 pageable);
     }
 
