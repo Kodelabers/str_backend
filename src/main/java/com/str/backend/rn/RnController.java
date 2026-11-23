@@ -223,7 +223,7 @@ public class RnController {
      * T12: prijedlog povlačenja s rokom za očitovanje (iz ACTIVE, SUSPENSION_PROPOSED i SUSPENDED).
      * Razlog i rok provjerava servis (400 s prevedenom porukom), kao kod {@link #suspend}. Ručne rute
      * za povlačenje nema, kao ni za suspenziju: broj se povlači istekom roka ({@code WithdrawalDeadlineJob})
-     * ili kad službenik nakon roka ne uvaži očitovanje.
+     * ili odmah, kad službenik ne uvaži očitovanje.
      */
     @PostMapping("/{rn}/propose-withdrawal")
     public RnResponse proposeWithdrawal(

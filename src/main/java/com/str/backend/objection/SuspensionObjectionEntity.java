@@ -134,7 +134,7 @@ public class SuspensionObjectionEntity {
         resolve(SuspensionObjectionStatus.ACCEPTED, actor, note);
     }
 
-    /** Službenik ne uvažava prigovor; RB ostaje gdje jest. */
+    /** Službenik ne uvažava podnesak; posljedicu za RB (mjera uz očitovanje na prijedlog) provodi servis. */
     public void reject(String actor, String note) {
         resolve(SuspensionObjectionStatus.REJECTED, actor, note);
     }

@@ -104,11 +104,12 @@ PENDING → ACCEPTED (admin approves)
 PENDING → REJECTED (admin rejects)
 ```
 
-`RnStatus` (registration number lifecycle) — an RN is born `ACTIVE` (`RnEntity.issue()`); there is no processing state and no issue transition, so issuance writes no `registration_number_log` row and publishes no `RnLifecycleEvent`. Suspension is **two-phase**: the party is first invited to respond (čl. 30. st. 2 ZUP), and only an expired deadline suspends:
+`RnStatus` (registration number lifecycle) — an RN is born `ACTIVE` (`RnEntity.issue()`); there is no processing state and no issue transition, so issuance writes no `registration_number_log` row and publishes no `RnLifecycleEvent`. Suspension is **two-phase**: the party is first invited to respond (čl. 30. st. 2 ZUP); the deadline expiring, or the official rejecting the party's response (očitovanje), suspends:
 ```
 ACTIVE → SUSPENSION_PROPOSED (NO_DECISION / DECISION_REVOKED / INCOMPLETE_DOCUMENTATION / INSPECTION / OTHER)
 SUSPENSION_PROPOSED → ACTIVE (REVOKE_PROPOSAL)        [party fixed the issue]
-SUSPENSION_PROPOSED → SUSPENDED (DEADLINE_EXCEEDED)   [SuspensionDeadlineJob, daily; or at once when an official rejects an in-time objection after the deadline]
+SUSPENSION_PROPOSED → SUSPENDED (DEADLINE_EXCEEDED)   [SuspensionDeadlineJob, daily; or at once when an official rejects the očitovanje, whatever the deadline]
+WITHDRAWAL_PROPOSED → WITHDRAWN (WITHDRAWAL_DEADLINE_EXCEEDED)   [WithdrawalDeadlineJob, daily; or at once when an official rejects the očitovanje]
 SUSPENDED → ACTIVE (REACTIVATE)
 ACTIVE / SUSPENSION_PROPOSED / SUSPENDED → REVOKED (REVOCATION)     [final — "Opozvan", the lessor's own revocation]
 ACTIVE / SUSPENSION_PROPOSED / SUSPENDED → WITHDRAWN (WITHDRAWAL)   [final — "Povučen", ex officio by an official]

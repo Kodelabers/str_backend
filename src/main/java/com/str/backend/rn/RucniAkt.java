@@ -61,8 +61,8 @@ public record RucniAkt(String klasa, String urBroj, String izdavateljNaziv, Stri
     }
 
     /**
-     * Akt koji slijedi iz zadnjeg prijedloga postupka (istek roka u noćnom poslu, neuvažavanje očitovanja
-     * nakon roka), ako je prijedlog bio ručni: KLASA i izdavatelj s prijedloga, URBROJ + 1. Prazno = eGOP.
+     * Akt koji slijedi iz zadnjeg prijedloga postupka (istek roka u noćnom poslu, neuvaženo očitovanje),
+     * ako je prijedlog bio ručni: KLASA i izdavatelj s prijedloga, URBROJ + 1. Prazno = eGOP.
      */
     public static Optional<RucniAkt> izPrijedloga(RegistrationNumberLogRepository logRepository, String rn,
                                                   RnStatus prijedlog) {

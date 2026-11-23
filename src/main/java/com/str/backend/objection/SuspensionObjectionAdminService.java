@@ -265,13 +265,13 @@ public class SuspensionObjectionAdminService {
     }
 
     /**
-     * Neuvažavanje: prigovor → {@code REJECTED}. Ako je RB i dalje pred suspenzijom, a rok je već
-     * istekao, odmah se suspendira u ime službenika ({@link RnService#suspendIfDeadlineExpired}); isto
-     * tako se broj predložen za povlačenje odmah povlači ({@link RnService#withdrawIfDeadlineExpired}):
-     * prigovor predan u roku zadržao je {@code SuspensionDeadlineJob}, pa bi suspenzija inače
-     * čekala noćni job. Dok rok teče, RB ostaje gdje jest. Prigovor je u tom trenutku već
-     * {@code REJECTED}, a suspenzija ga ni ne zatvara ({@link SuspensionObjectionLifecycleListener}),
-     * pa odluka službenika ostaje zapisana.
+     * Neuvažavanje: prigovor → {@code REJECTED}. Ako je RB i dalje pred suspenzijom, odmah se
+     * suspendira u ime službenika ({@link RnService#suspendAfterRejectedObjection}), a broj predložen za
+     * povlačenje odmah se povlači ({@link RnService#withdrawAfterRejectedObjection}) — bez obzira na to
+     * teče li rok još (UAT 17.11.2026: uvaženo očitovanje vraća broj u aktivan status, neuvaženo izriče mjeru).
+     * Prigovor na već izrečenu mjeru ({@code SUSPENDED}/{@code WITHDRAWN}) status ne mijenja. Prigovor
+     * je u tom trenutku već {@code REJECTED}, a mjera ga ni ne zatvara
+     * ({@link SuspensionObjectionLifecycleListener}), pa odluka službenika ostaje zapisana.
      *
      * <p>RB se zaključava prije svega, kao kod uvažavanja, da se ne utrka s noćnim jobom. Pravila
      * županijskog postupka kao kod uvažavanja (403, pa 409).
@@ -287,10 +287,13 @@ public class SuspensionObjectionAdminService {
         // Isto čišćenje kao kod uvažavanja: NUL bi PostgreSQL odbio (500), a bilješka nikamo ne ide osim u odluku.
         String cleanNote = AktSluzbenika.ocistiObrazlozenje(note);
         e.reject(actor, cleanNote);
-        if (rnEntity.getStatus() == RnStatus.SUSPENSION_PROPOSED) {
-            rnService.suspendIfDeadlineExpired(rn, actor);
-        } else if (rnEntity.getStatus() == RnStatus.WITHDRAWAL_PROPOSED) {
-            rnService.withdrawIfDeadlineExpired(rn, actor);
+        // Mjeru izriče samo očitovanje predano na prijedlog u kojem je RB i sada — zaostali podnesak iz nekog
+        // drugog postupka ne smije stranci skratiti rok koji još teče.
+        if (rnEntity.getStatus() == RnStatus.SUSPENSION_PROPOSED && e.getRnStatus() == RnStatus.SUSPENSION_PROPOSED) {
+            rnService.suspendAfterRejectedObjection(rn, actor);
+        } else if (rnEntity.getStatus() == RnStatus.WITHDRAWAL_PROPOSED
+                && e.getRnStatus() == RnStatus.WITHDRAWAL_PROPOSED) {
+            rnService.withdrawAfterRejectedObjection(rn, actor);
         }
         auditService.record(actor, "OBJECTION_REJECT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
     }

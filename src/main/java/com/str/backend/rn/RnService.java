@@ -251,20 +251,19 @@ public class RnService {
     }
 
     /**
-     * Suspenzija istekom roka, odmah, u ime službenika — kad službenik ne uvaži prigovor predan u
-     * roku. Takav prigovor zadržava {@link SuspensionDeadlineJob} (o njemu prvo odlučuje
-     * službenik), pa bi bez ovoga RB nakon neuvažavanja čekao noćni job, a akt o suspenziji bi
-     * kasnio dan.
+     * Suspenzija odmah, u ime službenika, kad ne uvaži očitovanje na prijedlog suspenzije (UAT
+     * 17.11.2026) — bez obzira na to teče li rok još. Uvaženo očitovanje vraća broj u aktivan status, a
+     * neuvaženo ga suspendira.
      *
-     * <p>Isti prijelaz i isti uvjet kao u jobu ({@code DEADLINE_EXCEEDED}, rok strogo prije
-     * danas), pa nastaje isti akt. RB koji više nije pred suspenzijom ili mu rok još teče ostaje
-     * kakav jest.
+     * <p>Isti prijelaz kao istek roka u {@link SuspensionDeadlineJob} ({@code DEADLINE_EXCEEDED}), pa
+     * nastaje isti akt s razlogom s prijedloga; u zapisu je bilješka o neuvaženom očitovanju. RB koji
+     * više nije pred suspenzijom ostaje kakav jest.
      *
      * @return je li RB suspendiran
      */
     @Transactional
-    public boolean suspendIfDeadlineExpired(String rn, String actor) {
-        return expireIfDeadlinePassed(ProposalProcedure.SUSPENSION, rn, actor);
+    public boolean suspendAfterRejectedObjection(String rn, String actor) {
+        return applyMeasureAfterRejection(ProposalProcedure.SUSPENSION, rn, actor);
     }
 
     /**
@@ -284,8 +283,8 @@ public class RnService {
 
     /**
      * Prva faza povlačenja (T12, po uzoru na {@link #suspend}): stranka se poziva na očitovanje, a broj
-     * se povlači tek istekom roka — noćnim poslom ({@link WithdrawalDeadlineJob}) ili kad službenik nakon
-     * roka ne uvaži očitovanje ({@link #withdrawIfDeadlineExpired}). Ručnog povlačenja nema, kao ni ručne
+     * se povlači istekom roka — noćnim poslom ({@link WithdrawalDeadlineJob}) — ili odmah, kad službenik
+     * ne uvaži očitovanje ({@link #withdrawAfterRejectedObjection}). Ručnog povlačenja nema, kao ni ručne
      * suspenzije. Dopušteno iz {@code ACTIVE}, {@code SUSPENSION_PROPOSED} i {@code SUSPENDED}; postupak
      * suspenzije koji je bio u tijeku time završava (rok suspenzije se briše). Prijedlog iz
      * {@code SUSPENDED} javno ostaje nevaljan ({@code withdrawal_from_suspended}, {@link RnEntity#isValidForPublicUse}).
@@ -351,29 +350,31 @@ public class RnService {
     }
 
     /**
-     * Povlačenje istekom roka, odmah, u ime službenika — kad službenik ne uvaži prigovor (očitovanje)
-     * predan u roku. Takav prigovor zadržava {@link WithdrawalDeadlineJob}, pa bi bez ovoga broj nakon
-     * neuvažavanja čekao noćni posao. Isti prijelaz i isti uvjet kao u poslu
-     * ({@code WITHDRAWAL_DEADLINE_EXCEEDED}, rok strogo prije danas), pa nastaje isti akt; razlog je
-     * uvijek onaj s prijedloga. Broj koji više nije predložen za povlačenje ili mu rok još teče ostaje
-     * kakav jest.
+     * Povlačenje odmah, u ime službenika, kad ne uvaži očitovanje na prijedlog povlačenja (UAT
+     * 17.11.2026) — bez obzira na to teče li rok još. Isti prijelaz kao istek roka u
+     * {@link WithdrawalDeadlineJob} ({@code WITHDRAWAL_DEADLINE_EXCEEDED}), pa nastaje isti akt s
+     * razlogom s prijedloga. Broj koji više nije predložen za povlačenje ostaje kakav jest.
      *
      * @return je li broj povučen
      */
     @Transactional
-    public boolean withdrawIfDeadlineExpired(String rn, String actor) {
-        return expireIfDeadlinePassed(ProposalProcedure.WITHDRAWAL, rn, actor);
+    public boolean withdrawAfterRejectedObjection(String rn, String actor) {
+        return applyMeasureAfterRejection(ProposalProcedure.WITHDRAWAL, rn, actor);
     }
 
-    /** Zajednički uvjet i prijelaz istekom roka za {@link #suspendIfDeadlineExpired} i {@link #withdrawIfDeadlineExpired}. */
-    private boolean expireIfDeadlinePassed(ProposalProcedure procedure, String rn, String actor) {
+    /**
+     * Mjera iz prijedloga nakon neuvaženog očitovanja: isti prijelaz kao istek roka, ali bez uvjeta
+     * roka. Rezultat {@link #suspendAfterRejectedObjection} i {@link #withdrawAfterRejectedObjection}.
+     */
+    private boolean applyMeasureAfterRejection(ProposalProcedure procedure, String rn, String actor) {
         RnEntity e = loadForUpdate(rn);
-        if (!procedure.isExpired(e, danas())) {
+        if (e.getStatus() != procedure.proposed()) {
             return false;
         }
         // T16: ručni prijedlog daje ručni akt (KLASA i izdavatelj s prijedloga, URBROJ + 1), kao u noćnom poslu.
         RucniAkt rucni = RucniAkt.izPrijedloga(logRepository, rn, procedure.proposed()).orElse(null);
-        transitionService.transition(e, procedure.target(), procedure.trigger(), actor, procedure.note(), rucni);
+        transitionService.transition(e, procedure.target(), procedure.trigger(), actor, procedure.rejectionNote(),
+                rucni);
         return true;
     }
 

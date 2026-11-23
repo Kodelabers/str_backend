@@ -57,8 +57,8 @@ public class SuspensionObjectionController {
     }
 
     /**
-     * Neuvažavanje: samo bilješka uz odluku. Akta tada nema, pa ni priloga ni obrazloženja (odluka korisnika,
-     * UAT 13.11.).
+     * Neuvažavanje: samo bilješka uz odluku. Neuvaženo očitovanje na prijedlog odmah izriče suspenziju odnosno
+     * povlačenje (akt kao istekom roka, KLASA/URBROJ s prijedloga); bilješka ne ide u akt, a priloga nema.
      */
     record RejectObjectionRequest(@Nullable @Size(max = AktSluzbenika.MAX_OBRAZLOZENJE) String note) {
     }
