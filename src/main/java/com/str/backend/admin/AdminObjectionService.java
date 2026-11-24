@@ -59,6 +59,13 @@ public class AdminObjectionService {
     /** Neprazna lista za {@code IN} kad opseg nije ograničen — ne koristi se (v. {@code RnService}). */
     private static final List<String> UNUSED_SCOPE_COUNTIES = List.of("");
 
+    /**
+     * Granice razdoblja kad filtra nema. Vremenski parametri se upitu uvijek šalju zadani — null {@code Instant}
+     * Postgres ne može tipizirati ({@code SuspensionObjectionRepository#ADMIN_FILTERS}).
+     */
+    static final Instant NO_LOWER_BOUND = Instant.EPOCH;
+    static final Instant NO_UPPER_BOUND = Instant.parse("9999-12-31T00:00:00Z");
+
     private final SuspensionObjectionRepository repository;
     private final Clock clock;
 
@@ -88,9 +95,10 @@ public class AdminObjectionService {
         String scopeMode = scopeMode(scopeCounties);
         Collection<String> counties = counties(scopeCounties);
         return new AdminObjectionStatsDto(
-                repository.countUnresolvedForAdmin(scopeMode, counties, null, null),
-                repository.countUnresolvedForAdmin(scopeMode, counties, startOfToday, null),
-                repository.countUnresolvedForAdmin(scopeMode, counties, null, now.minus(5, ChronoUnit.DAYS)));
+                repository.countUnresolvedForAdmin(scopeMode, counties, NO_LOWER_BOUND, NO_UPPER_BOUND),
+                repository.countUnresolvedForAdmin(scopeMode, counties, startOfToday, NO_UPPER_BOUND),
+                repository.countUnresolvedForAdmin(scopeMode, counties, NO_LOWER_BOUND,
+                        now.minus(5, ChronoUnit.DAYS)));
     }
 
     /** Excel s istim filtrima i redoslijedom kao popis, najviše {@link #MAX_EXPORT_ROWS} redaka. */
@@ -162,7 +170,7 @@ public class AdminObjectionService {
     /** „Stariji od X dana": predan prije točno X dana od sada, kao kartica „Starije od 5 dana". */
     private Instant submittedBefore(Integer olderThanDays) {
         if (olderThanDays == null) {
-            return null;
+            return NO_UPPER_BOUND;
         }
         if (!OLDER_THAN_DAYS.contains(olderThanDays)) {
             throw new BusinessException("error.objections.older.than.days");
