@@ -137,10 +137,13 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
 
     /**
      * Filtri popisa. {@code :kindStatuses} je uvijek neprazan (bez filtra vrste sve četiri, {@link ObjectionKind}).
-     * {@code :submittedBefore} („stariji od X dana") je BEZ CAST-a: tip se zaključuje iz usporedbe, a
-     * {@code CAST(null AS string)} vezan kao bytea na Postgresu ne prolazi za vremenski tip
-     * (v. {@code RnRepository#RN_FILTERS}). Opseg službenika kao u registru: lista je uvijek neprazna, a kad
-     * opseg nije ograničen ({@code :scopeMode} NULL), ne koristi se.
+     * Opseg službenika kao u registru: lista je uvijek neprazna, a kad opseg nije ograničen ({@code :scopeMode}
+     * NULL), ne koristi se.
+     *
+     * <p>{@code :submittedBefore} („stariji od X dana") je UVIJEK zadan — bez filtra daleka budućnost
+     * ({@code AdminObjectionService}). Nikad {@code :p IS NULL} za {@code Instant}: Hibernate taj null šalje
+     * Postgresu bez tipa (za razliku od {@code LocalDate}, koji ide kao {@code date}), pa upit puca s
+     * {@code could not determine data type of parameter}. H2 to propušta, pa test to ne bi uhvatio.
      */
     String ADMIN_FILTERS =
             " WHERE o.rnStatus IN :kindStatuses" +
@@ -148,7 +151,7 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
             " AND (CAST(:resolution AS string) IS NULL" +
             "      OR (CAST(:resolution AS string) = 'UNRESOLVED' AND " + UNRESOLVED + ")" +
             "      OR (CAST(:resolution AS string) = 'RESOLVED' AND NOT " + UNRESOLVED + "))" +
-            " AND (:submittedBefore IS NULL OR o.submittedAt < :submittedBefore)" +
+            " AND o.submittedAt < :submittedBefore" +
             " AND (CAST(:rb AS string) IS NULL OR LOWER(o.rn) LIKE CONCAT('%', LOWER(CAST(:rb AS string)), '%'))" +
             " AND (CAST(:name AS string) IS NULL OR LOWER(CONCAT(COALESCE(l.firstName,''),' ',COALESCE(l.lastName,'')," +
             "      ' ',COALESCE(l.legalEntityName,''))) LIKE CONCAT('%', LOWER(CAST(:name AS string)), '%'))" +
@@ -180,15 +183,16 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
             Pageable pageable);
 
     /**
-     * Neriješeni podnesci u opsegu službenika, predani u {@code [submittedFrom, submittedBefore)} — granice su
-     * neobavezne. Kartice popisa ({@link AdminObjectionStatsDto}); granice bez CAST-a, kao u {@link #ADMIN_FILTERS}.
+     * Neriješeni podnesci u opsegu službenika, predani u {@code [submittedFrom, submittedBefore)}. Kartice popisa
+     * ({@link AdminObjectionStatsDto}). Obje granice su uvijek zadane (bez granice krajnja vrijednost), iz istog
+     * razloga kao {@code :submittedBefore} u {@link #ADMIN_FILTERS}.
      */
     @Transactional(readOnly = true)
     @Query("SELECT COUNT(o)" + ADMIN_FROM
             + " WHERE " + UNRESOLVED
             + " AND (CAST(:scopeMode AS string) IS NULL OR a.county IN :scopeCounties)"
-            + " AND (:submittedFrom IS NULL OR o.submittedAt >= :submittedFrom)"
-            + " AND (:submittedBefore IS NULL OR o.submittedAt < :submittedBefore)")
+            + " AND o.submittedAt >= :submittedFrom"
+            + " AND o.submittedAt < :submittedBefore")
     long countUnresolvedForAdmin(@Param("scopeMode") String scopeMode,
                                  @Param("scopeCounties") Collection<String> scopeCounties,
                                  @Param("submittedFrom") Instant submittedFrom,
