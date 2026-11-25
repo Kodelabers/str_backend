@@ -98,7 +98,8 @@ public class AdminObjectionService {
                 repository.countUnresolvedForAdmin(scopeMode, counties, NO_LOWER_BOUND, NO_UPPER_BOUND),
                 repository.countUnresolvedForAdmin(scopeMode, counties, startOfToday, NO_UPPER_BOUND),
                 repository.countUnresolvedForAdmin(scopeMode, counties, NO_LOWER_BOUND,
-                        now.minus(5, ChronoUnit.DAYS)));
+                        now.minus(5, ChronoUnit.DAYS)),
+                repository.countResolvedForAdmin(scopeMode, counties));
     }
 
     /** Excel s istim filtrima i redoslijedom kao popis, najviše {@link #MAX_EXPORT_ROWS} redaka. */

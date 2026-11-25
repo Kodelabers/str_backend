@@ -190,13 +190,15 @@ class AdminObjectionSearchIntegrationTest {
         List<String> split = List.of(SDZ);
         assertThat(service.search(UNRESOLVED, split, PageRequest.of(0, 20)).getContent())
                 .extracting(AdminObjectionRowDto::rn).containsExactly("HR00000092");
-        assertThat(service.stats(split)).isEqualTo(new AdminObjectionStatsDto(1, 1, 0));
+        assertThat(service.stats(split)).isEqualTo(new AdminObjectionStatsDto(1, 1, 0, 1));
         assertThat(service.search(UNRESOLVED, List.of(), PageRequest.of(0, 20)).getTotalElements()).isZero();
     }
 
     @Test
-    void stats_countUnresolvedOnly() {
-        assertThat(service.stats(null)).isEqualTo(new AdminObjectionStatsDto(2, 1, 1));
+    void stats_pendingCardsCountUnresolved_resolvedCardMatchesResolvedFilter() {
+        assertThat(service.stats(null)).isEqualTo(new AdminObjectionStatsDto(2, 1, 1, 3));
+        assertThat(service.search(filter(null, ObjectionResolution.RESOLVED, null), null, PageRequest.of(0, 20))
+                .getTotalElements()).isEqualTo(service.stats(null).resolved());
     }
 
     @Test
