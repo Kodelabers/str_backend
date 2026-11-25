@@ -454,7 +454,11 @@ class SuspensionObjectionIntegrationTest {
         UUID prigovor = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.SUSPENDED))
                 .getObjectionId();
         assertThat(prigovorOdbijen("HR00000021")).as("prigovor čeka odluku").isFalse();
-        adminService.reject("HR00000021", prigovor, official, null, false);
+        // Odluka zapisana izravno na podnesak: pravilo ovisi samo o neuvaženom prigovoru, ne o aktu koji
+        // neuvažavanje izdaje (obavijest o neprihvaćanju traži Rješenje, feature/uat-2511-odluke-akti).
+        SuspensionObjectionEntity odluka = objectionRepository.findById(prigovor).orElseThrow();
+        odluka.reject(official, null);
+        objectionRepository.saveAndFlush(odluka);
         assertThat(prigovorOdbijen("HR00000021")).as("neuvaženi prigovor").isTrue();
         assertThat(rnRepository.findByLessorId(lessorId)).filteredOn(r -> r.rn().equals("HR00000021"))
                 .singleElement().extracting(LessorRnSummaryDto::prigovorOdbijen).isEqualTo(true);
