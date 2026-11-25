@@ -990,7 +990,7 @@ ssh cdu-preprod "docker system df; df -h / | tail -1"
 ssh cdu-preprod "cd ~/str-rn/str_backend && docker compose -f docker-compose.cdupreprod.yml --env-file .env.cdupreprod up -d --build"
 ```
 
-Prvi build traje najdulje — povlače se `maven`, `node`, `eclipse-temurin:21-jre` i `nginx:alpine`
+Prvi build traje najdulje — povlače se `maven`, `node`, `eclipse-temurin:<JAVA_VERSION>-jre` i `nginx:alpine`
 (na kutiji je cacheiran samo temurin **11**). Sljedeći su znatno brži.
 
 Praćenje:
@@ -1286,7 +1286,7 @@ ssh cdu-preprod "ls -la /opt/str/config-external"
 Lozinku upisuješ na upit, pa ne ostaje u historyju. `keytool` dolazi iz JRE imagea, jer Jave na
 hostu nema:
 ```powershell
-ssh -t cdu-preprod "docker run --rm -it -v /opt/str/config-external:/c:ro eclipse-temurin:21-jre-jammy keytool -list -v -storetype PKCS12 -keystore /c/keystore.p12"
+ssh -t cdu-preprod "docker run --rm -it -v /opt/str/config-external:/c:ro eclipse-temurin:21.0.13.1_2-jre-jammy keytool -list -v -storetype PKCS12 -keystore /c/keystore.p12"
 ```
 
 | Iz ispisa | Ide u / mora biti |
