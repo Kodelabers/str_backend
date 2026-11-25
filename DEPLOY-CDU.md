@@ -3,8 +3,9 @@
 Server: `172.20.8.158` (CDU intranet, **državni VPN obavezan** — on odsijeca ostatak interneta).
 Javno: `https://str-test-eturizam.gov.hr`.
 
-CDU server ima docker + osnovne base imageove (`eclipse-temurin:21-jre-jammy`, `nginx:alpine`)
-već cachirane, ali NEMA maven/npm i nema pristupa Docker Hubu za nove pulls. Zato buildamo
+CDU server ima docker + osnovne base imageove (`eclipse-temurin:<JAVA_VERSION>-jre-jammy`,
+`nginx:alpine`) već cachirane, ali NEMA maven/npm i nema pristupa Docker Hubu za nove pulls
+(nova verzija Jave se zato donosi ručno — vidi „Nadogradnja Jave"). Zato buildamo
 artefakte lokalno i preko `scp` prebacujemo na server; docker tamo samo `COPY`-a artefakte u
 thin imageove.
 
@@ -34,7 +35,7 @@ računom. Oba rade, ali ostavljaju datoteke različitih vlasnika — i upravo ta
 ~/str-rn/                              (= /home/vviskov/str-rn)
   str_backend/
     docker-compose.cdu.yml   (server-only kopija; ima dockerfile: Dockerfile.cdu)
-    Dockerfile.cdu           (server-only; eclipse-temurin:21-jre-jammy + COPY jar)
+    Dockerfile.cdu           (server-only; ARG JAVA_VERSION + eclipse-temurin:${JAVA_VERSION}-jre-jammy + COPY jar)
     target/
       str-backend-0.0.1-SNAPSHOT.jar    ← scp destinacija
     .env.cdu                            (secreti + NIAS URL-ovi; server-only)
@@ -775,6 +776,59 @@ Ako timeout:
 ## Update-only (drugi put nadalje)
 
 Koraci 1 → 2 → 3 → 6 → 7 → 8. Koraci 5 i 5b su jednokratni.
+
+## Nadogradnja Jave (security patch)
+
+Cijeli redoslijed za aktualni patch (CDU test, pa CDU predprodukcija, uz povratak) je u
+`DEPLOY-JAVA-PATCH.md`. Ovdje je opće pravilo i postupak za ovu kutiju.
+
+Verzija Jave je pinana jednom vrijednošću, `ARG JAVA_VERSION` na vrhu `Dockerfile` i
+`Dockerfile.artifact` u repou. Na ovoj kutiji ista vrijednost stoji i u server-only
+`Dockerfile.cdu`. U Docker tagu `+` postaje `_`, npr. `21.0.13.1+2` → `21.0.13.1_2`.
+
+Stari tag stoji i u keytool naredbama (`DEPLOY-CDU-PREPROD.md`, `.env.cdupreprod.example`). Prije
+commita ova naredba mora vratiti prazan ispis, a server-only `Dockerfile.cdu` se mijenja ručno, niže:
+
+```powershell
+git grep -n "<STARI_TAG>"
+```
+
+Ova kutija novi tag ne može povući sama, pa ga donosi CDU predprodukcija, koja Docker Hub vidi.
+Prijenos ide kroz datoteku, a ne pipeom kroz PowerShell, jer PS 5.1 `>` kvari binarni stream:
+
+```bash
+# CDU preprod
+docker pull eclipse-temurin:<TAG>-jre-jammy
+docker image inspect --format '{{.Id}}' eclipse-temurin:<TAG>-jre-jammy        # zapiši
+docker save eclipse-temurin:<TAG>-jre-jammy | gzip > ~/temurin-<TAG>-jre-jammy.tar.gz
+```
+```powershell
+scp cdu-preprod:~/temurin-<TAG>-jre-jammy.tar.gz $env:TEMP\
+scp $env:TEMP\temurin-<TAG>-jre-jammy.tar.gz cdu:/tmp/
+```
+```bash
+# CDU test — uvijek apsolutna putanja: alias cdu se spaja kao mhangi, pa ~ NIJE /home/vviskov
+cd /home/vviskov/str-rn/str_backend
+gunzip -c /tmp/temurin-<TAG>-jre-jammy.tar.gz | docker load
+docker image inspect --format '{{.Id}}' eclipse-temurin:<TAG>-jre-jammy        # mora biti isti Id
+cp Dockerfile.cdu Dockerfile.cdu.bak.$(date +%F)
+# u Dockerfile.cdu: ARG JAVA_VERSION=<TAG> pa FROM eclipse-temurin:${JAVA_VERSION}-jre-jammy
+STARI=$(docker-compose --env-file .env.cdu -f docker-compose.cdu.yml images -q backend); echo "$STARI"
+docker-compose --env-file .env.cdu -f docker-compose.cdu.yml build --no-cache backend   # stari kontejneri i dalje rade
+docker-compose --env-file .env.cdu -f docker-compose.cdu.yml down                       # v1: down prije up (§7)
+docker-compose --env-file .env.cdu -f docker-compose.cdu.yml up -d
+docker exec str-backend-cdu java -version                                       # mora pisati novu verziju
+docker rmi "$STARI"; rm /tmp/temurin-<TAG>-jre-jammy.tar.gz
+```
+
+- Gradi se **samo backend**, dok stari kontejneri još rade, pa stack stoji samo između `down` i
+  `up -d`. `down` prije `up` ostaje obavezan zbog greške compose v1 (`KeyError: 'ContainerConfig'`, §7).
+- Briše se samo naša stara slika backenda (`$STARI`). Globalni `docker image prune` i
+  `docker builder prune` ne koristiti, jer je kutija dijeljena i brišu i tuđe slike.
+- **Stari temurin i `nginx:alpine` ne brisati.** Ne mogu se ponovo povući, a stari temurin može
+  koristiti i netko drugi. Pinani `FROM` ga ionako više ne gađa.
+- Povratak: `cp Dockerfile.cdu.bak.<datum> Dockerfile.cdu`, pa `build --no-cache backend`, `down` i
+  `up -d`.
 
 ---
 
