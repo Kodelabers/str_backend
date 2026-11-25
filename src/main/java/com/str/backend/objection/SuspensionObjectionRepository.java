@@ -197,4 +197,16 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
                                  @Param("scopeCounties") Collection<String> scopeCounties,
                                  @Param("submittedFrom") Instant submittedFrom,
                                  @Param("submittedBefore") Instant submittedBefore);
+
+    /**
+     * Riješeni podnesci u opsegu službenika, bez vremenskog ograničenja — kartica „Riješeno"
+     * ({@link AdminObjectionStatsDto#resolved}). Isti uvjet kao filtar {@code RESOLVED} popisa, pa se broj slaže
+     * s popisom filtriranim na riješene.
+     */
+    @Transactional(readOnly = true)
+    @Query("SELECT COUNT(o)" + ADMIN_FROM
+            + " WHERE NOT " + UNRESOLVED
+            + " AND (CAST(:scopeMode AS string) IS NULL OR a.county IN :scopeCounties)")
+    long countResolvedForAdmin(@Param("scopeMode") String scopeMode,
+                               @Param("scopeCounties") Collection<String> scopeCounties);
 }
