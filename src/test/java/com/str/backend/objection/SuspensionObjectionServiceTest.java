@@ -221,6 +221,29 @@ class SuspensionObjectionServiceTest {
         verify(repository, never()).saveAndFlush(any());
     }
 
+    /**
+     * UAT 25.11.: na neuvaženi prigovor na mjeru nema novog prigovora — 409 OBJECTION_ALREADY_REJECTED, ništa
+     * se ne sprema. Na prijedlog (očitovanje) se pravilo ne pita.
+     */
+    @ParameterizedTest
+    @EnumSource(value = RnStatus.class, names = {"SUSPENDED", "WITHDRAWN"})
+    void rejectedObjectionOnMeasure_is409(RnStatus status) {
+        when(rn.getStatus()).thenReturn(status);
+        when(repository.existsRejectedOnMeasure(RN, status)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.submit(OWNER, SUBMITTED_BY, request(file("prigovor.pdf", PDF))))
+                .isInstanceOfSatisfying(ConflictException.class,
+                        e -> assertThat(e.getCode()).isEqualTo("OBJECTION_ALREADY_REJECTED"));
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void proposal_doesNotAskForRejectedObjectionOnMeasure() {
+        capture(OWNER, request(file("prigovor.pdf", PDF)));
+
+        verify(repository, never()).existsRejectedOnMeasure(any(), any());
+    }
+
     @Test
     void mapsSubmittedIndexViolation_toAlreadySubmitted() {
         when(repository.saveAndFlush(any(SuspensionObjectionEntity.class))).thenThrow(new DataIntegrityViolationException(

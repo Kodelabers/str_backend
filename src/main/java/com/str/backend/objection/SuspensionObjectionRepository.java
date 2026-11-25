@@ -20,6 +20,23 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
     @Transactional(readOnly = true)
     boolean existsByRnAndStatus(String rn, SuspensionObjectionStatus status);
 
+    /**
+     * Neuvaženi prigovor na mjeru {@code rnStatus} (suspenzija ili povlačenje) predan nakon zadnjeg ulaska RB-a
+     * u taj status iz drugog statusa — isto pravilo kao {@code RnRepository.PRIGOVOR_NA_MJERU_ODBIJEN}.
+     */
+    @Transactional(readOnly = true)
+    @Query("SELECT COUNT(o) > 0 FROM SuspensionObjectionEntity o WHERE o.rn = :rn AND o.rnStatus = :rnStatus"
+            + " AND o.status = com.str.backend.objection.SuspensionObjectionStatus.REJECTED"
+            + " AND o.submittedAt >= (SELECT MAX(l.occurredAt) FROM RegistrationNumberLogEntity l WHERE l.rn = :rn"
+            + "   AND l.toStatus = :rnStatusName AND (l.fromStatus IS NULL OR l.fromStatus <> l.toStatus))")
+    boolean existsRejectedOnMeasure(@Param("rn") String rn, @Param("rnStatus") RnStatus rnStatus,
+                                    @Param("rnStatusName") String rnStatusName);
+
+    /** {@link #existsRejectedOnMeasure(String, RnStatus, String)} za mjeru {@code rnStatus}. */
+    default boolean existsRejectedOnMeasure(String rn, RnStatus rnStatus) {
+        return existsRejectedOnMeasure(rn, rnStatus, rnStatus.name());
+    }
+
     /** Postoji li uz RB prigovor u zadanom statusu predan prije {@code before}, bez obzira na prijedlog. */
     @Transactional(readOnly = true)
     boolean existsByRnAndStatusAndSubmittedAtBefore(String rn, SuspensionObjectionStatus status, Instant before);

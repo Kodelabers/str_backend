@@ -434,6 +434,49 @@ class SuspensionObjectionIntegrationTest {
     }
 
     /**
+     * UAT 25.11.: neuvaženo očitovanje ne priječi prigovor na mjeru, a neuvaženi prigovor na mjeru priječi novi
+     * — na popisu iznajmljivača ({@code prigovorOdbijen}) i pri predaji ({@code existsRejectedOnMeasure}).
+     * Nova mjera (ponovna suspenzija nakon reaktivacije) otvara novi postupak i prigovor je opet moguć.
+     */
+    @Test
+    void rejectedObjectionOnMeasure_blocksNewObjection_untilMeasureIsEnteredAgain() throws InterruptedException {
+        String official = "INTERNAL:12345678903";
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(15), null, official, List.of());
+        Thread.sleep(5);
+        UUID ocitovanje = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
+        adminService.reject("HR00000021", ocitovanje, official, null, false);
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.SUSPENDED);
+        assertThat(prigovorOdbijen("HR00000021")).as("neuvaženo očitovanje").isFalse();
+        assertThat(objectionRepository.existsRejectedOnMeasure("HR00000021", RnStatus.SUSPENDED, "SUSPENDED"))
+                .isFalse();
+
+        Thread.sleep(5);
+        UUID prigovor = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.SUSPENDED))
+                .getObjectionId();
+        assertThat(prigovorOdbijen("HR00000021")).as("prigovor čeka odluku").isFalse();
+        // Odluka zapisana izravno na podnesak: pravilo ovisi samo o neuvaženom prigovoru, ne o aktu koji
+        // neuvažavanje izdaje (obavijest o neprihvaćanju traži Rješenje, feature/uat-2511-odluke-akti).
+        SuspensionObjectionEntity odluka = objectionRepository.findById(prigovor).orElseThrow();
+        odluka.reject(official, null);
+        objectionRepository.saveAndFlush(odluka);
+        assertThat(prigovorOdbijen("HR00000021")).as("neuvaženi prigovor").isTrue();
+        assertThat(rnRepository.findByLessorId(lessorId)).filteredOn(r -> r.rn().equals("HR00000021"))
+                .singleElement().extracting(LessorRnSummaryDto::prigovorOdbijen).isEqualTo(true);
+        assertThat(objectionRepository.existsRejectedOnMeasure("HR00000021", RnStatus.SUSPENDED, "SUSPENDED"))
+                .isTrue();
+
+        rnService.reactivate("HR00000021", official, AktSluzbenika.NEMA);
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(15), null, official, List.of());
+        jdbc.update("UPDATE str_rn.registration_number SET suspension_deadline = ? WHERE rn = ?",
+                Zagreb.today().minusDays(1), "HR00000021");
+        Thread.sleep(5);
+        deadlineJob.run();
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.SUSPENDED);
+        assertThat(prigovorOdbijen("HR00000021")).as("nova suspenzija").isFalse();
+        assertThat(prigovorOdbijen("HR00000022")).as("RB bez prigovora").isFalse();
+    }
+
+    /**
      * T12: prijedlog povlačenja iz suspenzije javno ostaje suspendiran (verify, inactive, popis
      * iznajmljivača), a obustava ga ipak vraća u ACTIVE.
      */
@@ -709,6 +752,11 @@ class SuspensionObjectionIntegrationTest {
             }
         }
         throw new IllegalStateException(CHANGESET + " nema <sql> blok");
+    }
+
+    private boolean prigovorOdbijen(String rn) {
+        return rnRepository.findByLessorOib(OIB).stream().filter(r -> r.rn().equals(rn)).findFirst()
+                .orElseThrow().prigovorOdbijen();
     }
 
     private SuspensionObjectionStatus objectionStatusOf(String rn) {
