@@ -316,6 +316,24 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             "                  WHERE w.rn = r.rn AND w.toStatus = 'WITHDRAWAL_PROPOSED')))))))";
 
     /**
+     * Je li prigovor na konačnu mjeru već odbijen (UAT 25.11.): RB je suspendiran ili povučen, a nakon
+     * zadnjeg ulaska u taj status (prijelaz iz drugog statusa) postoji neuvaženi prigovor predan na isti
+     * status. Na neuvaženi prigovor nema novog prigovora — iznajmljivaču se gumb ne nudi, a predaju odbija
+     * {@code SuspensionObjectionService#submit} ({@code OBJECTION_ALREADY_REJECTED}). Neuvaženo očitovanje
+     * (podneseno na prijedlog) prigovor na mjeru ne priječi.
+     */
+    String PRIGOVOR_NA_MJERU_ODBIJEN =
+            "CASE WHEN r.status IN (com.str.backend.domain.RnStatus.SUSPENDED," +
+            "                       com.str.backend.domain.RnStatus.WITHDRAWN)" +
+            " AND EXISTS (SELECT 1 FROM SuspensionObjectionEntity o WHERE o.rn = r.rn AND o.rnStatus = r.status" +
+            "   AND o.status = com.str.backend.objection.SuspensionObjectionStatus.REJECTED" +
+            "   AND o.submittedAt >= (SELECT MAX(l.occurredAt) FROM RegistrationNumberLogEntity l WHERE l.rn = r.rn" +
+            "     AND (l.fromStatus IS NULL OR l.fromStatus <> l.toStatus)" +
+            "     AND ((r.status = com.str.backend.domain.RnStatus.SUSPENDED AND l.toStatus = 'SUSPENDED')" +
+            "       OR (r.status = com.str.backend.domain.RnStatus.WITHDRAWN AND l.toStatus = 'WITHDRAWN'))))" +
+            " THEN true ELSE false END";
+
+    /**
      * Ono što stupac prikazuje, kao ime {@link RegistryDecisionFilter} — filtar registra. Isto kao
      * FE {@code shownDecisionStatus}: status rješenja kad postoji, inače NONE ili NOT_REQUIRED.
      */
@@ -578,7 +596,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " " + CATEGORIZATION_REQUIRED + ","
             + " " + CATEGORIZATION_STATUS + ","
             + " " + OBJECTION_STATUS + ","
-            + " a.facilityId, r.withdrawalFromSuspended)"
+            + " a.facilityId, r.withdrawalFromSuspended,"
+            + " " + PRIGOVOR_NA_MJERU_ODBIJEN + ")"
             + " FROM RnEntity r"
             + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
             + " LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId"
@@ -626,7 +645,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             + " " + CATEGORIZATION_REQUIRED + ","
             + " " + CATEGORIZATION_STATUS + ","
             + " " + OBJECTION_STATUS + ","
-            + " a.facilityId, r.withdrawalFromSuspended)"
+            + " a.facilityId, r.withdrawalFromSuspended,"
+            + " " + PRIGOVOR_NA_MJERU_ODBIJEN + ")"
             + " FROM RnEntity r"
             + " JOIN AccommodationEntity a ON a.accommodationId = r.accommodationId"
             + " LEFT JOIN AccommodationTypeEntity t ON t.typeId = a.accommodationTypeId"

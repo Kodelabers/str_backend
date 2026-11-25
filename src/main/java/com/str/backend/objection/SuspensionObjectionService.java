@@ -120,6 +120,12 @@ public class SuspensionObjectionService {
         if (repository.existsByRnAndStatus(rn, SuspensionObjectionStatus.SUBMITTED)) {
             throw new ConflictException("error.objection.alreadySubmitted", "OBJECTION_ALREADY_SUBMITTED");
         }
+        // Na neuvaženi prigovor nema novog prigovora (UAT 25.11.): odluka o prigovoru na suspenziju ili
+        // povlačenje je konačna u ovom postupku. Neuvaženo očitovanje (na prijedlog) prigovor ne priječi.
+        if ((rnStatus == RnStatus.SUSPENDED || rnStatus == RnStatus.WITHDRAWN)
+                && repository.existsRejectedOnMeasure(rn, rnStatus)) {
+            throw new ConflictException("error.objection.alreadyRejected", "OBJECTION_ALREADY_REJECTED");
+        }
         // Prigovor na povučen broj nema smisla kad je za objekt u međuvremenu izdan novi broj: uvažiti
         // se ne bi mogao (RnService#reinstate), pa se odbija već pri predaji (T12).
         if (rnStatus == RnStatus.WITHDRAWN && reissueGuard.noviBrojIzdan(rnEntity)) {

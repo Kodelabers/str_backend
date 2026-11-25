@@ -40,6 +40,10 @@ import java.time.LocalDate;
  *
  * <p>{@code prijedlogIzSuspenzije} (T12) je {@code true} samo uz {@code WITHDRAWAL_PROPOSED} pokrenut iz
  * suspenzije — broj tada javno ostaje suspendiran. Puni ga upit, na oba popisa.
+ *
+ * <p>{@code prigovorOdbijen} (UAT 25.11.) je {@code true} kad je uz suspendiran ili povučen RB prigovor na
+ * tu mjeru već neuvažen — novi se ne može predati ({@code OBJECTION_ALREADY_REJECTED}), pa frontend skriva
+ * gumb ({@code RnRepository.PRIGOVOR_NA_MJERU_ODBIJEN}). Puni ga upit, na oba popisa.
  */
 public record LessorRnSummaryDto(
         String rn,
@@ -57,10 +61,24 @@ public record LessorRnSummaryDto(
         Boolean facilityVerified,
         LocalDate ponovniZahtjevDo,
         Boolean noviBrojIzdan,
-        boolean prijedlogIzSuspenzije
+        boolean prijedlogIzSuspenzije,
+        boolean prigovorOdbijen
 ) {
 
-    /** Popisi iz upita — {@code facilityVerified} i ostalo se dopunjava nakon upita ({@link #withFacilityVerified}). */
+    /** Popisi iz upita ({@code RnRepository#findByLessorOib}, {@code #findByLessorId}). */
+    public LessorRnSummaryDto(String rn, RnStatus status, LocalDate issueDate,
+                              String accommodationName, String street, String streetNumber,
+                              String city, String accommodationTypeName,
+                              boolean categorizationRequired,
+                              CategorizationDecisionStatus categorizationStatus,
+                              SuspensionObjectionStatus objectionStatus,
+                              String facilityId, boolean prijedlogIzSuspenzije, boolean prigovorOdbijen) {
+        this(rn, status, issueDate, accommodationName, street, streetNumber, city,
+                accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus, facilityId,
+                null, null, null, prijedlogIzSuspenzije, prigovorOdbijen);
+    }
+
+    /** Kao gornji, bez odbijenog prigovora — {@code facilityVerified} i ostalo se dopunjava nakon upita. */
     public LessorRnSummaryDto(String rn, RnStatus status, LocalDate issueDate,
                               String accommodationName, String street, String streetNumber,
                               String city, String accommodationTypeName,
@@ -70,7 +88,7 @@ public record LessorRnSummaryDto(
                               String facilityId, boolean prijedlogIzSuspenzije) {
         this(rn, status, issueDate, accommodationName, street, streetNumber, city,
                 accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus, facilityId,
-                null, null, null, prijedlogIzSuspenzije);
+                prijedlogIzSuspenzije, false);
     }
 
     /** Kao gornji, bez prijedloga povlačenja iz suspenzije. */
@@ -90,24 +108,24 @@ public record LessorRnSummaryDto(
                               String accommodationName, String street, String streetNumber,
                               String city, String accommodationTypeName) {
         this(rn, status, issueDate, accommodationName, street, streetNumber, city,
-                accommodationTypeName, false, null, null, null, null, null, null, false);
+                accommodationTypeName, false, null, null, null, null, null, null, false, false);
     }
 
     public LessorRnSummaryDto withFacilityVerified(boolean verified) {
         return new LessorRnSummaryDto(rn, status, issueDate, accommodationName, street, streetNumber,
                 city, accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus,
-                facilityId, verified, ponovniZahtjevDo, noviBrojIzdan, prijedlogIzSuspenzije);
+                facilityId, verified, ponovniZahtjevDo, noviBrojIzdan, prijedlogIzSuspenzije, prigovorOdbijen);
     }
 
     public LessorRnSummaryDto withPonovniZahtjevDo(LocalDate until) {
         return new LessorRnSummaryDto(rn, status, issueDate, accommodationName, street, streetNumber,
                 city, accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus,
-                facilityId, facilityVerified, until, noviBrojIzdan, prijedlogIzSuspenzije);
+                facilityId, facilityVerified, until, noviBrojIzdan, prijedlogIzSuspenzije, prigovorOdbijen);
     }
 
     public LessorRnSummaryDto withNoviBrojIzdan(Boolean izdan) {
         return new LessorRnSummaryDto(rn, status, issueDate, accommodationName, street, streetNumber,
                 city, accommodationTypeName, categorizationRequired, categorizationStatus, objectionStatus,
-                facilityId, facilityVerified, ponovniZahtjevDo, izdan, prijedlogIzSuspenzije);
+                facilityId, facilityVerified, ponovniZahtjevDo, izdan, prijedlogIzSuspenzije, prigovorOdbijen);
     }
 }
