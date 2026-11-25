@@ -12,6 +12,7 @@ import com.str.backend.document.StrDocumentType;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.egop.EgopPismenoEntity;
 import com.str.backend.egop.EgopPismenoRepository;
+import com.str.backend.exception.BusinessException;
 import com.str.backend.exception.ConflictException;
 import com.str.backend.exception.ForbiddenException;
 import com.str.backend.exception.IllegalStatusTransitionException;
@@ -27,6 +28,7 @@ import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnReissueGuard;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
+import com.str.backend.rn.RjesenjeSluzbenika;
 import com.str.backend.rn.RucniAkt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -147,7 +149,8 @@ public class SuspensionObjectionAdminService {
                                 .toList(),
                         naIstojAdresi,
                         zupanijski.contains(o.getObjectionId()),
-                        urudzbiranja.get(o.getObjectionId())))
+                        urudzbiranja.get(o.getObjectionId()),
+                        rnEntity.getStatus()))
                 .toList();
     }
 
@@ -264,38 +267,112 @@ public class SuspensionObjectionAdminService {
         auditService.record(actor, "OBJECTION_ACCEPT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
     }
 
-    /**
-     * Neuvažavanje: prigovor → {@code REJECTED}. Ako je RB i dalje pred suspenzijom, odmah se
-     * suspendira u ime službenika ({@link RnService#suspendAfterRejectedObjection}), a broj predložen za
-     * povlačenje odmah se povlači ({@link RnService#withdrawAfterRejectedObjection}) — bez obzira na to
-     * teče li rok još (UAT 17.11.2026: uvaženo očitovanje vraća broj u aktivan status, neuvaženo izriče mjeru).
-     * Prigovor na već izrečenu mjeru ({@code SUSPENDED}/{@code WITHDRAWN}) status ne mijenja. Prigovor
-     * je u tom trenutku već {@code REJECTED}, a mjera ga ni ne zatvara
-     * ({@link SuspensionObjectionLifecycleListener}), pa odluka službenika ostaje zapisana.
-     *
-     * <p>RB se zaključava prije svega, kao kod uvažavanja, da se ne utrka s noćnim jobom. Pravila
-     * županijskog postupka kao kod uvažavanja (403, pa 409).
-     *
-     * @param zupanijskiSluzbenik službenik je županijski ({@code RucniAktService#zupanijskiSluzbenik})
-     */
+    /** Neuvažavanje samo s bilješkom — v. {@link #reject(String, UUID, String, Neuvazavanje)}. */
     @Transactional
     public void reject(String rn, UUID id, String actor, String note, boolean zupanijskiSluzbenik) {
+        reject(rn, id, actor, Neuvazavanje.biljeska(note, zupanijskiSluzbenik));
+    }
+
+    /**
+     * Neuvažavanje: prigovor → {@code REJECTED}, a akt koji odluka izdaje ovisi o tome na što je podnesak predan i
+     * gdje je RB sada ({@link AktNeuvazavanja#za}):
+     * <ul>
+     *   <li>{@link AktNeuvazavanja#MJERA} — očitovanje na prijedlog u kojem je RB i sada: broj se odmah suspendira
+     *       odnosno povlači ({@link RnService#suspendAfterRejectedObjection},
+     *       {@link RnService#withdrawAfterRejectedObjection}), bez obzira na to teče li rok još (UAT 17.11.2026).
+     *       Prilozi službenika su neobavezni (UAT 25.11.).</li>
+     *   <li>{@link AktNeuvazavanja#NEPRIHVACANJE} — prigovor na mjeru u kojoj je RB i sada: status se ne mijenja,
+     *       a stranci se izdaje obavijest o neprihvaćanju prigovora ({@link RnService#rejectObjectionOnMeasure})
+     *       s Rješenjem službenika kao obaveznim prilogom (400 {@code error.objection.rjesenje.required}).</li>
+     *   <li>{@link AktNeuvazavanja#NEMA} — zaostali podnesak iz statusa koji je RB napustio: samo odluka; ručni
+     *       brojevi, prilozi i Rješenje su tada 400 ({@code error.objection.reject.noAct}).</li>
+     * </ul>
+     * Uz akt županijski službenik upisuje KLASU i URBROJ (UAT 25.11.: izvedeni broj s prijedloga poklapao se s
+     * URBROJ-em urudžbiranog očitovanja), a uz Rješenje i njegove — različite od brojeva obavijesti. U postupku
+     * MINTS-a brojeve dodjeljuje eGOP, a Rješenje ide kao prilog pismena.
+     *
+     * <p>Prigovor je u trenutku prijelaza već {@code REJECTED}, a mjera ga ni ne zatvara
+     * ({@link SuspensionObjectionLifecycleListener}), pa odluka službenika ostaje zapisana. RB se zaključava prije
+     * svega, kao kod uvažavanja, da se ne utrka s noćnim jobom. Pravila županijskog postupka kao kod uvažavanja
+     * (403, pa 409).
+     */
+    @Transactional
+    public void reject(String rn, UUID id, String actor, Neuvazavanje odluka) {
         RnEntity rnEntity = rnRepository.findForUpdate(rn)
                 .orElseThrow(() -> new ResourceNotFoundException("error.rn.notFound"));
         SuspensionObjectionEntity e = findOrThrow(rn, id);
-        requireCountyRulesForDecision(rn, e, zupanijskiSluzbenik);
+        requireCountyRulesForDecision(rn, e, odluka.zupanijskiSluzbenik());
         // Isto čišćenje kao kod uvažavanja: NUL bi PostgreSQL odbio (500), a bilješka nikamo ne ide osim u odluku.
-        String cleanNote = AktSluzbenika.ocistiObrazlozenje(note);
-        e.reject(actor, cleanNote);
+        String cleanNote = AktSluzbenika.ocistiObrazlozenje(odluka.note());
         // Mjeru izriče samo očitovanje predano na prijedlog u kojem je RB i sada — zaostali podnesak iz nekog
         // drugog postupka ne smije stranci skratiti rok koji još teče.
-        if (rnEntity.getStatus() == RnStatus.SUSPENSION_PROPOSED && e.getRnStatus() == RnStatus.SUSPENSION_PROPOSED) {
-            rnService.suspendAfterRejectedObjection(rn, actor);
-        } else if (rnEntity.getStatus() == RnStatus.WITHDRAWAL_PROPOSED
-                && e.getRnStatus() == RnStatus.WITHDRAWAL_PROPOSED) {
-            rnService.withdrawAfterRejectedObjection(rn, actor);
+        if (e.getStatus() != SuspensionObjectionStatus.SUBMITTED) {
+            // Ponovljena odluka (dvoklik, drugi službenik): isti 409 kao iz entiteta, a ne 400 provjere akta, koja
+            // bi za već promijenjen status RB-a javila da akta nema.
+            throw new IllegalStatusTransitionException(
+                    "Prigovor " + e.getObjectionId() + " nije u statusu SUBMITTED (trenutno: " + e.getStatus() + ")");
+        }
+        AktNeuvazavanja vrstaAkta = AktNeuvazavanja.za(rnEntity.getStatus(), e.getRnStatus());
+        AktSluzbenika akt = new AktSluzbenika(odluka.akt().rucni(), null, odluka.akt().prilogIds());
+        RjesenjeSluzbenika rjesenje = provjeriAktNeuvazavanja(vrstaAkta, odluka, akt);
+        e.reject(actor, cleanNote);
+        switch (vrstaAkta) {
+            case MJERA -> {
+                if (e.getRnStatus() == RnStatus.SUSPENSION_PROPOSED) {
+                    rnService.suspendAfterRejectedObjection(rn, actor, akt);
+                } else {
+                    rnService.withdrawAfterRejectedObjection(rn, actor, akt);
+                }
+            }
+            case NEPRIHVACANJE -> rnService.rejectObjectionOnMeasure(rn, actor, e.getRnStatus(), akt, rjesenje);
+            case NEMA -> { }
         }
         auditService.record(actor, "OBJECTION_REJECT", "SUSPENSION_OBJECTION", id.toString(), cleanNote);
+    }
+
+    /**
+     * Pravila podataka uz akt neuvažavanja, prije ikakve izmjene: bez akta ništa od akta; uz akt županijski
+     * službenik upisuje KLASU i URBROJ; uz obavijest o neprihvaćanju prigovora Rješenje je obavezno, a u
+     * županijskom postupku nosi vlastite, provjerene brojeve.
+     *
+     * @return Rješenje uz {@link AktNeuvazavanja#NEPRIHVACANJE}, inače {@code null}
+     */
+    private static RjesenjeSluzbenika provjeriAktNeuvazavanja(AktNeuvazavanja vrstaAkta, Neuvazavanje odluka,
+                                                              AktSluzbenika akt) {
+        if (vrstaAkta == AktNeuvazavanja.NEMA) {
+            if (akt.rucni() != null || !akt.prilogIds().isEmpty() || odluka.rjesenjePrilogId() != null) {
+                throw new BusinessException("error.objection.reject.noAct");
+            }
+            return null;
+        }
+        if (odluka.zupanijskiSluzbenik() && akt.rucni() == null) {
+            // Ista provjera i poruka kao kad nedostaje jedan od dva broja.
+            RucniAkt.provjeri(null, null);
+        }
+        if (vrstaAkta == AktNeuvazavanja.MJERA) {
+            if (odluka.rjesenjePrilogId() != null) {
+                throw new BusinessException("error.objection.rjesenje.notAllowed");
+            }
+            return null;
+        }
+        if (odluka.rjesenjePrilogId() == null) {
+            throw new BusinessException("error.objection.rjesenje.required");
+        }
+        if (akt.rucni() == null) {
+            // Postupak MINTS-a: brojeve obavijesti dodjeljuje eGOP, a Rješenje ih ima na samom dokumentu.
+            return new RjesenjeSluzbenika(odluka.rjesenjePrilogId(), null, null);
+        }
+        if (odluka.rjesenjeKlasa() == null || odluka.rjesenjeKlasa().isBlank()) {
+            throw new BusinessException("error.objection.rjesenje.klasa.required");
+        }
+        if (odluka.rjesenjeUrbroj() == null || odluka.rjesenjeUrbroj().isBlank()) {
+            throw new BusinessException("error.objection.rjesenje.urbroj.required");
+        }
+        String[] brojevi = RucniAkt.provjeri(odluka.rjesenjeKlasa(), odluka.rjesenjeUrbroj());
+        if (brojevi[0].equals(akt.rucni().klasa()) && brojevi[1].equals(akt.rucni().urBroj())) {
+            throw new BusinessException("error.objection.rjesenje.sameNumber");
+        }
+        return new RjesenjeSluzbenika(odluka.rjesenjePrilogId(), brojevi[0], brojevi[1]);
     }
 
     /**

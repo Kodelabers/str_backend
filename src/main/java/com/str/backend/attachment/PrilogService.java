@@ -187,6 +187,18 @@ public class PrilogService {
     }
 
     /**
+     * Označava prilog koji je ista radnja upravo vezala uz {@code vlasnik} kao Rješenje službenika (UAT 25.11.),
+     * s KLASOM i URBROJEM kad ih ima. Prilog koji nije vezan uz tog vlasnika je 404, kao kod vezanja.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void oznaciRjesenje(Long id, PrilogVlasnik vlasnik, String klasa, String urBroj) {
+        if (repository.oznaci(id, vlasnik.vrsta(), vlasnik.id(), PismenoPrilogEntity.Uloga.RJESENJE, klasa,
+                urBroj) != 1) {
+            throw notFound();
+        }
+    }
+
+    /**
      * Najviše {@code app.attachments.max-per-owner} datoteka uz jedno pismeno, a uz očitovanje i prigovor
      * ({@link VrstaVlasnika#OBJECTION}) {@code app.attachments.max-per-objection} — dokument i do 5 priloga
      * (400 {@code ATTACHMENT_COUNT}). Jedino mjesto te provjere — i za prigovor, čiji je dokument izvan

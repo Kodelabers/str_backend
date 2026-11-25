@@ -28,6 +28,10 @@ public class RnWithdrawnListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onLifecycleChange(RnLifecycleEvent event) {
+        // Zapis bez promjene statusa (neuvaženi prigovor na povlačenje, UAT 25.11.) broj je već uklonio.
+        if (event.from() == event.to()) {
+            return;
+        }
         if (event.to().isTerminal()) {
             facilityWriteBack.clear(event.rn());
         } else if (event.trigger() == RnTrigger.REINSTATE) {

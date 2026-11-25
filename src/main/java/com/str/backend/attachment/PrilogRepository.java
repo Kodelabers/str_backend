@@ -27,13 +27,18 @@ public interface PrilogRepository extends JpaRepository<PismenoPrilogEntity, Lon
         Integer getEgopRbr();
         int getEgopPokusaji();
         Instant getEgopSljedeciPokusajU();
+        /** Uloga priloga (Rješenje, UAT 25.11.); {@code null} = običan prilog. */
+        PismenoPrilogEntity.Uloga getUloga();
+        String getKlasa();
+        String getUrBroj();
     }
 
     String SAZETAK = """
             SELECT p.id AS id, p.vrstaVlasnika AS vrstaVlasnika, p.vlasnikId AS vlasnikId,
                    p.nazivDatoteke AS nazivDatoteke, p.contentType AS contentType, p.velicina AS velicina,
                    p.ucitao AS ucitao, p.egopJop AS egopJop, p.egopRbr AS egopRbr,
-                   p.egopPokusaji AS egopPokusaji, p.egopSljedeciPokusajU AS egopSljedeciPokusajU
+                   p.egopPokusaji AS egopPokusaji, p.egopSljedeciPokusajU AS egopSljedeciPokusajU,
+                   p.uloga AS uloga, p.klasa AS klasa, p.urBroj AS urBroj
             FROM PismenoPrilogEntity p
             """;
 
@@ -94,6 +99,17 @@ public interface PrilogRepository extends JpaRepository<PismenoPrilogEntity, Lon
             """)
     int bind(@Param("ids") Collection<Long> ids, @Param("ucitao") String ucitao,
              @Param("vrsta") VrstaVlasnika vrsta, @Param("vlasnikId") UUID vlasnikId, @Param("sada") Instant sada);
+
+    /**
+     * Uloga vezanog priloga (Rješenje, UAT 25.11.) — samo uz zadanog vlasnika, u transakciji radnje koja ga je
+     * upravo vezala.
+     */
+    @Modifying
+    @Query("UPDATE PismenoPrilogEntity p SET p.uloga = :uloga, p.klasa = :klasa, p.urBroj = :urBroj"
+            + " WHERE p.id = :id AND p.vrstaVlasnika = :vrsta AND p.vlasnikId = :vlasnikId")
+    int oznaci(@Param("id") Long id, @Param("vrsta") VrstaVlasnika vrsta, @Param("vlasnikId") UUID vlasnikId,
+               @Param("uloga") PismenoPrilogEntity.Uloga uloga, @Param("klasa") String klasa,
+               @Param("urBroj") String urBroj);
 
     @Modifying
     @Transactional

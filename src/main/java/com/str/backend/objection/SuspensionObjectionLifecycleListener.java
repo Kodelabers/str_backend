@@ -52,9 +52,13 @@ public class SuspensionObjectionLifecycleListener {
         }
     }
 
-    /** Prijelaz kojim prijedlog istekom roka prelazi u mjeru — prigovor na prijedlog i dalje vrijedi. */
+    /**
+     * Prijelaz kojim prijedlog istekom roka prelazi u mjeru — prigovor na prijedlog i dalje vrijedi — i zapis bez
+     * promjene statusa (neuvaženi prigovor na mjeru, UAT 25.11.), koji postupak ne mijenja.
+     */
     static boolean ostajeOtvoren(RnStatus from, RnStatus to) {
-        return (from == RnStatus.SUSPENSION_PROPOSED && to == RnStatus.SUSPENDED)
+        return from == to
+                || (from == RnStatus.SUSPENSION_PROPOSED && to == RnStatus.SUSPENDED)
                 || (from == RnStatus.WITHDRAWAL_PROPOSED && to == RnStatus.WITHDRAWN);
     }
 }

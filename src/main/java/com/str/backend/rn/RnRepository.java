@@ -298,12 +298,14 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
      * nakon isteka roka, jer tada ostaje otvoren ({@code SuspensionObjectionLifecycleListener}). Stariji
      * zapisi bez prijedloga (jednofazna suspenzija, izravno povlačenje prije T12) mjere se od ulaska u
      * mjeru. Prigovor iz ranijeg postupka se ne prikazuje, a u {@code ACTIVE} i {@code REVOKED} statusa nema.
+     * Zapis bez promjene statusa (neuvaženi prigovor na mjeru, UAT 25.11.) nije ulazak u mjeru.
      */
     String OBJECTION_STATUS =
             "(SELECT o.status FROM SuspensionObjectionEntity o WHERE o.rn = r.rn" +
             " AND o.submittedAt = (SELECT MAX(o2.submittedAt) FROM SuspensionObjectionEntity o2" +
             " WHERE o2.rn = r.rn)" +
             " AND o.submittedAt >= (SELECT MAX(l.occurredAt) FROM RegistrationNumberLogEntity l WHERE l.rn = r.rn" +
+            "   AND (l.fromStatus IS NULL OR l.fromStatus <> l.toStatus)" +
             "   AND ((r.status IN (com.str.backend.domain.RnStatus.SUSPENSION_PROPOSED," +
             "                      com.str.backend.domain.RnStatus.SUSPENDED)" +
             "         AND (l.toStatus = 'SUSPENSION_PROPOSED'" +

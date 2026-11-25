@@ -40,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -262,11 +263,14 @@ public class RnService {
      * nastaje isti akt s razlogom s prijedloga; u zapisu je bilješka o neuvaženom očitovanju. RB koji
      * više nije pred suspenzijom ostaje kakav jest.
      *
+     * <p>Akt službenika (UAT 25.11.): KLASA i URBROJ obavijesti o suspenziji koje je županijski službenik upisao pri
+     * neuvažavanju i njegovi prilozi uz nju ({@link #applyMeasureAfterRejection}).
+     *
      * @return je li RB suspendiran
      */
     @Transactional
-    public boolean suspendAfterRejectedObjection(String rn, String actor) {
-        return applyMeasureAfterRejection(ProposalProcedure.SUSPENSION, rn, actor);
+    public boolean suspendAfterRejectedObjection(String rn, String actor, AktSluzbenika akt) {
+        return applyMeasureAfterRejection(ProposalProcedure.SUSPENSION, rn, actor, akt);
     }
 
     /**
@@ -361,24 +365,74 @@ public class RnService {
      * @return je li broj povučen
      */
     @Transactional
-    public boolean withdrawAfterRejectedObjection(String rn, String actor) {
-        return applyMeasureAfterRejection(ProposalProcedure.WITHDRAWAL, rn, actor);
+    public boolean withdrawAfterRejectedObjection(String rn, String actor, AktSluzbenika akt) {
+        return applyMeasureAfterRejection(ProposalProcedure.WITHDRAWAL, rn, actor, akt);
     }
 
     /**
      * Mjera iz prijedloga nakon neuvaženog očitovanja: isti prijelaz kao istek roka, ali bez uvjeta
      * roka. Rezultat {@link #suspendAfterRejectedObjection} i {@link #withdrawAfterRejectedObjection}.
+     *
+     * <p>KLASA i URBROJ akta: ono što je županijski službenik upisao pri neuvažavanju (UAT 25.11. — izvedeni
+     * broj s prijedloga, URBROJ + 1, poklapao se s URBROJ-em ulaznog očitovanja). Bez upisanih brojeva vrijedi
+     * pravilo noćnog posla: ručni prijedlog daje ručni akt s izvedenim brojem, prijedlog kroz eGOP akt kroz eGOP.
+     * Prilozi službenika vežu se uz zapis prijelaza kao kod {@link #suspend}.
      */
-    private boolean applyMeasureAfterRejection(ProposalProcedure procedure, String rn, String actor) {
+    private boolean applyMeasureAfterRejection(ProposalProcedure procedure, String rn, String actor,
+                                               AktSluzbenika akt) {
+        AktSluzbenika a = akt != null ? akt : AktSluzbenika.NEMA;
         RnEntity e = loadForUpdate(rn);
         if (e.getStatus() != procedure.proposed()) {
             return false;
         }
-        // T16: ručni prijedlog daje ručni akt (KLASA i izdavatelj s prijedloga, URBROJ + 1), kao u noćnom poslu.
-        RucniAkt rucni = RucniAkt.izPrijedloga(logRepository, rn, procedure.proposed()).orElse(null);
-        transitionService.transition(e, procedure.target(), procedure.trigger(), actor, procedure.rejectionNote(),
-                rucni);
+        RucniAkt rucni = a.rucni() != null ? a.rucni()
+                : RucniAkt.izPrijedloga(logRepository, rn, procedure.proposed()).orElse(null);
+        UUID logId = transitionService.transition(e, procedure.target(), procedure.trigger(), actor,
+                procedure.rejectionNote(), rucni);
+        bindPrilozi(actor, a.prilogIds(), logId);
         return true;
+    }
+
+    /**
+     * Neuvaženi prigovor na izrečenu mjeru (UAT 25.11.2026): broj ostaje suspendiran odnosno povučen, a stranci
+     * se izdaje obavijest o neprihvaćanju prigovora ({@code NEPRIHVACANJE_PRIGOVORA_*}) s Rješenjem službenika u
+     * prilogu. Akt nosi zapis bez promjene statusa ({@link RnTrigger#SUSPENSION_OBJECTION_REJECTED},
+     * {@link RnTrigger#WITHDRAWAL_OBJECTION_REJECTED}), pa ga urudžba (ručna ili eGOP), KP, e-pošta i „Dokumenti"
+     * obrađuju kao i svaki drugi akt prijelaza. Rješenje i ostali prilozi vežu se uz taj zapis; Rješenje dobiva
+     * ulogu i, u županijskom postupku, svoju KLASU i URBROJ.
+     *
+     * @param mjera  status na koji je prigovor predan ({@code SUSPENDED} ili {@code WITHDRAWN}); RB koji više nije
+     *               u njemu je 409 {@code OBJECTION_RN_STATUS}
+     * @param akt    ručni akt (T16; {@code null} = eGOP) i prilozi službenika; obrazloženje se ne ispisuje
+     * @param rjesenje Rješenje službenika, obavezno
+     */
+    @Transactional
+    public void rejectObjectionOnMeasure(String rn, String actor, RnStatus mjera, AktSluzbenika akt,
+                                         RjesenjeSluzbenika rjesenje) {
+        if (rjesenje == null || rjesenje.prilogId() == null) {
+            throw new BusinessException("error.objection.rjesenje.required");
+        }
+        RnTrigger trigger = switch (mjera) {
+            case SUSPENDED -> RnTrigger.SUSPENSION_OBJECTION_REJECTED;
+            case WITHDRAWN -> RnTrigger.WITHDRAWAL_OBJECTION_REJECTED;
+            default -> throw new IllegalArgumentException("Prigovor na mjeru samo uz SUSPENDED ili WITHDRAWN: " + mjera);
+        };
+        if (actor == null) {
+            // Rješenje je nevezan prilog službenika — bez njega ga nema tko vezati (kao bindPrilozi).
+            throw new PrilogException(HttpStatus.FORBIDDEN, "error.attachment.forbidden", PrilogException.FORBIDDEN);
+        }
+        AktSluzbenika a = akt != null ? akt : AktSluzbenika.NEMA;
+        RnEntity e = loadForUpdate(rn);
+        if (e.getStatus() != mjera) {
+            throw new ConflictException("error.objection.rnStatus", "OBJECTION_RN_STATUS");
+        }
+        UUID logId = transitionService.transition(e, mjera, trigger, actor, labels.trigger(trigger), a.rucni());
+        List<Long> prilozi = new ArrayList<>();
+        prilozi.add(rjesenje.prilogId());
+        prilozi.addAll(a.prilogIds());
+        prilogService.bind(actor, prilozi, PrilogVlasnik.prijelaz(logId));
+        prilogService.oznaciRjesenje(rjesenje.prilogId(), PrilogVlasnik.prijelaz(logId), rjesenje.klasa(),
+                rjesenje.urBroj());
     }
 
     /**

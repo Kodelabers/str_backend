@@ -34,6 +34,9 @@ public enum MailTemplate {
     PRIJEDLOG_POVLACENJA("prijedlog-povlacenja", Keys.LIFECYCLE),
     OBUSTAVA_POVLACENJA("obustava-povlacenja", Keys.LIFECYCLE),
     REAKTIVACIJA_POVLACENJA("reaktivacija-povlacenja", Keys.LIFECYCLE),
+    /** UAT 25.11.: neuvaženi prigovor na suspenziju odnosno povlačenje, uz Rješenje službenika u prilogu. */
+    NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE("neprihvacanje-prigovora-suspenzije", Keys.LIFECYCLE),
+    NEPRIHVACANJE_PRIGOVORA_POVLACENJA("neprihvacanje-prigovora-povlacenja", Keys.LIFECYCLE),
     OPOZIV("opoziv", Keys.LIFECYCLE);
 
     /**

@@ -50,4 +50,7 @@ public record TestPrilog(Long id, VrstaVlasnika vrstaVlasnika, UUID vlasnikId, S
     @Override public Integer getEgopRbr() { return egopRbr; }
     @Override public int getEgopPokusaji() { return egopPokusaji; }
     @Override public Instant getEgopSljedeciPokusajU() { return egopSljedeciPokusajU; }
+    @Override public PismenoPrilogEntity.Uloga getUloga() { return null; }
+    @Override public String getKlasa() { return null; }
+    @Override public String getUrBroj() { return null; }
 }

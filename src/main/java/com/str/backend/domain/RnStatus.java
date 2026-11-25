@@ -39,6 +39,8 @@ public enum RnStatus {
             };
             case SUSPENDED -> switch (trigger) {
                 case REACTIVATE -> target == ACTIVE;
+                // Neuvaženi prigovor na suspenziju: zapis akta bez promjene statusa (UAT 25.11.).
+                case SUSPENSION_OBJECTION_REJECTED -> target == SUSPENDED;
                 case REVOCATION -> target == REVOKED;
                 case WITHDRAWAL_PROPOSAL -> target == WITHDRAWAL_PROPOSED;
                 default -> false;
@@ -52,8 +54,10 @@ public enum RnStatus {
                 case REVOCATION -> target == REVOKED;
                 default -> false;
             };
-            // Uvaženi prigovor na povučen broj vraća ga u ACTIVE (odluka korisnika, T12).
-            case WITHDRAWN -> trigger == RnTrigger.REINSTATE && target == ACTIVE;
+            // Uvaženi prigovor na povučen broj vraća ga u ACTIVE (odluka korisnika, T12); neuvaženi ostavlja broj
+            // povučenim, a zapis bez promjene statusa nosi akt o neprihvaćanju prigovora (UAT 25.11.).
+            case WITHDRAWN -> (trigger == RnTrigger.REINSTATE && target == ACTIVE)
+                    || (trigger == RnTrigger.WITHDRAWAL_OBJECTION_REJECTED && target == WITHDRAWN);
             // Opoziv iznajmljivača je trajan i nikad ne prelazi u povlačenje.
             case REVOKED -> false;
         };

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.25.xsd">
+
+    <!--
+        UAT 25.11.2026: neuvaženi prigovor na suspenziju ili povlačenje izdaje obavijest o neprihvaćanju prigovora,
+        uz koju je Rješenje službenika obavezan prilog. Rješenje službenik sastavlja izvan sustava, pa je prilog
+        označen ulogom; u županijskom postupku nosi i vlastitu KLASU i URBROJ (u postupku MINTS-a brojevi su na
+        samom dokumentu). Ostali prilozi ulogu nemaju (NULL).
+    -->
+    <changeSet id="164-pismeno-prilog-rjesenje" author="str-backend">
+        <addColumn schemaName="str_rn" tableName="pismeno_prilog">
+            <column name="uloga" type="VARCHAR(16)"/>
+            <column name="klasa" type="VARCHAR(64)"/>
+            <column name="ur_broj" type="VARCHAR(64)"/>
+        </addColumn>
+        <sql>
+            ALTER TABLE str_rn.pismeno_prilog ADD CONSTRAINT chk_pismeno_prilog_uloga
+                CHECK (uloga IS NULL OR uloga = 'RJESENJE');
+            ALTER TABLE str_rn.pismeno_prilog ADD CONSTRAINT chk_pismeno_prilog_brojevi_uz_ulogu
+                CHECK (uloga IS NOT NULL OR (klasa IS NULL AND ur_broj IS NULL));
+        </sql>
+        <rollback>
+            <sql>
+                ALTER TABLE str_rn.pismeno_prilog DROP CONSTRAINT IF EXISTS chk_pismeno_prilog_brojevi_uz_ulogu;
+                ALTER TABLE str_rn.pismeno_prilog DROP CONSTRAINT IF EXISTS chk_pismeno_prilog_uloga;
+            </sql>
+            <dropColumn schemaName="str_rn" tableName="pismeno_prilog" columnName="ur_broj"/>
+            <dropColumn schemaName="str_rn" tableName="pismeno_prilog" columnName="klasa"/>
+            <dropColumn schemaName="str_rn" tableName="pismeno_prilog" columnName="uloga"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
