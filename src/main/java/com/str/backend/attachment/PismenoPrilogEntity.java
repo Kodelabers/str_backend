@@ -93,6 +93,31 @@ public class PismenoPrilogEntity {
     @Column(name = "egop_greska", length = 1000)
     private String egopGreska;
 
+    /**
+     * Posebna uloga priloga (UAT 25.11., changeset 164); {@code null} = običan prilog. Postavlja se vezanjem
+     * ({@code PrilogService#oznaciRjesenje}), ne pri učitavanju — službenik datoteku učitava kao i svaku drugu.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "uloga", length = 16)
+    private Uloga uloga;
+
+    /** KLASA dokumenta s ulogom (Rješenje u županijskom postupku); inače {@code null}. */
+    @Column(name = "klasa", length = 64)
+    private String klasa;
+
+    /** URBROJ dokumenta s ulogom; inače {@code null}. */
+    @Column(name = "ur_broj", length = 64)
+    private String urBroj;
+
+    /** Uloga priloga uz pismeno. */
+    public enum Uloga {
+        /**
+         * Rješenje kojim službenik ne uvažava prigovor na suspenziju ili povlačenje — obavezan prilog obavijesti
+         * o neprihvaćanju prigovora. Sastavlja ga službenik, sustav ga ne generira (MINTS).
+         */
+        RJESENJE
+    }
+
     /** Nevezan prilog — vlasnika dobiva tek radnjom uz koju je učitan. */
     public static PismenoPrilogEntity staged(String ucitao, String nazivDatoteke, String contentType,
                                              byte[] sadrzaj, String sha256) {

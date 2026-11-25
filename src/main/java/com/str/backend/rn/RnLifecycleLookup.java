@@ -47,21 +47,30 @@ public class RnLifecycleLookup {
     }
 
     /**
-     * Je li prijelaz još zadnji za svoj RB. Obavijest o prijelazu koji je u međuvremenu nadjačan
-     * (npr. prijedlog suspenzije pa obustava) ne smije stići nakon novije — stranka bi dobila
-     * stanje koje više ne vrijedi.
-     */
-    /** T16: ručni akt prijelaza (KLASA, URBROJ, izdavatelj); prazno kad akt ide kroz eGOP. */
+     * T16: ručni akt prijelaza (KLASA, URBROJ, izdavatelj); prazno kad akt ide kroz eGOP. */
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public Optional<RucniAkt> findRucniAkt(UUID logId) {
         return logRepository.findRucniAkt(logId);
     }
 
+    /**
+     * Je li prijelaz još zadnji za svoj RB. Obavijest o prijelazu koji je u međuvremenu nadjačan
+     * (npr. prijedlog suspenzije pa obustava) ne smije stići nakon novije — stranka bi dobila
+     * stanje koje više ne vrijedi.
+     *
+     * <p>Zapis bez promjene statusa (neuvaženi prigovor na mjeru, UAT 25.11.) stanje ne mijenja, pa ne nadjačava
+     * akt mjere: za pravi prijelaz mjerodavan je zadnji pravi prijelaz, a sam takav zapis zastarijeva tek kad
+     * iza njega dođe bilo koji drugi zapis.
+     */
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public boolean isLatestTransition(String rn, UUID logId) {
-        return logRepository.findFirstByRnOrderByOccurredAtDesc(rn)
-                .map(zadnji -> zadnji.getLogId().equals(logId))
+        boolean bezPromjene = logRepository.findById(logId)
+                .map(z -> z.getFromStatus() != null && z.getFromStatus().equals(z.getToStatus()))
                 .orElse(false);
+        Optional<RegistrationNumberLogEntity> zadnji = bezPromjene
+                ? logRepository.findFirstByRnOrderByOccurredAtDesc(rn)
+                : logRepository.findZadnjiPrijelaz(rn);
+        return zadnji.map(z -> z.getLogId().equals(logId)).orElse(false);
     }
 
     private static Optional<RnLifecycleEvent> toEvent(RegistrationNumberLogEntity zapis) {

@@ -1,5 +1,8 @@
 package com.str.backend.document;
 
+import com.str.backend.attachment.PismenoPrilogEntity;
+import com.str.backend.attachment.PrilogRepository;
+import com.str.backend.attachment.VrstaVlasnika;
 import com.str.backend.auth.internal.InternalUserRepository;
 import com.str.backend.domain.RnStatus;
 import com.str.backend.domain.RnTrigger;
@@ -56,6 +59,7 @@ public class StrDocumentService {
     private final ZupDocumentRenderer renderer;
     private final DocumentLabels labels;
     private final InternalUserRepository internalUsers;
+    private final PrilogRepository prilogRepository;
 
     public StrDocumentService(RnRepository rnRepository,
                               LessorRepository lessorRepository,
@@ -65,7 +69,8 @@ public class StrDocumentService {
                               ZupContextFactory contextFactory,
                               ZupDocumentRenderer renderer,
                               DocumentLabels labels,
-                              InternalUserRepository internalUsers) {
+                              InternalUserRepository internalUsers,
+                              PrilogRepository prilogRepository) {
         this.rnRepository = rnRepository;
         this.lessorRepository = lessorRepository;
         this.submissionRepository = submissionRepository;
@@ -75,6 +80,7 @@ public class StrDocumentService {
         this.renderer = renderer;
         this.labels = labels;
         this.internalUsers = internalUsers;
+        this.prilogRepository = prilogRepository;
     }
 
     public byte[] render(StrDocumentType type, String rn, String razlog) {
@@ -126,6 +132,7 @@ public class StrDocumentService {
         dopuniSluzbenika(ctx, type, rn, zapis);
         dopuniDatumPrijelaza(ctx, zapis);
         dopuniObrazlozenje(ctx, type, zapis);
+        dopuniRjesenje(ctx, type, zapis);
 
         byte[] pdf = renderer.render(templates.get(type), ctx);
         log.info("document_rendered type={} rn={} klasa={} bytes={}",
@@ -270,6 +277,21 @@ public class StrDocumentService {
     }
 
     /**
+     * KLASA i URBROJ Rješenja uz obavijest o neprihvaćanju prigovora ({@code ${rjesenje.oznaka}}, UAT 25.11.) — s
+     * priloga s ulogom Rješenja vezanog uz zapis koji akt izriče. Ostali akti oznaku nemaju.
+     */
+    private void dopuniRjesenje(Map<String, String> ctx, StrDocumentType type,
+                                Optional<RegistrationNumberLogEntity> zapis) {
+        if (!type.neprihvacanjePrigovora() || zapis.isEmpty()) {
+            return;
+        }
+        prilogRepository.findSazeciVlasnika(VrstaVlasnika.RN_LOG, zapis.get().getLogId()).stream()
+                .filter(p -> p.getUloga() == PismenoPrilogEntity.Uloga.RJESENJE)
+                .findFirst()
+                .ifPresent(p -> ZupContextFactory.putRjesenje(ctx, p.getKlasa(), p.getUrBroj()));
+    }
+
+    /**
      * Zapis prijelaza koji akt izriče — za datum učinka i potpisnika. Akti koji vode u ACTIVE traže se
      * po okidaču, jer u ACTIVE vodi više prijelaza (obustava suspenzije, reaktivacija, obustava
      * povlačenja, uvaženi prigovor na povlačenje).
@@ -283,6 +305,8 @@ public class StrDocumentService {
             case PRIJEDLOG_POVLACENJA -> prijedlogPovlacenja(rn);
             case OBUSTAVA_POVLACENJA -> poOkidacu(rn, RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL);
             case REAKTIVACIJA_POVLACENJA -> poOkidacu(rn, RnTrigger.REINSTATE);
+            case NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE -> poOkidacu(rn, RnTrigger.SUSPENSION_OBJECTION_REJECTED);
+            case NEPRIHVACANJE_PRIGOVORA_POVLACENJA -> poOkidacu(rn, RnTrigger.WITHDRAWAL_OBJECTION_REJECTED);
             case POVLACENJE -> zadnjiUlazak(rn, RnStatus.WITHDRAWN);
             case OPOZIV, ZAHTJEV_OPOZIVA -> zadnjiUlazak(rn, RnStatus.REVOKED);
             default -> Optional.empty();

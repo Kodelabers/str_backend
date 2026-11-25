@@ -60,9 +60,24 @@ class RnStatusTest {
     @EnumSource(RnTrigger.class)
     void withdrawnLeavesOnlyThroughReinstate(RnTrigger trigger) {
         for (RnStatus target : RnStatus.values()) {
+            // Neuvaženi prigovor (UAT 25.11.) je zapis bez promjene statusa — broj ostaje povučen.
             assertThat(RnStatus.WITHDRAWN.canTransitionTo(target, trigger))
-                    .isEqualTo(trigger == RnTrigger.REINSTATE && target == RnStatus.ACTIVE);
+                    .isEqualTo(trigger == RnTrigger.REINSTATE && target == RnStatus.ACTIVE
+                            || trigger == RnTrigger.WITHDRAWAL_OBJECTION_REJECTED && target == RnStatus.WITHDRAWN);
         }
+    }
+
+    /** UAT 25.11.: neuvaženi prigovor ostavlja mjeru — zapis bez promjene statusa, samo vlastitim okidačem. */
+    @org.junit.jupiter.api.Test
+    void rejectedObjectionOnMeasure_keepsStatus() {
+        assertThat(RnStatus.SUSPENDED.canTransitionTo(RnStatus.SUSPENDED, RnTrigger.SUSPENSION_OBJECTION_REJECTED))
+                .isTrue();
+        assertThat(RnStatus.WITHDRAWN.canTransitionTo(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_OBJECTION_REJECTED))
+                .isTrue();
+        assertThat(RnStatus.SUSPENDED.canTransitionTo(RnStatus.SUSPENDED, RnTrigger.WITHDRAWAL_OBJECTION_REJECTED))
+                .isFalse();
+        assertThat(RnStatus.ACTIVE.canTransitionTo(RnStatus.ACTIVE, RnTrigger.SUSPENSION_OBJECTION_REJECTED))
+                .isFalse();
     }
 
     /** The lessor's revocation is final too (čl. 5. st. 5) — and it never turns into a withdrawal. */

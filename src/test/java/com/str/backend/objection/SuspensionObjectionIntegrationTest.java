@@ -41,7 +41,10 @@ import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import com.str.backend.attachment.PismenoPrilogEntity;
 import com.str.backend.attachment.PrilogException;
+import com.str.backend.document.StrDocumentType;
+import com.str.backend.rn.RucniAkt;
 import com.str.backend.attachment.PrilogRepository;
 import com.str.backend.attachment.PrilogService;
 import com.str.backend.attachment.PrilogVlasnik;
@@ -86,6 +89,7 @@ class SuspensionObjectionIntegrationTest {
     @Autowired private ApplicationEvents events;
     @Autowired private PrilogService prilogService;
     @Autowired private RegistrationNumberLogRepository logRepository;
+    @Autowired private com.str.backend.rn.RnLifecycleLookup lifecycleLookup;
 
     private UUID lessorId;
 
@@ -654,6 +658,92 @@ class SuspensionObjectionIntegrationTest {
                 });
         assertThat(objectionRepository.findById(id).orElseThrow().getStatus())
                 .isEqualTo(SuspensionObjectionStatus.REJECTED);
+    }
+
+    /**
+     * UAT 25.11.: neuvaženi prigovor na povlačenje izdaje obavijest o neprihvaćanju prigovora. Broj ostaje povučen,
+     * zapis bez promjene statusa nosi akt i Rješenje (uloga, KLASA, URBROJ), a „ulazak u WITHDRAWN" — po kojem se
+     * renderira obavijest o povlačenju i veže prigovor — ostaje prijelaz kojim je broj povučen.
+     */
+    @Test
+    void rejectedObjectionOnWithdrawal_recordsNoticeWithDecision_withoutLeavingWithdrawn() throws InterruptedException {
+        String official = "INTERNAL:12345678903";
+        rnService.proposeWithdrawal("HR00000021", WithdrawalReason.DATA_NOT_CORRECTED, Zagreb.today().plusDays(5),
+                null, official, List.of());
+        UUID ocitovanje = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWAL_PROPOSED))
+                .getObjectionId();
+        adminService.reject("HR00000021", ocitovanje, official, null, false);
+        RegistrationNumberLogEntity povlacenje = logRepository
+                .findFirstByRnAndToStatusOrderByOccurredAtDesc("HR00000021", "WITHDRAWN").orElseThrow();
+        Thread.sleep(5);
+        UUID prigovor = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.WITHDRAWN)).getObjectionId();
+        Long rjesenje = prilogService.stage(official, pdf("rjesenje.pdf")).id();
+        Long dodatni = prilogService.stage(official, pdf("zapisnik.pdf")).id();
+
+        adminService.reject("HR00000021", prigovor, official, new Neuvazavanje("Nije osnovan", false,
+                new AktSluzbenika(null, null, List.of(dodatni)), rjesenje, null, null));
+
+        RnEntity broj = rnRepository.findById("HR00000021").orElseThrow();
+        assertThat(broj.getStatus()).isEqualTo(RnStatus.WITHDRAWN);
+        assertThat(broj.getValidTo()).isNotNull();
+        assertThat(objectionRepository.findById(prigovor).orElseThrow().getStatus())
+                .as("zapis bez promjene statusa ne zatvara odluku").isEqualTo(SuspensionObjectionStatus.REJECTED);
+        RegistrationNumberLogEntity zapis = logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc(
+                "HR00000021", RnTrigger.WITHDRAWAL_OBJECTION_REJECTED.name()).orElseThrow();
+        assertThat(zapis.getFromStatus()).isEqualTo("WITHDRAWN");
+        assertThat(zapis.getToStatus()).isEqualTo("WITHDRAWN");
+        assertThat(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc("HR00000021", "WITHDRAWN"))
+                .get().extracting(RegistrationNumberLogEntity::getLogId).isEqualTo(povlacenje.getLogId());
+        // Obavijest o povlačenju i dalje je „zadnja" (konačni eGOP dokument, ponovno slanje e-pošte), a i nova.
+        assertThat(lifecycleLookup.isLatestTransition("HR00000021", povlacenje.getLogId())).isTrue();
+        assertThat(lifecycleLookup.isLatestTransition("HR00000021", zapis.getLogId())).isTrue();
+        assertThat(StrDocumentType.forTransition(RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_OBJECTION_REJECTED))
+                .contains(StrDocumentType.NEPRIHVACANJE_PRIGOVORA_POVLACENJA);
+        assertThat(events.stream(RnLifecycleEvent.class)
+                .filter(e -> e.trigger() == RnTrigger.WITHDRAWAL_OBJECTION_REJECTED))
+                .singleElement()
+                .satisfies(e -> assertThat(e.from()).isEqualTo(RnStatus.WITHDRAWN));
+        assertThat(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(zapis.getLogId())))
+                .extracting(PrilogRepository.PrilogSazetak::getNazivDatoteke, PrilogRepository.PrilogSazetak::getUloga)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("rjesenje.pdf", PismenoPrilogEntity.Uloga.RJESENJE),
+                        org.assertj.core.groups.Tuple.tuple("zapisnik.pdf", null));
+    }
+
+    /** Županijski postupak: Rješenje nosi KLASU i URBROJ, a obavijest ručni akt službenika. */
+    @Test
+    void rejectedObjectionOnSuspension_county_storesDecisionNumbers() {
+        String official = "INTERNAL:12345678903";
+        RucniAkt prijedlog = new RucniAkt("334-06/26-01/1", "123-26-4", "Splitsko-dalmatinska županija", null, null, 17);
+        rnService.suspend("HR00000021", RnTrigger.INSPECTION, Zagreb.today().plusDays(8), null, official, List.of(),
+                prijedlog);
+        UUID ocitovanje = objectionRepository.saveAndFlush(objection("HR00000021")).getObjectionId();
+        RucniAkt suspenzija = new RucniAkt("334-06/26-01/1", "123-26-6", "Splitsko-dalmatinska županija", null, null, 17);
+        adminService.reject("HR00000021", ocitovanje, official,
+                new Neuvazavanje(null, true, new AktSluzbenika(suspenzija, null, List.of()), null, null, null));
+        assertThat(logRepository.findFirstByRnAndToStatusOrderByOccurredAtDesc("HR00000021", "SUSPENDED")
+                .flatMap(RegistrationNumberLogEntity::rucniAkt)).get()
+                .extracting(RucniAkt::urBroj).as("broj koji je službenik upisao, ne URBROJ prijedloga + 1")
+                .isEqualTo("123-26-6");
+
+        UUID prigovor = objectionRepository.saveAndFlush(objection("HR00000021", RnStatus.SUSPENDED)).getObjectionId();
+        Long rjesenje = prilogService.stage(official, pdf("rjesenje.pdf")).id();
+        RucniAkt obavijest = new RucniAkt("334-06/26-01/1", "123-26-8", "Splitsko-dalmatinska županija", null, null, 17);
+        // Podnesak bez veze na prijelaz (rn_log_id) nije u županijskom postupku, pa urudžba ovdje nije uvjet odluke;
+        // brojeve akta ipak nosi jer ih je upisao županijski službenik.
+        adminService.reject("HR00000021", prigovor, official, new Neuvazavanje(null, true,
+                new AktSluzbenika(obavijest, null, List.of()), rjesenje, "334-06/26-01/1", "123-26-9"));
+
+        RegistrationNumberLogEntity zapis = logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc(
+                "HR00000021", RnTrigger.SUSPENSION_OBJECTION_REJECTED.name()).orElseThrow();
+        assertThat(zapis.rucniAkt()).get().extracting(RucniAkt::urBroj).isEqualTo("123-26-8");
+        assertThat(prilogService.zaVlasnika(PrilogVlasnik.prijelaz(zapis.getLogId())))
+                .singleElement()
+                .satisfies(p -> {
+                    assertThat(p.getUloga()).isEqualTo(PismenoPrilogEntity.Uloga.RJESENJE);
+                    assertThat(p.getKlasa()).isEqualTo("334-06/26-01/1");
+                    assertThat(p.getUrBroj()).isEqualTo("123-26-9");
+                });
+        assertThat(rnRepository.findById("HR00000021").orElseThrow().getStatus()).isEqualTo(RnStatus.SUSPENDED);
     }
 
     /** Upit joba: prigovor predan do kraja dana roka (po hrvatskom vremenu) je u roku, kasniji nije. */

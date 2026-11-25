@@ -500,7 +500,7 @@ class RnServiceTest {
         RnEntity rn = withdrawalProposedRn(LocalDate.now(clock).plusDays(5));
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        assertThat(service.withdrawAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903")).isTrue();
+        assertThat(service.withdrawAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903", AktSluzbenika.NEMA)).isTrue();
 
         verify(transitionService).transition(rn, RnStatus.WITHDRAWN, RnTrigger.WITHDRAWAL_DEADLINE_EXCEEDED,
                 "INTERNAL:12345678903", ProposalProcedure.WITHDRAWAL.rejectionNote(), null);
@@ -515,7 +515,7 @@ class RnServiceTest {
         suspensionProposed.setSuspensionDeadline(LocalDate.now(clock).minusDays(3));
         when(repository.findForUpdate(suspensionProposed.getRn())).thenReturn(Optional.of(suspensionProposed));
 
-        assertThat(service.withdrawAfterRejectedObjection(suspensionProposed.getRn(), null)).isFalse();
+        assertThat(service.withdrawAfterRejectedObjection(suspensionProposed.getRn(), null, AktSluzbenika.NEMA)).isFalse();
 
         verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }
@@ -557,7 +557,7 @@ class RnServiceTest {
             RnEntity rn = proposedRn(LocalDate.now(clock).plusDays(danaDoRoka));
             when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-            assertThat(service.suspendAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903")).isTrue();
+            assertThat(service.suspendAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903", AktSluzbenika.NEMA)).isTrue();
 
             verify(transitionService, times(1)).transition(rn, RnStatus.SUSPENDED, RnTrigger.DEADLINE_EXCEEDED,
                     "INTERNAL:12345678903", ProposalProcedure.SUSPENSION.rejectionNote(), null);
@@ -569,7 +569,7 @@ class RnServiceTest {
         RnEntity rn = activeRn();
         when(repository.findForUpdate(rn.getRn())).thenReturn(Optional.of(rn));
 
-        assertThat(service.suspendAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903")).isFalse();
+        assertThat(service.suspendAfterRejectedObjection(rn.getRn(), "INTERNAL:12345678903", AktSluzbenika.NEMA)).isFalse();
 
         verify(transitionService, never()).transition(any(), any(), any(), any(), any(), any());
     }

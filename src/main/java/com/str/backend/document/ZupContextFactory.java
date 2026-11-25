@@ -150,6 +150,9 @@ public class ZupContextFactory {
         // Obrazloženje službenika na aktu obustave ili reaktivacije (UAT 13.11.). Puni ga StrDocumentService
         // iz zapisa prijelaza (putObrazlozenje); prazno → renderer izostavlja cijelu sekciju, i naslov.
         ctx.put("akt.obrazlozenje", "");
+        // Oznaka Rješenja na obavijesti o neprihvaćanju prigovora (UAT 25.11.): „ (KLASA: …, URBROJ: …)" u
+        // županijskom postupku, inače prazno. Puni je StrDocumentService (putRjesenje).
+        ctx.put("rjesenje.oznaka", "");
 
         ctx.put("objekt.naziv", fallback(d.accommodationName()));
         ctx.put("objekt.adresa", objektAdresa(d));
@@ -299,6 +302,17 @@ public class ZupContextFactory {
         ctx.put("sluzbenik.potpisTijela", n.toUpperCase(HR));
         ctx.put("akt.mjestoDatum", optional(ctx.get("akt.datum")));
         ctx.put(BEZ_EPECATA, "true");
+    }
+
+    /**
+     * Oznaka Rješenja priloženog uz obavijest o neprihvaćanju prigovora — KLASA i URBROJ koje je županijski
+     * službenik upisao; bez njih (postupak MINTS-a) oznaka ostaje prazna, a izreka glasi „Rješenjem, koje…".
+     */
+    public static void putRjesenje(Map<String, String> ctx, String klasa, String urBroj) {
+        if (klasa == null || klasa.isBlank() || urBroj == null || urBroj.isBlank()) {
+            return;
+        }
+        ctx.put("rjesenje.oznaka", " (KLASA: " + klasa.strip() + ", URBROJ: " + urBroj.strip() + ")");
     }
 
     /**

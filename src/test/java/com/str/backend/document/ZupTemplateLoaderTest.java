@@ -200,6 +200,9 @@ class ZupTemplateLoaderTest {
                 .containsExactly(StrDocumentType.OCITOVANJE_SUSPENZIJE, StrDocumentType.PRIGOVOR_SUSPENZIJE,
                         StrDocumentType.OCITOVANJE_POVLACENJA, StrDocumentType.PRIGOVOR_POVLACENJA,
                         StrDocumentType.PRIJEDLOG_POVLACENJA, StrDocumentType.OBUSTAVA_POVLACENJA,
-                        StrDocumentType.REAKTIVACIJA_POVLACENJA);
+                        StrDocumentType.REAKTIVACIJA_POVLACENJA,
+                        // UAT 25.11.: nove vrste, MINT ih mora unijeti u šifrarnik na svakoj okolini.
+                        StrDocumentType.NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE,
+                        StrDocumentType.NEPRIHVACANJE_PRIGOVORA_POVLACENJA);
     }
 }

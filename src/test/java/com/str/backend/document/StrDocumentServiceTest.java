@@ -47,6 +47,7 @@ class StrDocumentServiceTest {
     private SubmissionRepository submissionRepository;
     private RegistrationNumberLogRepository logRepository;
     private InternalUserRepository internalUsers;
+    private com.str.backend.attachment.PrilogRepository prilogRepository;
     private StrDocumentService service;
 
     private static final String PROPIS_DODJELA =
@@ -61,16 +62,18 @@ class StrDocumentServiceTest {
             new DocumentProperties.Potpisnik("Ivana Ivić", "Voditeljica postupka"),
             new DocumentProperties.Epecat(false, null, null, null, null),
             Map.of("suspenzija", "može se pokrenuti upravni spor u roku od 30 dana."),
-            false, false, Map.of(
-                    "dodjela", PROPIS_DODJELA,
-                    "opoziv", PROPIS_POSTUPCI,
-                    "prijedlog-suspenzije", PROPIS_POSTUPCI,
-                    "obustava-suspenzije", PROPIS_POSTUPCI,
-                    "suspenzija", PROPIS_POSTUPCI,
-                    "povlacenje", PROPIS_POSTUPCI,
-                    "prijedlog-povlacenja", PROPIS_POSTUPCI,
-                    "obustava-povlacenja", PROPIS_POSTUPCI,
-                    "reaktivacija-povlacenja", PROPIS_POSTUPCI));
+            false, false, Map.ofEntries(
+                    Map.entry("dodjela", PROPIS_DODJELA),
+                    Map.entry("opoziv", PROPIS_POSTUPCI),
+                    Map.entry("prijedlog-suspenzije", PROPIS_POSTUPCI),
+                    Map.entry("obustava-suspenzije", PROPIS_POSTUPCI),
+                    Map.entry("suspenzija", PROPIS_POSTUPCI),
+                    Map.entry("povlacenje", PROPIS_POSTUPCI),
+                    Map.entry("prijedlog-povlacenja", PROPIS_POSTUPCI),
+                    Map.entry("obustava-povlacenja", PROPIS_POSTUPCI),
+                    Map.entry("reaktivacija-povlacenja", PROPIS_POSTUPCI),
+                    Map.entry("neprihvacanje-prigovora-suspenzije", PROPIS_POSTUPCI),
+                    Map.entry("neprihvacanje-prigovora-povlacenja", PROPIS_POSTUPCI)));
 
     private static final DocumentProperties PROPERTIES_S_PECATOM = new DocumentProperties(
             PROPERTIES.tijelo(), PROPERTIES.potpisnik(),
@@ -96,6 +99,7 @@ class StrDocumentServiceTest {
         submissionRepository = mock(SubmissionRepository.class);
         logRepository = mock(RegistrationNumberLogRepository.class);
         internalUsers = mock(InternalUserRepository.class);
+        prilogRepository = mock(com.str.backend.attachment.PrilogRepository.class);
 
         service = service(PROPERTIES);
 
@@ -116,7 +120,7 @@ class StrDocumentServiceTest {
         DocumentLabels labels = new DocumentLabels();
         return new StrDocumentService(rnRepository, lessorRepository, submissionRepository,
                 logRepository, loader, new ZupContextFactory(properties, labels),
-                new ZupDocumentRenderer(properties, pecatiranje), labels, internalUsers);
+                new ZupDocumentRenderer(properties, pecatiranje), labels, internalUsers, prilogRepository);
     }
 
     /** eSeal uključen za sve vrste — akt se pečatira, pa ide blok e-pečata (uz epecat.enabled), ne izjava. */
@@ -969,6 +973,36 @@ class StrDocumentServiceTest {
         assertThat(text.indexOf("2. ")).isLessThan(text.indexOf("Obrazloženje"));
         assertThat(text.indexOf("Obrazloženje")).isLessThan(text.lastIndexOf("MINISTARSTVO TURIZMA I SPORTA"));
         assertThat(text).doesNotContain("${");
+    }
+
+    /**
+     * UAT 25.11.: obavijest o neprihvaćanju prigovora poziva se na Rješenje u prilogu — u županijskom postupku s
+     * njegovom KLASOM i URBROJEM (s priloga s ulogom), u postupku MINTS-a bez njih.
+     */
+    @Test
+    void neprihvacanjePrigovora_citesDecisionNumbers_whenCounty() throws IOException {
+        RegistrationNumberLogEntity zapis = RegistrationNumberLogEntity.transition(RN, "WITHDRAWN", "WITHDRAWN",
+                "WITHDRAWAL_OBJECTION_REJECTED", "INTERNAL:12345678903", "neuvažen prigovor", null, null);
+        when(logRepository.findFirstByRnAndTriggerNameOrderByOccurredAtDesc(RN, "WITHDRAWAL_OBJECTION_REJECTED"))
+                .thenReturn(Optional.of(zapis));
+        com.str.backend.attachment.PrilogRepository.PrilogSazetak rjesenje =
+                mock(com.str.backend.attachment.PrilogRepository.PrilogSazetak.class);
+        when(rjesenje.getUloga()).thenReturn(com.str.backend.attachment.PismenoPrilogEntity.Uloga.RJESENJE);
+        when(rjesenje.getKlasa()).thenReturn("334-06/26-01/1");
+        when(rjesenje.getUrBroj()).thenReturn("123-26-8");
+        when(prilogRepository.findSazeciVlasnika(com.str.backend.attachment.VrstaVlasnika.RN_LOG, zapis.getLogId()))
+                .thenReturn(java.util.List.of(rjesenje));
+
+        String text = textOf(service.render(StrDocumentType.NEPRIHVACANJE_PRIGOVORA_POVLACENJA, RN, null));
+
+        assertThat(text).contains("OBAVIJEST O NEPRIHVAĆANJU PRIGOVORA NA POVUČENI REGISTRACIJSKI BROJ");
+        assertThat(text).contains("Rješenjem (KLASA: 334-06/26-01/1, URBROJ: 123-26-8), koje se stranci dostavlja");
+        assertThat(text).doesNotContain("${");
+
+        when(rjesenje.getKlasa()).thenReturn(null);
+        when(rjesenje.getUrBroj()).thenReturn(null);
+        assertThat(textOf(service.render(StrDocumentType.NEPRIHVACANJE_PRIGOVORA_POVLACENJA, RN, null)))
+                .contains("Rješenjem, koje se stranci dostavlja");
     }
 
     /** Bez upisanog obrazloženja sekcija izostaje cijela — i naslov. */

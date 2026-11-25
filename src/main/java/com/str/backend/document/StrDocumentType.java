@@ -196,6 +196,24 @@ public enum StrDocumentType {
     REAKTIVACIJA_POVLACENJA("reaktivacija-povlacenja",
             "Obavijest o reaktivaciji povučenog registracijskog broja", Smjer.IZLAZNO, true, null,
             "OBAVIJEST O REAKTIVACIJI POVUČENOG REGISTRACIJSKOG BROJA", true,
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /**
+     * Neuvaženi prigovor na suspenziju (UAT 25.11.2026): broj ostaje suspendiran. Odluku o prigovoru službenik
+     * donosi Rješenjem koje sam sastavlja i prilaže (obavezan prilog, {@code PismenoPrilogEntity.Uloga#RJESENJE});
+     * ova obavijest ga stranci dostavlja. Nastaje iz zapisa bez promjene statusa
+     * ({@link RnTrigger#SUSPENSION_OBJECTION_REJECTED}). Nova vrsta pismena u eGOP-u, kao
+     * {@link #PRIJEDLOG_POVLACENJA}. Tekst je nacrt i čeka potvrdu MINTS-a.
+     */
+    NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE("neprihvacanje-prigovora-suspenzije",
+            "Obavijest o neprihvaćanju prigovora na suspendirani registracijski broj", Smjer.IZLAZNO, true, null,
+            "OBAVIJEST O NEPRIHVAĆANJU PRIGOVORA NA SUSPENDIRANI REGISTRACIJSKI BROJ", true,
+            EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA)),
+
+    /** Neuvaženi prigovor na povlačenje; kao {@link #NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE}, broj ostaje povučen. */
+    NEPRIHVACANJE_PRIGOVORA_POVLACENJA("neprihvacanje-prigovora-povlacenja",
+            "Obavijest o neprihvaćanju prigovora na povučeni registracijski broj", Smjer.IZLAZNO, true, null,
+            "OBAVIJEST O NEPRIHVAĆANJU PRIGOVORA NA POVUČENI REGISTRACIJSKI BROJ", true,
             EnumSet.of(ZupSection.UVOD, ZupSection.IZREKA));
 
     /** Smjer pismena u urudžbenom zapisniku. Preslikava se na {@code EgopPismenoEntity.Smjer}. */
@@ -319,6 +337,13 @@ public enum StrDocumentType {
      * vodi u {@code REVOKED}, povlačenje po službenoj dužnosti u {@code WITHDRAWN}.
      */
     public static Optional<StrDocumentType> forTransition(RnStatus to, RnTrigger trigger) {
+        // Neuvaženi prigovor na mjeru je zapis bez promjene statusa — bira ga okidač, prije pravila po statusu.
+        if (trigger == RnTrigger.SUSPENSION_OBJECTION_REJECTED) {
+            return Optional.of(NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE);
+        }
+        if (trigger == RnTrigger.WITHDRAWAL_OBJECTION_REJECTED) {
+            return Optional.of(NEPRIHVACANJE_PRIGOVORA_POVLACENJA);
+        }
         // U ACTIVE vodi više prijelaza, pa akte koji ondje završavaju bira okidač.
         if (to == RnStatus.ACTIVE && trigger == RnTrigger.REVOKE_WITHDRAWAL_PROPOSAL) {
             return Optional.of(OBUSTAVA_POVLACENJA);
@@ -412,7 +437,13 @@ public enum StrDocumentType {
      */
     public boolean potpisujeSluzbenik() {
         return this == PRIJEDLOG_SUSPENZIJE || this == OBUSTAVA_SUSPENZIJE || this == SUSPENZIJA
-                || this == PRIJEDLOG_POVLACENJA || this == OBUSTAVA_POVLACENJA || this == POVLACENJE;
+                || this == PRIJEDLOG_POVLACENJA || this == OBUSTAVA_POVLACENJA || this == POVLACENJE
+                || this == NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE || this == NEPRIHVACANJE_PRIGOVORA_POVLACENJA;
+    }
+
+    /** Obavijest o neprihvaćanju prigovora — uz nju je Rješenje službenika obavezan prilog (UAT 25.11.). */
+    public boolean neprihvacanjePrigovora() {
+        return this == NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE || this == NEPRIHVACANJE_PRIGOVORA_POVLACENJA;
     }
 
     /** Tipovi koji se renderiraju iz predloška — ono što {@link ZupTemplateLoader} učitava. */

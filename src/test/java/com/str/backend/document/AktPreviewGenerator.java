@@ -115,7 +115,8 @@ class AktPreviewGenerator {
         DocumentLabels labels = new DocumentLabels();
         StrDocumentService service = new StrDocumentService(rnRepository, lessorRepository,
                 submissionRepository, logRepository, loader, new ZupContextFactory(PROPS, labels),
-                new ZupDocumentRenderer(PROPS, type -> esealUkljucen), labels, internalUsers);
+                new ZupDocumentRenderer(PROPS, type -> esealUkljucen), labels, internalUsers,
+                mock(com.str.backend.attachment.PrilogRepository.class));
 
         for (StrDocumentType type : StrDocumentType.templateBackedTypes()) {
             String razlog = switch (type) {

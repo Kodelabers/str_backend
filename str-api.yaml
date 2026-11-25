@@ -372,9 +372,20 @@ paths:
       tags: [rn]
       summary: Reject a statement or objection (očitovanje / prigovor)
       description: |
-        The objection becomes REJECTED. No notice is issued at this point, so the body carries
-        only the decision note (no attachments; other fields are ignored). If the response
-        deadline has already passed, the number is suspended or withdrawn at once.
+        The objection becomes REJECTED. What the decision issues depends on the objection's
+        `aktNeuvazavanja` (UAT 25.11.2026):
+        - `MJERA` — a statement on the current proposal: the number is suspended or withdrawn at
+          once (suspension / withdrawal notice);
+        - `NEPRIHVACANJE` — an objection to the current measure: the status does not change, and a
+          notice of rejection of the objection is issued (`neprihvacanje-prigovora-suspenzije` /
+          `-povlacenja`, a record without status change, trigger SUSPENSION_OBJECTION_REJECTED /
+          WITHDRAWAL_OBJECTION_REJECTED). The official's decision (Rješenje) is a mandatory attachment
+          (`rjesenjePrilogId`);
+        - `NEMA` — a left-over submission: decision only, no act data allowed.
+
+        A county official enters the KLASA/URBROJ of the issued notice and, with `NEPRIHVACANJE`,
+        also the decision's own KLASA/URBROJ (must differ). In a MINTS procedure eGOP assigns the
+        notice numbers and the decision goes to eGOP as an attachment. The note never goes on the act.
       operationId: rejectObjection
       parameters:
         - $ref: '#/components/parameters/rn'
@@ -389,9 +400,18 @@ paths:
         "204":
           description: Rejected
         "400":
-          description: "`note` over 1000 characters (error.validation.failed, details.note)"
+          description: |
+            `note` over 1000 characters (error.validation.failed, details.note); missing or invalid
+            KLASA/URBROJ (error.rn.akt.*); decision missing (error.objection.rjesenje.required), not
+            allowed (error.objection.rjesenje.notAllowed), without numbers
+            (error.objection.rjesenje.klasa|urbroj.required) or numbered like the notice
+            (error.objection.rjesenje.sameNumber); act data on a decision without an act
+            (error.objection.reject.noAct); attachment rules (ATTACHMENT_COUNT — decision and
+            attachments together at most 5, ATTACHMENT_TOTAL_TOO_LARGE)
         "403":
-          description: County procedure decided by a non-county official (OBJECTION_NOT_COUNTY_OFFICIAL)
+          description: |
+            County procedure decided by a non-county official (OBJECTION_NOT_COUNTY_OFFICIAL), or
+            attachments without an identified official (ATTACHMENT_FORBIDDEN)
         "404":
           $ref: '#/components/responses/NotFound'
         "409":
@@ -1396,12 +1416,42 @@ components:
 
     RejectObjectionRequest:
       type: object
-      description: Rejecting a statement or objection — decision note only, no attachments.
+      description: |
+        Rejecting a statement or objection (UAT 25.11.2026). `note` is the decision note; the rest
+        belongs to the act the decision issues (see `aktNeuvazavanja` on the objection).
       properties:
         note:
           type: string
           maxLength: 1000
           nullable: true
+        klasa:
+          type: string
+          nullable: true
+          description: KLASA of the issued notice — county official only
+        urbroj:
+          type: string
+          nullable: true
+          description: URBROJ of the issued notice — county official only
+        prilogIds:
+          type: array
+          nullable: true
+          items:
+            type: integer
+            format: int64
+          description: Optional attachments to the notice (`POST /api/rn/attachments`)
+        rjesenjePrilogId:
+          type: integer
+          format: int64
+          nullable: true
+          description: The official's decision (Rješenje) — mandatory with `NEPRIHVACANJE`, otherwise not allowed
+        rjesenjeKlasa:
+          type: string
+          nullable: true
+          description: KLASA of the decision — county official, with `rjesenjePrilogId`
+        rjesenjeUrbroj:
+          type: string
+          nullable: true
+          description: URBROJ of the decision — must differ from the notice's KLASA/URBROJ pair
 
     AktSluzbenikaRequest:
       type: object

@@ -34,7 +34,15 @@ public enum RnTrigger {
     /** Istek roka za očitovanje na prijedlog povlačenja → {@link RnStatus#WITHDRAWN} ({@code WithdrawalDeadlineJob}). */
     WITHDRAWAL_DEADLINE_EXCEEDED,
     /** Uvaženi prigovor na povlačenje, {@link RnStatus#WITHDRAWN} → {@link RnStatus#ACTIVE}. */
-    REINSTATE;
+    REINSTATE,
+    /**
+     * Neuvaženi prigovor na suspenziju (UAT 25.11.2026): status ostaje {@link RnStatus#SUSPENDED}, a zapis bez
+     * promjene statusa nosi akt „Obavijest o neprihvaćanju prigovora na suspendirani registracijski broj"
+     * s Rješenjem službenika u prilogu ({@code RnService#rejectObjectionOnMeasure}).
+     */
+    SUSPENSION_OBJECTION_REJECTED,
+    /** Neuvaženi prigovor na povlačenje; kao {@link #SUSPENSION_OBJECTION_REJECTED}, uz {@link RnStatus#WITHDRAWN}. */
+    WITHDRAWAL_OBJECTION_REJECTED;
 
     /**
      * Razlozi prijedloga suspenzije koje službenik bira, redom kojim se nude (MINTS). Jedini

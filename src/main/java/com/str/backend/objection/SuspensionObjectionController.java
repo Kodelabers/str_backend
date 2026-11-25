@@ -57,10 +57,19 @@ public class SuspensionObjectionController {
     }
 
     /**
-     * Neuvažavanje: samo bilješka uz odluku. Neuvaženo očitovanje na prijedlog odmah izriče suspenziju odnosno
-     * povlačenje (akt kao istekom roka, KLASA/URBROJ s prijedloga); bilješka ne ide u akt, a priloga nema.
+     * Neuvažavanje ({@link SuspensionObjectionAdminService#reject(String, UUID, String, Neuvazavanje)}): {@code note}
+     * je bilješka uz odluku i ne ide u akt. Kad odluka izdaje akt ({@code aktNeuvazavanja} na podnesku), županijski
+     * službenik upisuje njegovu KLASU i URBROJ, a {@code prilogIds} su neobavezni prilozi uz akt (UAT 25.11.). Uz
+     * neuvaženi prigovor na mjeru {@code rjesenjePrilogId} je obavezno Rješenje službenika, a u županijskom
+     * postupku i njegova KLASA i URBROJ.
      */
-    record RejectObjectionRequest(@Nullable @Size(max = AktSluzbenika.MAX_OBRAZLOZENJE) String note) {
+    record RejectObjectionRequest(@Nullable @Size(max = AktSluzbenika.MAX_OBRAZLOZENJE) String note,
+                                  @Nullable String klasa,
+                                  @Nullable String urbroj,
+                                  @Nullable List<Long> prilogIds,
+                                  @Nullable Long rjesenjePrilogId,
+                                  @Nullable String rjesenjeKlasa,
+                                  @Nullable String rjesenjeUrbroj) {
     }
 
     /** KLASA i URBROJ kojima županijski službenik urudžbira podnesak (T16). */
@@ -119,8 +128,19 @@ public class SuspensionObjectionController {
                                        @RequestBody(required = false) @Valid RejectObjectionRequest body,
                                        Authentication authentication) {
         scopeGuard.requireInScope(rn, authentication);
-        service.reject(rn, id, actor(authentication), body != null ? body.note() : null,
-                rucniAkt.zupanijskiSluzbenik(authentication));
+        boolean zupanijski = rucniAkt.zupanijskiSluzbenik(authentication);
+        if (body == null) {
+            service.reject(rn, id, actor(authentication), Neuvazavanje.biljeska(null, zupanijski));
+            return ResponseEntity.noContent().build();
+        }
+        // Brojevi se provjeravaju samo kad su upisani: odluka bez akta (zaostali podnesak) ih ne traži, a kad akt
+        // nastaje, a brojeva nema, odbija ih servis (400, ista poruka kao za prazno polje).
+        boolean upisani = body.klasa() != null && !body.klasa().isBlank()
+                || body.urbroj() != null && !body.urbroj().isBlank();
+        RucniAkt rucni = zupanijski && upisani ? rucniAkt.zaRadnju(authentication, body.klasa(), body.urbroj()) : null;
+        service.reject(rn, id, actor(authentication), new Neuvazavanje(body.note(), zupanijski,
+                new AktSluzbenika(rucni, null, body.prilogIds()), body.rjesenjePrilogId(), body.rjesenjeKlasa(),
+                body.rjesenjeUrbroj()));
         return ResponseEntity.noContent().build();
     }
 

@@ -26,6 +26,10 @@ import java.util.UUID;
  * službenik, koji ga urudžbira ({@code POST /{id}/register}) prije uvažavanja ili neuvažavanja.
  * {@code urudzbiranje} su urudžbene oznake podneska kad ih ima — ručno upisane ili, u postupku MINTS-a, vraćene
  * iz eGOP-a; inače {@code null}.
+ *
+ * <p>{@code aktNeuvazavanja} (UAT 25.11.): koji akt bi neuvažavanje podneska sada izdalo, prema trenutnom statusu
+ * RB-a ({@link AktNeuvazavanja#za}) — po njemu sučelje nudi KLASU i URBROJ, priloge i Rješenje. Za podnesak o
+ * kojem je već odlučeno ({@code SUBMITTED} više nije) uvijek {@code NEMA}.
  */
 public record SuspensionObjectionDto(
         UUID objectionId,
@@ -45,7 +49,8 @@ public record SuspensionObjectionDto(
         List<PrilogDto> prilozi,
         List<String> brojeviNaIstojAdresi,
         boolean zupanijskiPostupak,
-        Urudzbiranje urudzbiranje
+        Urudzbiranje urudzbiranje,
+        AktNeuvazavanja aktNeuvazavanja
 ) {
 
     /**
@@ -61,7 +66,7 @@ public record SuspensionObjectionDto(
     public static SuspensionObjectionDto of(SuspensionObjectionRepository.ObjectionSummary o, String resolvedBy,
                                             String lessorTaxNumber, List<PrilogDto> prilozi,
                                             List<String> brojeviNaIstojAdresi, boolean zupanijskiPostupak,
-                                            Urudzbiranje urudzbiranje) {
+                                            Urudzbiranje urudzbiranje, RnStatus trenutniStatusRb) {
         return new SuspensionObjectionDto(
                 o.getObjectionId(),
                 o.getRn(),
@@ -80,6 +85,9 @@ public record SuspensionObjectionDto(
                 prilozi,
                 brojeviNaIstojAdresi,
                 zupanijskiPostupak,
-                urudzbiranje);
+                urudzbiranje,
+                o.getStatus() == SuspensionObjectionStatus.SUBMITTED
+                        ? AktNeuvazavanja.za(trenutniStatusRb, o.getRnStatus())
+                        : AktNeuvazavanja.NEMA);
     }
 }

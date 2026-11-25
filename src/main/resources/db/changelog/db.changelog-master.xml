@@ -320,4 +320,7 @@
     <!-- MINTS 17.11., točka 1: indeks za popis očitovanja i prigovora preko svih RB-ova. -->
     <include file="db/changelog/changes/163-suspension-objection-status-index.xml"/>
 
+    <!-- UAT 25.11.: Rješenje službenika kao obavezan prilog obavijesti o neprihvaćanju prigovora. -->
+    <include file="db/changelog/changes/164-pismeno-prilog-rjesenje.xml"/>
+
 </databaseChangeLog>

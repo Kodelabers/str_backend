@@ -133,19 +133,43 @@ class SuspensionObjectionControllerTest {
     }
 
     /**
-     * Neuvažavanje nema akta (odluka korisnika, UAT 13.11.): tijelo nosi samo bilješku, a prilozi koje bi klijent
-     * ipak poslao se zanemaruju.
+     * UAT 25.11.: neuvažavanje nosi bilješku, KLASU i URBROJ akta (županijski službenik, kroz
+     * {@code RucniAktService#zaRadnju}), priloge i Rješenje s njegovim brojevima — pravila provjerava servis.
      */
     @Test
-    void reject_takesNoteOnly_attachmentsIgnored() throws Exception {
+    void reject_passesActAttachmentsAndDecision() throws Exception {
         UUID id = UUID.randomUUID();
+        com.str.backend.rn.RucniAkt rucni = new com.str.backend.rn.RucniAkt("334-06/26-01/1", "123-26-7",
+                "Splitsko-dalmatinska županija", null, null, 17);
+        when(rucniAkt.zupanijskiSluzbenik(any())).thenReturn(true);
+        when(rucniAkt.zaRadnju(any(), eq("334-06/26-01/1"), eq("123-26-7"))).thenReturn(rucni);
 
         mvc.perform(post(BASE + "/{id}/reject", RN, id)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"note\":\"Nije dostavljena suglasnost\",\"prilogIds\":[11]}"))
+                        .content("{\"note\":\"Nije osnovano\",\"klasa\":\"334-06/26-01/1\",\"urbroj\":\"123-26-7\","
+                                + "\"prilogIds\":[11],\"rjesenjePrilogId\":10,\"rjesenjeKlasa\":\"334-06/26-01/1\","
+                                + "\"rjesenjeUrbroj\":\"123-26-8\"}"))
                 .andExpect(status().isNoContent());
 
-        verify(service).reject(RN, id, ACTOR, "Nije dostavljena suglasnost", false);
+        verify(service).reject(RN, id, ACTOR, new Neuvazavanje("Nije osnovano", true,
+                new com.str.backend.rn.AktSluzbenika(rucni, null, java.util.List.of(11L)), 10L, "334-06/26-01/1",
+                "123-26-8"));
+    }
+
+    /** Bez upisanih brojeva {@code zaRadnju} se ne zove — odluka bez akta ih ne traži (pravilo je u servisu). */
+    @Test
+    void reject_withoutNumbers_doesNotValidateThem() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(rucniAkt.zupanijskiSluzbenik(any())).thenReturn(true);
+
+        mvc.perform(post(BASE + "/{id}/reject", RN, id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"note\":\"Nije osnovano\"}"))
+                .andExpect(status().isNoContent());
+
+        verify(rucniAkt, org.mockito.Mockito.never()).zaRadnju(any(), any(), any());
+        verify(service).reject(RN, id, ACTOR, new Neuvazavanje("Nije osnovano", true,
+                new com.str.backend.rn.AktSluzbenika(null, null, null), null, null, null));
     }
 
     @Test
@@ -167,7 +191,7 @@ class SuspensionObjectionControllerTest {
         mvc.perform(post(BASE + "/{id}/reject", RN, id))
                 .andExpect(status().isNoContent());
 
-        verify(service).reject(eq(RN), eq(id), eq(ACTOR), isNull(), eq(false));
+        verify(service).reject(RN, id, ACTOR, Neuvazavanje.biljeska(null, false));
     }
 
     /** Neuvažavanje nosi je li službenik županijski (bez KLASE), a 403 iz servisa nosi kod u details.code. */
@@ -177,11 +201,11 @@ class SuspensionObjectionControllerTest {
         when(rucniAkt.zupanijskiSluzbenik(any())).thenReturn(true);
 
         mvc.perform(post(BASE + "/{id}/reject", RN, id)).andExpect(status().isNoContent());
-        verify(service).reject(RN, id, ACTOR, null, true);
+        verify(service).reject(RN, id, ACTOR, Neuvazavanje.biljeska(null, true));
 
         when(rucniAkt.zupanijskiSluzbenik(any())).thenReturn(false);
         doThrow(new com.str.backend.exception.ForbiddenException("error.objection.notCountyOfficial",
-                "OBJECTION_NOT_COUNTY_OFFICIAL")).when(service).reject(RN, id, ACTOR, null, false);
+                "OBJECTION_NOT_COUNTY_OFFICIAL")).when(service).reject(RN, id, ACTOR, Neuvazavanje.biljeska(null, false));
 
         mvc.perform(post(BASE + "/{id}/reject", RN, id))
                 .andExpect(status().isForbidden())
@@ -262,7 +286,7 @@ class SuspensionObjectionControllerTest {
         return new SuspensionObjectionDto(id, RN, "99999999990", null, null,
                 com.str.backend.domain.RnStatus.SUSPENDED, "prigovor.pdf", "application/pdf", 4,
                 SuspensionObjectionStatus.SUBMITTED, java.time.Instant.now(), null, null, null,
-                java.util.List.of(), java.util.List.of(), true, urudzbiranje);
+                java.util.List.of(), java.util.List.of(), true, urudzbiranje, AktNeuvazavanja.NEPRIHVACANJE);
     }
 
     /**

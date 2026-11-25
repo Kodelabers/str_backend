@@ -436,7 +436,8 @@ class RnDocumentsServiceTest {
                 StrDocumentType.SUSPENZIJA, StrDocumentType.REAKTIVACIJA,
                 StrDocumentType.POVLACENJE, StrDocumentType.ZAHTJEV_OPOZIVA, StrDocumentType.OPOZIV,
                 StrDocumentType.PRIJEDLOG_POVLACENJA, StrDocumentType.OBUSTAVA_POVLACENJA,
-                StrDocumentType.REAKTIVACIJA_POVLACENJA);
+                StrDocumentType.REAKTIVACIJA_POVLACENJA, StrDocumentType.NEPRIHVACANJE_PRIGOVORA_SUSPENZIJE,
+                StrDocumentType.NEPRIHVACANJE_PRIGOVORA_POVLACENJA);
 
         List<EgopPismenoEntity> akti = new ArrayList<>();
         for (StrDocumentType type : lifecycleTypes) {

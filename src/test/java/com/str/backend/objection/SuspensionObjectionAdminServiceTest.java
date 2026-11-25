@@ -25,7 +25,9 @@ import com.str.backend.rn.RegistrationNumberLogRepository;
 import com.str.backend.rn.RnEntity;
 import com.str.backend.rn.RnRepository;
 import com.str.backend.rn.RnService;
+import com.str.backend.rn.RjesenjeSluzbenika;
 import com.str.backend.rn.RucniAkt;
+import com.str.backend.exception.BusinessException;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -128,7 +131,7 @@ class SuspensionObjectionAdminServiceTest {
 
     @Test
     void reject_stripsControlCharacters_keepsLineBreaks() {
-        when(rnService.suspendAfterRejectedObjection(RN, ACTOR)).thenReturn(true);
+        when(rnService.suspendAfterRejectedObjection(eq(RN), eq(ACTOR), any())).thenReturn(true);
 
         service.reject(RN, objection.getObjectionId(), ACTOR, "  Prvi\u0000 red\nDrugi red\u0007  ", false);
 
@@ -141,7 +144,7 @@ class SuspensionObjectionAdminServiceTest {
      */
     @Test
     void reject_onProposal_recordsNote_andSuspendsAtOnce() {
-        when(rnService.suspendAfterRejectedObjection(RN, ACTOR)).thenAnswer(inv -> {
+        when(rnService.suspendAfterRejectedObjection(eq(RN), eq(ACTOR), any())).thenAnswer(inv -> {
             assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
             return true;
         });
@@ -150,7 +153,8 @@ class SuspensionObjectionAdminServiceTest {
 
         assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
         assertThat(objection.getResolutionNote()).isEqualTo("Nije dostavljena suglasnost");
-        verify(rnService, times(1)).suspendAfterRejectedObjection(RN, ACTOR);
+        // Bilješka ne ide u akt: mjera nosi samo ručni akt i priloge službenika.
+        verify(rnService, times(1)).suspendAfterRejectedObjection(RN, ACTOR, AktSluzbenika.NEMA);
         verifyNoMoreInteractions(rnService);
         verify(auditService).record(ACTOR, "OBJECTION_REJECT", "SUSPENSION_OBJECTION",
                 objection.getObjectionId().toString(), "Nije dostavljena suglasnost");
@@ -255,14 +259,14 @@ class SuspensionObjectionAdminServiceTest {
     void reject_onWithdrawalProposal_withdrawsAtOnce() {
         objection = objectionOn(RnStatus.WITHDRAWAL_PROPOSED);
         when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWAL_PROPOSED);
-        when(rnService.withdrawAfterRejectedObjection(RN, ACTOR)).thenAnswer(inv -> {
+        when(rnService.withdrawAfterRejectedObjection(eq(RN), eq(ACTOR), any())).thenAnswer(inv -> {
             assertThat(objection.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
             return true;
         });
 
         service.reject(RN, objection.getObjectionId(), ACTOR, null, false);
 
-        verify(rnService).withdrawAfterRejectedObjection(RN, ACTOR);
+        verify(rnService).withdrawAfterRejectedObjection(RN, ACTOR, AktSluzbenika.NEMA);
         verifyNoMoreInteractions(rnService);
     }
 
@@ -700,5 +704,120 @@ class SuspensionObjectionAdminServiceTest {
         when(rnRepository.findById(RN)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.list(RN)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ---- UAT 25.11.: akt neuvažavanja — KLASA i URBROJ, prilozi, Rješenje
+
+    private static final RucniAkt OBAVIJEST = new RucniAkt("334-06/26-01/1", "123-26-7",
+            "Splitsko-dalmatinska županija", null, null, 17);
+
+    private static Neuvazavanje neuvazavanje(boolean zupanijski, RucniAkt rucni, List<Long> prilozi, Long rjesenje,
+                                             String rjesenjeKlasa, String rjesenjeUrbroj) {
+        return new Neuvazavanje(null, zupanijski, new AktSluzbenika(rucni, null, prilozi), rjesenje, rjesenjeKlasa,
+                rjesenjeUrbroj);
+    }
+
+    /** Postupak MINTS-a: obavijest o neprihvaćanju prigovora kroz eGOP, Rješenje bez brojeva. */
+    @Test
+    void reject_objectionOnMeasure_issuesNoticeWithDecision() {
+        SuspensionObjectionEntity prigovor = objectionOn(RnStatus.WITHDRAWN);
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+
+        service.reject(RN, prigovor.getObjectionId(), ACTOR, neuvazavanje(false, null, List.of(11L), 10L, null, null));
+
+        assertThat(prigovor.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
+        verify(rnService).rejectObjectionOnMeasure(RN, ACTOR, RnStatus.WITHDRAWN,
+                new AktSluzbenika(null, null, List.of(11L)), new RjesenjeSluzbenika(10L, null, null));
+        verifyNoMoreInteractions(rnService);
+    }
+
+    /** Županija: Rješenje nosi svoje brojeve, različite od brojeva obavijesti. */
+    @Test
+    void reject_objectionOnMeasure_county_decisionCarriesOwnNumbers() {
+        SuspensionObjectionEntity prigovor = objectionOn(RnStatus.SUSPENDED);
+        when(rn.getStatus()).thenReturn(RnStatus.SUSPENDED);
+
+        assertThatThrownBy(() -> service.reject(RN, prigovor.getObjectionId(), ACTOR,
+                neuvazavanje(true, OBAVIJEST, List.of(), 10L, " 334-06/26-01/1 ", "123-26-7")))
+                .isInstanceOf(BusinessException.class).hasMessage("error.objection.rjesenje.sameNumber");
+        assertThatThrownBy(() -> service.reject(RN, prigovor.getObjectionId(), ACTOR,
+                neuvazavanje(true, OBAVIJEST, List.of(), 10L, null, "123-26-8")))
+                .isInstanceOf(BusinessException.class).hasMessage("error.objection.rjesenje.klasa.required");
+        assertThat(prigovor.getStatus()).isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+        verifyNoInteractions(rnService);
+
+        service.reject(RN, prigovor.getObjectionId(), ACTOR,
+                neuvazavanje(true, OBAVIJEST, List.of(), 10L, "334-06/26-01/1", " 123-26-8 "));
+
+        verify(rnService).rejectObjectionOnMeasure(eq(RN), eq(ACTOR), eq(RnStatus.SUSPENDED),
+                eq(new AktSluzbenika(OBAVIJEST, null, List.of())),
+                eq(new RjesenjeSluzbenika(10L, "334-06/26-01/1", "123-26-8")));
+    }
+
+    @Test
+    void reject_objectionOnMeasure_withoutDecision_is400() {
+        SuspensionObjectionEntity prigovor = objectionOn(RnStatus.WITHDRAWN);
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWN);
+
+        assertThatThrownBy(() -> service.reject(RN, prigovor.getObjectionId(), ACTOR, Neuvazavanje.biljeska(null, false)))
+                .isInstanceOf(BusinessException.class).hasMessage("error.objection.rjesenje.required");
+        assertThat(prigovor.getStatus()).isEqualTo(SuspensionObjectionStatus.SUBMITTED);
+        verifyNoInteractions(rnService);
+    }
+
+    /** Uzrok UAT nalaza: županija upisuje brojeve obavijesti o mjeri, a ne dobiva izvedeni broj s prijedloga. */
+    @Test
+    void reject_statementOnProposal_county_requiresNumbers_andPassesThemWithAttachments() {
+        assertThatThrownBy(() -> service.reject(RN, objection.getObjectionId(), ACTOR, Neuvazavanje.biljeska(null, true)))
+                .isInstanceOf(BusinessException.class).hasMessage("error.rn.akt.klasa.required");
+        verifyNoInteractions(rnService);
+
+        service.reject(RN, objection.getObjectionId(), ACTOR, neuvazavanje(true, OBAVIJEST, List.of(11L), null, null, null));
+
+        verify(rnService).suspendAfterRejectedObjection(RN, ACTOR, new AktSluzbenika(OBAVIJEST, null, List.of(11L)));
+    }
+
+    @Test
+    void reject_statementOnProposal_decisionNotAllowed() {
+        assertThatThrownBy(() -> service.reject(RN, objection.getObjectionId(), ACTOR,
+                neuvazavanje(false, null, List.of(), 10L, null, null)))
+                .isInstanceOf(BusinessException.class).hasMessage("error.objection.rjesenje.notAllowed");
+        verifyNoInteractions(rnService);
+    }
+
+    /** Zaostali podnesak: odluka bez akta, pa ni brojeva ni priloga. */
+    @Test
+    void reject_withoutAct_refusesActData() {
+        SuspensionObjectionEntity zaostali = objectionOn(RnStatus.SUSPENSION_PROPOSED);
+        when(rn.getStatus()).thenReturn(RnStatus.WITHDRAWAL_PROPOSED);
+
+        assertThatThrownBy(() -> service.reject(RN, zaostali.getObjectionId(), ACTOR,
+                neuvazavanje(false, null, List.of(11L), null, null, null)))
+                .isInstanceOf(BusinessException.class).hasMessage("error.objection.reject.noAct");
+
+        service.reject(RN, zaostali.getObjectionId(), ACTOR, Neuvazavanje.biljeska(null, true));
+        assertThat(zaostali.getStatus()).isEqualTo(SuspensionObjectionStatus.REJECTED);
+        verifyNoInteractions(rnService);
+    }
+
+    /** Ponovljena odluka (dvoklik) je 409 iz statusa podneska, a ne 400 provjere akta koji više ne bi nastao. */
+    @Test
+    void reject_alreadyDecided_is409BeforeActChecks() {
+        objection.reject(ACTOR, null);
+        when(rn.getStatus()).thenReturn(RnStatus.SUSPENDED);
+
+        assertThatThrownBy(() -> service.reject(RN, objection.getObjectionId(), ACTOR,
+                neuvazavanje(true, OBAVIJEST, List.of(11L), null, null, null)))
+                .isInstanceOf(com.str.backend.exception.IllegalStatusTransitionException.class);
+        verifyNoInteractions(rnService);
+    }
+
+    @Test
+    void list_carriesDecisionAct() {
+        assertThat(AktNeuvazavanja.za(RnStatus.SUSPENSION_PROPOSED, RnStatus.SUSPENSION_PROPOSED))
+                .isEqualTo(AktNeuvazavanja.MJERA);
+        assertThat(AktNeuvazavanja.za(RnStatus.WITHDRAWN, RnStatus.WITHDRAWN)).isEqualTo(AktNeuvazavanja.NEPRIHVACANJE);
+        assertThat(AktNeuvazavanja.za(RnStatus.WITHDRAWN, RnStatus.WITHDRAWAL_PROPOSED)).isEqualTo(AktNeuvazavanja.NEMA);
+        assertThat(AktNeuvazavanja.za(RnStatus.ACTIVE, RnStatus.ACTIVE)).isEqualTo(AktNeuvazavanja.NEMA);
     }
 }
