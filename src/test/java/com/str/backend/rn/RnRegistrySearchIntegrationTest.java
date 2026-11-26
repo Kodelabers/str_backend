@@ -186,6 +186,30 @@ class RnRegistrySearchIntegrationTest {
         assertSingleA(get("/api/rn").param("lessor", "ivić"));
     }
 
+    /** Filtri „OIB" i „Adresa objekta" internog portala: djelomično podudaranje, zarez u adresi ne smeta. */
+    @Test
+    void oibAndAddressFilters_narrowToRecordA() throws Exception {
+        jdbc.update("UPDATE str_rn.lessor SET lessor_oib = '12345678903' WHERE first_name = 'Ivan'");
+
+        assertSingleA(get("/api/rn").param("oib", "45678"));
+        assertSingleA(get("/api/rn").param("address", "korzo 2"));
+        assertSingleA(get("/api/rn").param("address", "Korzo 2, Rijeka"));
+        mvc.perform(get("/api/rn").param("address", "korzo 2 split"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    /** Objekt bez kućnog broja: „Ulica Mjesto" ga i dalje pogađa (nema dvostrukog razmaka u usporedbi). */
+    @Test
+    void addressFilter_matchesObjectWithoutStreetNumber() throws Exception {
+        seedRn("HR00000009", null, "Grad Zagreb", "Zagreb", "Trg bana Jelačića ", null, "Bez broja");
+
+        mvc.perform(get("/api/rn").param("view", "ALL").param("address", "trg bana jelačića, zagreb"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].rn").value("HR00000009"));
+    }
+
     private void assertSingleA(MockHttpServletRequestBuilder req) throws Exception {
         mvc.perform(req)
                 .andExpect(status().isOk())
@@ -806,28 +830,28 @@ class RnRegistrySearchIntegrationTest {
         List<String> split = List.of("Splitsko-dalmatinska županija");
         PageRequest page = PageRequest.of(0, 20);
 
-        var splitQueue = decisionRepository.findForReviewInCounties(split, page);
+        var splitQueue = decisionRepository.findForReviewInCounties(split, null, null, page);
         assertThat(splitQueue.getContent()).extracting(CategorizationDecisionEntity::getDecisionId)
                 .containsExactlyInAnyOrder(copy.getDecisionId(), verified.getDecisionId());
         assertThat(splitQueue.getTotalElements()).isEqualTo(2);
 
         assertThat(decisionRepository.findForReviewInCounties(List.of("Splitsko-dalmatinska županija",
-                        "Grad Zagreb"), page).getContent())
+                        "Grad Zagreb"), null, null, page).getContent())
                 .extracting(CategorizationDecisionEntity::getDecisionId)
                 .containsExactlyInAnyOrder(zagreb.getDecisionId(), copy.getDecisionId(), verified.getDecisionId());
 
         var submitted = decisionRepository.findForReviewByStatusInCounties(
-                CategorizationDecisionStatus.SUBMITTED, split, page);
+                CategorizationDecisionStatus.SUBMITTED, split, null, null, page);
         assertThat(submitted.getContent()).extracting(CategorizationDecisionEntity::getDecisionId)
                 .containsExactly(copy.getDecisionId());
         assertThat(submitted.getTotalElements()).isEqualTo(1);
 
         assertThat(decisionRepository.findForReviewByStatusInCounties(
-                        CategorizationDecisionStatus.VERIFIED, split, page).getContent())
+                        CategorizationDecisionStatus.VERIFIED, split, null, null, page).getContent())
                 .extracting(CategorizationDecisionEntity::getDecisionId)
                 .containsExactly(verified.getDecisionId());
         assertThat(decisionRepository.findForReviewByStatusInCounties(
-                        CategorizationDecisionStatus.SUBMITTED, List.of("Primorsko-goranska županija"), page)
+                        CategorizationDecisionStatus.SUBMITTED, List.of("Primorsko-goranska županija"), null, null, page)
                 .getContent())
                 .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000001");
     }
@@ -918,14 +942,48 @@ class RnRegistrySearchIntegrationTest {
         PageRequest page = PageRequest.of(0, 20);
         List<String> unused = List.of("");
 
-        assertThat(decisionRepository.findForReviewByRegistration("PENDING", null, unused, page).getContent())
-                .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000001");
-        assertThat(decisionRepository.findForReviewByRegistration("REGISTERED", null, unused, page).getContent())
-                .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000002");
-        assertThat(decisionRepository.findForReviewByRegistration("PENDING", "ON", List.of("Grad Zagreb"), page)
-                .getTotalElements()).isZero();
-        assertThat(decisionRepository.findForReviewByRegistration("REGISTERED", "ON", List.of("Grad Zagreb"), page)
+        assertThat(decisionRepository.findForReviewByRegistration("PENDING", null, unused, null, null, page)
+                .getContent()).extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000001");
+        assertThat(decisionRepository.findForReviewByRegistration("REGISTERED", null, unused, null, null, page)
                 .getContent()).extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000002");
+        assertThat(decisionRepository.findForReviewByRegistration("PENDING", "ON", List.of("Grad Zagreb"), null,
+                null, page).getTotalElements()).isZero();
+        assertThat(decisionRepository.findForReviewByRegistration("REGISTERED", "ON", List.of("Grad Zagreb"), null,
+                null, page).getContent()).extracting(CategorizationDecisionEntity::getRn)
+                .containsExactly("HR00000002");
+    }
+
+    /**
+     * Filtri „OIB" i „Adresa objekta" internog reda rješenja: OIB podnositelja, adresa smještaja RB-a
+     * („ulica broj mjesto"); u kombinaciji sa statusom i opsegom.
+     */
+    @Test
+    void decisionReview_oibAndAddressFilters() {
+        decision("HR00000001");
+        decision("HR00000002");
+        PageRequest page = PageRequest.of(0, 20);
+
+        assertThat(decisionRepository.findForReview("99999", null, page).getTotalElements()).isEqualTo(2);
+        assertThat(decisionRepository.findForReview("12345", null, page).getTotalElements()).isZero();
+        assertThat(decisionRepository.findForReview(null, "korzo 2 rijeka", page).getContent())
+                .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000001");
+        assertThat(decisionRepository.findForReviewByStatus(CategorizationDecisionStatus.SUBMITTED, "99999",
+                "ilica", page).getContent())
+                .extracting(CategorizationDecisionEntity::getRn).containsExactly("HR00000002");
+        assertThat(decisionRepository.findForReviewInCounties(List.of("Grad Zagreb"), null, "korzo", page)
+                .getTotalElements()).isZero();
+    }
+
+    /** Adresa upisana uz rješenje (slobodan tekst sa zarezom) pogađa i rješenje bez RB-a. */
+    @Test
+    void decisionReview_addressFilter_matchesFreeTextAddressWithComma() {
+        decisionRepository.save(CategorizationDecisionEntity.create("99999999990", null,
+                "rjesenje.pdf", "application/pdf", new byte[]{1, 2, 3},
+                new CategorizationDecisionMetadata(null, null, "Ulica Kralja Zvonimira 7,Split", null, null, null,
+                        null)));
+
+        assertThat(decisionRepository.findForReview(null, "kralja zvonimira 7 split", PageRequest.of(0, 20))
+                .getTotalElements()).isEqualTo(1);
     }
 
     private void activity(Long platformId, String rn, LocalDate from, LocalDate to) {

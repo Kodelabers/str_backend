@@ -27,6 +27,8 @@ import java.time.LocalDate;
  * @param anomaliesOnly  spec §2.10: restricts the result to registration numbers flagged as
  *                       anomalous, using the same predicate that produces the header count
  * @param guestCountry   spec §2.10: guest country of residence, matched against {@code str_rn.guest}
+ * @param oib            OIB iznajmljivača ili porezni broj non-EU iznajmljivača (djelomično podudaranje)
+ * @param address        adresa objekta — ulica, kućni broj i mjesto, isti oblik kao u registru RB-ova
  */
 public record PlatformActivityFilter(
         Long platformId,
@@ -39,7 +41,9 @@ public record PlatformActivityFilter(
         String rn,
         Boolean anomaliesOnly,
         String guestCountry,
-        Boolean foreignOnly
+        Boolean foreignOnly,
+        String oib,
+        String address
 ) {
 
     public PlatformActivityFilter {
@@ -49,6 +53,7 @@ public record PlatformActivityFilter(
 
     /** Unfiltered report — every criterion off. */
     public static PlatformActivityFilter none() {
-        return new PlatformActivityFilter(null, null, null, null, null, null, null, null, false, null, false);
+        return new PlatformActivityFilter(null, null, null, null, null, null, null, null, false, null, false, null,
+                null);
     }
 }

@@ -17,6 +17,9 @@ import java.util.List;
  * iz eTurizma (uz {@code verified=false} „Neverificirani objekti", bez novih objekata); {@code decisionMissing}
  * aktivne RB-ove novog objekta bez prihvaćenog ili predanog rješenja (nije predano ili je odbijeno), a
  * {@code decisionOverdue} od njih samo one kojima je rok za rješenje istekao ({@link CategorizationDeadline}).
+ *
+ * <p>{@code oib} (OIB ili porezni broj iznajmljivača) i {@code address} (ulica, kućni broj i mjesto objekta) su
+ * filtri koje interni portal nudi na svakom popisu, za bržu provjeru podataka po osobi i po adresi.
  */
 public record RnRegistryFilter(
         RnRegistryView view,
@@ -30,6 +33,8 @@ public record RnRegistryFilter(
         String street,
         String name,
         String lessor,
+        String oib,
+        String address,
         Integer deadlineWithinDays,
         RegistryDecisionFilter decision,
         Boolean verified,
@@ -42,16 +47,25 @@ public record RnRegistryFilter(
     /** Registar bez filtara radnih popisa — izvozi i dosadašnji pozivi. */
     public RnRegistryFilter(RnRegistryView view, String q, String county, String municipality, Long typeId,
                             boolean foreignOnly, String rb, String city, String street, String name, String lessor,
+                            String oib, String address, Integer deadlineWithinDays, RegistryDecisionFilter decision,
+                            Boolean verified, List<String> scopeCounties) {
+        this(view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, oib, address,
+                deadlineWithinDays, decision, verified, scopeCounties, false, false, false);
+    }
+
+    /** Kao gornji, bez filtara OIB-a i adrese. */
+    public RnRegistryFilter(RnRegistryView view, String q, String county, String municipality, Long typeId,
+                            boolean foreignOnly, String rb, String city, String street, String name, String lessor,
                             Integer deadlineWithinDays, RegistryDecisionFilter decision, Boolean verified,
                             List<String> scopeCounties) {
-        this(view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, deadlineWithinDays,
-                decision, verified, scopeCounties, false, false, false);
+        this(view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, null, null,
+                deadlineWithinDays, decision, verified, scopeCounties);
     }
 
     /** Isti filtri uz filtre radnih popisa; „istekao rok" vrijedi samo uz {@code decisionMissing}. */
     public RnRegistryFilter withWorklist(boolean eturizamOnly, boolean decisionMissing, boolean decisionOverdue) {
         return new RnRegistryFilter(view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
-                deadlineWithinDays, decision, verified, scopeCounties, eturizamOnly, decisionMissing,
+                oib, address, deadlineWithinDays, decision, verified, scopeCounties, eturizamOnly, decisionMissing,
                 decisionMissing && decisionOverdue);
     }
 }

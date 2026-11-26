@@ -122,6 +122,12 @@ class PlatformActivityQuery {
           + "       OR COALESCE(l.legal_entity_name,'') ILIKE :qLike)\n"
           + "  AND (:anomaliesOnly = FALSE OR " + ANOMALY_PREDICATE + ")\n"
           + "  AND (:foreignOnly = FALSE OR (rn.rn IS NOT NULL AND l.lessor_oib IS NULL))\n"
+          // Filtri „OIB" i „Adresa objekta" internog portala, isto pravilo kao u registru RB-ova (RnRepository):
+          // OIB ili porezni broj non-EU iznajmljivača; adresa kao „ulica kućni_broj mjesto".
+          + "  AND (:oib IS NULL OR (COALESCE(l.lessor_oib,'') || ' ' || COALESCE(l.tax_number,'')) ILIKE :oibLike)\n"
+          + "  AND (:address IS NULL\n"
+          + "       OR REPLACE(TRIM(COALESCE(a.street,'')) || ' ' || TRIM(COALESCE(a.street_number,'')) || ' '\n"
+          + "                  || TRIM(COALESCE(a.city,'')), '  ', ' ') ILIKE :addressLike)\n"
           + "  AND (:guestCountry IS NULL OR EXISTS (\n"
           + "          SELECT 1 FROM str_rn.guest g\n"
           + "          WHERE g.activity_id = aa.activity_id\n"
@@ -266,6 +272,12 @@ class PlatformActivityQuery {
         p.addValue("anomaliesOnly", f.anomaliesOnly(), Types.BOOLEAN);
         p.addValue("guestCountry", Strings.blankToNull(f.guestCountry()), Types.VARCHAR);
         p.addValue("foreignOnly", f.foreignOnly(), Types.BOOLEAN);
+        String oib = Strings.blankToNull(f.oib());
+        p.addValue("oib", oib, Types.VARCHAR);
+        p.addValue("oibLike", oib != null ? "%" + oib + "%" : null, Types.VARCHAR);
+        String address = Strings.addressSearch(f.address());
+        p.addValue("address", address, Types.VARCHAR);
+        p.addValue("addressLike", address != null ? "%" + address + "%" : null, Types.VARCHAR);
         return p;
     }
 

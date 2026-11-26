@@ -43,13 +43,14 @@ public class AdminObjectionController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String oib,
+            @RequestParam(required = false) String address,
             @RequestParam(required = false) String rb,
             @RequestParam(required = false) ObjectionKind kind,
             @RequestParam(required = false) ObjectionResolution status,
             @RequestParam(required = false) Integer olderThanDays,
             @PageableDefault(size = 20, sort = "submittedAt", direction = Sort.Direction.ASC) Pageable pageable,
             Authentication authentication) {
-        return service.search(new AdminObjectionService.Filter(q, name, oib, rb, kind, status, olderThanDays),
+        return service.search(new AdminObjectionService.Filter(q, name, oib, address, rb, kind, status, olderThanDays),
                 countyScope.accommodationCounties(authentication), pageable);
     }
 
@@ -63,13 +64,14 @@ public class AdminObjectionController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String oib,
+            @RequestParam(required = false) String address,
             @RequestParam(required = false) String rb,
             @RequestParam(required = false) ObjectionKind kind,
             @RequestParam(required = false) ObjectionResolution status,
             @RequestParam(required = false) Integer olderThanDays,
             Sort sort,
             Authentication authentication) {
-        byte[] xlsx = service.exportXlsx(new AdminObjectionService.Filter(q, name, oib, rb, kind, status,
+        byte[] xlsx = service.exportXlsx(new AdminObjectionService.Filter(q, name, oib, address, rb, kind, status,
                 olderThanDays), countyScope.accommodationCounties(authentication), sort);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"ocitovanja-i-prigovori.xlsx\"")

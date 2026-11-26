@@ -173,7 +173,9 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
             " AND (CAST(:name AS string) IS NULL OR LOWER(CONCAT(COALESCE(l.firstName,''),' ',COALESCE(l.lastName,'')," +
             "      ' ',COALESCE(l.legalEntityName,''))) LIKE CONCAT('%', LOWER(CAST(:name AS string)), '%'))" +
             " AND (CAST(:oib AS string) IS NULL OR LOWER(CONCAT(COALESCE(l.lessorOib,''),' ',COALESCE(l.taxNumber,'')))" +
-            "      LIKE CONCAT('%', LOWER(CAST(:oib AS string)), '%'))";
+            "      LIKE CONCAT('%', LOWER(CAST(:oib AS string)), '%'))" +
+            " AND (CAST(:address AS string) IS NULL OR " + com.str.backend.rn.RnRepository.RN_ADDRESS +
+            "      LIKE CONCAT('%', LOWER(CAST(:address AS string)), '%'))";
 
     /** Popis očitovanja i prigovora preko svih RB-ova, bez sadržaja datoteka — v. {@link AdminObjectionRowDto}. */
     @Transactional(readOnly = true)
@@ -193,6 +195,7 @@ public interface SuspensionObjectionRepository extends JpaRepository<SuspensionO
             @Param("rb") String rb,
             @Param("name") String name,
             @Param("oib") String oib,
+            @Param("address") String address,
             @Param("tok0") String tok0, @Param("tok1") String tok1, @Param("tok2") String tok2,
             @Param("tok3") String tok3, @Param("tok4") String tok4, @Param("tok5") String tok5,
             @Param("tok6") String tok6, @Param("tok7") String tok7, @Param("tok8") String tok8,

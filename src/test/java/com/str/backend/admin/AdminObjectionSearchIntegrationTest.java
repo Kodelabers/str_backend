@@ -61,7 +61,7 @@ class AdminObjectionSearchIntegrationTest {
     private static final String SDZ = "Splitsko-dalmatinska županija";
     private static final byte[] PDF = {0x25, 0x50, 0x44, 0x46};
     private static final AdminObjectionService.Filter UNRESOLVED =
-            new AdminObjectionService.Filter(null, null, null, null, null, null, null);
+            new AdminObjectionService.Filter(null, null, null, null, null, null, null, null);
 
     @Autowired private AdminObjectionService service;
     @Autowired private SuspensionObjectionRepository objectionRepository;
@@ -174,14 +174,19 @@ class AdminObjectionSearchIntegrationTest {
 
     @Test
     void textFilters() {
-        AdminObjectionService.Filter q = new AdminObjectionService.Filter("ivić hr00000092", null, null, null, null,
+        AdminObjectionService.Filter q = new AdminObjectionService.Filter("ivić hr00000092", null, null, null, null, null,
                 ObjectionResolution.ALL, null);
         assertThat(service.search(q, null, PageRequest.of(0, 20)).getContent())
                 .extracting(AdminObjectionRowDto::rn).containsExactly("HR00000092");
 
-        AdminObjectionService.Filter fields = new AdminObjectionService.Filter(null, "IVAN", "9999", "0094", null,
+        AdminObjectionService.Filter fields = new AdminObjectionService.Filter(null, "IVAN", "9999", null, "0094", null,
                 ObjectionResolution.ALL, null);
         assertThat(service.search(fields, null, PageRequest.of(0, 20)).getContent())
+                .extracting(AdminObjectionRowDto::rn).containsExactly("HR00000094");
+
+        AdminObjectionService.Filter address = new AdminObjectionService.Filter(null, null, null, "Ulica 94, Grad",
+                null, null, ObjectionResolution.ALL, null);
+        assertThat(service.search(address, null, PageRequest.of(0, 20)).getContent())
                 .extracting(AdminObjectionRowDto::rn).containsExactly("HR00000094");
     }
 
@@ -221,7 +226,7 @@ class AdminObjectionSearchIntegrationTest {
 
     private static AdminObjectionService.Filter filter(ObjectionKind kind, ObjectionResolution resolution,
                                                        Integer olderThanDays) {
-        return new AdminObjectionService.Filter(null, null, null, null, kind, resolution, olderThanDays);
+        return new AdminObjectionService.Filter(null, null, null, null, null, kind, resolution, olderThanDays);
     }
 
     private SuspensionObjectionEntity objection(String rn, RnStatus rnStatus, UUID rnLogId) {

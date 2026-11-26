@@ -74,8 +74,11 @@ public class AdminObjectionService {
         this.clock = clock;
     }
 
-    /** Filtri popisa; {@code null} znači bez filtra, osim {@code resolution} (zadano neriješeni). */
-    public record Filter(String q, String name, String oib, String rb, ObjectionKind kind,
+    /**
+     * Filtri popisa; {@code null} znači bez filtra, osim {@code resolution} (zadano neriješeni). {@code address}
+     * traži ulicu, kućni broj i mjesto objekta ({@code SuspensionObjectionRepository#ADMIN_ADDRESS}).
+     */
+    public record Filter(String q, String name, String oib, String address, String rb, ObjectionKind kind,
                          ObjectionResolution resolution, Integer olderThanDays) {
     }
 
@@ -164,6 +167,7 @@ public class AdminObjectionService {
                 submittedBefore(filter.olderThanDays()),
                 Strings.blankToNull(filter.rb()), Strings.blankToNull(filter.name()),
                 Strings.blankToNull(filter.oib()),
+                Strings.addressSearch(filter.address()),
                 t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8], t[9],
                 pageable);
     }
