@@ -3,29 +3,33 @@ package com.str.backend.sdep;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 
-import java.io.IOException;
-import java.util.Properties;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.interfaces.RSAPublicKey;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Javni ključ SDEP-a za CDU test je u repozitoriju i profil cdu ga koristi bez varijable okoline. */
+/** Javni ključ SDEP-a dolazi iz env varijable SDEP_PUBLIC_KEY, kao base64 u jednom retku. */
 class SdepPublicKeyConfigTest {
 
     @Test
-    void cduProfilePointsAtBundledKey() throws IOException {
-        Properties cdu = new Properties();
-        try (var in = getClass().getResourceAsStream("/application-cdu.properties")) {
-            cdu.load(in);
-        }
-        assertThat(cdu.getProperty("str.sdep.public-key"))
-                .isEqualTo("${SDEP_PUBLIC_KEY:classpath:sdep/sdep-public-cdu.pub}");
+    void keyFromEnvVariable_isAccepted() throws NoSuchAlgorithmException {
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+        generator.initialize(2048);
+        RSAPublicKey key = (RSAPublicKey) generator.generateKeyPair().getPublic();
+        String base64 = Base64.getEncoder().encodeToString(key.getEncoded());
+
+        assertThat(SdepSecurityConfig.readPublicKey(base64, new DefaultResourceLoader())).isEqualTo(key);
+        assertThat(SdepSecurityConfig.readPublicKey(
+                "-----BEGIN PUBLIC KEY-----" + base64 + "-----END PUBLIC KEY-----", new DefaultResourceLoader()))
+                .isEqualTo(key);
     }
 
     @Test
-    void bundledKeyIsAValidRsaPublicKey() {
-        assertThatCode(() -> new SdepSecurityConfig()
-                .sdepJwtDecoder("classpath:sdep/sdep-public-cdu.pub", new DefaultResourceLoader()))
-                .doesNotThrowAnyException();
+    void invalidKey_failsOnStartup() {
+        assertThatThrownBy(() -> SdepSecurityConfig.readPublicKey("nije-kljuc", new DefaultResourceLoader()))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

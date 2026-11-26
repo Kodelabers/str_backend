@@ -25,8 +25,12 @@ import org.springframework.security.web.SecurityFilterChain;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
 import java.security.interfaces.RSAPublicKey;
+import java.security.spec.X509EncodedKeySpec;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 
 /**
@@ -73,30 +77,47 @@ public class SdepSecurityConfig {
      * s 401: okoline koje još nisu spojene na SDEP ne trebaju ništa mijenjati.
      */
     @Bean
-    public JwtDecoder sdepJwtDecoder(@Value("${str.sdep.public-key:}") String location, ResourceLoader resources) {
-        if (location.isBlank()) {
+    public JwtDecoder sdepJwtDecoder(@Value("${str.sdep.public-key:}") String key, ResourceLoader resources) {
+        if (key.isBlank()) {
             log.warn("sdep_public_key_missing — str.sdep.public-key nije postavljen, /api/sdep/v1 odbija sve pozive");
             return token -> {
                 throw new BadJwtException("Javni ključ SDEP-a nije postavljen (str.sdep.public-key)");
             };
         }
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(readPublicKey(location, resources)).build();
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(readPublicKey(key, resources)).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 new JwtTimestampValidator(CLOCK_SKEW),
                 // iss nije URL, pa Jwt#getIssuer (URL) ne smije ni u validator ni u kod
                 new JwtClaimValidator<String>("iss", ISSUER::equals),
                 new JwtClaimValidator<List<String>>("aud", aud -> aud != null && aud.contains(AUDIENCE)),
                 shortLived()));
-        log.info("sdep_public_key_loaded location={}", location);
+        log.info("sdep_public_key_loaded izvor={}", isLocation(key) ? key : "varijabla");
         return decoder;
     }
 
-    private static RSAPublicKey readPublicKey(String location, ResourceLoader resources) {
-        try (InputStream in = resources.getResource(location).getInputStream()) {
+    /**
+     * Ključ je sam u varijabli (base64 u jednom retku, s PEM zaglavljem ili bez njega), ili je to
+     * lokacija datoteke ({@code file:}, {@code classpath:}), npr. u testovima.
+     */
+    static RSAPublicKey readPublicKey(String key, ResourceLoader resources) {
+        if (!isLocation(key)) {
+            String base64 = key.replaceAll("-----(BEGIN|END) PUBLIC KEY-----", "").replaceAll("\\s", "");
+            try {
+                return (RSAPublicKey) KeyFactory.getInstance("RSA")
+                        .generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(base64)));
+            } catch (GeneralSecurityException | IllegalArgumentException e) {
+                throw new IllegalStateException("SDEP_PUBLIC_KEY nije ispravan RSA javni ključ", e);
+            }
+        }
+        try (InputStream in = resources.getResource(key).getInputStream()) {
             return RsaKeyConverters.x509().convert(in);
         } catch (IOException e) {
-            throw new UncheckedIOException("Ne mogu pročitati javni ključ SDEP-a: " + location, e);
+            throw new UncheckedIOException("Ne mogu pročitati javni ključ SDEP-a: " + key, e);
         }
+    }
+
+    private static boolean isLocation(String key) {
+        return key.startsWith("file:") || key.startsWith("classpath:");
     }
 
     /** Ispravan potpis nije dovoljan: token mora biti i kratkotrajan, da ukradeni brzo istekne. */
