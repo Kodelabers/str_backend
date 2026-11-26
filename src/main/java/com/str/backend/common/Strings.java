@@ -14,6 +14,17 @@ public final class Strings {
     }
 
     /**
+     * Unos filtra „Adresa objekta" u obliku u kojem upiti slažu adresu („ulica kućni_broj mjesto"): zarezi i
+     * nizovi razmaka postaju jedan razmak, pa „Ilica 5, Zagreb" pogađa „Ilica 5 Zagreb". Prazno daje {@code null}.
+     */
+    public static String addressSearch(String value) {
+        String trimmed = blankToNull(value);
+        return trimmed == null ? null : blankToNull(ADRESNI_RAZMACI.matcher(trimmed).replaceAll(" "));
+    }
+
+    private static final Pattern ADRESNI_RAZMACI = Pattern.compile("[,\\s]+");
+
+    /**
      * Kontrolni znakovi (NUL, CR, LF, …) i Unicode bidi nadjačavanja (U+202A–202E, U+2066–2069). CR/LF
      * bi završili u {@code Content-Disposition} i logu, a bidi znakovi prikazuju naziv obrnuto
      * („račun<U+202E>fdp.exe" se prikazuje kao „računexe.pdf").

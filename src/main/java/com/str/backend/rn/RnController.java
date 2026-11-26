@@ -100,6 +100,9 @@ public class RnController {
      * <p>Županijski službenik vidi samo svoju županiju ({@link CountyScopeService}); njegov
      * {@code county} iz zahtjeva se zanemaruje, i u izvozima.
      *
+     * <p>{@code oib} traži OIB ili porezni broj iznajmljivača, a {@code address} ulicu, kućni broj i mjesto
+     * objekta ({@link RnRepository#RN_ADDRESS}) — filtri koje interni portal nudi na svakom popisu.
+     *
      * <p>Radni popisi internog portala (MINTS 17.11., točka 1; {@link RnRegistryFilter}): {@code objectSource=ETURIZAM}
      * ostavlja samo objekte iz eTurizma, {@code decisionMissing} aktivne RB-ove novog objekta bez rješenja
      * (nije predano ili je odbijeno), a {@code decisionOverdue} od njih one kojima je rok za rješenje istekao.
@@ -118,6 +121,8 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) String oib,
+            @RequestParam(required = false) String address,
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
             @RequestParam(required = false) Boolean verified,
@@ -127,7 +132,8 @@ public class RnController {
             @PageableDefault(size = 20, sort = "issueDate", direction = Sort.Direction.DESC) Pageable pageable,
             Authentication authentication) {
         return registrySearch.search(filter(authentication, view, q, county, municipality, typeId,
-                        foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified)
+                        foreignOnly, rb, city, street, name, lessor, oib, address, deadlineWithinDays, decision,
+                        verified)
                         .withWorklist(objectSource == RegistryObjectSource.ETURIZAM, decisionMissing, decisionOverdue),
                 pageable);
     }
@@ -389,12 +395,14 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) String oib,
+            @RequestParam(required = false) String address,
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
             @RequestParam(required = false) Boolean verified,
             Authentication authentication) {
         byte[] xlsx = exportService.generateRegistryXlsx(filter(authentication,
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, oib, address,
                 deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE,
@@ -417,12 +425,14 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) String oib,
+            @RequestParam(required = false) String address,
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
             @RequestParam(required = false) Boolean verified,
             Authentication authentication) {
         byte[] csv = exportService.generateRegistryCsv(filter(authentication,
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, oib, address,
                 deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "text/csv; charset=UTF-8")
@@ -444,12 +454,14 @@ public class RnController {
             @RequestParam(required = false) String street,
             @RequestParam(required = false) String name,
             @RequestParam(required = false) String lessor,
+            @RequestParam(required = false) String oib,
+            @RequestParam(required = false) String address,
             @RequestParam(required = false) Integer deadlineWithinDays,
             @RequestParam(required = false) RegistryDecisionFilter decision,
             @RequestParam(required = false) Boolean verified,
             Authentication authentication) {
         byte[] pdf = exportService.generateRegistryPdf(filter(authentication,
-                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor,
+                view, q, county, municipality, typeId, foreignOnly, rb, city, street, name, lessor, oib, address,
                 deadlineWithinDays, decision, verified));
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
@@ -478,11 +490,12 @@ public class RnController {
      */
     private RnRegistryFilter filter(Authentication authentication, RnRegistryView view, String q, String county,
                                     String municipality, Long typeId, boolean foreignOnly, String rb, String city,
-                                    String street, String name, String lessor, Integer deadlineWithinDays,
-                                    RegistryDecisionFilter decision, Boolean verified) {
+                                    String street, String name, String lessor, String oib, String address,
+                                    Integer deadlineWithinDays, RegistryDecisionFilter decision, Boolean verified) {
         List<String> counties = countyScope.accommodationCounties(authentication, county);
         return new RnRegistryFilter(view, q, null, municipality, typeId,
-                foreignOnly, rb, city, street, name, lessor, deadlineWithinDays, decision, verified, counties);
+                foreignOnly, rb, city, street, name, lessor, oib, address, deadlineWithinDays, decision, verified,
+                counties);
     }
 
     /** Endpoint je iza role, pa službenik iz sesije postoji; {@code null} samo u testovima bez lanca. */

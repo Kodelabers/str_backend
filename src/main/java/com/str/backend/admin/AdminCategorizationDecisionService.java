@@ -3,6 +3,7 @@ package com.str.backend.admin;
 import com.str.backend.accommodation.AccommodationEntity;
 import com.str.backend.accommodation.AccommodationRepository;
 import com.str.backend.auth.internal.InternalAccessService;
+import com.str.backend.common.Strings;
 import com.str.backend.categorization.CategorizationDecisionAdminDto;
 import com.str.backend.categorization.CategorizationDecisionEntity;
 import com.str.backend.categorization.CategorizationDecisionRepository;
@@ -83,17 +84,23 @@ public class AdminCategorizationDecisionService {
     @Transactional(readOnly = true)
     public Page<CategorizationDecisionAdminDto> list(CategorizationDecisionStatus status, List<String> scopeCounties,
                                                      Pageable pageable) {
-        return list(status, null, scopeCounties, pageable);
+        return list(status, null, null, null, scopeCounties, pageable);
     }
 
     /**
      * Kao {@link #list(CategorizationDecisionStatus, List, Pageable)}, uz filtar „Upis u TuRegistar" (MINTS 17.11.,
      * točka 1). Taj filtar vrijedi samo za prihvaćena rješenja, pa uz drugi status daje prazan popis.
+     *
+     * <p>{@code oib} i {@code address} su filtri „OIB" i „Adresa objekta" internog portala
+     * ({@link CategorizationDecisionRepository#OIB_ADDRESS_FILTER}); prazni se ne primjenjuju.
      */
     @Transactional(readOnly = true)
     public Page<CategorizationDecisionAdminDto> list(CategorizationDecisionStatus status,
                                                      CategorizationRegistrationFilter registration,
+                                                     String oib, String address,
                                                      List<String> scopeCounties, Pageable pageable) {
+        String oibFilter = Strings.blankToNull(oib);
+        String addressFilter = Strings.addressSearch(address);
         Page<CategorizationDecisionEntity> page;
         if (registration != null) {
             if (status != null && status != CategorizationDecisionStatus.VERIFIED) {
@@ -102,15 +109,16 @@ public class AdminCategorizationDecisionService {
             page = repository.findForReviewByRegistration(registration.name(),
                     scopeCounties == null ? null : "ON",
                     scopeCounties == null || scopeCounties.isEmpty() ? List.of("") : scopeCounties,
-                    pageable);
+                    oibFilter, addressFilter, pageable);
         } else if (scopeCounties == null) {
             page = status != null
-                    ? repository.findForReviewByStatus(status, pageable)
-                    : repository.findForReview(pageable);
+                    ? repository.findForReviewByStatus(status, oibFilter, addressFilter, pageable)
+                    : repository.findForReview(oibFilter, addressFilter, pageable);
         } else {
             page = status != null
-                    ? repository.findForReviewByStatusInCounties(status, scopeCounties, pageable)
-                    : repository.findForReviewInCounties(scopeCounties, pageable);
+                    ? repository.findForReviewByStatusInCounties(status, scopeCounties, oibFilter, addressFilter,
+                            pageable)
+                    : repository.findForReviewInCounties(scopeCounties, oibFilter, addressFilter, pageable);
         }
         // Jedan upit za imena svih službenika na stranici, ne po retku; isto za porezne brojeve.
         Map<String, String> names = internalAccess.displayNames(page.getContent().stream()

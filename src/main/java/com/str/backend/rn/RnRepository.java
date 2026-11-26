@@ -388,6 +388,21 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             "          AND NOT " + DECISION_VERIFIED_EXISTS + " AND NOT " + DECISION_SUBMITTED_EXISTS + "))" +
             " AND (:issuedBefore IS NULL OR r.issueDate < :issuedBefore)";
 
+    /**
+     * Filtar „OIB" internog portala: OIB iznajmljivača ili porezni broj non-EU iznajmljivača (koji OIB nema) —
+     * isto pravilo kao na popisu prigovora.
+     */
+    String RN_OIB = "LOWER(CONCAT(COALESCE(l.lessorOib,''),' ',COALESCE(l.taxNumber,'')))";
+
+    /**
+     * Filtar „Adresa objekta" internog portala: ulica, kućni broj i mjesto smještaja u obliku „ilica 5 zagreb".
+     * Unos se prije usporedbe svodi na isti oblik ({@code Strings#addressSearch}), pa „Ilica 5, Zagreb" pogađa.
+     * Dijelovi se obrezuju, a dvostruki razmak (prazan kućni broj nije rijetkost) svodi na jedan — inače
+     * „Ilica Zagreb" ne bi pogodio objekt bez kućnog broja. Isti izraz koristi popis prigovora.
+     */
+    String RN_ADDRESS = "REPLACE(LOWER(CONCAT(TRIM(COALESCE(a.street,'')),' ',TRIM(COALESCE(a.streetNumber,'')),' ',"
+            + "TRIM(COALESCE(a.city,'')))), '  ', ' ')";
+
     /** Per-field discrete filters (each optional, case-insensitive substring) + existing county/type filters. */
     String RN_FILTERS =
             " AND (CAST(:rb AS string) IS NULL OR LOWER(r.rn) LIKE CONCAT('%', LOWER(CAST(:rb AS string)), '%'))" +
@@ -395,6 +410,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             " AND (CAST(:street AS string) IS NULL OR LOWER(a.street) LIKE CONCAT('%', LOWER(CAST(:street AS string)), '%'))" +
             " AND (CAST(:name AS string) IS NULL OR LOWER(COALESCE(a.name,'')) LIKE CONCAT('%', LOWER(CAST(:name AS string)), '%'))" +
             " AND (CAST(:lessor AS string) IS NULL OR LOWER(CONCAT(COALESCE(l.firstName,''),' ',COALESCE(l.lastName,''),' ',COALESCE(l.legalEntityName,''))) LIKE CONCAT('%', LOWER(CAST(:lessor AS string)), '%'))" +
+            " AND (CAST(:oib AS string) IS NULL OR " + RN_OIB + " LIKE CONCAT('%', LOWER(CAST(:oib AS string)), '%'))" +
+            " AND (CAST(:address AS string) IS NULL OR " + RN_ADDRESS + " LIKE CONCAT('%', LOWER(CAST(:address AS string)), '%'))" +
             " AND (CAST(:county AS string) IS NULL OR LOWER(a.county) = LOWER(CAST(:county AS string)))" +
             // Opseg službenika (CountyScope): nazivi njegove županije kako su zapisani na
             // smještaju. Lista je uvijek neprazna; kad opseg nije ograničen, ne koristi se.
@@ -480,6 +497,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("street") String street,
             @Param("name") String name,
             @Param("lessor") String lessor,
+            @Param("oib") String oib,
+            @Param("address") String address,
             @Param("deadlineBefore") LocalDate deadlineBefore,
             @Param("decision") String decision,
             @Param("eturizamOnly") String eturizamOnly,
@@ -514,6 +533,8 @@ public interface RnRepository extends JpaRepository<RnEntity, String> {
             @Param("street") String street,
             @Param("name") String name,
             @Param("lessor") String lessor,
+            @Param("oib") String oib,
+            @Param("address") String address,
             @Param("deadlineBefore") LocalDate deadlineBefore,
             @Param("decision") String decision,
             @Param("eturizamOnly") String eturizamOnly,

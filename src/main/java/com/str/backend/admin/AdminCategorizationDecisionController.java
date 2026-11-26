@@ -58,15 +58,19 @@ public class AdminCategorizationDecisionController {
 
     /**
      * {@code registration} je filtar „Upis u TuRegistar" (MINTS 17.11., točka 1): {@code PENDING} prihvaćena
-     * rješenja koja čekaju „Potvrdu upisa objekta", {@code REGISTERED} potvrđeni upisi.
+     * rješenja koja čekaju „Potvrdu upisa objekta", {@code REGISTERED} potvrđeni upisi. {@code oib} i
+     * {@code address} traže OIB (ili porezni broj) iznajmljivača i adresu objekta.
      */
     @GetMapping
     public Page<CategorizationDecisionAdminDto> list(
             @RequestParam(required = false) CategorizationDecisionStatus status,
             @RequestParam(required = false) CategorizationRegistrationFilter registration,
+            @RequestParam(required = false) String oib,
+            @RequestParam(required = false) String address,
             @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable,
             Authentication authentication) {
-        return service.list(status, registration, countyScope.accommodationCounties(authentication), pageable);
+        return service.list(status, registration, oib, address, countyScope.accommodationCounties(authentication),
+                pageable);
     }
 
     @GetMapping("/{id}")

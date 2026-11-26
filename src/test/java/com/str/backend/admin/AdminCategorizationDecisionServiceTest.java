@@ -65,7 +65,7 @@ class AdminCategorizationDecisionServiceTest {
     void list_byStatus_mapsToDto() {
         Pageable pageable = PageRequest.of(0, 20);
         CategorizationDecisionEntity e = submitted();
-        when(repository.findForReviewByStatus(CategorizationDecisionStatus.SUBMITTED, pageable))
+        when(repository.findForReviewByStatus(CategorizationDecisionStatus.SUBMITTED, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(e), pageable, 1));
 
         Page<CategorizationDecisionAdminDto> page = service.list(CategorizationDecisionStatus.SUBMITTED, null, pageable);
@@ -90,7 +90,7 @@ class AdminCategorizationDecisionServiceTest {
         when(lessor.getLessorId()).thenReturn(lessorId);
         when(lessor.getTaxNumber()).thenReturn("DE123456789");
         when(lessorRepository.findAllById(any())).thenReturn(List.of(lessor));
-        when(repository.findForReview(pageable)).thenReturn(new PageImpl<>(List.of(nonEu, submitted()), pageable, 2));
+        when(repository.findForReview(null, null, pageable)).thenReturn(new PageImpl<>(List.of(nonEu, submitted()), pageable, 2));
 
         List<CategorizationDecisionAdminDto> rows = service.list(null, null, pageable).getContent();
 
@@ -103,10 +103,10 @@ class AdminCategorizationDecisionServiceTest {
     @Test
     void list_withoutStatus_usesReviewQueryWithoutStatus() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(repository.findForReview(pageable)).thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
+        when(repository.findForReview(null, null, pageable)).thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
 
         assertThat(service.list(null, null, pageable).getContent()).hasSize(1);
-        verify(repository, never()).findForReviewByStatus(any(), any());
+        verify(repository, never()).findForReviewByStatus(any(), any(), any(), any());
         verify(repository, never()).findAll(any(Pageable.class));
     }
 
@@ -115,20 +115,20 @@ class AdminCategorizationDecisionServiceTest {
     void list_byRegistration_usesRegistrationQuery_andIsEmptyForOtherStatus() {
         Pageable pageable = PageRequest.of(0, 20);
         List<String> counties = List.of("Splitsko-dalmatinska županija");
-        when(repository.findForReviewByRegistration("PENDING", "ON", counties, pageable))
+        when(repository.findForReviewByRegistration("PENDING", "ON", counties, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
-        when(repository.findForReviewByRegistration(eq("REGISTERED"), eq(null), any(), eq(pageable)))
+        when(repository.findForReviewByRegistration(eq("REGISTERED"), eq(null), any(), eq(null), eq(null), eq(pageable)))
                 .thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
         assertThat(service.list(CategorizationDecisionStatus.VERIFIED,
-                com.str.backend.categorization.CategorizationRegistrationFilter.PENDING, counties, pageable)
+                com.str.backend.categorization.CategorizationRegistrationFilter.PENDING, null, null, counties, pageable)
                 .getTotalElements()).isEqualTo(1);
         assertThat(service.list(null, com.str.backend.categorization.CategorizationRegistrationFilter.REGISTERED,
-                null, pageable).getTotalElements()).isZero();
+                null, null, null, pageable).getTotalElements()).isZero();
         assertThat(service.list(CategorizationDecisionStatus.SUBMITTED,
-                com.str.backend.categorization.CategorizationRegistrationFilter.PENDING, null, pageable)
+                com.str.backend.categorization.CategorizationRegistrationFilter.PENDING, null, null, null, pageable)
                 .getTotalElements()).isZero();
-        verify(repository, never()).findForReviewByStatus(any(), any());
+        verify(repository, never()).findForReviewByStatus(any(), any(), any(), any());
     }
 
     @Test
@@ -206,15 +206,27 @@ class AdminCategorizationDecisionServiceTest {
     void list_restricted_usesInCountiesQueries() {
         Pageable pageable = PageRequest.of(0, 20);
         List<String> counties = List.of("Splitsko-dalmatinska županija", "Splitsko-dalmatinska");
-        when(repository.findForReviewInCounties(counties, pageable))
+        when(repository.findForReviewInCounties(counties, null, null, pageable))
                 .thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
-        when(repository.findForReviewByStatusInCounties(CategorizationDecisionStatus.SUBMITTED, counties, pageable))
+        when(repository.findForReviewByStatusInCounties(CategorizationDecisionStatus.SUBMITTED, counties, null, null,
+                pageable))
                 .thenReturn(new PageImpl<>(List.of(submitted(), submitted()), pageable, 2));
 
         assertThat(service.list(null, counties, pageable).getContent()).hasSize(1);
         assertThat(service.list(CategorizationDecisionStatus.SUBMITTED, counties, pageable).getContent()).hasSize(2);
-        verify(repository, never()).findForReview(any());
-        verify(repository, never()).findForReviewByStatus(any(), any());
+        verify(repository, never()).findForReview(any(), any(), any());
+        verify(repository, never()).findForReviewByStatus(any(), any(), any(), any());
+    }
+
+    /** Filtri „OIB" i „Adresa objekta": prazan OIB se ne šalje, a adresa ide u obliku „ulica broj mjesto". */
+    @Test
+    void list_oibAndAddress_passedNormalized() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(repository.findForReview(null, "Ilica 5 Zagreb", pageable))
+                .thenReturn(new PageImpl<>(List.of(submitted()), pageable, 1));
+
+        assertThat(service.list(null, null, "   ", " Ilica 5,  Zagreb ", null, pageable).getTotalElements())
+                .isEqualTo(1);
     }
 
     @Test

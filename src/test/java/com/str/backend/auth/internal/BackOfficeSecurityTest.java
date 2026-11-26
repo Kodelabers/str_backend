@@ -111,7 +111,7 @@ class BackOfficeSecurityTest {
                         .with(authentication(signedIn())))
                 .andExpect(status().isOk());
         verify(objectionService).search(
-                eq(new AdminObjectionService.Filter(null, null, null, null,
+                eq(new AdminObjectionService.Filter(null, null, null, null, null,
                         com.str.backend.objection.ObjectionKind.PRIGOVOR_SUSPENZIJE,
                         com.str.backend.objection.ObjectionResolution.ALL, null)),
                 eq(java.util.List.of("Splitsko-dalmatinska županija")), any());

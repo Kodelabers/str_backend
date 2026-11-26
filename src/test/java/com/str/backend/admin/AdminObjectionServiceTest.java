@@ -43,14 +43,15 @@ class AdminObjectionServiceTest {
     @Test
     void search_withoutOlderThan_passesUpperBoundInsteadOfNull() {
         when(repository.searchForAdmin(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Page.empty());
+                any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Page.empty());
 
-        service.search(new AdminObjectionService.Filter(null, null, null, null, null, ObjectionResolution.ALL, null),
+        service.search(new AdminObjectionService.Filter(null, null, null, null, null, null, ObjectionResolution.ALL,
+                        null),
                 List.of("Grad Zagreb"), PageRequest.of(0, 20));
 
         verify(repository).searchForAdmin(anyCollection(), eq("ON"), eq(List.of("Grad Zagreb")), isNull(),
                 eq(AdminObjectionService.NO_UPPER_BOUND), any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

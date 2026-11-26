@@ -26,18 +26,44 @@ public interface CategorizationDecisionRepository extends JpaRepository<Categori
     String NOT_CARRIED_OVER = " NOT EXISTS (SELECT 1 FROM CategorizationDecisionEntity c"
             + " WHERE c.sourceDecisionId = d.decisionId)";
 
+    /**
+     * Filtri „OIB" i „Adresa objekta" internog reda, dodaju se svakom upitu reda. OIB je OIB podnositelja ili porezni
+     * broj non-EU iznajmljivača (on OIB nema). Adresa je adresa upisana uz rješenje ili adresa smještaja RB-a (ulica,
+     * kućni broj i mjesto, isti izraz kao {@code RnRepository#RN_ADDRESS}, samo s drugim aliasom) — prva je slobodan
+     * tekst, pa druga hvata unos „Ilica 5 Zagreb".
+     * Prazan parametar ({@code null}) filtar isključuje.
+     */
+    String OIB_ADDRESS_FILTER = " AND (CAST(:oib AS string) IS NULL"
+            + "   OR LOWER(COALESCE(d.lessorOib,'')) LIKE CONCAT('%', LOWER(CAST(:oib AS string)), '%')"
+            + "   OR EXISTS (SELECT 1 FROM LessorEntity lo WHERE lo.lessorId = d.lessorId"
+            + "       AND LOWER(COALESCE(lo.taxNumber,'')) LIKE CONCAT('%', LOWER(CAST(:oib AS string)), '%')))"
+            + " AND (CAST(:address AS string) IS NULL"
+            // Slobodan tekst („Ilica 5, Zagreb"): zarez postaje razmak kao u unosu (Strings#addressSearch).
+            + "   OR REPLACE(REPLACE(LOWER(COALESCE(d.addressText,'')), ',', ' '), '  ', ' ')"
+            + "       LIKE CONCAT('%', LOWER(CAST(:address AS string)), '%')"
+            + "   OR EXISTS (SELECT 1 FROM RnEntity ra JOIN AccommodationEntity aa"
+            + "       ON aa.accommodationId = ra.accommodationId WHERE ra.rn = d.rn"
+            + "       AND REPLACE(LOWER(CONCAT(TRIM(COALESCE(aa.street,'')),' ',TRIM(COALESCE(aa.streetNumber,'')),' ',"
+            + "           TRIM(COALESCE(aa.city,'')))), '  ', ' ')"
+            + "           LIKE CONCAT('%', LOWER(CAST(:address AS string)), '%')))";
+
     /** Interni red za nadležno tijelo, bez prenesenih izvora — v. {@link #NOT_CARRIED_OVER}. */
     @Transactional(readOnly = true)
-    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER,
-            countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER)
-    Page<CategorizationDecisionEntity> findForReview(Pageable pageable);
+    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER + OIB_ADDRESS_FILTER,
+            countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER
+                    + OIB_ADDRESS_FILTER)
+    Page<CategorizationDecisionEntity> findForReview(@Param("oib") String oib, @Param("address") String address,
+                                                     Pageable pageable);
 
     /** Kao {@link #findForReview}, uz filtar po statusu. */
     @Transactional(readOnly = true)
-    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE d.status = :status AND" + NOT_CARRIED_OVER,
+    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE d.status = :status AND" + NOT_CARRIED_OVER
+            + OIB_ADDRESS_FILTER,
             countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE d.status = :status AND"
-                    + NOT_CARRIED_OVER)
+                    + NOT_CARRIED_OVER + OIB_ADDRESS_FILTER)
     Page<CategorizationDecisionEntity> findForReviewByStatus(@Param("status") CategorizationDecisionStatus status,
+                                                             @Param("oib") String oib,
+                                                             @Param("address") String address,
                                                              Pageable pageable);
 
     /**
@@ -49,21 +75,26 @@ public interface CategorizationDecisionRepository extends JpaRepository<Categori
 
     /** Kao {@link #findForReview}, u opsegu službenika — v. {@link #IN_COUNTIES}. */
     @Transactional(readOnly = true)
-    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER + " AND" + IN_COUNTIES,
+    @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER + " AND" + IN_COUNTIES
+            + OIB_ADDRESS_FILTER,
             countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE" + NOT_CARRIED_OVER
-                    + " AND" + IN_COUNTIES)
+                    + " AND" + IN_COUNTIES + OIB_ADDRESS_FILTER)
     Page<CategorizationDecisionEntity> findForReviewInCounties(@Param("counties") Collection<String> counties,
+                                                               @Param("oib") String oib,
+                                                               @Param("address") String address,
                                                                Pageable pageable);
 
     /** Kao {@link #findForReviewByStatus}, u opsegu službenika — v. {@link #IN_COUNTIES}. */
     @Transactional(readOnly = true)
     @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE d.status = :status AND" + NOT_CARRIED_OVER
-            + " AND" + IN_COUNTIES,
+            + " AND" + IN_COUNTIES + OIB_ADDRESS_FILTER,
             countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE d.status = :status AND"
-                    + NOT_CARRIED_OVER + " AND" + IN_COUNTIES)
+                    + NOT_CARRIED_OVER + " AND" + IN_COUNTIES + OIB_ADDRESS_FILTER)
     Page<CategorizationDecisionEntity> findForReviewByStatusInCounties(
             @Param("status") CategorizationDecisionStatus status,
             @Param("counties") Collection<String> counties,
+            @Param("oib") String oib,
+            @Param("address") String address,
             Pageable pageable);
 
     /**
@@ -87,12 +118,15 @@ public interface CategorizationDecisionRepository extends JpaRepository<Categori
      */
     @Transactional(readOnly = true)
     @Query(value = "SELECT d FROM CategorizationDecisionEntity d WHERE" + REGISTRATION_FILTER + " AND" + NOT_CARRIED_OVER
-            + " AND (CAST(:scopeMode AS string) IS NULL OR" + IN_COUNTIES + ")",
+            + " AND (CAST(:scopeMode AS string) IS NULL OR" + IN_COUNTIES + ")" + OIB_ADDRESS_FILTER,
             countQuery = "SELECT COUNT(d) FROM CategorizationDecisionEntity d WHERE" + REGISTRATION_FILTER + " AND"
-                    + NOT_CARRIED_OVER + " AND (CAST(:scopeMode AS string) IS NULL OR" + IN_COUNTIES + ")")
+                    + NOT_CARRIED_OVER + " AND (CAST(:scopeMode AS string) IS NULL OR" + IN_COUNTIES + ")"
+                    + OIB_ADDRESS_FILTER)
     Page<CategorizationDecisionEntity> findForReviewByRegistration(@Param("registration") String registration,
                                                                    @Param("scopeMode") String scopeMode,
                                                                    @Param("counties") Collection<String> counties,
+                                                                   @Param("oib") String oib,
+                                                                   @Param("address") String address,
                                                                    Pageable pageable);
 
     /** Sažetak rješenja bez sadržaja datoteke (predpopuna ponovnog zahtjeva ne treba BLOB). */
